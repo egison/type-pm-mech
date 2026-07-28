@@ -51,21 +51,32 @@ def primEval : PrimOp → List Value → Option Value
 /-! ## primitive data pattern マッチ (PDM-VAR/WILD/CON/TUPLE) -/
 
 mutual
-/-- dp ≈ v ⇓ ρ_d(決定的・全域なので Option 値関数;none = 失敗) -/
+/-- dp ≈ v ⇓ ρ_d(決定的・全域なので Option 値関数;none = 失敗)。
+    dp で外側・v で内側の入れ子照合(健全性証明の `split` を単純にする)。 -/
 def pdMatch : DPat → Value → Option Env
-  | .var z,      v            => some [(z, v)]
-  | .wild,       _            => some []
-  | .ctor C dps, .ctor C' vs  => if C == C' then pdMatchList dps vs else none
-  | .tuple dps,  .tuple vs    => pdMatchList dps vs
-  | _,           _            => none
+  | .var z, v => some [(z, v)]
+  | .wild, _ => some []
+  | .ctor C dps, v =>
+      match v with
+      | .ctor C' vs => if C == C' then pdMatchList dps vs else none
+      | _ => none
+  | .tuple dps, v =>
+      match v with
+      | .tuple vs => pdMatchList dps vs
+      | _ => none
 
 def pdMatchList : List DPat → List Value → Option Env
-  | [],        []      => some []
-  | dp :: dps, v :: vs => do
-      let ρ₁ ← pdMatch dp v
-      let ρ₂ ← pdMatchList dps vs
-      pure (ρ₁ ++ ρ₂)
-  | _, _ => none
+  | [], vs =>
+      match vs with
+      | [] => some []
+      | _ => none
+  | dp :: dps, vs =>
+      match vs with
+      | v :: vs' => do
+          let ρ₁ ← pdMatch dp v
+          let ρ₂ ← pdMatchList dps vs'
+          pure (ρ₁ ++ ρ₂)
+      | _ => none
 end
 
 /-! ## pattern-on-pattern マッチの形状検査

@@ -94,24 +94,6 @@ inductive VShape (SD : SigD) : Value → Ty → Prop where
   | matcherTuple {vs τ} : VShape SD (.tuple vs) (.matcher τ)   -- 積マッチャー
   | slotAny {v τp τt} : VShape SD v (.slot τp τt)              -- スロット型の値
 
-/-! ## マッチャー整合性 (Definition 4.2、型付け非依存部分) -/
-
-/-- Def 4.2 のうち (1c) arm exhaustiveness・(2) catch-all・(3) Coverage。
-    (1a)(1b) の型付け条件は `HasTy.matcherE` の premise が担う。 -/
-structure ConsistentClauses (SD : SigD) (SP : SigP)
-    (cls : List Clause) (τ : Ty) : Prop where
-  /-- (3) Coverage:τ の頭型構成子の全パターン構成子に一般形節がある -/
-  coverage : ∀ pr ∈ SP, Ty.headMatches pr.2.res τ →
-    ∃ M arms, (generalPP pr.1 pr.2.args.length, M, arms) ∈ cls
-  /-- (3) 積型の Coverage:一般タプル節 ($, …, $) がある -/
-  coverageProd : ∀ τs, τ = Ty.prod τs →
-    ∃ M arms, (PPat.tuple (List.replicate τs.length .hole), M, arms) ∈ cls
-  /-- (2) catch-all 節 ($ as M with $tgt → N) がある -/
-  catchall : ∃ M x N, (PPat.hole, M, [(DPat.var x, N)]) ∈ cls
-  /-- (1c) arm exhaustiveness:各節のアームは τ の全値を覆う(意味的定式化) -/
-  armExh : ∀ cl ∈ cls, ∀ v, VShape SD v τ →
-    ∃ arm ∈ cl.2.2, (pdMatch arm.1 v).isSome
-
 /-! ## PP / PD 判定 (付録 A Fig 5) -/
 
 mutual
@@ -167,6 +149,31 @@ inductive PDTys (SD : SigD) : List DPat → List Ty → List (String × Ty) → 
       PDTys SD dps τs Γs →
       PDTys SD (dp :: dps) (τ :: τs) (Γ ++ Γs)
 end
+
+/-! ## マッチャー整合性 (Definition 4.2、型付け非依存部分) -/
+
+/-- Def 4.2 のうち (1c) arm exhaustiveness・(2) catch-all・(3) Coverage。
+    (1a)(1b) の型付け条件は `HasTy.matcherE` の premise が担う。 -/
+structure ConsistentClauses (SD : SigD) (SP : SigP)
+    (cls : List Clause) (τ : Ty) : Prop where
+  /-- (3) Coverage:τ の頭型構成子の全パターン構成子に一般形節がある -/
+  coverage : ∀ pr ∈ SP, Ty.headMatches pr.2.res τ →
+    ∃ M arms, (generalPP pr.1 pr.2.args.length, M, arms) ∈ cls
+  /-- (3) 積型の Coverage:一般タプル節 ($, …, $) がある -/
+  coverageProd : ∀ τs, τ = Ty.prod τs →
+    ∃ M arms, (PPat.tuple (List.replicate τs.length .hole), M, arms) ∈ cls
+  /-- (2) catch-all 節 ($ as M with $tgt → N) がある -/
+  catchall : ∃ M x N, (PPat.hole, M, [(DPat.var x, N)]) ∈ cls
+  /-- (1c) arm exhaustiveness:各節のアームは τ の全値を覆う(意味的定式化) -/
+  armExh : ∀ cl ∈ cls, ∀ v, VShape SD v τ →
+    ∃ arm ∈ cl.2.2, (pdMatch arm.1 v).isSome
+  /-- 節の pp 値パターン束縛名は相異(⋃ᵢ Δᵢ が直和;Def 4.2 の暗黙条件) -/
+  ppBindNodup : ∀ cl ∈ cls, ∀ {τ' : Ty} {pairs : List (Ty × Ty)} {Δ : BindCtx},
+    PPTy SP cl.1 τ' pairs Δ → (Δ.map (·.1)).Nodup
+  /-- アームの dp 束縛名は相異(⋃ᵢ Γᵢ が直和;同上) -/
+  armBindNodup : ∀ cl ∈ cls, ∀ arm ∈ cl.2.2,
+    ∀ {τ' : Ty} {Γij : List (String × Ty)},
+    PDTy SD arm.1 τ' Γij → (Γij.map (·.1)).Nodup
 
 /-! ## 式・パターンの型判定 (Fig 4) -/
 

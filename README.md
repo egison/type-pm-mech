@@ -19,7 +19,7 @@
 | `TypePM/Metatheory/Polymorphism.lean` | **マッチャー多相性(証明済:構成子合成そのもの)** | **Thm 5.1** |
 | `TypePM/Metatheory/Preservation.lean` | **PPP 型保存(証明済:pp 構造帰納+リスト版相互、(a)-oracle 仮定つき)・matcher-value slot invariant(証明済:値レベル slot 規則の反転)**・型安全性 (a)(b)(sorry) | **Lem 5.4, Lem C.2**, Thm 5.6, 付録 C |
 | `TypePM/Metatheory/Canonical.lean` | **正準形補題層(証明済)**:VShape⊇ValueTy・積型正準形・改名/one-way の形状保存・「構造前提が something/積マッチャーを構成子パターンで却下」 | 付録 C.2 の核 |
-| `TypePM/Metatheory/Progress.lean` | マッチング状態の進行(分解関数停止仮定つき;前提層は Canonical に証明済) | Lem 5.5, 付録 C.2 |
+| `TypePM/Metatheory/Progress.lean` | **Progress 前提層(証明済)**:`ListSigOK`/`canonical_list`・`pdMatch_typed`・節/アーム型付けの member 補題・`mapM_eq_some`/`decomposeME_tuple`・環境型付けグルー(`envTyped_of_bindings`/`envTyped_append`/`envTyped_of_matcherV`/`inst_mono`)+ Lem 5.5 本体(sorry) | Lem 5.5, 付録 C.2 |
 | `TypePM/Metatheory/Safety.lean` | Reaches((b) の反復装置)・**到達保存・終端代入型付け・マッチャー整合性定理(いずれも (b) を仮定して証明済)・Search↔Reaches 対応(結合再帰子 `Search.rec` で証明済)** | **Thm 5.7**, 付録 C.4 |
 | `TypePM/Metatheory/Principal.lean` | **matchOneWay の健全性/完全性(証明済:Lem 5.2 の計算可能性部分が完結)**+主型性スタブ(Algorithm W は Stage 2) | Thm 5.3, Lem D.1–D.3, 付録 B/D |
 | `TypePM/Metatheory/Adequacy.lean` | **インタプリタの健全性(証明済:fuel の相互帰納 11 定理)** | — |
@@ -40,6 +40,7 @@
 11. **値レベルのコアーション規則**:`ValueTy` に `slotV`/`prodSlot`(COERCE-MATCHER-TO-SLOT / COERCE-SLOT-TUPLE の値対応物)を持つ。スロット型で束縛される λ 引数の環境型付けに必要で、Lem C.2 はその反転として証明される。`prodMatcher` は COERCE-TUPLE-MATCHER の値対応物。
 12. **シグネチャ整形性** `CtorSigWF`/`SigPWF`/`SigDWF`(Def 4.1 の暗黙条件:結果型は型構成子の全変数適用、引数型の変数は宣言パラメタ内)。結果型のインスタンス一致から引数型のインスタンス一致を導く `instSig_args_agree` が Lem 5.4 の PP 側・PatTy 側の整列を支える。
 13. **`VShape` は積マッチャー・スロット値も覆う**(`matcherTuple`/`slotAny`):arm exhaustiveness の量化域が実際の整型値(`vshape_of_valueTy`)を覆うため。
+14. **束縛名の相異を Def 4.2 の正式条件に**(`ConsistentClauses.ppBindNodup`/`armBindNodup`):論文の ⋃ᵢ Δᵢ・⋃ᵢ Γᵢ 記法が前提する直和性の明文化。`pdMatch`/`pdMatchList` は dp 外側・v 内側の入れ子照合(証明の `split` 単純化;挙動不変)。
 
 ## 機械化が浮かび上がらせた論文の細部(**2026-07-28 論文へ反映済み**、英日両版)
 
@@ -47,9 +48,13 @@
 - **WT-MNODE の内側入力文脈**:論文 Fig 6 は内側スタックの型付けを ε から始めていたが、本体内で先に束縛された $ 変数を後続の値パターンが参照するには dom_typed(θ_f) から始める必要がある(WT-STATE の外側の扱いと平行)。機械化と論文の双方で後者を採用(`WellTyped.lean`;論文は Fig 6 + Def 5.3 + キャプションを更新。入れ子 MNode の変数パターン出現の数え方の明確化も同時に反映)。
 - **(その 3、論文未反映・要設計判断)PPP-VAL の早期評価**:pp の #$y は対応する p 側 #M の M を**節選択時**に評価するが、M の型付け文脈(PAT-VALUE の Δ スレッディング)は p の左側部分パターンの束縛を含み得る。#$y が第 2 引数位置以降に立ち M が左側束縛を参照すると、束縛前の評価になる。標準ライブラリの全節(#$val はトップ、#$pxs は第 1 位置)は安全側。対処候補:(i) #$ 位置を接頭位置に制限、(ii) 該当位置の値パターン式の型付けを原子入力文脈 Δ₀ に制限、(iii) 評価の遅延。`Preservation.lean` のモジュールドキュメント参照。
 
-## 現状(2026-07-28 第 3 版)
+## 現状(2026-07-28 第 4 版)
 
 - `lake build` 成功(エラー 0)。`sorry` は **3 宣言** = Thm 5.6(a)(b)(Preservation)・Lem 5.5(Progress)。
+- 第 4 版で証明完了(Progress.lean の前提層):
+  - **`canonical_list`**(`ListSigOK` の下でリスト型の値は `listOfV` で分解でき要素が型付く)・**`pdMatch_typed`**(dp 束縛の型付け;Lem 5.4 の dp 版、(b) でも使用)
+  - **環境型付けグルー**:`applyTS_nil`・`inst_mono`・`tyCtxFind_toCtx`・`envTyped_of_bindings`・`bindings_cover`・`envTyped_append`・`envTyped_of_matcherV` — MS-MATCHER の分解関数評価環境 (ρd ++ ρp ++ ρm) の型付けを組み立てる部品が完備
+  - `clausesTy_mem`/`armsTy_mem`・`mapM_eq_some`・`decomposeME_tuple`
 - 第 3 版で証明完了:
   - **Lem 5.4(PPP 型保存)**:`ppp_core`/`ppp_list`(pp 構造帰納・リスト版相互)。仮定 = Σ_P 整形性・(a)-oracle・pp 束縛名の相異(⋃Δᵢ 直和の暗黙条件)。取り出された次パターン列の PatTys(Δ スレッディング込み)と値パターン束縛の型付けの両方。
   - **Lem C.2(スロット不変量)**:値レベル slot 規則(`slotV`/`prodSlot`)の反転+`matcherOK_of_valueTy`。結論は論文どおりの選言(単一マッチャー条件 ∨ タプル成分ごとのスロット)。
@@ -67,7 +72,7 @@
 ## ロードマップ
 
 - **Stage 1(コア型安全性、付録 C;残る sorry 3 の解消)**:
-  - Lem 5.5(Progress):前提層(Canonical.lean)は済。残り = リスト正準形(`ListSigOK` 仮定+`canonical_list`)・shapeOK からの PPM 全域性(停止仮定つき)・節/アームの先頭一致選択の存在帰納・decodeTuple の形状補題・papp の Σ_F アリティ(SigFWF.arity)・組み立て(木の構造帰納、Φ 一般化した状態整型で)。
+  - Lem 5.5(Progress):前提層(Canonical.lean + Progress.lean 上部)は**全て済**。残り = shapeOK からの PPM 全域性(停止仮定つき、pp 構造帰納)・節/アームの先頭一致選択の存在帰納(catch-all の存在から一致節が必ずある)・decodeTuple の形状補題(prodK の場合分け+`canonical_prod`/`canonical_list`)・papp の Σ_F アリティ(`SigFWF.arity`)・組み立て(木の構造帰納、Φ を一般化した状態整型で;WTState の Φ=[] 固定を内側スタック用に一般化)。
   - Thm 5.6(a)(b):`Search.rec` 型の結合再帰子(5 motive)への一括適用。`search_mem_reaches` で同ルートは実証済み。必要な補助:HM 代入・弱化補題(TyCtx 操作)、環境拡張と EnvTyped の整合、MS-MATCHER ケースの θp∘U 追跡(Lem 5.4 は済)。
   - list/multiset 整合性(Def 4.2)の実例検証。
 - **Stage 2(主型性、付録 B/D)**:rigidity 付き Robinson 単一化 → Algorithm W(matchAll の Step 1–6・スロット処理 3a/3a′/3b)→ Lem D.1–D.3 → Thm 5.3。
