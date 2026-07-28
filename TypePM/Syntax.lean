@@ -273,4 +273,20 @@ def stackEmbedOccs : List Tree → List String
   | t :: S => treeEmbedOccs t ++ stackEmbedOccs S
 end
 
+/-!
+スタック中の全パターン(と Π の実引数パターン)が `noEmbedInOr` であること。
+~x 出現列が or 分岐で失われない(= WT-MNODE の接尾辞不変量が 1 ステップで
+保存される)ための線形性側条件のスタック版。
+-/
+mutual
+def treeNoOr : Tree → Bool
+  | .atom a => a.p.noEmbedInOr
+  | .mnode S _ _ piE =>
+      stackNoOr S && piE.all (fun pr => pr.2.noEmbedInOr)
+
+def stackNoOr : List Tree → Bool
+  | []     => true
+  | t :: S => treeNoOr t && stackNoOr S
+end
+
 end TypePM

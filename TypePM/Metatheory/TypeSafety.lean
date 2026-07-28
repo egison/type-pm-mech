@@ -569,6 +569,567 @@ theorem type_safety_a
     | coerceSlotTuple hpre => cases hpre
   all_goals intros; trivial
 
+/-! ## ~x 出現列の保存(WT-MNODE 接尾辞不変量の維持層)
+
+内側スタックの 1 ステップが `stackEmbedOccs` を変えないことを、
+PPM 抽出 → MAtom 規則 → Step 規則の 3 層で示す。
+or 分岐だけは出現を落としうるので、線形性側条件 `noEmbedInOr`
+(or の両分枝は embed を含まない;PATFUN-DEF の側条件)が効く。 -/
+
+theorem stackEmbedOccs_append : ∀ (S₁ S₂ : List Tree),
+    stackEmbedOccs (S₁ ++ S₂) = stackEmbedOccs S₁ ++ stackEmbedOccs S₂
+  | [], _ => rfl
+  | t :: S₁, S₂ => by
+      simp [stackEmbedOccs, stackEmbedOccs_append S₁ S₂]
+
+theorem embedVarsList_append : ∀ (l₁ l₂ : List Pattern),
+    embedVarsList (l₁ ++ l₂) = embedVarsList l₁ ++ embedVarsList l₂
+  | [], _ => rfl
+  | p :: l₁, l₂ => by
+      simp [embedVarsList, embedVarsList_append l₁ l₂]
+
+theorem stackEmbedOccs_atoms : ∀ (as : List Atom),
+    stackEmbedOccs (as.map .atom) = embedVarsList (as.map (·.p))
+  | [] => rfl
+  | a :: as => by
+      simp [stackEmbedOccs, treeEmbedOccs, embedVarsList, stackEmbedOccs_atoms as]
+
+/-- 3 重 zip で作った原子列のパターン成分は元のパターン列 -/
+theorem zip3_atoms_ps : ∀ (ps : List Pattern) (ms vs : List Value),
+    ps.length = ms.length → ms.length = vs.length →
+    (((ps.zip (ms.zip vs)).map fun x => (⟨x.1, x.2.1, x.2.2⟩ : Atom)).map (·.p)) = ps
+  | [], _, _, _, _ => by simp
+  | p :: ps, [], _, h1, _ => by simp at h1
+  | p :: ps, m :: ms, [], _, h2 => by simp at h2
+  | p :: ps, m :: ms, v :: vs, h1, h2 => by
+      simp [List.zip_cons_cons,
+        zip3_atoms_ps ps ms vs (by simpa using h1) (by simpa using h2)]
+
+theorem decodeTuple_length : ∀ {k : Nat} {v : Value} {l : List Value},
+    decodeTuple k v = some l → l.length = k := by
+  intro k v l h
+  unfold decodeTuple at h
+  split at h
+  · next hk =>
+      obtain rfl := Option.some.inj h.symm
+      simpa using (by simpa using hk : k = 1).symm
+  · split at h
+    · next vs =>
+        split at h
+        · next hlen =>
+            obtain rfl := Option.some.inj h
+            simpa using hlen
+        · exact nomatch h
+    · exact nomatch h
+
+theorem mapM_mem_inv {α β} {f : α → Option β} : ∀ {l : List α} {l' : List β},
+    l.mapM f = some l' → ∀ b ∈ l', ∃ a ∈ l, f a = some b
+  | [], l', h => by
+      obtain rfl := Option.some.inj (h : some [] = some l')
+      intro b hb
+      cases hb
+  | a :: l, l', h => by
+      rw [List.mapM_cons] at h
+      obtain ⟨b, hb, h⟩ := bind_eq_some h
+      obtain ⟨l'', hl'', h⟩ := bind_eq_some h
+      obtain rfl := pure_eq_some h
+      intro c hc
+      rcases List.mem_cons.mp hc with rfl | hc
+      · exact ⟨a, by simp, hb⟩
+      · obtain ⟨a', ha', hfa'⟩ := mapM_mem_inv hl'' c hc
+        exact ⟨a', List.mem_cons_of_mem _ ha', hfa'⟩
+
+/-! PPM 抽出は ~x の出現列を保存する(pp の構造帰納) -/
+mutual
+theorem ppm_occs {SF : SigF} :
+    ∀ (pp : PPat) {ρ : Env} {p : Pattern} {ps' : List Pattern} {ρp : Env},
+    PPM SF ρ pp p (some (ps', ρp)) → embedVarsList ps' = p.embedVars
+  | .hole, _, p, _, _, hm => by
+      cases hm
+      simp [embedVarsList]
+  | .wild, _, _, _, _, hm => by cases hm; rfl
+  | .pval y, _, _, _, _, hm => by cases hm; rfl
+  | .ctor c pps, _, _, _, _, hm => by
+      cases hm with
+      | ctor hl1 hl2 hall =>
+        simp only [Pattern.embedVars]
+        exact ppm_occs_list pps hl1 hl2 hall
+  | .tuple pps, _, _, _, _, hm => by
+      cases hm with
+      | tuple hl1 hl2 hall =>
+        simp only [Pattern.embedVars]
+        exact ppm_occs_list pps hl1 hl2 hall
+
+theorem ppm_occs_list {SF : SigF} :
+    ∀ (pps : List PPat) {ρ : Env} {ps : List Pattern}
+      {rs : List (List Pattern × Env)},
+    pps.length = ps.length → (pps.zip ps).length = rs.length →
+    (∀ tr ∈ (pps.zip ps).zip rs, PPM SF ρ tr.1.1 tr.1.2 (some tr.2)) →
+    embedVarsList ((rs.map (·.1)).flatten) = embedVarsList ps
+  | [], _, ps, rs, hl1, hl2, _ => by
+      cases ps with
+      | cons _ _ => simp at hl1
+      | nil =>
+        cases rs with
+        | cons _ _ => simp at hl2
+        | nil => rfl
+  | pp :: pps, _, ps, rs, hl1, hl2, hall => by
+      cases ps with
+      | nil => simp at hl1
+      | cons p ps' =>
+        cases rs with
+        | nil => simp [List.zip_cons_cons] at hl2
+        | cons r rs' =>
+          obtain ⟨nexts, ρpc⟩ := r
+          have hh : PPM SF _ pp p (some (nexts, ρpc)) :=
+            hall ((pp, p), (nexts, ρpc)) (by simp [List.zip_cons_cons])
+          simp only [List.map_cons, List.flatten_cons]
+          rw [embedVarsList_append, ppm_occs pp hh,
+              ppm_occs_list pps (by simpa using hl1)
+                (by simpa [List.zip_cons_cons] using hl2)
+                (fun tr htr => hall tr
+                  (by simp [List.zip_cons_cons]; exact .inr htr))]
+          rfl
+end
+
+/-- MAtom の各継続は消費された原子のパターンの ~x 出現列を保存する
+    (or 分岐は `noEmbedInOr` により両分枝とも出現なし)。 -/
+theorem matom_occs {SF : SigF} {ρ : Env} {p : Pattern} {m v : Value}
+    {conts : List (List Atom)} {θ' : Subst}
+    (hma : MAtom SF ρ p m v conts θ') :
+    p.noEmbedInOr = true →
+    ∀ as ∈ conts, stackEmbedOccs (as.map .atom) = p.embedVars := by
+  refine MAtom.rec (SF := SF)
+    (motive_1 := fun _ _ _ _ => True)
+    (motive_2 := fun _ _ _ _ _ => True)
+    (motive_3 := fun _ p _ _ conts _ _ => p.noEmbedInOr = true →
+       ∀ as ∈ conts, stackEmbedOccs (as.map .atom) = p.embedVars)
+    (motive_4 := fun _ _ _ => True)
+    (motive_5 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_
+    ?someWC ?someVar ?someValEq ?someValNeq ?mand ?mor ?mtuple ?mprodSome
+    ?mppfail ?mdpfail ?mmatcher
+    ?_ ?_ ?_ ?_ ?_
+    ?_ ?_
+    hma
+  case someWC =>
+    intro ρ v _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case someVar =>
+    intro ρ x v _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case someValEq =>
+    intro ρ e v ve _hev _hsE _ih _hno as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case someValNeq =>
+    intro ρ e v ve _hev _hsE _ih _hno as has
+    cases has
+  case mand =>
+    intro ρ p₁ p₂ m v _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    simp [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars]
+  case mor =>
+    intro ρ p₁ p₂ m v hno as has
+    simp only [Pattern.noEmbedInOr, Bool.and_eq_true,
+      List.isEmpty_iff] at hno
+    obtain ⟨⟨⟨h1, h2⟩, _⟩, _⟩ := hno
+    simp only [List.mem_cons, List.mem_singleton] at has
+    rcases has with rfl | rfl | hfalse
+    · simp [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars, h1, h2]
+    · simp [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars, h1, h2]
+    · cases hfalse
+  case mtuple =>
+    intro ρ ps ms vs hl1 hl2 _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rw [stackEmbedOccs_atoms, zip3_atoms_ps ps ms vs hl1 hl2]
+    rfl
+  case mprodSome =>
+    intro ρ p ms v _hprim _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    simp [stackEmbedOccs, treeEmbedOccs]
+  case mppfail =>
+    intro ρ ρm p v pp M arms cls conts θ' _hpc _hppm _hma _ihppm ihma
+    exact fun hno as has => ihma hno as has
+  case mdpfail =>
+    intro ρ ρm p v pp M dp N arms cls ps' ρp conts θ'
+      _hpc _hppm _hpd _hma _ihppm ihma
+    exact fun hno as has => ihma hno as has
+  case mmatcher =>
+    intro ρ ρm p v pp M dp N arms cls ps' ρp ρd vN tuples vss vM ms
+      _hpc hppm _hpd _hevN hlist hvss _hevM hms
+      _ihppm _ihevN _ihevM
+    intro _ as has
+    simp only [List.mem_map] at has
+    obtain ⟨vs, hvs, rfl⟩ := has
+    have hlms : ms.length = ps'.length := decodeTuple_length hms
+    have hlvs : vs.length = ps'.length := by
+      obtain ⟨t, _, hdec⟩ := mapM_mem_inv hvss vs hvs
+      exact decodeTuple_length hdec
+    rw [stackEmbedOccs_atoms,
+        zip3_atoms_ps ps' ms vs hlms.symm (by omega)]
+    exact ppm_occs pp hppm
+  all_goals intros; trivial
+
+/-! ### noEmbedInOr の維持と Step 水準の出現列保存 -/
+
+theorem noEmbedInOrList_mem : ∀ {ps : List Pattern}, noEmbedInOrList ps = true →
+    ∀ p ∈ ps, p.noEmbedInOr = true := by
+  intro ps h p hp
+  induction ps with
+  | nil => cases hp
+  | cons q ps ih =>
+      simp only [noEmbedInOrList, Bool.and_eq_true] at h
+      rcases List.mem_cons.mp hp with rfl | hp
+      · exact h.1
+      · exact ih h.2 hp
+
+theorem noEmbedInOrList_of_forall : ∀ {ps : List Pattern},
+    (∀ p ∈ ps, p.noEmbedInOr = true) → noEmbedInOrList ps = true
+  | [], _ => rfl
+  | p :: ps, h => by
+      simp only [noEmbedInOrList, Bool.and_eq_true]
+      exact ⟨h p (by simp), noEmbedInOrList_of_forall
+        (fun q hq => h q (List.mem_cons_of_mem _ hq))⟩
+
+theorem stackNoOr_append : ∀ (S₁ S₂ : List Tree),
+    stackNoOr (S₁ ++ S₂) = (stackNoOr S₁ && stackNoOr S₂)
+  | [], S₂ => by simp [stackNoOr]
+  | t :: S₁, S₂ => by
+      simp [stackNoOr, stackNoOr_append S₁ S₂, Bool.and_assoc]
+
+theorem stackNoOr_atoms : ∀ (as : List Atom),
+    stackNoOr (as.map .atom) = noEmbedInOrList (as.map (·.p))
+  | [] => rfl
+  | a :: as => by
+      simp [stackNoOr, treeNoOr, noEmbedInOrList, stackNoOr_atoms as]
+
+/-! PPM 抽出は noEmbedInOr を保存する(部分パターン閉性) -/
+mutual
+theorem ppm_noOr {SF : SigF} :
+    ∀ (pp : PPat) {ρ : Env} {p : Pattern} {ps' : List Pattern} {ρp : Env},
+    PPM SF ρ pp p (some (ps', ρp)) → p.noEmbedInOr = true →
+    ∀ q ∈ ps', q.noEmbedInOr = true
+  | .hole, _, p, _, _, hm, hno => by
+      cases hm
+      intro q hq
+      simp only [List.mem_singleton] at hq
+      subst hq
+      exact hno
+  | .wild, _, _, _, _, hm, _ => by
+      cases hm
+      intro q hq
+      cases hq
+  | .pval y, _, _, _, _, hm, _ => by
+      cases hm
+      intro q hq
+      cases hq
+  | .ctor c pps, _, _, _, _, hm, hno => by
+      cases hm with
+      | ctor hl1 hl2 hall =>
+        simp only [Pattern.noEmbedInOr] at hno
+        exact ppm_noOr_list pps hl1 hl2 hall hno
+  | .tuple pps, _, _, _, _, hm, hno => by
+      cases hm with
+      | tuple hl1 hl2 hall =>
+        simp only [Pattern.noEmbedInOr] at hno
+        exact ppm_noOr_list pps hl1 hl2 hall hno
+
+theorem ppm_noOr_list {SF : SigF} :
+    ∀ (pps : List PPat) {ρ : Env} {ps : List Pattern}
+      {rs : List (List Pattern × Env)},
+    pps.length = ps.length → (pps.zip ps).length = rs.length →
+    (∀ tr ∈ (pps.zip ps).zip rs, PPM SF ρ tr.1.1 tr.1.2 (some tr.2)) →
+    noEmbedInOrList ps = true →
+    ∀ q ∈ (rs.map (·.1)).flatten, q.noEmbedInOr = true
+  | [], _, ps, rs, hl1, hl2, _, _ => by
+      cases ps with
+      | cons _ _ => simp at hl1
+      | nil =>
+        cases rs with
+        | cons _ _ => simp at hl2
+        | nil => intro q hq; simp at hq
+  | pp :: pps, _, ps, rs, hl1, hl2, hall, hno => by
+      cases ps with
+      | nil => simp at hl1
+      | cons p ps' =>
+        cases rs with
+        | nil => simp [List.zip_cons_cons] at hl2
+        | cons r rs' =>
+          obtain ⟨nexts, ρpc⟩ := r
+          have hh : PPM SF _ pp p (some (nexts, ρpc)) :=
+            hall ((pp, p), (nexts, ρpc)) (by simp [List.zip_cons_cons])
+          simp only [noEmbedInOrList, Bool.and_eq_true] at hno
+          intro q hq
+          simp only [List.map_cons, List.flatten_cons, List.mem_append] at hq
+          rcases hq with hq | hq
+          · exact ppm_noOr pp hh hno.1 q hq
+          · exact ppm_noOr_list pps (by simpa using hl1)
+              (by simpa [List.zip_cons_cons] using hl2)
+              (fun tr htr => hall tr
+                (by simp [List.zip_cons_cons]; exact .inr htr)) hno.2 q hq
+end
+
+/-- MAtom の各継続のパターンは noEmbedInOr を保つ -/
+theorem matom_noOr {SF : SigF} {ρ : Env} {p : Pattern} {m v : Value}
+    {conts : List (List Atom)} {θ' : Subst}
+    (hma : MAtom SF ρ p m v conts θ') :
+    p.noEmbedInOr = true →
+    ∀ as ∈ conts, noEmbedInOrList (as.map (·.p)) = true := by
+  refine MAtom.rec (SF := SF)
+    (motive_1 := fun _ _ _ _ => True)
+    (motive_2 := fun _ _ _ _ _ => True)
+    (motive_3 := fun _ p _ _ conts _ _ => p.noEmbedInOr = true →
+       ∀ as ∈ conts, noEmbedInOrList (as.map (·.p)) = true)
+    (motive_4 := fun _ _ _ => True)
+    (motive_5 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_
+    ?nWC ?nVar ?nValEq ?nValNeq ?nand ?nor ?ntuple ?nprodSome
+    ?nppfail ?ndpfail ?nmatcher
+    ?_ ?_ ?_ ?_ ?_
+    ?_ ?_
+    hma
+  case nWC =>
+    intro ρ v _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case nVar =>
+    intro ρ x v _ as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case nValEq =>
+    intro ρ e v ve _hev _hsE _ih _hno as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rfl
+  case nValNeq =>
+    intro ρ e v ve _hev _hsE _ih _hno as has
+    cases has
+  case nand =>
+    intro ρ p₁ p₂ m v hno as has
+    simp only [List.mem_singleton] at has
+    subst has
+    simp only [Pattern.noEmbedInOr, Bool.and_eq_true] at hno
+    simp [noEmbedInOrList, hno.1, hno.2]
+  case nor =>
+    intro ρ p₁ p₂ m v hno as has
+    simp only [Pattern.noEmbedInOr, Bool.and_eq_true] at hno
+    obtain ⟨⟨⟨_, _⟩, h3⟩, h4⟩ := hno
+    simp only [List.mem_cons] at has
+    rcases has with rfl | rfl | hfalse
+    · simp [noEmbedInOrList, h3]
+    · simp [noEmbedInOrList, h4]
+    · cases hfalse
+  case ntuple =>
+    intro ρ ps ms vs hl1 hl2 hno as has
+    simp only [List.mem_singleton] at has
+    subst has
+    rw [zip3_atoms_ps ps ms vs hl1 hl2]
+    simpa [Pattern.noEmbedInOr] using hno
+  case nprodSome =>
+    intro ρ p ms v _hprim hno as has
+    simp only [List.mem_singleton] at has
+    subst has
+    simp [noEmbedInOrList, hno]
+  case nppfail =>
+    intro ρ ρm p v pp M arms cls conts θ' _hpc _hppm _hma _ihppm ihma
+    exact fun hno as has => ihma hno as has
+  case ndpfail =>
+    intro ρ ρm p v pp M dp N arms cls ps' ρp conts θ'
+      _hpc _hppm _hpd _hma _ihppm ihma
+    exact fun hno as has => ihma hno as has
+  case nmatcher =>
+    intro ρ ρm p v pp M dp N arms cls ps' ρp ρd vN tuples vss vM ms
+      _hpc hppm _hpd _hevN _hlist hvss _hevM hms
+      _ihppm _ihevN _ihevM
+    intro hno as has
+    simp only [List.mem_map] at has
+    obtain ⟨vs, hvs, rfl⟩ := has
+    have hlms : ms.length = ps'.length := decodeTuple_length hms
+    have hlvs : vs.length = ps'.length := by
+      obtain ⟨t, _, hdec⟩ := mapM_mem_inv hvss vs hvs
+      exact decodeTuple_length hdec
+    rw [zip3_atoms_ps ps' ms vs hlms.symm (by omega)]
+    exact noEmbedInOrList_of_forall (ppm_noOr pp hppm hno)
+  all_goals intros; trivial
+
+/-! ### Π の解決の整列(パターン関数展開時の出現列計算) -/
+
+theorem zip_map_fst : ∀ (l₁ : List String) (l₂ : List Pattern),
+    l₁.length = l₂.length → (l₁.zip l₂).map (·.1) = l₁
+  | [], _, _ => by simp
+  | y :: l₁, [], h => by simp at h
+  | y :: l₁, q :: l₂, h => by
+      simp [List.zip_cons_cons, zip_map_fst l₁ l₂ (by simpa using h)]
+
+theorem zip_map_snd : ∀ (l₁ : List String) (l₂ : List Pattern),
+    l₁.length = l₂.length → (l₁.zip l₂).map (·.2) = l₂
+  | [], [], _ => by simp
+  | [], _ :: _, h => by simp at h
+  | y :: l₁, [], h => by simp at h
+  | y :: l₁, q :: l₂, h => by
+      simp [List.zip_cons_cons, zip_map_snd l₁ l₂ (by simpa using h)]
+
+theorem zip_find_self : ∀ (params : List String) (qs : List Pattern),
+    params.Nodup → params.length = qs.length →
+    ∀ pr ∈ params.zip qs,
+      List.find? (fun x => x.1 == pr.1) (params.zip qs) = some pr
+  | [], _, _, _ => by intro pr hpr; simp at hpr
+  | y :: params, qs, hnd, hlen => by
+      cases qs with
+      | nil => simp at hlen
+      | cons q qs =>
+        intro pr hpr
+        obtain ⟨hy, hnd'⟩ := List.nodup_cons.mp hnd
+        simp only [List.zip_cons_cons, List.mem_cons] at hpr
+        rcases hpr with rfl | hpr
+        · simp [List.find?]
+        · have hpr1 : pr.1 ∈ params := (List.of_mem_zip hpr).1
+          have hne : (y == pr.1) = false := by
+            simp only [beq_eq_false_iff_ne]
+            exact fun e => hy (e ▸ hpr1)
+          simp only [List.zip_cons_cons, List.find?]
+          rw [show ((y, q).1 == pr.1) = false from hne]
+          exact zip_find_self params qs hnd' (by simpa using hlen) pr hpr
+
+theorem flatMap_resolve_pointwise :
+    ∀ (prs : List (String × Pattern)) (piE : PiEnv),
+    (∀ pr ∈ prs, List.find? (fun x => x.1 == pr.1) piE = some pr) →
+    ((prs.map (·.1)).flatMap fun y =>
+      match List.find? (fun x => x.1 == y) piE with
+      | some (_, q) => q.embedVars
+      | none => [y]) = embedVarsList (prs.map (·.2))
+  | [], _, _ => rfl
+  | pr :: prs, piE, h => by
+      obtain ⟨y, q⟩ := pr
+      simp only [List.map_cons, List.flatMap_cons]
+      rw [h (y, q) (by simp)]
+      simp only [embedVarsList]
+      rw [flatMap_resolve_pointwise prs piE
+        (fun x hx => h x (List.mem_cons_of_mem _ hx))]
+
+/-- **Step は ~x の出現列と noEmbedInOr を保存する**(接尾辞不変量の維持;
+    or 分岐は noEmbedInOr、パターン関数展開は linearity+仮引数相異で整列)。 -/
+theorem step_occs {SF : SigF}
+    (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
+       pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
+    {s : MState} {ss : List MState} (hstep : Step SF s ss) :
+    stackNoOr s.S = true →
+    ∀ s' ∈ ss, stackEmbedOccs s'.S = stackEmbedOccs s.S ∧
+      stackNoOr s'.S = true := by
+  refine Step.rec (SF := SF)
+    (motive_1 := fun _ _ _ _ => True)
+    (motive_2 := fun _ _ _ _ _ => True)
+    (motive_3 := fun _ _ _ _ _ _ _ => True)
+    (motive_4 := fun s ss _ => stackNoOr s.S = true →
+       ∀ s' ∈ ss, stackEmbedOccs s'.S = stackEmbedOccs s.S ∧
+         stackNoOr s'.S = true)
+    (motive_5 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?sreduce ?spatfun ?smstep ?smvarpat ?smdone
+    ?_ ?_
+    hstep
+  case sreduce =>
+    intro S ρ θ p m v conts θ' hma _ihma hno s' hs'
+    simp only [List.mem_map] at hs'
+    obtain ⟨as, has, rfl⟩ := hs'
+    simp only [stackNoOr, treeNoOr, Bool.and_eq_true] at hno
+    obtain ⟨hp, hS⟩ := hno
+    constructor
+    · show stackEmbedOccs (as.map .atom ++ S) = _
+      rw [stackEmbedOccs_append, stackEmbedOccs_atoms]
+      have h := matom_occs hma hp as has
+      rw [stackEmbedOccs_atoms] at h
+      rw [h]
+      simp [stackEmbedOccs, treeEmbedOccs]
+    · show stackNoOr (as.map .atom ++ S) = true
+      rw [stackNoOr_append, stackNoOr_atoms, matom_noOr hma hp as has, hS]
+      rfl
+  case spatfun =>
+    intro S ρ θ f qs m v sig hfind hlen hno s' hs'
+    simp only [List.mem_singleton] at hs'
+    subst hs'
+    simp only [stackNoOr, treeNoOr, Pattern.noEmbedInOr,
+      Bool.and_eq_true] at hno
+    obtain ⟨hqs, hS⟩ := hno
+    obtain ⟨hlin0, hbno0, hnd0⟩ := hSF _ (List.mem_of_find?_eq_some hfind)
+    have hlin : sig.body.embedVars = sig.params := hlin0
+    have hbno : sig.body.noEmbedInOr = true := hbno0
+    have hnd : sig.params.Nodup := hnd0
+    have hself := zip_find_self sig.params qs hnd hlen
+    constructor
+    · simp only [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars,
+        List.append_nil]
+      congr 1
+      have hfst := zip_map_fst sig.params qs hlen
+      have hsnd := zip_map_snd sig.params qs hlen
+      rw [hlin]
+      calc sig.params.flatMap _
+          = ((sig.params.zip qs).map (·.1)).flatMap _ := by rw [hfst]; rfl
+        _ = embedVarsList ((sig.params.zip qs).map (·.2)) :=
+            flatMap_resolve_pointwise _ _ hself
+        _ = embedVarsList qs := by rw [hsnd]
+    · simp only [stackNoOr, treeNoOr, Bool.and_eq_true]
+      refine ⟨⟨?_, ?_⟩, hS⟩
+      · simp [hbno]
+      · rw [List.all_eq_true]
+        intro pr hpr
+        exact noEmbedInOrList_mem hqs _ (List.of_mem_zip hpr).2
+  case smstep =>
+    intro S ρ θ t Srest ρf θf piE ss hcond hstep' ih hno s' hs'
+    simp only [List.mem_map] at hs'
+    obtain ⟨s'', hs'', rfl⟩ := hs'
+    simp only [stackNoOr, treeNoOr, Bool.and_eq_true] at hno
+    obtain ⟨⟨hin, hpiE⟩, hS⟩ := hno
+    have hin' : stackNoOr (({ S := t :: Srest, ρ := ρf, θ := θf } : MState)).S
+        = true := by
+      simp only [stackNoOr, Bool.and_eq_true]
+      exact hin
+    obtain ⟨hocc'', hno''⟩ := ih hin' s'' hs''
+    constructor
+    · simp only [stackEmbedOccs, treeEmbedOccs]
+      rw [show stackEmbedOccs s''.S = stackEmbedOccs (t :: Srest) from hocc'']
+      rfl
+    · simp only [stackNoOr, treeNoOr, Bool.and_eq_true]
+      exact ⟨⟨hno'', hpiE⟩, hS⟩
+  case smvarpat =>
+    intro S ρ θ y q m v Srest ρf θf piE hfind hno s' hs'
+    simp only [List.mem_singleton] at hs'
+    subst hs'
+    simp only [stackNoOr, treeNoOr, Bool.and_eq_true] at hno
+    obtain ⟨⟨hin, hpiE⟩, hS⟩ := hno
+    constructor
+    · simp only [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars,
+        List.singleton_append, List.flatMap_cons, hfind, List.append_assoc]
+    · simp only [stackNoOr, treeNoOr, Bool.and_eq_true]
+      have hq : q.noEmbedInOr = true := by
+        have hmem := List.mem_of_find?_eq_some hfind
+        have := List.all_eq_true.mp hpiE _ hmem
+        simpa using this
+      exact ⟨hq, ⟨hin.2, hpiE⟩, hS⟩
+      -- ↑ hin の分解形は build で確定させる
+  case smdone =>
+    intro S ρ θ ρf θf piE hno s' hs'
+    simp only [List.mem_singleton] at hs'
+    subst hs'
+    simp only [stackNoOr, treeNoOr, Bool.and_eq_true] at hno
+    exact ⟨by simp [stackEmbedOccs, treeEmbedOccs], hno.2⟩
+  all_goals intros; trivial
+
 /-! ## Theorem 5.6(b) へ向けた規則別保存補題 -/
 
 /-- WTStack の連結(Δ スレッディングを継ぐ) -/
@@ -811,16 +1372,23 @@ theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
 
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
     MS-MNODE-STEP の内側再帰に帰納法の仮定を供給する。
-    11+3 の分岐のうち 9 つは規則別保存補題で閉じ、
-    残る sorry は MS-MATCHER 系 3([b-4] 後続 vp transport+[b-5.5])・
-    MS-PATFUN-ENTER / MS-MNODE-VARPAT([b-3] 双対スキームインスタンス化)・
-    MS-MNODE-STEP の接尾辞維持(occs 保存補題;構造は組み立て済みで
-    残る義務はこの 1 点)。 -/
+    仮定 `hSF` は PATFUN-DEF の意味論側条件(線形性・noEmbedInOr・仮引数相異)、
+    `stackNoOr` は or 分岐が ~x を落とさないための状態不変量
+    (site パターンは embed-free、本体は noOr なので到達状態で成立;
+    維持は `step_occs` が同時に示す)。
+    **14 分岐のうち 10(MS-SOME-WC/VAR/VAL-EQ/VAL-NEQ・MS-AND・MS-OR・
+    MS-TUPLE・MS-PROD-SOME・MS-MNODE-DONE・MS-MNODE-STEP)は証明済み**。
+    残る sorry は MS-MATCHER 系 3([b-4] 後続 vp transport+[b-5.5]
+    役割別 τt 取り直し)と MS-PATFUN-ENTER / MS-MNODE-VARPAT
+    ([b-3] 双対スキームのインスタンス化)。 -/
 theorem type_safety_b_at
     {SD : SigD} {SP : SigP} {SF : SigF}
+    (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
+       pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
     {s : MState} {ss : List MState}
     (hstep : Step SF s ss) :
     ∀ (Γ : TyCtx) (Φ : PatParamCtx) (Δgoal : BindCtx),
+      stackNoOr s.S = true →
       WTStateAt SD SP SF Γ Φ s Δgoal →
       ∀ s' ∈ ss, WTStateAt SD SP SF Γ Φ s' Δgoal := by
   refine Step.rec (SF := SF)
@@ -829,6 +1397,7 @@ theorem type_safety_b_at
     (motive_3 := fun _ _ _ _ _ _ _ => True)
     (motive_4 := fun s ss _ =>
       ∀ (Γ : TyCtx) (Φ : PatParamCtx) (Δgoal : BindCtx),
+        stackNoOr s.S = true →
         WTStateAt SD SP SF Γ Φ s Δgoal →
         ∀ s' ∈ ss, WTStateAt SD SP SF Γ Φ s' Δgoal)
     (motive_5 := fun _ _ _ => True)
@@ -840,7 +1409,7 @@ theorem type_safety_b_at
     hstep
   case reduce =>
     intro S ρ θ p m v conts θ' hma _ihma
-    intro Γ Φ Δgoal hwt s' hs'
+    intro Γ Φ Δgoal _hno hwt s' hs'
     simp only [List.mem_map] at hs'
     obtain ⟨as, has, rfl⟩ := hs'
     cases hma with
@@ -881,16 +1450,19 @@ theorem type_safety_b_at
     | matcher hpc hppm hpd hevN hlist hvss hevM hms => sorry
   case patfun =>
     intro S ρ θ f qs m v sig hfind hlen
-    intro Γ Φ Δgoal hwt s' hs'
+    intro Γ Φ Δgoal hno hwt s' hs'
     simp only [List.mem_singleton] at hs'
     subst hs'
     sorry
   case mstep =>
     intro S ρ θ t Srest ρf θf piE ss hcond hstep' ih
-    intro Γ Φ Δgoal hwt s' hs'
+    intro Γ Φ Δgoal hno hwt s' hs'
     simp only [List.mem_map] at hs'
     obtain ⟨s'', hs'', rfl⟩ := hs'
     obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+    -- 内側スタックの noEmbedInOr(接尾辞不変量の維持に使う)
+    simp only [stackNoOr, treeNoOr, Bool.and_eq_true] at hno
+    obtain ⟨⟨hnoIn, hnoPi⟩, hnoS⟩ := hno
     cases hstack with
     | cons htree hrest =>
       cases htree with
@@ -898,22 +1470,28 @@ theorem type_safety_b_at
         have hwtIn : WTStateAt SD SP SF Γf ((rem.map (·.1)).zip duals)
             ⟨t :: Srest, ρf, θf⟩ Δfin :=
           ⟨envTyped_of_parts hd1 hd2, Δθf, hθf, hinner⟩
-        obtain ⟨_, Δθf', hθf', hinner'⟩ := ih Γf _ Δfin hwtIn s'' hs''
-        -- 残る義務:内側 1 ステップの ~x 出現列保存(MAtom の occs 保存+
-        -- noEmbedInOr の維持;README [b-5] MNODE-STEP)
-        have hocc' : stackEmbedOccs s''.S = rem.map (·.1) := sorry
+        have hnoIn' : stackNoOr (({ S := t :: Srest, ρ := ρf, θ := θf } :
+            MState)).S = true := by
+          simp only [stackNoOr, Bool.and_eq_true]
+          exact hnoIn
+        obtain ⟨_, Δθf', hθf', hinner'⟩ := ih Γf _ Δfin hnoIn' hwtIn s'' hs''
+        -- 接尾辞不変量の維持:内側 1 ステップは ~x 出現列を保存する(step_occs)
+        obtain ⟨hoccEq, _⟩ := step_occs hSF hstep' hnoIn' s'' hs''
+        have hocc' : stackEmbedOccs s''.S = rem.map (·.1) := by
+          rw [show stackEmbedOccs s''.S = stackEmbedOccs (t :: Srest) from hoccEq]
+          exact hocc
         exact ⟨hρ, Δ₀, hθ,
           WTStack.cons (WTTree.mnode rem duals Γf Δθf' Δfin hj hocc' hq hd1 hd2
             hθf' hinner') hrest⟩
   case mvarpat =>
     intro S ρ θ y q m v Srest ρf θf piE hfind
-    intro Γ Φ Δgoal hwt s' hs'
+    intro Γ Φ Δgoal hno hwt s' hs'
     simp only [List.mem_singleton] at hs'
     subst hs'
     sorry
   case mdone =>
     intro S ρ θ ρf θf piE
-    intro Γ Φ Δgoal hwt s' hs'
+    intro Γ Φ Δgoal _hno hwt s' hs'
     simp only [List.mem_singleton] at hs'
     subst hs'
     exact preserve_mnodeDone hwt
@@ -926,10 +1504,14 @@ theorem type_safety_b_at
 theorem type_safety_b
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
     {s : MState} {ss : List MState} {Δgoal : BindCtx}
-    (_hSigF : SigFWF SD SP SF Γ)
+    (hSigF : SigFWF SD SP SF Γ)
     (hstep : Step SF s ss)
+    (hno : stackNoOr s.S = true)
     (hwt : WTState SD SP SF Γ s Δgoal) :
     ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal :=
-  type_safety_b_at hstep Γ [] Δgoal hwt
+  type_safety_b_at
+    (fun pr hpr => ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr,
+      (hSigF pr hpr).paramsNodup⟩)
+    hstep Γ [] Δgoal hno hwt
 
 end TypePM

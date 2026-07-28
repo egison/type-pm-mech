@@ -355,6 +355,8 @@ structure PatFunWF (SD : SigD) (SP : SigP) (SF : SigF) (Γ : TyCtx)
   arity     : sig.params.length = sig.argDuals.length
   linearity : sig.body.embedVars = sig.params
   noOr      : sig.body.noEmbedInOr = true
+  /-- 仮引数名の相異(宣言の暗黙条件;~x の Π 解決の整列に使う) -/
+  paramsNodup : sig.params.Nodup
   bodyTyped : ∃ Δ',
     PatTy SD SP SF Γ (sig.params.zip sig.argDuals) [] sig.body
       sig.resDual.1 sig.resDual.2 Δ'
