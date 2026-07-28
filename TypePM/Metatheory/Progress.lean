@@ -1049,7 +1049,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
       ∀ (ρ : Env) (θ : Subst),
       (∀ y m v, t₀ ≠ .atom ⟨.embed y, m, v⟩) →
       ∃ ss, Step SF ⟨t₀ :: rest, ρ, θ⟩ ss)
-    ?_ ?_ ?_ ?_ hwt
+    ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
     intro Γ Φ Δ Δ' p m v τ τp τt τm τm' hp hm hren how htt htm hok hv _hvps
@@ -1176,6 +1176,11 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
                   ⟨(.tuple (List.replicate τs.length .hole), M₀, arms₀), hmem,
                     tupleGeneral_shape hlen⟩
               exact ⟨_, Step.reduce hMA⟩
+  -- WT-ATOM-TUPLE:成分分解形はそのまま MS-TUPLE で簡約できる
+  case _ =>
+    intro Γ Φ Δ Δ' ps ms vs hlen1 hlen2 _hstack _ih_stack
+    intro S ρ θ _hne
+    exact ⟨_, Step.reduce (MAtom.tuple hlen1 hlen2)⟩
   -- WT-MNODE:内側スタックの場合分け(varpat / done / 内側ステップ)
   case _ =>
     intro Γ Φ Δ Δ' S' ρf θf piE rem duals Γf Δθf Δfin

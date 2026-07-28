@@ -130,6 +130,17 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       ValueTy SD SP SF v τ →                            -- v : τ
       VPScoped SD SP SF Γ Δ p m →                       -- vp-scoped(値パターンスコープ条件、Def 4.2(4))
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
+  | atomTuple {Γ Φ Δ Δ' ps ms vs} :                     -- WT-ATOM-TUPLE
+      -- タプル原子の成分分解形:成分原子の列を WTStack で左→右にスレッディング。
+      -- (i) COERCE-SLOT-TUPLE 由来の site(成分ごとのスロット witness を
+      --     単一の τm に合成できない — 成分の改名/代入が変数を共有しうる)と
+      -- (ii) 後続 vp-scoped の threaded 伝播([b-4])のための追加規則。
+      -- MS-TUPLE の継続はちょうどこの成分原子列になる。
+      ps.length = ms.length →
+      ms.length = vs.length →
+      WTStack SD SP SF Γ Φ Δ
+        ((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) Δ' →
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨.ptuple ps, .tuple ms, .tuple vs⟩) Δ'
   | mnode {Γ Φ Δ Δ' S' ρf θf piE} (rem : PiEnv) (duals : List (Ty × Ty))
       (Γf : TyCtx) (Δθf : BindCtx) (Δfin : BindCtx) :  -- WT-MNODE
       -- 接尾辞前提:S' に残る ~x 出現は piE の接尾辞(宣言順・各 1 回)

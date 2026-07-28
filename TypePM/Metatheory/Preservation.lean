@@ -4,8 +4,10 @@ import TypePM.WellTyped
 # 保存系の補題と型安全性 (論文 §5.3–5.4・付録 C)
 
 * Lemma 5.4 (PPP Type Preservation) — `ppp_preservation`(**証明済み**)
-* Lemma C.2 (Matcher-Value Slot Invariant) — `matcher_slot_invariant`(**証明済み**)
-* Theorem 5.6 (Type Safety) — (a) `type_safety_a`・(b) `type_safety_b`(未機械化)
+* Lemma C.2 (Matcher-Value Slot Invariant) — `matcher_slot_invariant`(**証明済み**;
+  oracle 不要の核は `slot_value_inv`)
+* Theorem 5.6 (Type Safety) は `Metatheory/TypeSafety.lean` に移設
+  ((a) は oracle 分解で証明済み・(b) は sorry)
 
 Lem 5.4・Lem C.2 は、論文の結合帰納法における (a) 部の帰納法の仮定を
 明示の oracle 仮定(この ρ/この評価に対する評価型付け)として受け取る形で
@@ -337,23 +339,11 @@ theorem ppp_preservation
     simpa using this
   exact h1.trans h2
 
-/-- **Lemma C.2 (Matcher-Value Slot Invariant)**(**証明済み**)。
-    スロット型 MatcherSlot τp τt で消費される式 e_m の評価値 m は、
-    (i) 自らの内在型 Matcher τm について双対検査の両条件を満たし
-    WT-ATOM のマッチャー選言に入るか、
-    (ii) 成分ごとにスロット型を満たすタプル(COERCE-SLOT-TUPLE の値、
-    論文 C.2 後段の「積の構造 witness は成分 witness の直和」)である。
-    仮定 `ha` は Thm 5.6(a)(結合帰納法での依存;Thm 5.7 と同じ流儀)。 -/
-theorem matcher_slot_invariant
-    {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
-    {ρ : Env} {e_m : Expr} {m : Value} {τp τt : Ty}
+/-- スロット型の値の反転(Lem C.2 の核;oracle 不要の値レベル部分)。 -/
+theorem slot_value_inv
+    {SD : SigD} {SP : SigP} {SF : SigF} {m : Value} {τp τt : Ty}
     (hwfD : SigDWF SD)
-    (ha : ∀ {ρ' : Env} {Γ' : TyCtx} {e' : Expr} {v' : Value} {τ' : Ty},
-       Eval SF ρ' e' v' → EnvTyped SD SP SF Γ' ρ' →
-       HasTy SD SP SF Γ' e' τ' → ValueTy SD SP SF v' τ')
-    (hρ : EnvTyped SD SP SF Γ ρ)
-    (hty : HasTy SD SP SF Γ e_m (.slot τp τt))
-    (hev : Eval SF ρ e_m m) :
+    (hv : ValueTy SD SP SF m (.slot τp τt)) :
     (∃ τm τm', ValueTy SD SP SF m (.matcher τm) ∧
        RenamesTo τm τm' ∧ OneWay τp τm' ∧ Unifiable τm τt ∧
        MatcherOK SD SP m)
@@ -361,7 +351,6 @@ theorem matcher_slot_invariant
        τp = .prod (prs.map (·.1)) ∧ τt = .prod (prs.map (·.2)) ∧
        ms.length = prs.length ∧
        ∀ pr ∈ ms.zip prs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2)) := by
-  have hv : ValueTy SD SP SF m (.slot τp τt) := ha hev hρ hty
   generalize hτ : (Ty.slot τp τt : Ty) = τx at hv
   cases hv with
   | lit => cases hτ
@@ -385,28 +374,31 @@ theorem matcher_slot_invariant
       injection hτ with h1 h2
       exact .inr ⟨_, _, rfl, h1, h2, hlen, hcomp⟩
 
-/-- **Theorem 5.6(a) (式評価の型付け)**。
-    Γ ⊢ e : τ で ρ が Γ で型付けられ、ρ, e ⇓ v ならば v : τ。
-    (Σ_F は PATFUN-DEF 検査済みと仮定。) -/
-theorem type_safety_a
+/-- **Lemma C.2 (Matcher-Value Slot Invariant)**(**証明済み**)。
+    スロット型 MatcherSlot τp τt で消費される式 e_m の評価値 m は、
+    (i) 自らの内在型 Matcher τm について双対検査の両条件を満たし
+    WT-ATOM のマッチャー選言に入るか、
+    (ii) 成分ごとにスロット型を満たすタプル(COERCE-SLOT-TUPLE の値、
+    論文 C.2 後段の「積の構造 witness は成分 witness の直和」)である。
+    仮定 `ha` は Thm 5.6(a)(結合帰納法での依存;Thm 5.7 と同じ流儀)。
+    核は oracle 不要の `slot_value_inv`。 -/
+theorem matcher_slot_invariant
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
-    {ρ : Env} {e : Expr} {v : Value} {τ : Ty}
-    (hSigF : SigFWF SD SP SF Γ)
-    (hev : Eval SF ρ e v)
+    {ρ : Env} {e_m : Expr} {m : Value} {τp τt : Ty}
+    (hwfD : SigDWF SD)
+    (ha : ∀ {ρ' : Env} {Γ' : TyCtx} {e' : Expr} {v' : Value} {τ' : Ty},
+       Eval SF ρ' e' v' → EnvTyped SD SP SF Γ' ρ' →
+       HasTy SD SP SF Γ' e' τ' → ValueTy SD SP SF v' τ')
     (hρ : EnvTyped SD SP SF Γ ρ)
-    (hty : HasTy SD SP SF Γ e τ) :
-    ValueTy SD SP SF v τ := by
-  sorry
-
-/-- **Theorem 5.6(b) (マッチング状態保存)**。
-    s → [s₁, …, s_l] かつ ⊢ s : Δ_goal ok ならば各 sᵢ について ⊢ sᵢ : Δ_goal ok。 -/
-theorem type_safety_b
-    {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
-    {s : MState} {ss : List MState} {Δgoal : BindCtx}
-    (hSigF : SigFWF SD SP SF Γ)
-    (hstep : Step SF s ss)
-    (hwt : WTState SD SP SF Γ s Δgoal) :
-    ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal := by
-  sorry
+    (hty : HasTy SD SP SF Γ e_m (.slot τp τt))
+    (hev : Eval SF ρ e_m m) :
+    (∃ τm τm', ValueTy SD SP SF m (.matcher τm) ∧
+       RenamesTo τm τm' ∧ OneWay τp τm' ∧ Unifiable τm τt ∧
+       MatcherOK SD SP m)
+    ∨ (∃ (ms : List Value) (prs : List (Ty × Ty)), m = Value.tuple ms ∧
+       τp = .prod (prs.map (·.1)) ∧ τt = .prod (prs.map (·.2)) ∧
+       ms.length = prs.length ∧
+       ∀ pr ∈ ms.zip prs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2)) :=
+  slot_value_inv hwfD (ha hev hρ hty)
 
 end TypePM

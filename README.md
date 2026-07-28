@@ -1,6 +1,6 @@
 # type-pm-mech — type-pm-paper の機械化証明
 
-[`../type-pm-paper/`](../type-pm-paper/)(λ_PM:非自由データ型上のアドホック多相・非線形・バックトラック付きパターンマッチの計算体系と型システム)のメタ理論を Lean 4 で機械化するプロジェクト。定義(構文・操作的意味論・型システム・整型マッチング状態)は完成してビルドが通り、論文 §2/付録 A.1 の実測例は fuel 付きインタプリタ上で `rfl` により機械検証済み(適切性定理を経て関係的意味論 ⇓ の導出の存在まで保証)。メタ理論は論文の補題・定理と 1 対 1 対応で配置し、**Thm 5.1(マッチャー多相性)・Lem 5.2(one-way 一意性+アルゴリズムの健全性/完全性)・Lem 5.4(PPP 型保存)・Lem C.2(スロット不変量)・Lem 5.5(Matching State Progress)・Thm 5.7(マッチャー整合性定理、(b) を仮定した合成)・インタプリタ適切性・Search↔Reaches 対応は証明済み**。残る `sorry` は **2**(Thm 5.6(a)(b))。
+[`../type-pm-paper/`](../type-pm-paper/)(λ_PM:非自由データ型上のアドホック多相・非線形・バックトラック付きパターンマッチの計算体系と型システム)のメタ理論を Lean 4 で機械化するプロジェクト。定義(構文・操作的意味論・型システム・整型マッチング状態)は完成してビルドが通り、論文 §2/付録 A.1 の実測例は fuel 付きインタプリタ上で `rfl` により機械検証済み(適切性定理を経て関係的意味論 ⇓ の導出の存在まで保証)。メタ理論は論文の補題・定理と 1 対 1 対応で配置し、**Thm 5.1(マッチャー多相性)・Lem 5.2(one-way 一意性+アルゴリズムの健全性/完全性)・Lem 5.4(PPP 型保存)・Lem C.2(スロット不変量)・Lem 5.5(Matching State Progress)・Thm 5.6(a)(式評価の型付け;oracle 分解)・Thm 5.7(マッチャー整合性定理、(b) を仮定した合成)・インタプリタ適切性・Search↔Reaches 対応は証明済み**。残る `sorry` は **1**(Thm 5.6(b))。
 
 - 証明支援系: **Lean 4**(`lean-toolchain` 固定、v4.31.0 = type-tensor-mech と同一)。外部依存なし(Mathlib 不使用)。
 - ビルド: `lake build`(`~/.elan/bin` に elan/lake がある前提)。
@@ -17,7 +17,8 @@
 | `TypePM/Typing.lean` | PP/PD 判定・双対パターン判定 PatTy・式判定 HasTy(T-MATCHALL/T-MATCHER/T-SOME/3 コアーション)・整合性 Def 4.2・PATFUN-DEF | §4 Fig 4, 付録 A Fig 5, Def 4.1/4.2 |
 | `TypePM/WellTyped.lean` | 値の型付け v : τ・型付き代入・WT-ATOM/WT-MNODE/WT-STACK/WT-STATE | §5.3, 付録 C Fig 6 |
 | `TypePM/Metatheory/Polymorphism.lean` | **マッチャー多相性(証明済:構成子合成そのもの)** | **Thm 5.1** |
-| `TypePM/Metatheory/Preservation.lean` | **PPP 型保存(証明済:pp 構造帰納+リスト版相互、(a)-oracle 仮定つき)・matcher-value slot invariant(証明済:値レベル slot 規則の反転)**・型安全性 (a)(b)(sorry) | **Lem 5.4, Lem C.2**, Thm 5.6, 付録 C |
+| `TypePM/Metatheory/Preservation.lean` | **PPP 型保存(証明済:pp 構造帰納+リスト版相互、(a)-oracle 仮定つき)・matcher-value slot invariant(証明済:oracle 不要の核 `slot_value_inv`+wrapper)** | **Lem 5.4, Lem C.2**, 付録 C |
+| `TypePM/Metatheory/TypeSafety.lean` | **Thm 5.6(a)(証明済:`Eval.rec` 5 motive、oracle = (b)・HM 一般化・初期状態整型)**:環境拡張補題群・値レベル強制追随(`valueTy_coerce2/3`)・`mkListV_typed`/`primEval_typed_*`・ctor 強制不可能性+Thm 5.6(b)(sorry) | **Thm 5.6**, §5.4, 付録 C |
 | `TypePM/Metatheory/Canonical.lean` | **正準形補題層(証明済)**:VShape⊇ValueTy・積型正準形・改名/one-way の形状保存・「構造前提が something/積マッチャーを構成子パターンで却下」 | 付録 C.2 の核 |
 | `TypePM/Metatheory/Progress.lean` | **Lem 5.5(Matching State Progress)証明済**:前提層(`ListSigOK`/`canonical_list`・`pdMatch_typed`・member 補題・環境型付けグルー)+代入合成 `applyTS_comp_pointwise`/`instSig_applyTS`・**VShape 代入安定性 `vshape_applyTS`**・PPM 全域性 `ppm_total`/抽出長 `ppm_length`・改名反転・節/アーム歩き(`clause_walk`/`arms_walk`)・`WTTree.rec` 結合再帰子による本体 | Lem 5.5, 付録 C.2 |
 | `TypePM/Metatheory/Safety.lean` | Reaches((b) の反復装置)・**到達保存・終端代入型付け・マッチャー整合性定理(いずれも (b) を仮定して証明済)・Search↔Reaches 対応(結合再帰子 `Search.rec` で証明済)** | **Thm 5.7**, 付録 C.4 |
@@ -45,6 +46,7 @@
 16. **T-SOME/ValueTy.something の添字は裸変数に固定**(`Matcher (.var a)`):設計判断 4 の「fresh の任意インスタンス読み」を**マッチャー側には適用しない**。任意 τ に緩めると `(c p⃗, something, v)`・`((p⃗), something, v)` の行き詰まり原子が WT-ATOM を満たしてしまい Lem 5.5 が反証される(付録 C.2 の「構造前提が裸変数マッチャーを排除」は something の内在型が変数であることに依存)。論文は元々 Fig 4 T-SOME「α fresh」・§5.3「something : Matcher α」でこの通りであり、機械化を論文に合わせて修正した(2026-07-28)。パターン側(PAT-VAR/WILD/VALUE の構造添字任意)は従来どおり。
 17. **arm exhaustiveness (Def 4.2(1c)) は代入インスタンス閉包で量化**(`armExh : ∀ U v, VShape SD v (τ.applyTS U) → …`):多相マッチャー(`Matcher [a]` など)を実型で使う site の値は τ 自体の VShape を持たない(VShape は変数型を結論できない)ため、τ 固定の量化では Progress で発火しない。ML 流の Σ_D 網羅性検査はインスタンス一様なので論文の検査と一致する。発火は `vshape_applyTS`(VShape の代入安定性)+単一化子経由(`armExh_instance`)。
 18. **Lem 5.5 の oracle 形**:`ms_progress` は停止仮定 `htotal` に加え、`ppp_core` と同じ ∀Γ' 形の (a)-oracle `heval` を取る(分解関数の像がリスト・k 組であることに使用;環境型付けの供給なしで形だけ取り出せるのがこの形の利点)。結合帰納法での oracle 供給(HM 代入補題+vp-scoped 経由の精密化が要る)は Thm 5.6 の課題としてロードマップに記載。
+19. **Thm 5.6(a) の oracle 形と let 一般化の rigidity 制限**:`type_safety_a` は `Eval.rec`(5 motive、他判断は自明 motive;matchAll の探索は `search_mem_reaches`+`reaches_preservation` で処理するので Search motive も不要)で証明し、(b) `hb`・HM 一般化補題 `hgen`・matchAll 初期状態整型 `hinit` を oracle に取る。**hgen は宣言的システムの全導出に対しては偽**:bare-hole のみのマッチャー(`Matcher a` でのみ整合)を let で一般化し `Matcher [Int]` にインスタンス化する導出が宣言的には書けてしまい、EnvTyped のスキーム全インスタンス義務が満たせない(実システムは matcher 型引数の rigidity(§4.6;実測では `Matcher a` 引数の単一化が拒否される)がこの経路を塞ぐ)。よって hgen は「rigidity を尊重する導出」への制限つき一般化補題として Stage 2 で放電する。λ 抽象は本体をインスタンスごとに再型付けするので宣言的にも安全(リークは let のスキーム化だけ)。強制(3 コアーション)の hty 場合分けは、強制の結論型が matcher/slot に限られ premise が prod/matcher で非強制規則に到達することから、入れ子 `cases` 深さ ≤ 2 で有限に処理できる(coe2 → coe1 が最長)。
 
 ## 機械化が浮かび上がらせた論文の細部(**2026-07-28 論文へ反映済み**、英日両版)
 
@@ -53,9 +55,15 @@
 - **(その 4、2026-07-28、論文・実装・機械化へ反映済み)bare-hole 節の順序条件と節規則の適用対象 — 散文・証明が前提していた規律の形式化**:順序(catch-all 最後)自体は論文が既に前提として明記していた(付録 C.3 の catch-all ケースは「by clause order」を根拠に使い、Def 4.2(2) の説明文は「他の節が残したパターンを扱う」、Def 4.2(4) は精密化節が一般節より「先に選ばれる」と述べる)。差分は、定理が量化する**形式述語としての** Def 4.2(2) が「∈ cls(存在)」しか要求しておらず「by clause order」がどの条項にも対応していなかったこと、および**実装が検査していなかった**こと(逆順マッチャーが型検査を通過し実行時 something エラー — 実機再現済みの実害)。(i) **順序**:catch-all(bare-hole 節)は「他の節が残したパターンを扱う」(Def 4.2(2))が、節は先頭から試され PPP-HOLE は任意のパターンに一致するので、bare-hole 節が Coverage の一般形節より**前**にあると構成子パターンを捕まえて `(c p⃗, something, v)` に到達し行き詰まる(現行 Def 4.2 は ∈ だけを要求するのでこの逆順マッチャーも「整合」— (b) の反例)。標準ライブラリの慣習(catch-all 最後)を条件化する必要がある:「各 bare-hole 節の前に、Coverage が要求する全一般形節(積型なら一般タプル節)が現れる」。(ii) **節規則の適用対象**:MS-MATCHER 系規則に p の側条件がなく、`(x::xs) & $y` のような and パターンも catch-all に捕まり(MS-AND との非決定的重なり)、部分パターンの構成子が something に到達しうる。実装(Egison)は and/or/パターン関数適用/~x を**節照合の前に**構文主導で処理しており、規則側に「p は節適用形(構成子/タプル/変数/ワイルドカード/値パターン)」の側条件を付けて一致させるべき。**反映済み(2026-07-28)**:機械化 = `Pattern.isClauseForm` 側条件(MAtom 3 規則+`matomF` ガード+Adequacy 配管)+`ConsistentClauses.holeAfterGenerals`;論文 = Fig 2 側条件・§3.3・Def 4.2(2) 順序文・(1c) インスタンス注記・付録 C.3・付録 J(en 65p/ja 63p ビルド済);実装 = 逆順(catch-all 後の到達不能節)を型エラー化(Infer.hs、minitest/009)。lib/sample の全 36 マッチャーが順序条件を満たすことを全数調査で確認し、逆順マッチャーが「型検査通過→実行時 something エラー」になる反例も実機で再現してから条件化した。なお 1(a) の構造的許容性(穴の構造成分=標的の骨格改名)が「something を分解可能標的の穴に置く」誤りを既に静的排除していることも機械化で確認した(PP-Con の refresh がその機構;bare-hole 節だけが構造検査空虚で、だからこそ (i) の順序条件が要る)。
 - **(その 3、2026-07-28 最終設計:原子環境での先行評価+intercept-ok)PPP-VAL の捕捉評価**:pp の #$y に捕捉された p 側 #M の M は、**節選択時に原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される — これを公式の意味論として採用。従って**原子より前の束縛は使える**(実測:`($p :: _, $ls ++ #p :: $rs)` でタプル第 1 成分のピボット p を第 2 成分の `sortedList` ピボット節が参照して成功、`egison/mini-test/125`)が、**同じ原子内の左の穴の束縛は使えない**(実測:`$ys ++ #ys` は無音の `[]`;未束縛参照がシンボル化)。当初案の接頭条件 (i) は `sortedList` のピボット節 `$ ++ #$px :: $` や `assocMultiset` の `($, #$n) :: $` を殺すため撤回。この条件は**パターン単独でもマッチャー単独でも静的に決められない**(同じ #e が取り出し経路では左束縛を見られる — pair の #pat;捕捉深さはマッチャーの pp 形状に依存)ので、**パターン・マッチャー対の条件 = 値パターンスコープ条件、WT-ATOM の premise `vp-scoped`**(機械化 `capturedExprs`/`VPScoped`)として定式化。論文 = Def 4.2(4) 書き換え+Fig 6 WT-ATOM に premise+Def 5.3+付録 J(en/ja ビルド済)。実装 = 意味論は元からこの通り(thunk が原子環境を捕捉);**マッチャーの節形状が静的に既知の site(リテラル・そのタプル・トップレベル定義の適用)では型エラーとして静的検査を実装**、不明(スロット引数)な site は付録 J に開示のとおり検査対象外。
 
-## 現状(2026-07-28 第 5 版)
+## 現状(2026-07-28 第 6 版)
 
-- `lake build` 成功(エラー 0)。`sorry` は **2 宣言** = Thm 5.6(a)(b)(Preservation)。
+- `lake build` 成功(エラー 0)。`sorry` は **1 宣言** = Thm 5.6(b)(TypeSafety.lean)。
+- 第 6 版で証明完了:**Thm 5.6(a)(式評価の型付け)** — oracle 分解(設計判断 19)。
+  - 新ファイル `Metatheory/TypeSafety.lean`:`Eval.rec` の 5 motive 適用で全 12 Eval ケースを処理(強制層は入れ子 `cases` ≤ 2 段+値レベル追随 `valueTy_coerce2/3`)。
+  - 新補題:`envTyped_of_parts`/`envTyped_dom`/`envTyped_inst`/`envTyped_cons_scheme`/`envTyped_cons`/`envTyped_of_substTyped`・`mkListV_typed`・`primEval_typed_append`/`primEval_typed_splits`・`ctor_not_prod`/`ctor_not_matcher`。
+  - EV-MATCHALL:e_t/e_m の IH+`hinit`(oracle)で初期 WT 状態を作り、`search_mem_reaches` → `reaches_preservation`(hb)→ `terminal_subst_typed` で各解 θ の `SubstTyped` を得て、`envTyped_append` の下で本体 IH、`mkListV_typed` で結果型。
+  - Lem C.2 を oracle 不要の核 `slot_value_inv` + wrapper に分離(Preservation.lean)。
+  - **WT-ATOM-TUPLE**(`WTTree.atomTuple`)を追加:タプル原子の成分分解形(成分原子列の WTStack スレッディング)。COERCE-SLOT-TUPLE 由来 site の witness 合成問題(成分の改名・代入が変数を共有しうる)と [b-4] の vp-threaded 伝播の両方を解く追加規則(既存証明は無傷;`wtTree_progress` に自明ケース追加)。
 - 第 5 版で証明完了:**Lem 5.5(Matching State Progress)全体**。
   - 前提修正 2 件:T-SOME/ValueTy.something の裸変数固定(設計判断 16;これなしでは反証可能だった)・armExh のインスタンス閉包(設計判断 17)。既存証明・Examples への影響ゼロ(全用例が元々変数添字を使用)。
   - 新補題:`applyTS_comp_pointwise`/`instSig_applyTS`(代入合成)・`vshape_applyTS`(VShape の代入安定性)・`armExh_instance`・`renamesTo_data_inv`/`renamesTo_prod_inv`・`valueTy_something_var`/`valueTy_tuple_matcher_inv`/`valueTy_matcherV_consistent`/`valueTy_matcherV_clausesTy`・`eval_tuple_inv`・`prodK_of_len_ne_one`・`ppm_total`(PPM の全域性、停止仮定つき)・`ppm_length`(抽出長=穴対数;型付け非依存)・`generalPP_shape`/`tupleGeneral_shape`/`catchall_witness`・`find?_key_of_mem`。
@@ -80,12 +88,13 @@
 
 ## ロードマップ
 
-- **Stage 1(コア型安全性、付録 C;残る sorry 2 = Thm 5.6(a)(b) の解消)**。前段の定義修正から:
+- **Stage 1(コア型安全性、付録 C;残る sorry 1 = Thm 5.6(b) の解消と oracle の放電)**。前段の定義修正から:
   - **[b-1] 節規則の適用対象条件(細部その 4(ii))— 済(2026-07-28)**:MAtom の matcher 3 規則に `p.isClauseForm = true` を追加、`matomF` の matcherV 行に同ガード、Adequacy 配管、walk 側は `rfl` 供給。ビルド緑。
   - **[b-2] bare-hole 節の順序条件(細部その 4(i))— 済(2026-07-28)**:`ConsistentClauses.holeAfterGenerals`(各 bare-hole 節の手前の `take i` に Coverage の全一般形節+積型の一般タプル節)。(b) では pctor/ptuple の選択節が必ず非 bare-hole になり、後続原子の構造前提を 1(a) の構造的許容性(refresh = 標的骨格)+ instSig_args_agree 系の合成で再建する。
   - **[b-3] HM 代入補題**(論文の「HM substitution lemma at θp∘U」):HasTy/PatTy/ClauseTy 系の相互帰納。matcher 添字の rigidity(§4.6)との整合に注意(T-MATCHER の整合性 premise は τ のインスタンス化で保たれない — coverage が空虚→非空虚に変わる例(Matcher a の bare-hole-only マッチャー)があるので、補題は「代入が matcher 添字位置に触れない」制約つきで立てる)。armExh は既にインスタンス閉包(設計判断 17)なのでこの成分は代入で自明に保たれる。
   - **[b-4] 後続原子の `VPScoped` 伝播**:捕捉式の型付けは threaded Δ でなく**原子入力 Δ** が要るため、MS-TUPLE の成分原子には threaded 入力での VPScoped が要る。現行の `VPScopedList`(全成分を同じ Δ₀ で検査)は shadowing で単調でないので、WT-ATOM のタプル場合を成分ごとの threaded 判断に再構成する(WTAtom を (p,m) 対に構文主導化するのが有力)。あわせて (a) の EV-MATCHALL ケースには site の意味的 vp 仮定(静的検査が既知形状 site で放電;不透明 site は付録 J の開示どおり保証外)を oracle として渡す。`ppp_core` の ∀Γ' oracle の放電も vp-scoped 経由(捕捉式は Δ₀ 型付け+θ:Δ₀ で EnvTyped が立つ)に精密化する。
-  - **[b-5] 本体**:`Search.rec` 型の 5 motive 結合再帰子で (a)(b) を一括帰納(`search_mem_reaches` でルート実証済み)。MS-MATCHER ケースは Lem 5.4(済)+ pdMatch_typed(済)+ [b-2] の構造再建 + [b-3]。
+  - **[b-5] 本体**:(b) を Step/MAtom motive の結合帰納で証明((a) は済:oracle hb を (b) 本体が、(b) は (a) を oracle に取る相互は、最終的に 5 motive 一括帰納で置換して閉じる)。MS-MATCHER ケースは Lem 5.4(済)+ pdMatch_typed(済)+ [b-2] の構造再建 + [b-3]。
+  - **[b-6] oracle の放電**:`hgen`(rigidity 制限つき HM 一般化;設計判断 19)・`hinit`(初期状態整型 = vp-scoped 静的条件+`atomTuple` 組み立て+スロット witness の改名分離 = HasTy 改名補題)・Lem 5.4/5.5 の ∀Γ' 形 (a)-oracle の vp-scoped 経由への精密化。
   - list/multiset 整合性(Def 4.2)の実例検証([b-2] の順序条件を満たすことの確認込み)。
   - 論文反映:細部その 4 の (i)(ii) を Def 4.2(2)・Fig 2・§3.3/付録 C.2 に明文化+1c のインスタンス読みの注記(en/ja 同期)。
 - **Stage 2(主型性、付録 B/D)**:rigidity 付き Robinson 単一化 → Algorithm W(matchAll の Step 1–6・スロット処理 3a/3a′/3b)→ Lem D.1–D.3 → Thm 5.3。

@@ -9,6 +9,7 @@ import TypePM.Metatheory.Preservation
 import TypePM.Metatheory.Canonical
 import TypePM.Metatheory.Progress
 import TypePM.Metatheory.Safety
+import TypePM.Metatheory.TypeSafety
 import TypePM.Metatheory.Principal
 import TypePM.Metatheory.Adequacy
 import TypePM.Examples
