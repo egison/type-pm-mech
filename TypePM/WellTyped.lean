@@ -255,10 +255,16 @@ theorem matcherOK_of_valueTy {SD : SigD} {SP : SigP} {SF : SigF}
 
 /-! ## 整型マッチング状態 (WT-STATE) -/
 
-/-- ⊢ s : Δ_goal ok:Γ は囲む match の型環境(ρ の静的対応物)。 -/
-def WTState (SD : SigD) (SP : SigP) (SF : SigF)
-    (Γ : TyCtx) (s : MState) (Δgoal : BindCtx) : Prop :=
+/-- ⊢ s : Δ_goal ok の Φ 一般化形。内側スタックの状態(MS-MNODE-STEP の
+    再帰)は Φ = 仮引数双対文脈で整型なので、(b) の帰納はこの形で回す。 -/
+def WTStateAt (SD : SigD) (SP : SigP) (SF : SigF)
+    (Γ : TyCtx) (Φ : PatParamCtx) (s : MState) (Δgoal : BindCtx) : Prop :=
   EnvTyped SD SP SF Γ s.ρ ∧
-  ∃ Δ₀, SubstTyped SD SP SF Δ₀ s.θ ∧ WTStack SD SP SF Γ [] Δ₀ s.S Δgoal
+  ∃ Δ₀, SubstTyped SD SP SF Δ₀ s.θ ∧ WTStack SD SP SF Γ Φ Δ₀ s.S Δgoal
+
+/-- ⊢ s : Δ_goal ok:Γ は囲む match の型環境(トップレベルは Φ = [])。 -/
+abbrev WTState (SD : SigD) (SP : SigP) (SF : SigF)
+    (Γ : TyCtx) (s : MState) (Δgoal : BindCtx) : Prop :=
+  WTStateAt SD SP SF Γ [] s Δgoal
 
 end TypePM
