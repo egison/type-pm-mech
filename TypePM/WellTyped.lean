@@ -46,8 +46,10 @@ inductive ValueTy (SD : SigD) (SP : SigP) (SF : SigF) : Value → Ty → Prop wh
         σ.Inst τ' → ValueTy SD SP SF v τ') →
       HasTy SD SP SF Γm (.matcher cls) (.matcher τ) →
       ValueTy SD SP SF (.matcherV ρm cls) (.matcher τ)
-  | something {τ} :                -- T-SOME の評価像
-      ValueTy SD SP SF .something (.matcher τ)
+  | something {a} :                -- T-SOME の評価像(内在型は必ず Matcher (裸変数);
+      -- 論文 §5.3「something : Matcher α by T-SOME」。これが WT-ATOM の構造前提による
+      -- 構成子/タプルパターンでの something 却下(付録 C.2)を全導出で保つ)
+      ValueTy SD SP SF .something (.matcher (.var a))
   | prodMatcher {ms τs} :          -- COERCE-TUPLE-MATCHER の値レベル対応物
       ms.length = τs.length →      -- (積マッチャー (m₁,…,m_k) : Matcher (τ₁ × ⋯ × τ_k))
       (∀ pr ∈ ms.zip τs, ValueTy SD SP SF pr.1 (.matcher pr.2)) →

@@ -164,8 +164,21 @@ structure ConsistentClauses (SD : SigD) (SP : SigP)
     ∃ M arms, (PPat.tuple (List.replicate τs.length .hole), M, arms) ∈ cls
   /-- (2) catch-all 節 ($ as M with $tgt → N) がある -/
   catchall : ∃ M x N, (PPat.hole, M, [(DPat.var x, N)]) ∈ cls
-  /-- (1c) arm exhaustiveness:各節のアームは τ の全値を覆う(意味的定式化) -/
-  armExh : ∀ cl ∈ cls, ∀ v, VShape SD v τ →
+  /-- (2′) 順序:各 bare-hole 節(pp = $ の節)より**前**に、Coverage が要求する
+      全一般形節(積型なら一般タプル節)が現れる(細部その 4(i))。
+      節は先頭から試され $ は任意のパターンに一致するため、この条件が無いと
+      構成子/タプルパターンが bare-hole 節に捕まり、その M(通常 something)で
+      行き詰まる。標準ライブラリの「catch-all は最後」慣習の条件化。 -/
+  holeAfterGenerals : ∀ i, (h : i < cls.length) → (cls[i]'h).1 = PPat.hole →
+    (∀ pr ∈ SP, Ty.headMatches pr.2.res τ →
+      ∃ M arms, (generalPP pr.1 pr.2.args.length, M, arms) ∈ cls.take i) ∧
+    (∀ τs, τ = Ty.prod τs →
+      ∃ M arms, (PPat.tuple (List.replicate τs.length .hole), M, arms) ∈ cls.take i)
+  /-- (1c) arm exhaustiveness:各節のアームは τ の全値を覆う(意味的定式化)。
+      τ の**全代入インスタンス**で量化する:多相マッチャー(Matcher [a] など)を
+      実型で使う site の値は τ 自体ではなくそのインスタンスの形しか持たないため
+      (ML 流の Σ_D 網羅性検査はインスタンス一様なので論文の検査と一致する)。 -/
+  armExh : ∀ cl ∈ cls, ∀ (U : TySubst) (v : Value), VShape SD v (τ.applyTS U) →
     ∃ arm ∈ cl.2.2, (pdMatch arm.1 v).isSome
   /-- 節の pp 値パターン束縛名は相異(⋃ᵢ Δᵢ が直和;Def 4.2 の暗黙条件) -/
   ppBindNodup : ∀ cl ∈ cls, ∀ {τ' : Ty} {pairs : List (Ty × Ty)} {Δ : BindCtx},
@@ -222,8 +235,10 @@ inductive HasTy (SD : SigD) (SP : SigP) (SF : SigF) : TyCtx → Expr → Ty → 
       (∀ a ∈ L, a ∉ ftvCtx Γ) →
       HasTy SD SP SF ((x, ⟨L, τ₁⟩) :: Γ) e₂ τ →
       HasTy SD SP SF Γ (.letE x e₁ e₂) τ
-  | something {Γ τ} :             -- T-SOME(α fresh の宣言的読み = 任意の τ)
-      HasTy SD SP SF Γ .something (.matcher τ)
+  | something {Γ a} :             -- T-SOME(α fresh:添字は必ず裸変数。
+      -- 論文 Fig 4 の字面どおり。任意 τ に緩めると構造前提の
+      -- something 却下(§4.4・付録 C.2)が壊れ Lem 5.5 が反証される)
+      HasTy SD SP SF Γ .something (.matcher (.var a))
   | matchAll {Γ e_t e_m p body τ_t τ_p Δ τ_r} :        -- T-MATCHALL
       HasTy SD SP SF Γ e_t τ_t →
       PatTy SD SP SF Γ [] [] p τ_p τ_t Δ →
@@ -375,7 +390,7 @@ theorem instSig_args_agree {sig : CtorSig} (hwf : CtorSigWF sig)
       Ty.instSig ts (.var i) = Ty.instSig ts' (.var i) := by
     intro i hi
     rw [hres_eq] at hres
-    simp only [Ty.instSig, Ty.applyTS, applyTSList] at hres
+    simp only [Ty.instSig, Ty.applyTS] at hres
     have := congrArg (fun t => match t with
       | Ty.data _ ts => ts
       | _ => []) hres
