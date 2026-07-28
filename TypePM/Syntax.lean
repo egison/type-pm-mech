@@ -111,6 +111,23 @@ inductive Value where
   | matcherV  : List (String × Value) → List Clause → Value
   | something : Value
 
+mutual
+/-- pp が p を(形状一致の範囲で)捕捉するとき、#$y 位置で捕捉される
+    p 側値パターンの式を左→右で集める(PPP-VAL の評価対象)。
+    Def 4.2(4):捕捉された式は**原子の環境で先に**評価されるので、
+    原子より前の束縛は使えるが、同じ原子内の左の穴の束縛は使えない
+    (機械化の発見その 3;WT-ATOM の intercept-ok 前提)。 -/
+def interceptedExprs : PPat → Pattern → List Expr
+  | .pval _, .pval M => [M]
+  | .ctor _ pps, .pctor _ ps => interceptedExprsList pps ps
+  | .tuple pps, .ptuple ps => interceptedExprsList pps ps
+  | _, _ => []
+
+def interceptedExprsList : List PPat → List Pattern → List Expr
+  | pp :: pps, p :: ps => interceptedExprs pp p ++ interceptedExprsList pps ps
+  | _, _ => []
+end
+
 /-- 実行時環境 ρ / 中間束縛の代入 θ(どちらも先頭が新しい) -/
 abbrev Env := List (String × Value)
 abbrev Subst := List (String × Value)

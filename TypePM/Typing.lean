@@ -174,6 +174,10 @@ structure ConsistentClauses (SD : SigD) (SP : SigP)
   armBindNodup : ∀ cl ∈ cls, ∀ arm ∈ cl.2.2,
     ∀ {τ' : Ty} {Γij : List (String × Ty)},
     PDTy SD arm.1 τ' Γij → (Γij.map (·.1)).Nodup
+  -- 値パターンパターンの捕捉(#$y が穴の後ろに立つ節、例:sortedList の
+  -- ピボット節)自体は許される。捕捉された式は原子の環境で先に評価される
+  -- ため、その型付け条件(原子入力文脈で型付くこと)は使用点ごとの条件で
+  -- あり、WT-ATOM の intercept-ok 前提(WellTyped.lean)が担う。
 
 /-! ## 式・パターンの型判定 (Fig 4) -/
 

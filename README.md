@@ -41,12 +41,13 @@
 12. **シグネチャ整形性** `CtorSigWF`/`SigPWF`/`SigDWF`(Def 4.1 の暗黙条件:結果型は型構成子の全変数適用、引数型の変数は宣言パラメタ内)。結果型のインスタンス一致から引数型のインスタンス一致を導く `instSig_args_agree` が Lem 5.4 の PP 側・PatTy 側の整列を支える。
 13. **`VShape` は積マッチャー・スロット値も覆う**(`matcherTuple`/`slotAny`):arm exhaustiveness の量化域が実際の整型値(`vshape_of_valueTy`)を覆うため。
 14. **束縛名の相異を Def 4.2 の正式条件に**(`ConsistentClauses.ppBindNodup`/`armBindNodup`):論文の ⋃ᵢ Δᵢ・⋃ᵢ Γᵢ 記法が前提する直和性の明文化。`pdMatch`/`pdMatchList` は dp 外側・v 内側の入れ子照合(証明の `split` 単純化;挙動不変)。
+15. **捕捉安全性はパターン・マッチャー対の条件 = WT-ATOM の premise**(`InterceptSafe`):Def 4.2 のマッチャー単独条件にはしない(細部その 3)。捕捉された式は原子入力文脈で型付くことを要求する。
 
 ## 機械化が浮かび上がらせた論文の細部(**2026-07-28 論文へ反映済み**、英日両版)
 
 - **MS-MNODE-STEP の一般化**:論文 Fig 3 の規則は内側スタックの先頭が「原子」の場合のみを書いていたが、パターン関数のネスト適用では内側先頭が MNode になる状態が生じる(f の本体内で g q⃗ が展開された直後)。機械化と論文の双方で規則を任意の内側先頭木に一般化(`Semantics.lean` の `mnodeStep`;論文は Fig 3 + §3.3 + 付録 C.2/C.3 の対応箇所を更新)。
 - **WT-MNODE の内側入力文脈**:論文 Fig 6 は内側スタックの型付けを ε から始めていたが、本体内で先に束縛された $ 変数を後続の値パターンが参照するには dom_typed(θ_f) から始める必要がある(WT-STATE の外側の扱いと平行)。機械化と論文の双方で後者を採用(`WellTyped.lean`;論文は Fig 6 + Def 5.3 + キャプションを更新。入れ子 MNode の変数パターン出現の数え方の明確化も同時に反映)。
-- **(その 3、論文未反映・要設計判断)PPP-VAL の早期評価**:pp の #$y は対応する p 側 #M の M を**節選択時**に評価するが、M の型付け文脈(PAT-VALUE の Δ スレッディング)は p の左側部分パターンの束縛を含み得る。#$y が第 2 引数位置以降に立ち M が左側束縛を参照すると、束縛前の評価になる。標準ライブラリの全節(#$val はトップ、#$pxs は第 1 位置)は安全側。対処候補:(i) #$ 位置を接頭位置に制限、(ii) 該当位置の値パターン式の型付けを原子入力文脈 Δ₀ に制限、(iii) 評価の遅延。`Preservation.lean` のモジュールドキュメント参照。
+- **(その 3、2026-07-28 最終設計:原子環境での先行評価+intercept-ok)PPP-VAL の捕捉評価**:pp の #$y に捕捉された p 側 #M の M は、**節選択時に原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される — これを公式の意味論として採用。従って**原子より前の束縛は使える**(実測:`($p :: _, $ls ++ #p :: $rs)` でタプル第 1 成分のピボット p を第 2 成分の `sortedList` ピボット節が参照して成功、`egison/mini-test/125`)が、**同じ原子内の左の穴の束縛は使えない**(実測:`$ys ++ #ys` は無音の `[]`;未束縛参照がシンボル化)。当初案の接頭条件 (i) は `sortedList` のピボット節 `$ ++ #$px :: $` や `assocMultiset` の `($, #$n) :: $` を殺すため撤回。この条件は**パターン単独でもマッチャー単独でも静的に決められない**(同じ #e が取り出し経路では左束縛を見られる — pair の #pat;捕捉深さはマッチャーの pp 形状に依存)ので、**パターン・マッチャー対の条件 = WT-ATOM の premise `intercept-ok`**(機械化 `interceptedExprs`/`InterceptSafe`)として定式化。論文 = Def 4.2(4) 書き換え+Fig 6 WT-ATOM に premise+Def 5.3+付録 J 開示(en 64p/ja 62p ビルド済)。実装 = 意味論は元からこの通り(thunk が原子環境を捕捉)で変更なし;マッチャー既知 site での静的検査は将来課題として付録 J に開示。
 
 ## 現状(2026-07-28 第 4 版)
 
@@ -73,7 +74,7 @@
 
 - **Stage 1(コア型安全性、付録 C;残る sorry 3 の解消)**:
   - Lem 5.5(Progress):前提層(Canonical.lean + Progress.lean 上部)は**全て済**。残り = shapeOK からの PPM 全域性(停止仮定つき、pp 構造帰納)・節/アームの先頭一致選択の存在帰納(catch-all の存在から一致節が必ずある)・decodeTuple の形状補題(prodK の場合分け+`canonical_prod`/`canonical_list`)・papp の Σ_F アリティ(`SigFWF.arity`)・組み立て(木の構造帰納、Φ を一般化した状態整型で;WTState の Φ=[] 固定を内側スタック用に一般化)。
-  - Thm 5.6(a)(b):`Search.rec` 型の結合再帰子(5 motive)への一括適用。`search_mem_reaches` で同ルートは実証済み。必要な補助:HM 代入・弱化補題(TyCtx 操作)、環境拡張と EnvTyped の整合、MS-MATCHER ケースの θp∘U 追跡(Lem 5.4 は済)。
+  - Thm 5.6(a)(b):`Search.rec` 型の結合再帰子(5 motive)への一括適用。`search_mem_reaches` で同ルートは実証済み。必要な補助:HM 代入・弱化補題(TyCtx 操作)、環境拡張と EnvTyped の整合、MS-MATCHER ケースの θp∘U 追跡(Lem 5.4 は済)。**新規の証明義務**:後続原子の `InterceptSafe`(次マッチャー値と取り出されたパターンの対)は元の premise から直接には従わないため、不変量の強化(スロット経由で次マッチャーの節形状と対の安全性を運ぶ)が要る — 細部その 3 の対条件性の帰結。
   - list/multiset 整合性(Def 4.2)の実例検証。
 - **Stage 2(主型性、付録 B/D)**:rigidity 付き Robinson 単一化 → Algorithm W(matchAll の Step 1–6・スロット処理 3a/3a′/3b)→ Lem D.1–D.3 → Thm 5.3。
 - **Stage 3(拡張)**:loop パターン・型クラス(付録 F の辞書渡し)・値引数つきパターン関数など、論文 §7 の open directions に対応する範囲の検討。

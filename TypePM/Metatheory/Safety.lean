@@ -10,8 +10,8 @@ import TypePM.Metatheory.Preservation
 **`reaches_preservation`・`terminal_subst_typed`・`matcher_consistency` は
 Theorem 5.6(b) を仮定 `hb` として受け取った上で証明済み**
 (type-tensor-mech の `type_safety` 合成と同じ流儀)。
-Search の要素と Reaches の対応 `search_mem_reaches` は未機械化
-(相互帰納原理を要する;README ロードマップ)。
+Search の要素と Reaches の対応 `search_mem_reaches` も証明済み
+(結合再帰子 `Search.rec` による;本ファイル末尾)。
 -/
 
 namespace TypePM
@@ -69,11 +69,12 @@ theorem matcher_consistency
     (htm : Unifiable τm τ)
     (hok : MatcherOK SD SP m)                            -- m は整合(Def 4.2)
     (hv : ValueTy SD SP SF v τ)                          -- v : τ
+    (hint : InterceptSafe SD SP SF Γ [] p m)             -- intercept-ok
     (hrun : Reaches SF ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ ⟨[], ρ', θ⟩) :
     SubstTyped SD SP SF Δ θ := by
   have hinit : WTState SD SP SF Γ ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ Δ :=
     ⟨hρ, [], substTyped_nil,
-      WTStack.cons (WTTree.atom hp hm hren hstr htt htm hok hv) WTStack.nil⟩
+      WTStack.cons (WTTree.atom hp hm hren hstr htt htm hok hv hint) WTStack.nil⟩
   exact terminal_subst_typed (reaches_preservation hb hrun hinit)
 
 /-! ## Search と Reaches の接続(相互帰納族の結合再帰子による証明) -/
