@@ -178,6 +178,15 @@ theorem oneWay_unique {θ₁ θ₂ : TySubst} {τp τm : Ty}
     ∀ a ∈ τp.ftv, θ₁.appVar a = θ₂.appVar a :=
   applyTS_eq_on_ftv θ₁ θ₂ τp (h₁.2.trans h₂.2.symm)
 
+/-- リスト中の型の自由変数はリスト全体の自由変数(要素帰納) -/
+theorem mem_ftvList_of_mem : ∀ {ts : List Ty} {τ : Ty}, τ ∈ ts →
+    ∀ {a}, a ∈ τ.ftv → a ∈ ftvList ts
+  | t :: ts, τ, hmem, a, ha => by
+      simp only [ftvList, List.mem_append]
+      rcases List.mem_cons.mp hmem with rfl | hmem
+      · exact .inl ha
+      · exact .inr (mem_ftvList_of_mem hmem ha)
+
 /-! ## 代入適用の合同性(逆向き:自由変数上の一致 → 適用結果の一致) -/
 
 mutual

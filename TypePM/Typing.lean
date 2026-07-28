@@ -91,6 +91,8 @@ inductive VShape (SD : SigD) : Value → Ty → Prop where
   | closure {self ρ x e τ₁ τ₂} : VShape SD (.closure self ρ x e) (.fn τ₁ τ₂)
   | matcherV {ρm cls τ} : VShape SD (.matcherV ρm cls) (.matcher τ)
   | something {τ} : VShape SD .something (.matcher τ)
+  | matcherTuple {vs τ} : VShape SD (.tuple vs) (.matcher τ)   -- 積マッチャー
+  | slotAny {v τp τt} : VShape SD v (.slot τp τt)              -- スロット型の値
 
 /-! ## マッチャー整合性 (Definition 4.2、型付け非依存部分) -/
 
@@ -334,5 +336,61 @@ structure PatFunWF (SD : SigD) (SP : SigP) (SF : SigF) (Γ : TyCtx)
 /-- Σ_F 全体の整型性 -/
 def SigFWF (SD : SigD) (SP : SigP) (SF : SigF) (Γ : TyCtx) : Prop :=
   ∀ pr ∈ SF, PatFunWF SD SP SF Γ pr.2
+
+/-! ## 構成子シグネチャの整形性(Def 4.1/宣言の暗黙条件)
+
+宣言 `inductive pattern T α₁ ⋯ αₙ := c τ⃗ | …` / `data T α⃗ := C τ⃗ | …` から
+得られるシグネチャは、結果型が型構成子の全変数適用 `T α₁ ⋯ αₙ` で、
+引数型の自由変数は宣言パラメタに含まれる。メタ理論はこの形を使う
+(例:結果型のインスタンス化が引数型のインスタンス化を一意に決める)。 -/
+
+def CtorSigWF (sig : CtorSig) : Prop :=
+  (∃ n, sig.res = .data n ((List.range sig.nparams).map .var)) ∧
+  ∀ a ∈ ftvList sig.args, a < sig.nparams
+
+def SigPWF (SP : SigP) : Prop := ∀ pr ∈ SP, CtorSigWF pr.2
+def SigDWF (SD : SigD) : Prop := ∀ pr ∈ SD, CtorSigWF pr.2
+
+/-- 整形シグネチャでは、結果型のインスタンス化の一致が
+    引数型のインスタンス化の一致を導く(Lem 5.4 の PP 側と PatTy 側の整列に使用)。 -/
+theorem instSig_args_agree {sig : CtorSig} (hwf : CtorSigWF sig)
+    {ts ts' : List Ty}
+    (hres : Ty.instSig ts sig.res = Ty.instSig ts' sig.res) :
+    ∀ τa ∈ sig.args, Ty.instSig ts τa = Ty.instSig ts' τa := by
+  obtain ⟨⟨n, hres_eq⟩, hargs⟩ := hwf
+  intro τa hτa
+  -- 結果型の等式から、パラメタ変数 i < nparams 上で両代入が一致する
+  have hvar : ∀ i < sig.nparams,
+      Ty.instSig ts (.var i) = Ty.instSig ts' (.var i) := by
+    intro i hi
+    rw [hres_eq] at hres
+    simp only [Ty.instSig, Ty.applyTS, applyTSList] at hres
+    have := congrArg (fun t => match t with
+      | Ty.data _ ts => ts
+      | _ => []) hres
+    simp only at this
+    have hmap :
+        (((List.range sig.nparams).map Ty.var).map
+          (Ty.applyTS ((List.range ts.length).zip ts))) =
+        (((List.range sig.nparams).map Ty.var).map
+          (Ty.applyTS ((List.range ts'.length).zip ts'))) := by
+      have h1 : ∀ (θ : TySubst) (l : List Ty),
+          applyTSList θ l = l.map (Ty.applyTS θ) := by
+        intro θ l
+        induction l with
+        | nil => rfl
+        | cons t l ih => simp [applyTSList, ih]
+      rw [← h1, ← h1]
+      exact this
+    have := List.map_inj_left.mp
+      (by simpa [List.map_map] using hmap) i (List.mem_range.mpr hi)
+    simpa [Ty.instSig] using this
+  -- 引数型の自由変数はすべてパラメタなので合同性で結論
+  simp only [Ty.instSig]
+  exact applyTS_congr τa fun a ha => by
+    have := hvar a (hargs a (by
+      have : a ∈ Ty.ftv τa := ha
+      exact mem_ftvList_of_mem hτa this))
+    simpa [Ty.instSig, Ty.applyTS] using this
 
 end TypePM

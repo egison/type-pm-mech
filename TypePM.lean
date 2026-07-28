@@ -6,6 +6,7 @@ import TypePM.Typing
 import TypePM.WellTyped
 import TypePM.Metatheory.Polymorphism
 import TypePM.Metatheory.Preservation
+import TypePM.Metatheory.Canonical
 import TypePM.Metatheory.Progress
 import TypePM.Metatheory.Safety
 import TypePM.Metatheory.Principal

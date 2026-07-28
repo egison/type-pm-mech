@@ -52,6 +52,17 @@ inductive ValueTy (SD : SigD) (SP : SigP) (SF : SigF) : Value → Ty → Prop wh
       ms.length = τs.length →      -- (積マッチャー (m₁,…,m_k) : Matcher (τ₁ × ⋯ × τ_k))
       (∀ pr ∈ ms.zip τs, ValueTy SD SP SF pr.1 (.matcher pr.2)) →
       ValueTy SD SP SF (.tuple ms) (.matcher (.prod τs))
+  | slotV {m τm τm' τp τt} :       -- COERCE-MATCHER-TO-SLOT の値レベル対応物
+      ValueTy SD SP SF m (.matcher τm) →   -- (スロット型で束縛される λ 引数の
+      RenamesTo τm τm' →                   --  環境型付けに必要;Lem C.2 の内実)
+      OneWay τp τm' →
+      Unifiable τm τt →
+      ValueTy SD SP SF m (.slot τp τt)
+  | prodSlot {ms} {prs : List (Ty × Ty)} : -- COERCE-SLOT-TUPLE の値レベル対応物
+      ms.length = prs.length →
+      (∀ pr ∈ ms.zip prs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2)) →
+      ValueTy SD SP SF (.tuple ms)
+        (.slot (.prod (prs.map (·.1))) (.prod (prs.map (·.2))))
 
 /-- Γ が ρ を型付ける(判断の外で使う再利用形) -/
 def EnvTyped (SD : SigD) (SP : SigP) (SF : SigF) (Γ : TyCtx) (ρ : Env) : Prop :=
@@ -120,6 +131,54 @@ inductive WTStack (SD : SigD) (SP : SigP) (SF : SigF) :
       WTStack SD SP SF Γ Φ Δ₁ S Δ' →
       WTStack SD SP SF Γ Φ Δ₀ (t :: S) Δ'
 end
+
+/-! ## マッチャー選言の導出補題 -/
+
+theorem exists_mem_zip_left {α β} : ∀ {as : List α} {bs : List β},
+    as.length = bs.length → ∀ {a}, a ∈ as → ∃ b, (a, b) ∈ as.zip bs
+  | [], [], _, _, ha => nomatch ha
+  | [], _ :: _, hlen, _, _ => nomatch hlen
+  | _ :: _, [], hlen, _, _ => nomatch hlen
+  | a' :: as, b :: bs, hlen, a, ha => by
+      simp only [List.mem_cons] at ha
+      rcases ha with rfl | ha
+      · exact ⟨b, by simp [List.zip_cons_cons]⟩
+      · obtain ⟨b', hz⟩ := exists_mem_zip_left (by simpa using hlen) ha
+        exact ⟨b', by simp [List.zip_cons_cons, hz]⟩
+
+/-- マッチャー型を持つ値は WT-ATOM のマッチャー選言に入る
+    (something / Σ_P 整合(T-MATCHER の整合性前提から)/ それらの積)。
+    Σ_D 整形性はデータ構成子の結果型がマッチャー型でないことに使う。 -/
+theorem matcherOK_of_valueTy {SD : SigD} {SP : SigP} {SF : SigF}
+    (hwfD : SigDWF SD) :
+    ∀ {m : Value} {τ : Ty}, ValueTy SD SP SF m τ →
+    ∀ τm, τ = .matcher τm → MatcherOK SD SP m := by
+  intro m τ h
+  induction h with
+  | lit => intro τm heq; cases heq
+  | ctor hfind hlen hall ih =>
+      intro τm heq
+      exfalso
+      rename_i C sig ts vs
+      obtain ⟨⟨n, hres⟩, -⟩ := hwfD _ (List.mem_of_find?_eq_some hfind)
+      rw [hres] at heq
+      simp [Ty.instSig, Ty.applyTS] at heq
+  | tuple hlen hall ih => intro τm heq; cases heq
+  | closure Γ hdom hty hnone hsome => intro τm heq; cases heq
+  | matcherV Γm hdom htyρ hty =>
+      intro τm heq
+      cases hty with
+      | matcherE hclauses hcons => exact MatcherOK.consistent hcons
+      | coerceTupleMatcher hpre => cases hpre
+  | something => intro τm heq; exact MatcherOK.something
+  | prodMatcher hlen hall ih =>
+      intro τm heq
+      refine MatcherOK.prod ?_
+      intro m' hm'
+      obtain ⟨τ', hz⟩ := exists_mem_zip_left hlen hm'
+      exact ih (m', τ') hz τ' rfl
+  | slotV hm hren how huni ih => intro τm heq; cases heq
+  | prodSlot hlen hall ih => intro τm heq; cases heq
 
 /-! ## 整型マッチング状態 (WT-STATE) -/
 
