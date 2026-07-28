@@ -569,6 +569,28 @@ theorem type_safety_a
     | coerceSlotTuple hpre => cases hpre
   all_goals intros; trivial
 
+/-! ## Theorem 5.6(b) へ向けた規則別保存補題 -/
+
+/-- MS-MNODE-DONE の保存:空の内側スタックを畳む(**証明済み**)。
+    接尾辞前提から rem = [] が従い、q-premise の PatTys nil で Δ が素通しになる。 -/
+theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {S : List Tree} {ρf : Env} {θf : Subst} {piE : PiEnv}
+    {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.mnode [] ρf θf piE :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | mnode rem duals Γf Δθf Δfin hj hocc hq hd1 hd2 hθf hinner =>
+      have hrem : rem = [] := by
+        cases rem with
+        | nil => rfl
+        | cons pr rem' => exact nomatch hocc
+      subst hrem
+      cases hq
+      exact ⟨hρ, Δ₀, hθ, hrest⟩
+
 /-- **Theorem 5.6(b) (マッチング状態保存)**。
     s → [s₁, …, s_l] かつ ⊢ s : Δ_goal ok ならば各 sᵢ について ⊢ sᵢ : Δ_goal ok。
     未機械化(README ロードマップ [b-3] HM 代入補題・[b-4] vp-scoped の

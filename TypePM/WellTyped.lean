@@ -95,39 +95,41 @@ def SubstTyped (SD : SigD) (SP : SigP) (SF : SigF) (Δ : BindCtx) (θ : Subst) :
 
 #$y に捕捉された値パターンの式は原子の環境で(=先に)評価されるので、
 原子の入力文脈 Δ₀ で型付かなければならない(原子より前の束縛は使えるが、
-同じ原子内の左の穴の束縛は使えない)。積マッチャーは成分ごとに検査する。 -/
+同じ原子内の左の穴の束縛は使えない)。
 
-mutual
+条件は**原子ローカル**(先頭対 p×matcherV のみ)である:タプル原子は
+WT-ATOM-TUPLE(`atomTuple`)が成分原子列として型付けるので、各成分の
+vp 条件はその成分原子の WT-ATOM が **threaded な入力文脈**で持つ
+(旧版の「全成分を同じ Δ₀ で検査する」タプル再帰は、先行成分の束縛が
+後続成分の捕捉式から見えるべき場合に単調でなく、(b) の後続原子再建で
+使えなかった — README [b-4])。 -/
+
 def VPScoped (SD : SigD) (SP : SigP) (SF : SigF)
     (Γ : TyCtx) (Δ₀ : BindCtx) : Pattern → Value → Prop
+  | .pand p₁ p₂, m => VPScoped SD SP SF Γ Δ₀ p₁ m ∧ VPScoped SD SP SF Γ Δ₀ p₂ m
+  | .por p₁ p₂, m => VPScoped SD SP SF Γ Δ₀ p₁ m ∧ VPScoped SD SP SF Γ Δ₀ p₂ m
   | p, .matcherV _ cls =>
       ∀ cl ∈ cls, ∀ M ∈ capturedExprs cl.1 p,
         ∃ τe, HasTy SD SP SF (BindCtx.toCtx Δ₀ ++ Γ) M τe
-  | .ptuple ps, .tuple ms =>
-      VPScopedList SD SP SF Γ Δ₀ ps ms
   | _, _ => True
-
-def VPScopedList (SD : SigD) (SP : SigP) (SF : SigF)
-    (Γ : TyCtx) (Δ₀ : BindCtx) : List Pattern → List Value → Prop
-  | p :: ps, m :: ms =>
-      VPScoped SD SP SF Γ Δ₀ p m ∧ VPScopedList SD SP SF Γ Δ₀ ps ms
-  | _, _ => True
-end
 
 /-! ## 整型マッチング木・スタック (Fig 6) -/
 
 mutual
 inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
     TyCtx → PatParamCtx → BindCtx → Tree → BindCtx → Prop where
-  | atom {Γ Φ Δ Δ' p m v τ τp τt τm τm'} :             -- WT-ATOM
+  | atom {Γ Φ Δ Δ' p m v τp τt τm τm'} :               -- WT-ATOM
       PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
       ValueTy SD SP SF m (.matcher τm) →                -- m の内在型
       RenamesTo τm τm' →                                -- τm' = fresh_rename(τm)
       OneWay τp τm' →                                   -- 構造前提 τm' ⊑ τp
-      Unifiable τt τ →                                  -- 標的前提 τt ~ τ
-      Unifiable τm τ →                                  -- 標的前提 τm ~ τ
+      Unifiable τm τt →                                 -- 標的前提 τm ~ τt
       MatcherOK SD SP m →                               -- マッチャー選言
-      ValueTy SD SP SF v τ →                            -- v : τ
+      ValueTy SD SP SF v τt →                           -- v はパターン標的型そのもの
+      -- (旧版は v : τ と Unifiable τt τ の「支配的単一化子」読みだった。
+      --  初期原子で τ = τt が成り立ち、抽出値の型付けを節型付けの
+      --  τt インスタンス側で取れば等号のまま伝播するので、(b) の
+      --  SubstTyped 再建(束縛 = 宣言型)のために τt へ一本化した。)
       VPScoped SD SP SF Γ Δ p m →                       -- vp-scoped(値パターンスコープ条件、Def 4.2(4))
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
   | atomTuple {Γ Φ Δ Δ' ps ms vs} :                     -- WT-ATOM-TUPLE

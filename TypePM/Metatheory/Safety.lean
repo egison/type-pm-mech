@@ -57,7 +57,7 @@ theorem substTyped_nil {SD : SigD} {SP : SigP} {SF : SigF} :
 theorem matcher_consistency
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
     {ρ ρ' : Env} {θ : Subst} {p : Pattern} {m v : Value}
-    {τ τp τt τm τm' : Ty} {Δ : BindCtx}
+    {τp τt τm τm' : Ty} {Δ : BindCtx}
     (hb : ∀ {s ss}, Step SF s ss → WTState SD SP SF Γ s Δ →
       ∀ s' ∈ ss, WTState SD SP SF Γ s' Δ)
     (hρ : EnvTyped SD SP SF Γ ρ)
@@ -65,16 +65,15 @@ theorem matcher_consistency
     (hm : ValueTy SD SP SF m (.matcher τm))              -- m の内在型
     (hren : RenamesTo τm τm')
     (hstr : OneWay τp τm')                               -- 構造条件 τm' ⊑ τp
-    (htt : Unifiable τt τ)                               -- τt ~ τ
-    (htm : Unifiable τm τ)
+    (htm : Unifiable τm τt)                              -- 標的条件 τm ~ τt
     (hok : MatcherOK SD SP m)                            -- m は整合(Def 4.2)
-    (hv : ValueTy SD SP SF v τ)                          -- v : τ
+    (hv : ValueTy SD SP SF v τt)                         -- v : τt(標的型)
     (hint : VPScoped SD SP SF Γ [] p m)                  -- vp-scoped(値パターンスコープ条件)
     (hrun : Reaches SF ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ ⟨[], ρ', θ⟩) :
     SubstTyped SD SP SF Δ θ := by
   have hinit : WTState SD SP SF Γ ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ Δ :=
     ⟨hρ, [], substTyped_nil,
-      WTStack.cons (WTTree.atom hp hm hren hstr htt htm hok hv hint) WTStack.nil⟩
+      WTStack.cons (WTTree.atom hp hm hren hstr htm hok hv hint) WTStack.nil⟩
   exact terminal_subst_typed (reaches_preservation hb hrun hinit)
 
 /-! ## Search と Reaches の接続(相互帰納族の結合再帰子による証明) -/

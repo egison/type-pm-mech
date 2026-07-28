@@ -1052,7 +1052,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
     ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
-    intro Γ Φ Δ Δ' p m v τ τp τt τm τm' hp hm hren how htt htm hok hv _hvps
+    intro Γ Φ Δ Δ' p m v τp τt τm τm' hp hm hren how htm hok hv _hvps
     intro S ρ θ hne
     cases p with
     | embed y => exact absurd rfl (hne y m v)
@@ -1145,7 +1145,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
               obtain ⟨a, rfl⟩ := valueTy_something_var hm
               exact something_rejected_at_prod hren how
           | prod hall =>
-              -- MS-TUPLE
+              -- MS-TUPLE(τt = .prod (duals.map snd) なので v は直接タプル分解できる)
               obtain ⟨τs, hτm, hlenms, hcomp⟩ := valueTy_tuple_matcher_inv hm
               obtain ⟨l', hl', hlen'⟩ := oneWay_prod how
               obtain ⟨l'', hl'', hlen''⟩ := renamesTo_prod (hτm ▸ hren)
@@ -1153,11 +1153,10 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
                 have h := hl'.symm.trans hl''
                 injection h with h
                 rw [h]
-              rw [hτm] at htm
-              obtain ⟨τs₂, rfl, hlen₂⟩ := valueTy_unifiable_prod hwfD hv htm
               obtain ⟨vs, rfl, hlenvs, -⟩ := canonical_prod hwfD hv
               have hlps := patTys_length hps
               have hlenmap : l'.length = duals.length := by simpa using hlen'
+              have hlenvs' : vs.length = duals.length := by simpa using hlenvs
               refine ⟨_, Step.reduce (MAtom.tuple ?_ ?_)⟩
               · omega
               · omega
