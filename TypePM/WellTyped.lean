@@ -89,26 +89,26 @@ def SubstTyped (SD : SigD) (SP : SigP) (SF : SigF) (Δ : BindCtx) (θ : Subst) :
   Δ.map (·.1) = (θ.map (·.1)).reverse ∧
   ∀ pr ∈ Δ, ∃ v, Env.find? θ pr.1 = some v ∧ ValueTy SD SP SF v pr.2
 
-/-! ## 捕捉安全性 (Def 4.2(4)・WT-ATOM の intercept-ok 前提)
+/-! ## 値パターンスコープ条件 (Def 4.2(4)・WT-ATOM の vp-scoped 前提)
 
 #$y に捕捉された値パターンの式は原子の環境で(=先に)評価されるので、
 原子の入力文脈 Δ₀ で型付かなければならない(原子より前の束縛は使えるが、
 同じ原子内の左の穴の束縛は使えない)。積マッチャーは成分ごとに検査する。 -/
 
 mutual
-def InterceptSafe (SD : SigD) (SP : SigP) (SF : SigF)
+def VPScoped (SD : SigD) (SP : SigP) (SF : SigF)
     (Γ : TyCtx) (Δ₀ : BindCtx) : Pattern → Value → Prop
   | p, .matcherV _ cls =>
-      ∀ cl ∈ cls, ∀ M ∈ interceptedExprs cl.1 p,
+      ∀ cl ∈ cls, ∀ M ∈ capturedExprs cl.1 p,
         ∃ τe, HasTy SD SP SF (BindCtx.toCtx Δ₀ ++ Γ) M τe
   | .ptuple ps, .tuple ms =>
-      InterceptSafeList SD SP SF Γ Δ₀ ps ms
+      VPScopedList SD SP SF Γ Δ₀ ps ms
   | _, _ => True
 
-def InterceptSafeList (SD : SigD) (SP : SigP) (SF : SigF)
+def VPScopedList (SD : SigD) (SP : SigP) (SF : SigF)
     (Γ : TyCtx) (Δ₀ : BindCtx) : List Pattern → List Value → Prop
   | p :: ps, m :: ms =>
-      InterceptSafe SD SP SF Γ Δ₀ p m ∧ InterceptSafeList SD SP SF Γ Δ₀ ps ms
+      VPScoped SD SP SF Γ Δ₀ p m ∧ VPScopedList SD SP SF Γ Δ₀ ps ms
   | _, _ => True
 end
 
@@ -126,7 +126,7 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       Unifiable τm τ →                                  -- 標的前提 τm ~ τ
       MatcherOK SD SP m →                               -- マッチャー選言
       ValueTy SD SP SF v τ →                            -- v : τ
-      InterceptSafe SD SP SF Γ Δ p m →                  -- intercept-ok(Def 4.2(4))
+      VPScoped SD SP SF Γ Δ p m →                       -- vp-scoped(値パターンスコープ条件、Def 4.2(4))
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
   | mnode {Γ Φ Δ Δ' S' ρf θf piE} (rem : PiEnv) (duals : List (Ty × Ty))
       (Γf : TyCtx) (Δθf : BindCtx) (Δfin : BindCtx) :  -- WT-MNODE

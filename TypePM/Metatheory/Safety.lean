@@ -69,7 +69,7 @@ theorem matcher_consistency
     (htm : Unifiable τm τ)
     (hok : MatcherOK SD SP m)                            -- m は整合(Def 4.2)
     (hv : ValueTy SD SP SF v τ)                          -- v : τ
-    (hint : InterceptSafe SD SP SF Γ [] p m)             -- intercept-ok
+    (hint : VPScoped SD SP SF Γ [] p m)                  -- vp-scoped(値パターンスコープ条件)
     (hrun : Reaches SF ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ ⟨[], ρ', θ⟩) :
     SubstTyped SD SP SF Δ θ := by
   have hinit : WTState SD SP SF Γ ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ Δ :=

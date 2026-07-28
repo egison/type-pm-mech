@@ -15,8 +15,8 @@ Lem 5.4・Lem C.2 は、論文の結合帰納法における (a) 部の帰納法
 pp の値パターンパターン #$y に捕捉された p 側 #M の M は、**節選択時に
 原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される(PPP-VAL)。
 よって原子より前の束縛は使えるが、同じ原子内の左の穴の束縛は使えない。
-この条件はパターン・マッチャー**対**の条件なので、WT-ATOM の premise
-`InterceptSafe`(WellTyped.lean;論文 Fig 6 の intercept-ok)として定式化した。
+この条件(**値パターンスコープ条件**)はパターン・マッチャー**対**の条件なので、
+WT-ATOM の premise `VPScoped`(WellTyped.lean;論文 Fig 6 の vp-scoped)として定式化した。
 Thm 5.6(b) の機械化では、この premise により #$y 捕捉時の M の型付け文脈が
 原子入力文脈(= dom_typed θ で被覆)に収まることが oracle の討ち取りに使える
 (後続原子への premise 伝播は不変量強化が要る;README ロードマップ)。
