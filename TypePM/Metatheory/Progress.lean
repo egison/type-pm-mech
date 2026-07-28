@@ -1052,7 +1052,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
-    intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how htm hok hv _hvps
+    intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how htm hok hv
     intro S ρ θ hne
     cases p with
     | embed y => exact absurd rfl (hne y m v)
@@ -1180,8 +1180,8 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
     exact ⟨_, Step.reduce (MAtom.tuple hlen1 hlen2)⟩
   -- WT-MNODE:内側スタックの場合分け(varpat / done / 内側ステップ)
   case _ =>
-    intro Γ Φ Δ Δ' S' ρf θf piE rem duals Γf Δθf Δfin
-      h_j h_occ _h_q _h_d1 _h_d2 _h_θ _h_stack ih_stack
+    intro Γ Φ Δ Δ' S' ρf θf piE rem duals Γf Δθf Δfin Φf
+      h_j h_nd h_occ _h_q _h_forall _h_d1 _h_d2 _h_θ _h_stack ih_stack
     intro S ρ θ _hne
     cases S' with
     | nil => exact ⟨_, Step.mnodeDone⟩
@@ -1260,7 +1260,7 @@ theorem ms_progress
       · -- トップレベルは Φ = [] なので embed 原子は整型でない
         exfalso
         cases htree with
-        | atom _hsc hp _ _ _ _ _ _ _ =>
+        | atom _hsc hp _ _ _ _ _ _ =>
           cases hp with
           | embed hfind => exact nomatch hfind
       · exact wtTree_progress htotal heval hSigF hwfD hwfP hL htree St ρ θ

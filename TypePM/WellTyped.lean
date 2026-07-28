@@ -135,6 +135,15 @@ def atomScalarOK : Pattern → Value → Bool
   | .por _ _, _ => false
   | _, _ => true
 
+/-- rem の各対が固定文脈 Φf で自分の双対に解決される(位置対応;
+    List.Forall₂ の自前版) -/
+def RemInPhi (Φf : PatParamCtx) : PiEnv → List (Ty × Ty) → Prop
+  | [], [] => True
+  | pr :: rem, d :: duals =>
+      List.find? (fun x => x.1 == pr.1) Φf = some (pr.1, d) ∧
+      RemInPhi Φf rem duals
+  | _, _ => False
+
 /-! ## 整型マッチング木・スタック (Fig 6) -/
 
 mutual
@@ -152,8 +161,12 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       -- (旧版は v : τ と Unifiable τt τ の「支配的単一化子」読みだった。
       --  初期原子で τ = τt が成り立ち、抽出値の型付けを節型付けの
       --  τt インスタンス側で取れば等号のまま伝播するので、(b) の
-      --  SubstTyped 再建(束縛 = 宣言型)のために τt へ一本化した。)
-      VPScoped SD SP SF Γ Δ p m →                       -- vp-scoped(値パターンスコープ条件、Def 4.2(4))
+      --  SubstTyped 再建(束縛 = 宣言型)のために τt へ一本化した。
+      --  vp-scoped(値パターンスコープ条件、Def 4.2(4))は WT-ATOM の
+      --  premise ではなく stackNoOr と同様の並行不変量として扱う:
+      --  (b) の内部配管はこれを読まず、消費箇所は Lem 5.4/5.5 の
+      --  ∀Γ' oracle の放電([b-6])のみなので、そこで transport する。
+      --  論文 Fig 6 の premise 表示は「並行条件の連言」として読む。)
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
   | atomAnd {Γ Φ Δ Δmid Δ' p₁ p₂ m v} :                 -- WT-ATOM-AND
       -- and 原子の成分分解形:MS-AND の継続そのもの(左→右スレッディング)。
@@ -178,21 +191,28 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
         ((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) Δ' →
       WTTree SD SP SF Γ Φ Δ (.atom ⟨.ptuple ps, .tuple ms, .tuple vs⟩) Δ'
   | mnode {Γ Φ Δ Δ' S' ρf θf piE} (rem : PiEnv) (duals : List (Ty × Ty))
-      (Γf : TyCtx) (Δθf : BindCtx) (Δfin : BindCtx) :  -- WT-MNODE
+      (Γf : TyCtx) (Δθf : BindCtx) (Δfin : BindCtx)
+      (Φf : PatParamCtx) :  -- WT-MNODE
       -- 接尾辞前提:S' に残る ~x 出現は piE の接尾辞(宣言順・各 1 回)
       (∃ j, rem = piE.drop j) →
+      -- 仮引数名の相異(PatFunWF.paramsNodup 由来;MS-MNODE-VARPAT の
+      -- find? が rem 先頭のエントリを返すことの保証)
+      (piE.map (·.1)).Nodup →
       stackEmbedOccs S' = rem.map (·.1) →
       -- q-premise 列:残り引数パターンを外側文脈で双対型付け(Δ を Δ' へ継ぐ)
       PatTys SD SP SF Γ Φ Δ (rem.map (·.2)) duals Δ' →
+      -- 残り仮引数の双対対は固定の内側文脈 Φf で解決される
+      -- (Φf は展開時の全仮引数双対文脈;rem が縮んでも Φf は不変なので、
+      --  VARPAT の再建で内側スタックの Φ 転送が不要になる)
+      RemInPhi Φf rem duals →
       -- Γf が ρf を型付ける
       (∀ y v, Env.find? ρf y = some v → ∃ σ, TyCtx.find? Γf y = some σ) →
       (∀ y v σ τ', Env.find? ρf y = some v → TyCtx.find? Γf y = some σ →
         σ.Inst τ' → ValueTy SD SP SF v τ') →
       -- θf の型付け(スコープ内に閉じる)
       SubstTyped SD SP SF Δθf θf →
-      -- 内側スタックの整型:Φ は残り仮引数の双対型、入力文脈は dom_typed θf
-      -- (論文は ε;README 設計判断参照)
-      WTStack SD SP SF Γf ((rem.map (·.1)).zip duals) Δθf S' Δfin →
+      -- 内側スタックの整型:入力文脈は dom_typed θf(論文は ε;README 参照)
+      WTStack SD SP SF Γf Φf Δθf S' Δfin →
       WTTree SD SP SF Γ Φ Δ (.mnode S' ρf θf piE) Δ'
 
 inductive WTStack (SD : SigD) (SP : SigP) (SF : SigF) :

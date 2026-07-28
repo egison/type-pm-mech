@@ -1186,6 +1186,286 @@ theorem oneWay_var_refl (a : TyVar) : OneWay (.var a) (.var a) := by
   intro b hb
   simp [TySubst.dom] at hb
 
+/-! ### 双対検査条件の積成分分割(再建用) -/
+
+theorem zip_applyRenList {r : TyVar → TyVar} : ∀ {τs τs' : List Ty},
+    applyRenList r τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyRen r = pr.2
+  | [], _, h, pr, hpr => by subst h; cases hpr
+  | τ :: τs, _, h, pr, hpr => by
+      subst h
+      simp only [applyRenList, List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · rfl
+      · exact zip_applyRenList rfl pr hpr
+
+theorem zip_applyTSList {θ : TySubst} : ∀ {τs τs' : List Ty},
+    applyTSList θ τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyTS θ = pr.2
+  | [], _, h, pr, hpr => by subst h; cases hpr
+  | τ :: τs, _, h, pr, hpr => by
+      subst h
+      simp only [applyTSList, List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · rfl
+      · exact zip_applyTSList rfl pr hpr
+
+theorem zip_applyTSList_eq {U : TySubst} : ∀ {τs τts : List Ty},
+    applyTSList U τs = applyTSList U τts → τs.length = τts.length →
+    ∀ pr ∈ τs.zip τts, pr.1.applyTS U = pr.2.applyTS U
+  | [], _, _, _, pr, hpr => by
+      cases hpr
+  | τ :: τs, [], _, hlen, _, _ => by simp at hlen
+  | τ :: τs, τt :: τts, h, hlen, pr, hpr => by
+      simp only [applyTSList, List.cons.injEq] at h
+      simp only [List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · exact h.1
+      · exact zip_applyTSList_eq h.2 (by simpa using hlen) pr hpr
+
+/-- 制限代入は自由変数上で元の代入と一致する -/
+theorem appVar_filter_mem {θ : TySubst} {l : List TyVar} {a : TyVar}
+    (ha : a ∈ l) :
+    TySubst.appVar (θ.filter (fun e => decide (e.1 ∈ l))) a =
+      TySubst.appVar θ a := by
+  induction θ with
+  | nil => rfl
+  | cons pr θ ih =>
+      cases hpa : (pr.1 == a) with
+      | true =>
+          have hpr1 : pr.1 = a := by simpa using hpa
+          rw [List.filter_cons_of_pos (by simp [hpr1, ha])]
+          unfold TySubst.appVar
+          simp [List.find?, hpa]
+      | false =>
+          cases hkeep : decide (pr.1 ∈ l) with
+          | true =>
+              rw [List.filter_cons_of_pos (by simp [hkeep])]
+              unfold TySubst.appVar
+              simp only [List.find?, hpa]
+              exact ih
+          | false =>
+              rw [List.filter_cons_of_neg (by simp_all)]
+              unfold TySubst.appVar at ih ⊢
+              simp only [List.find?, hpa]
+              exact ih
+
+/-- 積の改名は成分ごとの改名 -/
+theorem renamesTo_prod_comp {τs τs' : List Ty}
+    (h : RenamesTo (.prod τs) (.prod τs')) :
+    τs.length = τs'.length ∧ ∀ pr ∈ τs.zip τs', RenamesTo pr.1 pr.2 := by
+  obtain ⟨r, hinj, hr⟩ := h
+  simp only [Ty.applyRen, Ty.prod.injEq] at hr
+  constructor
+  · rw [← hr]
+    exact (applyRenList_length r τs).symm
+  · intro pr hpr
+    exact ⟨r, hinj, zip_applyRenList hr pr hpr⟩
+
+/-- 積の one-way instance は成分ごとの one-way instance(制限代入で witness) -/
+theorem oneWay_prod_comp {τps τms : List Ty}
+    (h : OneWay (.prod τps) (.prod τms)) :
+    τps.length = τms.length ∧ ∀ pr ∈ τps.zip τms, OneWay pr.1 pr.2 := by
+  obtain ⟨θ, hdom, happ⟩ := h
+  simp only [Ty.applyTS, Ty.prod.injEq] at happ
+  constructor
+  · rw [← happ]
+    exact (applyTSList_length θ τps).symm
+  · intro pr hpr
+    refine ⟨θ.filter (fun e => decide (e.1 ∈ pr.1.ftv)), ?_, ?_⟩
+    · intro a ha
+      simp only [TySubst.dom, List.mem_map] at ha
+      obtain ⟨e, he, rfl⟩ := ha
+      have := (List.mem_filter.mp he).2
+      simpa using this
+    · rw [applyTS_congr pr.1 (fun a ha => appVar_filter_mem ha)]
+      exact zip_applyTSList happ pr hpr
+
+/-- 積の単一化可能性は成分ごとの単一化可能性(同じ U) -/
+theorem unifiable_prod_comp {τs τts : List Ty}
+    (h : Unifiable (.prod τs) (.prod τts)) (hlen : τs.length = τts.length) :
+    ∀ pr ∈ τs.zip τts, Unifiable pr.1 pr.2 := by
+  obtain ⟨U, hU⟩ := h
+  simp only [Ty.applyTS, Ty.prod.injEq] at hU
+  intro pr hpr
+  exact ⟨U, zip_applyTSList_eq hU hlen pr hpr⟩
+
+/-- キー相異なら find? はその要素自身を返す -/
+theorem find?_eq_of_nodup_keys {α} : ∀ {l : List (String × α)} {y : String} {q : α},
+    (l.map (·.1)).Nodup → (y, q) ∈ l →
+    List.find? (fun x => x.1 == y) l = some (y, q)
+  | [], _, _, _, h => nomatch h
+  | (y', q') :: l, y, q, hnd, hmem => by
+      simp only [List.map_cons, List.nodup_cons] at hnd
+      obtain ⟨hy', hnd'⟩ := hnd
+      rcases List.mem_cons.mp hmem with heq | hmem
+      · injection heq with h1 h2
+        subst h1
+        subst h2
+        simp [List.find?]
+      · have hymem : y ∈ l.map (·.1) := by
+          exact List.mem_map_of_mem hmem
+        have hne : (y' == y) = false := by
+          simp only [beq_eq_false_iff_ne]
+          exact fun e => hy' (e ▸ hymem)
+        simp only [List.find?]
+        rw [show ((y', q').1 == y) = false from hne]
+        exact find?_eq_of_nodup_keys hnd' hmem
+
+/-! ### 原子の整型ビルダー(パターン形状で scalar / And / Or / Tuple を選ぶ)
+
+(b) の再建の中核:双対検査の premise 一式から、パターンの形に応じて
+適切な WT-ATOM 変種を組み立てる。and/or は子へ、タプル×積マッチャー値は
+成分ごとに再帰する(双対検査条件は上の成分分割補題で分配)。 -/
+
+mutual
+theorem buildAtom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
+    ∀ (p : Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
+      {m v : Value} {τp τt τm τm' : Ty},
+    PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
+    ValueTy SD SP SF m (.matcher τm) →
+    RenamesTo τm τm' → OneWay τp τm' → Unifiable τm τt →
+    MatcherOK SD SP m → ValueTy SD SP SF v τt →
+    WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
+  | .pand p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      cases hp with
+      | pand hp₁ hp₂ =>
+        exact WTTree.atomAnd
+          (buildAtom hwfD p₁ hp₁ hm hren how htm hok hv)
+          (buildAtom hwfD p₂ hp₂ hm hren how htm hok hv)
+  | .por p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      cases hp with
+      | por hp₁ hp₂ =>
+        exact WTTree.atomOr
+          (buildAtom hwfD p₁ hp₁ hm hren how htm hok hv)
+          (buildAtom hwfD p₂ hp₂ hm hren how htm hok hv)
+  | .ptuple ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      cases m with
+      | tuple ms =>
+          cases hp with
+          | ptuple hps =>
+            rename_i duals
+            obtain ⟨τs, hτm, hlenms, hcomp⟩ := valueTy_tuple_matcher_inv hm
+            subst hτm
+            obtain ⟨l', hl', hlenl⟩ := renamesTo_prod hren
+            subst hl'
+            obtain ⟨hlen2, hrencomp⟩ := renamesTo_prod_comp hren
+            obtain ⟨hlen3, howcomp⟩ := oneWay_prod_comp how
+            have hunicomp := unifiable_prod_comp htm (by
+              have := patTys_length hps
+              simp only [List.length_map] at hlen3 ⊢
+              omega)
+            obtain ⟨vs, rfl, hlenv, hvcomp⟩ := canonical_prod hwfD hv
+            have hokall : ∀ m' ∈ ms, MatcherOK SD SP m' := by
+              cases hok with
+              | prod hall => exact hall
+            refine WTTree.atomTuple ?_ ?_ ?_
+            · have := patTys_length hps
+              simp only [List.length_map] at hlen3
+              omega
+            · have := patTys_length hps
+              simp only [List.length_map] at hlen3 hlenv
+              omega
+            · exact buildAtoms hwfD ps hps hlenms hcomp hlen2 hrencomp
+                (by simpa using hlen3) howcomp hunicomp hokall
+                (by simpa using hlenv) hvcomp
+                (by have := patTys_length hps
+                    simp only [List.length_map] at hlen3
+                    omega)
+      | matcherV ρm cls =>
+          cases hp with
+          | ptuple hps =>
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+      | something =>
+          cases hp with
+          | ptuple hps =>
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+      | lit n =>
+          cases hp with
+          | ptuple hps =>
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+      | ctor c vs =>
+          cases hp with
+          | ptuple hps =>
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+      | closure self ρc x e =>
+          cases hp with
+          | ptuple hps =>
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+  | .pvar x, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+  | .wild, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+  | .pval e, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+  | .pctor c ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+  | .papp f qs, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+  | .embed y, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+
+theorem buildAtoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
+    ∀ (ps : List Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
+      {duals : List (Ty × Ty)} {ms : List Value} {τs τs' : List Ty}
+      {vs : List Value},
+    PatTys SD SP SF Γ Φ Δ ps duals Δ' →
+    ms.length = τs.length →
+    (∀ pr ∈ ms.zip τs, ValueTy SD SP SF pr.1 (.matcher pr.2)) →
+    τs.length = τs'.length →
+    (∀ pr ∈ τs.zip τs', RenamesTo pr.1 pr.2) →
+    (duals.map (·.1)).length = τs'.length →
+    (∀ pr ∈ (duals.map (·.1)).zip τs', OneWay pr.1 pr.2) →
+    (∀ pr ∈ τs.zip (duals.map (·.2)), Unifiable pr.1 pr.2) →
+    (∀ m' ∈ ms, MatcherOK SD SP m') →
+    vs.length = (duals.map (·.2)).length →
+    (∀ pr ∈ vs.zip (duals.map (·.2)), ValueTy SD SP SF pr.1 pr.2) →
+    ps.length = ms.length →
+    WTStack SD SP SF Γ Φ Δ
+      ((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) Δ'
+  | [], _, _, _, _, _, ms, _, _, vs, hps, _, _, _, _, _, _, _, _, _, _, hlp => by
+      cases hps
+      cases ms with
+      | cons _ _ => simp at hlp
+      | nil => exact WTStack.nil
+  | p :: ps, _, _, _, _, duals, ms, τs, τs', vs, hps, hl1, hmall, hl2, hrall,
+      hl3, hoall, huall, hokall, hl4, hvall, hlp => by
+      cases hps with
+      | cons hph hpst =>
+        rename_i Δmid pr0 dualst
+        cases ms with
+        | nil => simp at hlp
+        | cons m₀ ms' =>
+          cases τs with
+          | nil => simp at hl1
+          | cons τm₀ τst =>
+            cases τs' with
+            | nil => simp at hl2
+            | cons τm₀' τst' =>
+              cases vs with
+              | nil => simp at hl4
+              | cons v₀ vst =>
+                simp only [List.zip_cons_cons, List.map_cons] at *
+                refine WTStack.cons
+                  (buildAtom hwfD p hph
+                    (hmall (m₀, τm₀) (by simp [List.zip_cons_cons]))
+                    (hrall (τm₀, τm₀') (by simp [List.zip_cons_cons]))
+                    (hoall (pr0.1, τm₀') (by simp [List.zip_cons_cons]))
+                    (huall (τm₀, pr0.2) (by simp [List.zip_cons_cons]))
+                    (hokall m₀ (by simp))
+                    (hvall (v₀, pr0.2) (by simp [List.zip_cons_cons]))) ?_
+                exact buildAtoms hwfD ps hpst
+                  (by simpa using hl1)
+                  (fun q hq => hmall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                  (by simpa using hl2)
+                  (fun q hq => hrall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                  (by simpa using hl3)
+                  (fun q hq => hoall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                  (fun q hq => huall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                  (fun m' hm' => hokall m' (by simp; exact .inr hm'))
+                  (by simpa using hl4)
+                  (fun q hq => hvall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                  (by simpa using hlp)
+end
+
 /-! ### MS-REDUCE の易ケース群(継続の再建が文脈素通し・単一束縛のもの) -/
 
 /-- MS-SOME-WC の保存 -/
@@ -1197,7 +1477,7 @@ theorem preserve_someWC {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : P
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv hvp =>
+    | atom hsc hp hm hren how htm hok hv =>
         cases hp
         exact ⟨hρ, Δ₀, hθ, hrest⟩
 
@@ -1210,7 +1490,7 @@ theorem preserve_someValEq {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv hvp =>
+    | atom hsc hp hm hren how htm hok hv =>
         cases hp
         exact ⟨hρ, Δ₀, hθ, hrest⟩
 
@@ -1224,7 +1504,7 @@ theorem preserve_someVar {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv hvp =>
+    | atom hsc hp hm hren how htm hok hv =>
         cases hp with
         | pvar hx =>
           refine ⟨hρ, _, ⟨?_, ?_⟩, hrest⟩
@@ -1256,7 +1536,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv hvp =>
+    | atom hsc hp hm hren how htm hok hv =>
         rename_i τp τt τm τm'
         cases p with
         | pvar x =>
@@ -1266,7 +1546,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
                 (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                   rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
                   (renamesTo_var_refl _) (oneWay_var_refl _)
-                  (unifiable_var_fresh _) MatcherOK.something ?_ trivial) hrest⟩
+                  (unifiable_var_fresh _) MatcherOK.something ?_) hrest⟩
               exact hv
         | wild =>
             cases hp
@@ -1274,7 +1554,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
               (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                 rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
                 (renamesTo_var_refl _) (oneWay_var_refl _)
-                (unifiable_var_fresh _) MatcherOK.something hv trivial) hrest⟩
+                (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
         | pval e =>
             cases hp with
             | pval hty =>
@@ -1282,7 +1562,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
                 (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                   rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
                   (renamesTo_var_refl _) (oneWay_var_refl _)
-                  (unifiable_var_fresh _) MatcherOK.something hv trivial) hrest⟩
+                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
         | pctor c ps => simp [Pattern.isPrimForm] at hprim
         | ptuple ps => simp [Pattern.isPrimForm] at hprim
         | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
@@ -1306,7 +1586,7 @@ theorem preserve_tuple {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : Pa
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomTuple hlen1 hlen2 hcomp =>
         exact ⟨hρ, Δ₀, hθ, wtStack_append hcomp hrest⟩
 
@@ -1321,7 +1601,7 @@ theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | mnode rem duals Γf Δθf Δfin hj hocc hq hd1 hd2 hθf hinner =>
+    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
       have hrem : rem = [] := by
         cases rem with
         | nil => rfl
@@ -1329,6 +1609,64 @@ theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ 
       subst hrem
       cases hq
       exact ⟨hρ, Δ₀, hθ, hrest⟩
+
+/-- MS-MNODE-VARPAT の保存:~y を Π(y) = q に差し替えて外側へ押し出す。
+    q の双対型付けは WT-MNODE の q-premise 先頭、マッチャー側の premise は
+    内側 embed 原子のもの(PAT-EMBED の Φf 対と q-premise の双対対は
+    RemInPhi で一致)をそのまま移し、`buildAtom` で形に応じて組む。 -/
+theorem preserve_mnodeVarpat {SD : SigD} {SP : SigP} {SF : SigF}
+    {Γ : TyCtx} {Φ : PatParamCtx} (hwfD : SigDWF SD)
+    {y : String} {q : Pattern} {m v : Value} {Srest : List Tree}
+    {ρf : Env} {θf : Subst} {piE : PiEnv}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hfind : List.find? (fun pr => pr.1 == y) piE = some (y, q))
+    (hwt : WTStateAt SD SP SF Γ Φ
+      ⟨.mnode (.atom ⟨.embed y, m, v⟩ :: Srest) ρf θf piE :: S, ρ, θ⟩ Δgoal) :
+    WTStateAt SD SP SF Γ Φ
+      ⟨.atom ⟨q, m, v⟩ :: .mnode Srest ρf θf piE :: S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
+      cases rem with
+      | nil => simp [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars] at hocc
+      | cons re rem' =>
+        obtain ⟨ykey, q'⟩ := re
+        have hocc2 : y :: stackEmbedOccs Srest = ykey :: rem'.map (·.1) := by
+          simpa [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars] using hocc
+        injection hocc2 with hykey hoccrest
+        subst hykey
+        obtain ⟨j, hj⟩ := hj
+        have hmem : (y, q') ∈ piE := by
+          have h1 : (y, q') ∈ piE.drop j := by rw [← hj]; simp
+          exact List.mem_of_mem_drop h1
+        have hfind' := find?_eq_of_nodup_keys hnd hmem
+        have hqq : q = q' := by
+          have h2 := Option.some.inj (hfind.symm.trans hfind')
+          exact congrArg Prod.snd h2
+        subst hqq
+        cases hq with
+        | cons hqhead hqtail =>
+          obtain ⟨hfhead, hftail⟩ := hforall
+          cases hinner with
+          | cons hemb hinnerrest =>
+            cases hemb with
+            | atom hsc hpEmb hm hren how htm hok hv =>
+                cases hpEmb with
+                | embed hpfind =>
+                  rename_i pr
+                  have hpd := congrArg Prod.snd
+                    (Option.some.inj (hpfind.symm.trans hfhead))
+                  subst hpd
+                  refine ⟨hρ, Δ₀, hθ, WTStack.cons
+                    (buildAtom hwfD q hqhead hm hren how htm hok hv)
+                    (WTStack.cons ?_ hrest)⟩
+                  refine WTTree.mnode rem' _ Γf Δθf Δfin Φf
+                    ⟨j+1, ?_⟩ hnd hoccrest hqtail hftail hd1 hd2 hθf hinnerrest
+                  calc rem' = ((y, q) :: rem').drop 1 := rfl
+                    _ = (piE.drop j).drop 1 := by rw [hj]
+                    _ = piE.drop (j + 1) := by rw [List.drop_drop]
 
 /-- MS-AND の保存(WT-ATOM-AND):継続はちょうど 2 つの成分原子。 -/
 theorem preserve_and {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatParamCtx}
@@ -1340,7 +1678,7 @@ theorem preserve_and {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatP
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomAnd h₁ h₂ =>
         exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ (WTStack.cons h₂ hrest)⟩
 
@@ -1354,7 +1692,7 @@ theorem preserve_or_left {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ hrest⟩
 
 /-- MS-OR の保存(右分枝) -/
@@ -1367,7 +1705,7 @@ theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₂ hrest⟩
 
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
@@ -1383,6 +1721,7 @@ theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
     ([b-3] 双対スキームのインスタンス化)。 -/
 theorem type_safety_b_at
     {SD : SigD} {SP : SigP} {SF : SigF}
+    (hwfD : SigDWF SD)
     (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
        pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
     {s : MState} {ss : List MState}
@@ -1466,8 +1805,8 @@ theorem type_safety_b_at
     cases hstack with
     | cons htree hrest =>
       cases htree with
-      | mnode rem duals Γf Δθf Δfin hj hocc hq hd1 hd2 hθf hinner =>
-        have hwtIn : WTStateAt SD SP SF Γf ((rem.map (·.1)).zip duals)
+      | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
+        have hwtIn : WTStateAt SD SP SF Γf Φf
             ⟨t :: Srest, ρf, θf⟩ Δfin :=
           ⟨envTyped_of_parts hd1 hd2, Δθf, hθf, hinner⟩
         have hnoIn' : stackNoOr (({ S := t :: Srest, ρ := ρf, θ := θf } :
@@ -1481,14 +1820,14 @@ theorem type_safety_b_at
           rw [show stackEmbedOccs s''.S = stackEmbedOccs (t :: Srest) from hoccEq]
           exact hocc
         exact ⟨hρ, Δ₀, hθ,
-          WTStack.cons (WTTree.mnode rem duals Γf Δθf' Δfin hj hocc' hq hd1 hd2
-            hθf' hinner') hrest⟩
+          WTStack.cons (WTTree.mnode rem duals Γf Δθf' Δfin Φf hj hnd hocc' hq
+            hforall hd1 hd2 hθf' hinner') hrest⟩
   case mvarpat =>
     intro S ρ θ y q m v Srest ρf θf piE hfind
-    intro Γ Φ Δgoal hno hwt s' hs'
+    intro Γ Φ Δgoal _hno hwt s' hs'
     simp only [List.mem_singleton] at hs'
     subst hs'
-    sorry
+    exact preserve_mnodeVarpat hwfD hfind hwt
   case mdone =>
     intro S ρ θ ρf θf piE
     intro Γ Φ Δgoal _hno hwt s' hs'
@@ -1503,13 +1842,14 @@ theorem type_safety_b_at
     (MS-PATFUN-ENTER の双対スキーム実現)で使う予定の interface。) -/
 theorem type_safety_b
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    (hwfD : SigDWF SD)
     {s : MState} {ss : List MState} {Δgoal : BindCtx}
     (hSigF : SigFWF SD SP SF Γ)
     (hstep : Step SF s ss)
     (hno : stackNoOr s.S = true)
     (hwt : WTState SD SP SF Γ s Δgoal) :
     ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal :=
-  type_safety_b_at
+  type_safety_b_at hwfD
     (fun pr hpr => ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr,
       (hSigF pr hpr).paramsNodup⟩)
     hstep Γ [] Δgoal hno hwt
