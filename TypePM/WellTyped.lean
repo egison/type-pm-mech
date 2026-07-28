@@ -97,21 +97,41 @@ def SubstTyped (SD : SigD) (SP : SigP) (SF : SigF) (Δ : BindCtx) (θ : Subst) :
 原子の入力文脈 Δ₀ で型付かなければならない(原子より前の束縛は使えるが、
 同じ原子内の左の穴の束縛は使えない)。
 
-条件は**原子ローカル**(先頭対 p×matcherV のみ)である:タプル原子は
-WT-ATOM-TUPLE(`atomTuple`)が成分原子列として型付けるので、各成分の
-vp 条件はその成分原子の WT-ATOM が **threaded な入力文脈**で持つ
-(旧版の「全成分を同じ Δ₀ で検査する」タプル再帰は、先行成分の束縛が
-後続成分の捕捉式から見えるべき場合に単調でなく、(b) の後続原子再建で
-使えなかった — README [b-4])。 -/
+定義は pand/por/ptuple×tuple を構造的に潜り、matcherV 先頭対で
+捕捉条件を述べる(すべて**入力 Δ₀ 基準**の運搬形)。実際の後続原子は
+threaded な入力を持つので、(b) での使用時は vp 弱化補題
+(束縛名と捕捉式の自由変数の非衝突を側条件とする;README [b-4])で
+Δ₀ から threaded 入力へ橋渡しする。タプル原子自体の型付けは
+WT-ATOM-TUPLE(成分原子列、threaded)が担う。 -/
 
+mutual
 def VPScoped (SD : SigD) (SP : SigP) (SF : SigF)
     (Γ : TyCtx) (Δ₀ : BindCtx) : Pattern → Value → Prop
   | .pand p₁ p₂, m => VPScoped SD SP SF Γ Δ₀ p₁ m ∧ VPScoped SD SP SF Γ Δ₀ p₂ m
   | .por p₁ p₂, m => VPScoped SD SP SF Γ Δ₀ p₁ m ∧ VPScoped SD SP SF Γ Δ₀ p₂ m
+  | .ptuple ps, .tuple ms =>
+      -- 成分条件の運搬(いずれも原子入力 Δ₀ で述べる)。実際の成分原子は
+      -- threaded な入力を持つので、使用時は vp 弱化([b-4])で橋渡しする。
+      VPScopedList SD SP SF Γ Δ₀ ps ms
   | p, .matcherV _ cls =>
       ∀ cl ∈ cls, ∀ M ∈ capturedExprs cl.1 p,
         ∃ τe, HasTy SD SP SF (BindCtx.toCtx Δ₀ ++ Γ) M τe
   | _, _ => True
+
+def VPScopedList (SD : SigD) (SP : SigP) (SF : SigF)
+    (Γ : TyCtx) (Δ₀ : BindCtx) : List Pattern → List Value → Prop
+  | p :: ps, m :: ms =>
+      VPScoped SD SP SF Γ Δ₀ p m ∧ VPScopedList SD SP SF Γ Δ₀ ps ms
+  | _, _ => True
+end
+
+/-- スカラー WT-ATOM の適用対象:タプルパターン×積マッチャー値の原子は
+    WT-ATOM-TUPLE(成分分解形)の側で型付ける。成分ごとの vp 条件を
+    threaded な入力文脈で持てるのは分解形だけなので、(b) の再建は
+    この分業を前提にする。 -/
+def atomScalarOK : Pattern → Value → Bool
+  | .ptuple _, .tuple _ => false
+  | _, _ => true
 
 /-! ## 整型マッチング木・スタック (Fig 6) -/
 
@@ -119,6 +139,7 @@ mutual
 inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
     TyCtx → PatParamCtx → BindCtx → Tree → BindCtx → Prop where
   | atom {Γ Φ Δ Δ' p m v τp τt τm τm'} :               -- WT-ATOM
+      atomScalarOK p m = true →                         -- タプル×積は atomTuple 側
       PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
       ValueTy SD SP SF m (.matcher τm) →                -- m の内在型
       RenamesTo τm τm' →                                -- τm' = fresh_rename(τm)

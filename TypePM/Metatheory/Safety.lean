@@ -61,6 +61,7 @@ theorem matcher_consistency
     (hb : ∀ {s ss}, Step SF s ss → WTState SD SP SF Γ s Δ →
       ∀ s' ∈ ss, WTState SD SP SF Γ s' Δ)
     (hρ : EnvTyped SD SP SF Γ ρ)
+    (hsc : atomScalarOK p m = true)                      -- タプル×積は atomTuple 側の変種で
     (hp : PatTy SD SP SF Γ [] [] p τp τt Δ)              -- 双対判定
     (hm : ValueTy SD SP SF m (.matcher τm))              -- m の内在型
     (hren : RenamesTo τm τm')
@@ -73,7 +74,7 @@ theorem matcher_consistency
     SubstTyped SD SP SF Δ θ := by
   have hinit : WTState SD SP SF Γ ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ Δ :=
     ⟨hρ, [], substTyped_nil,
-      WTStack.cons (WTTree.atom hp hm hren hstr htm hok hv hint) WTStack.nil⟩
+      WTStack.cons (WTTree.atom hsc hp hm hren hstr htm hok hv hint) WTStack.nil⟩
   exact terminal_subst_typed (reaches_preservation hb hrun hinit)
 
 /-! ## Search と Reaches の接続(相互帰納族の結合再帰子による証明) -/

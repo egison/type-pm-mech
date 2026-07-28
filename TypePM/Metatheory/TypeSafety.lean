@@ -571,6 +571,182 @@ theorem type_safety_a
 
 /-! ## Theorem 5.6(b) へ向けた規則別保存補題 -/
 
+/-- WTStack の連結(Δ スレッディングを継ぐ) -/
+theorem wtStack_append {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {Φ : PatParamCtx} : ∀ {S₁ : List Tree} {Δ₀ Δ₁ Δ₂ : BindCtx} {S₂ : List Tree},
+    WTStack SD SP SF Γ Φ Δ₀ S₁ Δ₁ → WTStack SD SP SF Γ Φ Δ₁ S₂ Δ₂ →
+    WTStack SD SP SF Γ Φ Δ₀ (S₁ ++ S₂) Δ₂
+  | [], _, _, _, _, h₁, h₂ => by cases h₁; simpa using h₂
+  | t :: S₁, _, _, _, _, h₁, h₂ => by
+      cases h₁ with
+      | cons ht hS => exact WTStack.cons ht (wtStack_append hS h₂)
+
+/-! ### fresh 変数の具体的供給(再建で something の添字などに使う) -/
+
+def freshFor (τ : Ty) : TyVar := τ.ftv.foldr max 0 + 1
+
+theorem foldr_max_ge : ∀ (l : List TyVar) {a : TyVar}, a ∈ l → a ≤ l.foldr max 0
+  | b :: l, a, h => by
+      rcases List.mem_cons.mp h with rfl | h
+      · exact Nat.le_max_left _ _
+      · exact Nat.le_trans (foldr_max_ge l h) (Nat.le_max_right _ _)
+
+theorem freshFor_not_mem (τ : Ty) : freshFor τ ∉ τ.ftv := by
+  intro h
+  have h2 := foldr_max_ge _ h
+  have h3 : τ.ftv.foldr max 0 + 1 ≤ τ.ftv.foldr max 0 := by
+    simpa [freshFor] using h2
+  exact Nat.not_succ_le_self _ h3
+
+theorem applyTS_single_not_mem {τ σ : Ty} {a : TyVar} (h : a ∉ τ.ftv) :
+    τ.applyTS [(a, σ)] = τ := by
+  have hcong := applyTS_congr τ (θ := [(a, σ)]) (θ' := []) ?_
+  · rw [hcong, applyTS_nil]
+  · intro b hb
+    have hba : (a == b) = false := by
+      simp only [beq_eq_false_iff_ne]
+      exact fun e => h (e ▸ hb)
+    simp [TySubst.appVar, List.find?, hba]
+
+/-- fresh 変数と任意の型は単一化可能 -/
+theorem unifiable_var_fresh (τ : Ty) : Unifiable (.var (freshFor τ)) τ := by
+  refine ⟨[(freshFor τ, τ)], ?_⟩
+  show TySubst.appVar _ _ = τ.applyTS _
+  rw [applyTS_single_not_mem (freshFor_not_mem τ)]
+  simp [TySubst.appVar, List.find?]
+
+/-- 変数はそれ自身への改名を持つ -/
+theorem renamesTo_var_refl (a : TyVar) : RenamesTo (.var a) (.var a) :=
+  ⟨id, fun _ _ h => h, by simp [Ty.applyRen]⟩
+
+/-- 変数は自分自身の one-way instance(空代入) -/
+theorem oneWay_var_refl (a : TyVar) : OneWay (.var a) (.var a) := by
+  refine ⟨[], ?_, applyTS_nil _⟩
+  intro b hb
+  simp [TySubst.dom] at hb
+
+/-! ### MS-REDUCE の易ケース群(継続の再建が文脈素通し・単一束縛のもの) -/
+
+/-- MS-SOME-WC の保存 -/
+theorem preserve_someWC {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {v : Value} {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.wild, .something, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc hp hm hren how htm hok hv hvp =>
+        cases hp
+        exact ⟨hρ, Δ₀, hθ, hrest⟩
+
+/-- MS-SOME-VAL-EQ の保存(値パターン成功;NEQ は継続が空なので義務なし) -/
+theorem preserve_someValEq {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {e : Expr} {v : Value} {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.pval e, .something, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc hp hm hren how htm hok hv hvp =>
+        cases hp
+        exact ⟨hρ, Δ₀, hθ, hrest⟩
+
+/-- MS-SOME-VAR の保存:束縛 x ↦ v の追加。WT-ATOM の値型が τt に
+    固定されているので、束縛の型付けが宣言型と直接一致する。 -/
+theorem preserve_someVar {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {x : String} {v : Value} {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.pvar x, .something, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨S, ρ, (x, v) :: θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc hp hm hren how htm hok hv hvp =>
+        cases hp with
+        | pvar hx =>
+          refine ⟨hρ, _, ⟨?_, ?_⟩, hrest⟩
+          · simp only [List.map_append, List.map_cons, List.map_nil,
+              List.reverse_cons, hθ.1]
+          · intro pr hpr
+            rcases List.mem_append.mp hpr with hpr | hpr
+            · obtain ⟨w, hfind, hty⟩ := hθ.2 pr hpr
+              refine ⟨w, ?_, hty⟩
+              simp only [Env.find?, List.find?]
+              have hxne : (x == pr.1) = false := by
+                simp only [beq_eq_false_iff_ne]
+                exact fun h => hx pr hpr h.symm
+              rw [hxne]
+              simpa [Env.find?] using hfind
+            · simp only [List.mem_singleton] at hpr
+              subst hpr
+              exact ⟨v, by simp [Env.find?, List.find?], hv⟩
+
+/-- MS-PROD-SOME の保存:素形パターンの積マッチャー原子は something 原子へ。
+    パターンの構造添字と something の添字を同じ fresh 変数に取り直す。 -/
+theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {p : Pattern} {ms : List Value} {v : Value}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hprim : p.isPrimForm = true)
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨p, .tuple ms, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨.atom ⟨p, .something, v⟩ :: S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc hp hm hren how htm hok hv hvp =>
+        rename_i τp τt τm τm'
+        cases p with
+        | pvar x =>
+            cases hp with
+            | pvar hx =>
+              refine ⟨hρ, Δ₀, hθ, WTStack.cons
+                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                  rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
+                  (renamesTo_var_refl _) (oneWay_var_refl _)
+                  (unifiable_var_fresh _) MatcherOK.something ?_ trivial) hrest⟩
+              exact hv
+        | wild =>
+            cases hp
+            exact ⟨hρ, Δ₀, hθ, WTStack.cons
+              (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
+                (renamesTo_var_refl _) (oneWay_var_refl _)
+                (unifiable_var_fresh _) MatcherOK.something hv trivial) hrest⟩
+        | pval e =>
+            cases hp with
+            | pval hty =>
+              exact ⟨hρ, Δ₀, hθ, WTStack.cons
+                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                  rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
+                  (renamesTo_var_refl _) (oneWay_var_refl _)
+                  (unifiable_var_fresh _) MatcherOK.something hv trivial) hrest⟩
+        | pctor c ps => simp [Pattern.isPrimForm] at hprim
+        | ptuple ps => simp [Pattern.isPrimForm] at hprim
+        | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+        | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+        | papp f qs => simp [Pattern.isPrimForm] at hprim
+        | embed y => simp [Pattern.isPrimForm] at hprim
+    | atomTuple hlen1 hlen2 hcomp => simp [Pattern.isPrimForm] at hprim
+
+/-- MS-TUPLE の保存(WT-ATOM-TUPLE 型付けの原子):継続はちょうど成分原子列。 -/
+theorem preserve_tuple {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {ps : List Pattern} {ms vs : List Value}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ
+      ⟨.atom ⟨.ptuple ps, .tuple ms, .tuple vs⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ
+      ⟨((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) ++ S, ρ, θ⟩
+      Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomTuple hlen1 hlen2 hcomp =>
+        exact ⟨hρ, Δ₀, hθ, wtStack_append hcomp hrest⟩
+
 /-- MS-MNODE-DONE の保存:空の内側スタックを畳む(**証明済み**)。
     接尾辞前提から rem = [] が従い、q-premise の PatTys nil で Δ が素通しになる。 -/
 theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}

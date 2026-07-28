@@ -1052,7 +1052,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
     ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
-    intro Γ Φ Δ Δ' p m v τp τt τm τm' hp hm hren how htm hok hv _hvps
+    intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how htm hok hv _hvps
     intro S ρ θ hne
     cases p with
     | embed y => exact absurd rfl (hne y m v)
@@ -1145,21 +1145,9 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
               obtain ⟨a, rfl⟩ := valueTy_something_var hm
               exact something_rejected_at_prod hren how
           | prod hall =>
-              -- MS-TUPLE(τt = .prod (duals.map snd) なので v は直接タプル分解できる)
-              obtain ⟨τs, hτm, hlenms, hcomp⟩ := valueTy_tuple_matcher_inv hm
-              obtain ⟨l', hl', hlen'⟩ := oneWay_prod how
-              obtain ⟨l'', hl'', hlen''⟩ := renamesTo_prod (hτm ▸ hren)
-              have hleql : l'.length = l''.length := by
-                have h := hl'.symm.trans hl''
-                injection h with h
-                rw [h]
-              obtain ⟨vs, rfl, hlenvs, -⟩ := canonical_prod hwfD hv
-              have hlps := patTys_length hps
-              have hlenmap : l'.length = duals.length := by simpa using hlen'
-              have hlenvs' : vs.length = duals.length := by simpa using hlenvs
-              refine ⟨_, Step.reduce (MAtom.tuple ?_ ?_)⟩
-              · omega
-              · omega
+              -- タプル×積マッチャーのスカラー型付けは atomScalarOK が排除
+              -- (これらの原子は atomTuple 側で型付き、その progress は自明)
+              simp [atomScalarOK] at hsc
           | consistent _ =>
               -- 積型 Coverage で一般タプル節が witness
               obtain ⟨l', hl', hlen'⟩ := oneWay_prod how
@@ -1262,7 +1250,7 @@ theorem ms_progress
       · -- トップレベルは Φ = [] なので embed 原子は整型でない
         exfalso
         cases htree with
-        | atom hp _ _ _ _ _ _ _ =>
+        | atom _hsc hp _ _ _ _ _ _ _ =>
           cases hp with
           | embed hfind => exact nomatch hfind
       · exact wtTree_progress htotal heval hSigF hwfD hwfP hL htree St ρ θ
