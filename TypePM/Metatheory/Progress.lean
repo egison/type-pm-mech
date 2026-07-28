@@ -1049,15 +1049,15 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
       ∀ (ρ : Env) (θ : Subst),
       (∀ y m v, t₀ ≠ .atom ⟨.embed y, m, v⟩) →
       ∃ ss, Step SF ⟨t₀ :: rest, ρ, θ⟩ ss)
-    ?_ ?_ ?_ ?_ ?_ hwt
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
     intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how htm hok hv _hvps
     intro S ρ θ hne
     cases p with
     | embed y => exact absurd rfl (hne y m v)
-    | pand p₁ p₂ => exact ⟨_, Step.reduce MAtom.and⟩
-    | por p₁ p₂ => exact ⟨_, Step.reduce MAtom.or⟩
+    | pand p₁ p₂ => simp [atomScalarOK] at hsc
+    | por p₁ p₂ => simp [atomScalarOK] at hsc
     | papp f qs =>
         cases hp with
         | papp hfind hqs hd1 hd2 =>
@@ -1163,6 +1163,16 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
                   ⟨(.tuple (List.replicate τs.length .hole), M₀, arms₀), hmem,
                     tupleGeneral_shape hlen⟩
               exact ⟨_, Step.reduce hMA⟩
+  -- WT-ATOM-AND:MS-AND で簡約できる
+  case _ =>
+    intro Γ Φ Δ Δmid Δ' p₁ p₂ m v _h₁ _h₂ _ih₁ _ih₂
+    intro S ρ θ _hne
+    exact ⟨_, Step.reduce MAtom.and⟩
+  -- WT-ATOM-OR:MS-OR で簡約できる
+  case _ =>
+    intro Γ Φ Δ Δ' p₁ p₂ m v _h₁ _h₂ _ih₁ _ih₂
+    intro S ρ θ _hne
+    exact ⟨_, Step.reduce MAtom.or⟩
   -- WT-ATOM-TUPLE:成分分解形はそのまま MS-TUPLE で簡約できる
   case _ =>
     intro Γ Φ Δ Δ' ps ms vs hlen1 hlen2 _hstack _ih_stack

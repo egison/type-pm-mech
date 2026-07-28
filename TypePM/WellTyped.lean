@@ -131,6 +131,8 @@ end
     この分業を前提にする。 -/
 def atomScalarOK : Pattern → Value → Bool
   | .ptuple _, .tuple _ => false
+  | .pand _ _, _ => false
+  | .por _ _, _ => false
   | _, _ => true
 
 /-! ## 整型マッチング木・スタック (Fig 6) -/
@@ -153,6 +155,17 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       --  SubstTyped 再建(束縛 = 宣言型)のために τt へ一本化した。)
       VPScoped SD SP SF Γ Δ p m →                       -- vp-scoped(値パターンスコープ条件、Def 4.2(4))
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
+  | atomAnd {Γ Φ Δ Δmid Δ' p₁ p₂ m v} :                 -- WT-ATOM-AND
+      -- and 原子の成分分解形:MS-AND の継続そのもの(左→右スレッディング)。
+      -- 子の vp 条件を threaded な入力で持つための追加規則(atomTuple と同旨)。
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨p₁, m, v⟩) Δmid →
+      WTTree SD SP SF Γ Φ Δmid (.atom ⟨p₂, m, v⟩) Δ' →
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨.pand p₁ p₂, m, v⟩) Δ'
+  | atomOr {Γ Φ Δ Δ' p₁ p₂ m v} :                       -- WT-ATOM-OR
+      -- or 原子:両分枝とも同じ入力・同じ出力(PAT-OR と同じ形)。
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨p₁, m, v⟩) Δ' →
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨p₂, m, v⟩) Δ' →
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨.por p₁ p₂, m, v⟩) Δ'
   | atomTuple {Γ Φ Δ Δ' ps ms vs} :                     -- WT-ATOM-TUPLE
       -- タプル原子の成分分解形:成分原子の列を WTStack で左→右にスレッディング。
       -- (i) COERCE-SLOT-TUPLE 由来の site(成分ごとのスロット witness を

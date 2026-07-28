@@ -728,6 +728,8 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
         | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
         | papp f qs => simp [Pattern.isPrimForm] at hprim
         | embed y => simp [Pattern.isPrimForm] at hprim
+    | atomAnd h₁ h₂ => simp [Pattern.isPrimForm] at hprim
+    | atomOr h₁ h₂ => simp [Pattern.isPrimForm] at hprim
     | atomTuple hlen1 hlen2 hcomp => simp [Pattern.isPrimForm] at hprim
 
 /-- MS-TUPLE の保存(WT-ATOM-TUPLE 型付けの原子):継続はちょうど成分原子列。 -/
@@ -767,10 +769,56 @@ theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
       cases hq
       exact ⟨hρ, Δ₀, hθ, hrest⟩
 
+/-- MS-AND の保存(WT-ATOM-AND):継続はちょうど 2 つの成分原子。 -/
+theorem preserve_and {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {p₁ p₂ : Pattern} {m v : Value}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.pand p₁ p₂, m, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨.atom ⟨p₁, m, v⟩ :: .atom ⟨p₂, m, v⟩ :: S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomAnd h₁ h₂ =>
+        exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ (WTStack.cons h₂ hrest)⟩
+
+/-- MS-OR の保存(左分枝) -/
+theorem preserve_or_left {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {p₁ p₂ : Pattern} {m v : Value}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.por p₁ p₂, m, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨.atom ⟨p₁, m, v⟩ :: S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ hrest⟩
+
+/-- MS-OR の保存(右分枝) -/
+theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {p₁ p₂ : Pattern} {m v : Value}
+    {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
+    (hwt : WTState SD SP SF Γ ⟨.atom ⟨.por p₁ p₂, m, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTState SD SP SF Γ ⟨.atom ⟨p₂, m, v⟩ :: S, ρ, θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atom hsc _ _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₂ hrest⟩
+
 /-- **Theorem 5.6(b) (マッチング状態保存)**。
     s → [s₁, …, s_l] かつ ⊢ s : Δ_goal ok ならば各 sᵢ について ⊢ sᵢ : Δ_goal ok。
-    未機械化(README ロードマップ [b-3] HM 代入補題・[b-4] vp-scoped の
-    threaded 伝播・[b-5] 結合帰納)。 -/
+
+    骨組みは規則別に配線済みで、**11 の簡約分岐のうち 9 つ
+    (MS-SOME-WC/VAR/VAL-EQ/VAL-NEQ・MS-AND・MS-OR・MS-TUPLE・
+    MS-PROD-SOME・MS-MNODE-DONE)は証明済みの保存補題で閉じる**。
+    残る sorry は MS-MATCHER 系 3 規則(役割別 τt 取り直し+後続 vp、
+    README [b-4][b-5.5])・MS-PATFUN-ENTER / MS-MNODE-VARPAT([b-3]
+    双対スキームインスタンス化)・MS-MNODE-STEP(接尾辞不変量の維持+
+    内側再帰)。 -/
 theorem type_safety_b
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
     {s : MState} {ss : List MState} {Δgoal : BindCtx}
@@ -778,6 +826,66 @@ theorem type_safety_b
     (hstep : Step SF s ss)
     (hwt : WTState SD SP SF Γ s Δgoal) :
     ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal := by
-  sorry
+  cases hstep with
+  | reduce hma =>
+      intro s' hs'
+      simp only [List.mem_map] at hs'
+      obtain ⟨as, has, rfl⟩ := hs'
+      cases hma with
+      | someWC =>
+          simp only [List.mem_singleton] at has
+          subst has
+          simpa using preserve_someWC hwt
+      | someVar =>
+          simp only [List.mem_singleton] at has
+          subst has
+          simpa using preserve_someVar hwt
+      | someValEq hev hsE =>
+          simp only [List.mem_singleton] at has
+          subst has
+          simpa using preserve_someValEq hwt
+      | someValNeq hev hsE => cases has
+      | and =>
+          simp only [List.mem_singleton] at has
+          subst has
+          simpa using preserve_and hwt
+      | or =>
+          simp only [List.mem_cons] at has
+          rcases has with rfl | rfl | h
+          · simpa using preserve_or_left hwt
+          · simpa using preserve_or_right hwt
+          · cases h
+      | tuple hl1 hl2 =>
+          simp only [List.mem_singleton] at has
+          subst has
+          have h := preserve_tuple hwt
+          simpa [List.map_map, Function.comp_def] using h
+      | prodSome hprim =>
+          simp only [List.mem_singleton] at has
+          subst has
+          simpa using preserve_prodSome hprim hwt
+      | matcherPPFail hpc hppm hma' => sorry
+      | matcherDPFail hpc hppm hpd hma' => sorry
+      | matcher hpc hppm hpd hevN hlist hvss hevM hms => sorry
+  | patfunEnter hfind hlen =>
+      intro s' hs'
+      simp only [List.mem_singleton] at hs'
+      subst hs'
+      sorry
+  | mnodeStep hcond hstep' =>
+      intro s' hs'
+      simp only [List.mem_map] at hs'
+      obtain ⟨s'', hs'', rfl⟩ := hs'
+      sorry
+  | mnodeVarpat hfind =>
+      intro s' hs'
+      simp only [List.mem_singleton] at hs'
+      subst hs'
+      sorry
+  | mnodeDone =>
+      intro s' hs'
+      simp only [List.mem_singleton] at hs'
+      subst hs'
+      exact preserve_mnodeDone hwt
 
 end TypePM
