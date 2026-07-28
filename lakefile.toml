@@ -1,0 +1,6 @@
+name = "type-pm-mech"
+version = "0.1.0"
+defaultTargets = ["TypePM"]
+
+[[lean_lib]]
+name = "TypePM"
