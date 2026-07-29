@@ -1,50 +1,84 @@
-# `type-pm` の未解決設計問題
+# `type-pm` の問題台帳
 
-このディレクトリは，`type-pm-paper` が条件付き結果の前提として残している
-設計問題を，1問題1ファイルで検討するための索引である．
+このディレクトリは，`type-pm-paper` のレビューで見つかった問題を，
+1問題1ファイルで追跡するための索引である．
 
-ここにある文書は設計の決定記録ではない．現在固定できている事実，必要な性質，
-候補となる設計空間，決定前に答えるべき質問を分離し，問題を1つずつ議論できる
-ようにすることを目的とする．
+問題を次の2種類に分ける．
 
-## 問題一覧
+- **P（Pending）**：設計判断が残っており，論文では `\todo{...}` により赤字で
+  示している問題．
+- **R（Resolved）**：`type-pm-paper` の
+  `05bf5f8fd41d942f6c0926a86413da9175ea5c5c` より後の編集のうち，
+  修正内容と主張範囲を固定でき，論文では `\new{...}` により青字で示している問題．
+
+ここで「解決済み」は，その記録に書かれた範囲の意味論，規則，証明境界，
+または実装上の主張が固定されたという意味である．Egison が形式条件を全面的に
+強制することや，Lean の最終定理が無条件であることまで一律に意味しない．
+各記録の「保証範囲」と「残る境界」を必ず併せて読むこと．
+
+## 未解決の問題
 
 | ID | 問題 | 現在の論文への影響 | 状態 |
 |---|---|---|---|
 | P1 | [不透明・高階なマッチャーフローに対する値パターンスコープ条件](value-pattern-scope.md) | 捕捉許容性，条件付き保存性・型安全性 | 設計判断待ち |
 | P2 | [`Matcher` 添字の能力を保存するスキームインスタンス化](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，無条件の進行性・型安全性 | 設計判断待ち |
 
-## 2問題の境界
+## 解決済みの問題
 
-- P1 は「選ばれた matcher 節の `#$x` が，利用者パターン中のどの値パターン式を
-  捕捉し，その式が原子入力環境だけで型付くか」を扱う．
-- P2 は「一般化された matcher 値を利用箇所でインスタンス化しても，定義時に
-  確立した分解能力が強化されないか」を扱う．
-- どちらも実行時の matcher 値の流れに関係するが，P1 は名前・環境・捕捉順序，
-  P2 は型スキーム・固有能力・インスタンス関係の問題である．一方の解決を
-  そのまま他方の解決とみなしてはならない．
+| ID | 問題 | 固定したもの |
+|---|---|---|
+| R1 | [`match` の表層意味論と定理の射程](resolved-surface-match-boundary.md) | 単一節 `matchAll` の成功評価，表層の逐次試行・失敗との境界 |
+| R2 | [matcher 節へ送るパターン形の限定](resolved-matcher-clause-dispatch.md) | `clause-form` と構文主導ディスパッチ |
+| R3 | [matcher 節の到達可能性と arm 網羅性](resolved-matcher-consistency-reachability.md) | catch-all-last，Coverage/refinement の到達性，全インスタンスでの arm 網羅性 |
+| R4 | [`StepTotal` と MNode を含む進行性](resolved-step-total-mnode-progress.md) | 埋込み big-step の停止前提，MNode 深さによる進行性証明 |
+| R5 | [値パターンパターン捕捉の実行時意味論](resolved-value-pattern-capture-runtime.md) | 原子入力環境の捕捉，同一原子内の穴との順序 |
+| R6 | [実行時環境と MNode の整型不変量](resolved-runtime-environment-invariant.md) | `ρ ⊨ Γ`，`ρ_f ⊨ Γ_f` と既存の state/MNode 不変量の結合 |
+| R7 | [matcher の固有型，slot，対象型整列](resolved-runtime-matcher-typing-invariant.md) | 単相 rigidity，直接の対象型関係，積 slot の成分別不変量 |
+| R8 | [`MS-MATCHER` 保存性の全ケース](resolved-ms-matcher-preservation.md) | Structural-Hole Transfer，general/refinement/catch-all/失敗ケース |
+| R9 | [相対的主要性と Algorithm W の主張境界](resolved-relative-principality-boundary.md) | one-way の局所結果，固定入力に相対的な紙上補題，full principality の撤回 |
+| R10 | [条件付きメタ理論の正確な境界](resolved-conditional-metatheory-boundary.md) | `Adm`/`StepTotal` 前提，条件付き保存性・進行性・型安全性・整合性 |
+| R11 | [Egison 実装と検証結果の主張範囲](resolved-implementation-validation-scope.md) | 実装済み検査，部分近似，既存注釈を含む検証 corpus |
 
-## 共通して固定されていること
+## P1 と R5 の境界
 
-- `PPP-VAL` は捕捉した値パターン式を，穴による同一原子内の束縛を追加する前の
-  原子環境で評価する．
-- matcher 値の固有型は，`T-MATCHER`／`T-SOME` が確立した構造的能力を表す．
-  matcher の実行時タプルには，`COERCE-TUPLE-MATCHER` の値レベル版により
-  正準な積の固有型が与えられる．利用箇所の `MatcherSlot` は，これらの
-  固有能力を検査する消費位置である．
-- 現在の型安全性・マッチング状態進行性・マッチャー整合性は，捕捉許容性と
-  能力許容性を仮定する条件付き結果として読む．
-- `StepTotal` という停止性前提は別問題であり，この2ファイルでは設計対象にしない．
+- R5 は，`#$x` が捕捉する値パターン式にどの環境を与えるかという**実行時意味論**
+  を固定する．
+- P1 は，その式が原子入力環境だけで型付くことを，不透明・高階な matcher の
+  流れを含めて**静的に保証する方法**を決める．
+- Lean の `VPScoped` は P1 の候補述語であり，現在の `WTTree.atom` と最終
+  `type_safety` には配線されていない．したがって R5 の完了を P1 の完了と
+  みなしてはならない．
 
-## このディレクトリでの進め方
+## P2 と R7・R9 の境界
 
-1. 対象の問題ファイルにある「決定すべき質問」に回答する．
-2. 採用案だけでなく，却下案と却下理由を残す．
-3. 決定後，論文の英語版・日本語版，Egison 実装，Lean の判断・定理境界を
-   同時に更新する作業単位を定める．
-4. 各ファイルの「受入条件」を満たすテストと機械化を行う．
-5. 完了した設計は `type-pm-mech/README.md` の設計判断へ移し，本索引では
-   決定記録への参照を残す．
+- R7 は，固定された単相導出内で matcher 値の固有能力を保ち，利用位置の
+  `MatcherSlot` で検査する規則と実行時不変量を固定する．
+- R9 は，one-way 構造関係や固定入力に相対的な局所主要性までを切り出す．
+- P2 は，一般化された `Matcher` の型スキームを利用点でインスタンス化しても
+  その能力を強化しない関係を設計する．通常の HM インスタンス化をそのまま
+  使う限り残るため，R7 や R9 の局所結果だけでは閉じない．
+
+## 記録の読み方
+
+各解決済み記録は，原則として次を分離する．
+
+1. 以前の記述または証明で何が問題だったか．
+2. 論文で固定した解決．
+3. Egison 本体が同じ性質をどこまで実装しているか．
+4. Lean がどの定義・定理まで機械化しているか．
+5. P1/P2，停止性，実装の部分近似など，解決に含めない境界．
+
+青字の abstract，introduction，conclusion，依存図，付録案内，例示は，
+R1–R11 の主張を各所へ反映したものである．独立した問題として重複登録しない．
+
+## 更新手順
+
+1. 未解決問題では「決定すべき質問」に回答し，採用案と却下理由を残す．
+2. 決定後は，論文の英語版・日本語版，Egison 実装，Lean の定義・定理境界を
+   同じ作業単位で更新する．
+3. 解決済み記録には，回帰確認先と，明示的に保証しない範囲を残す．
+4. 論文の `\new`／`\todo` を外すときも，本台帳は設計・証明境界の履歴として
+   維持する．
 
 ## 主な参照先
 
@@ -55,10 +89,17 @@
   [`TypePM/Syntax.lean`](../TypePM/Syntax.lean)，
   [`TypePM/TypeRel.lean`](../TypePM/TypeRel.lean)，
   [`TypePM/Typing.lean`](../TypePM/Typing.lean)
-- Lean の実行時不変量と型安全性：
-  [`TypePM/WellTyped.lean`](../TypePM/WellTyped.lean)，
-  [`TypePM/Metatheory/TypeSafety.lean`](../TypePM/Metatheory/TypeSafety.lean)
-- Egison の型推論：
+- Lean の意味論と実行時不変量：
+  [`TypePM/Semantics.lean`](../TypePM/Semantics.lean)，
+  [`TypePM/WellTyped.lean`](../TypePM/WellTyped.lean)
+- Lean のメタ理論：
+  [`TypePM/Metatheory/Preservation.lean`](../TypePM/Metatheory/Preservation.lean)，
+  [`TypePM/Metatheory/Progress.lean`](../TypePM/Metatheory/Progress.lean)，
+  [`TypePM/Metatheory/TypeSafety.lean`](../TypePM/Metatheory/TypeSafety.lean)，
+  [`TypePM/Metatheory/Safety.lean`](../TypePM/Metatheory/Safety.lean)，
+  [`TypePM/Metatheory/Principal.lean`](../TypePM/Metatheory/Principal.lean)
+- Egison：
+  [`Core.hs`](../../egison/hs-src/Language/Egison/Core.hs)，
   [`Type/Infer.hs`](../../egison/hs-src/Language/Egison/Type/Infer.hs)，
   [`Type/Unify.hs`](../../egison/hs-src/Language/Egison/Type/Unify.hs)，
   [`Type/Env.hs`](../../egison/hs-src/Language/Egison/Type/Env.hs)
