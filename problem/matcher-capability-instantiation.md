@@ -122,6 +122,60 @@ def mPoly {a} : Matcher a :=
 これは，剛的な `Matcher` 同士の直接単一化を禁止するだけでは不十分で，
 スキームの量化変数を置換する経路にも能力保存条件が必要であることを示す．
 
+この説明は，量化変数への任意の型代入を許す Lean の宣言的 `Scheme.Inst` には
+直接当てはまる．一方，現行 Egison の Algorithm W は lookup 時には `a` を
+新鮮な型変数 `β` へ置き換えるだけである．したがって `mPoly` を直接 cons site
+へ渡す場合は，`Matcher β` に対する構造検査 `β' ⊑ [α]` が失敗し，型エラーになる．
+現行実装で実際に剛性を迂回できるのは，次の共有型変数を通る経路である．
+
+## 共有型変数経由の反例
+
+```egison
+def f := \w ->
+  matcher
+    | $ as something with
+      | $tgt -> [w]
+```
+
+catch-all 節の分解結果 `[w]` により，引数 `w` の型と matcher の対象型が共有され，
+`f` には概念的に次のスキームが推論される．
+
+```text
+f : ∀a. a -> Matcher a
+```
+
+この `f` を次のように利用する．
+
+```egison
+matchAll [1, 2] as f [1, 2] with
+  | $x :: $xs -> x
+```
+
+型推論は次の順に進む．
+
+1. `f` の lookup はスキームを `β -> Matcher β` へ fresh 化する．
+2. 通常の関数適用が引数 `[1, 2] : [Integer]` と仮引数 `β` を単一化し，
+   `β := [Integer]` を得る．
+3. その結果，matcher 式 `f [1, 2]` の型は `Matcher [Integer]` になる．
+4. この具体化では `Matcher β` と `Matcher [Integer]` を直接比較しないため，
+   `Matcher`--`Matcher` の剛性規則は一度も発火しない．
+5. cons site へ到達した時点では，構造検査は
+   `[Integer] ⊑ [α]` となって成功する．
+
+しかし，実行時の matcher 値は catch-all 節しか持たず，cons パターンを
+`something` へ委譲するため，
+
+```text
+something can only match with a pattern variable
+```
+
+として行き詰まる．現行 Egison の strict type checking でも，この式が型エラーなく
+実行へ進み，上記エラーに到達することを確認している．
+
+この例は，P2 が単なる「lookup 時の fresh 化」や「`Matcher` 同士の直接剛性」では
+解決しないことを示す．定義元では裸変数だった能力を，通常引数，関数結果，積の別成分
+などから生じる後続代入とは独立に保持する必要がある．
+
 ## 許容すべきパラメータ化 matcher
 
 ```egison
@@ -435,6 +489,8 @@ matcher 添字の剛性を失うため，この前提を将来の Algorithm W �
 - [ ] 能力保存スキームインスタンス関係が形式的に定義されている．
 - [ ] `mPoly : ∀a. Matcher a` から `Matcher [Integer]` への危険な能力強化が
       導出できない．
+- [ ] `f : ∀a. a -> Matcher a` の通常引数から matcher 添字を具体化する経路でも，
+      定義元の裸変数能力が保存され，cons site が拒否される．
 - [ ] `∀a. MatcherSlot a a -> Matcher [a]` の `a := Integer` が導出できる．
 - [ ] `something`／`eq` の正当な裸変数スロット利用が受理される．
 - [ ] 積 matcher，高階関数，`let`，トップレベル定義，データ格納を含む
