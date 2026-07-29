@@ -55,6 +55,67 @@
 - **(その 4、2026-07-28、論文・実装・機械化へ反映済み)bare-hole 節の順序条件と節規則の適用対象 — 散文・証明が前提していた規律の形式化**:順序(catch-all 最後)自体は論文が既に前提として明記していた(付録 C.3 の catch-all ケースは「by clause order」を根拠に使い、Def 4.2(2) の説明文は「他の節が残したパターンを扱う」、Def 4.2(4) は精密化節が一般節より「先に選ばれる」と述べる)。差分は、定理が量化する**形式述語としての** Def 4.2(2) が「∈ cls(存在)」しか要求しておらず「by clause order」がどの条項にも対応していなかったこと、および**実装が検査していなかった**こと(逆順マッチャーが型検査を通過し実行時 something エラー — 実機再現済みの実害)。(i) **順序**:catch-all(bare-hole 節)は「他の節が残したパターンを扱う」(Def 4.2(2))が、節は先頭から試され PPP-HOLE は任意のパターンに一致するので、bare-hole 節が Coverage の一般形節より**前**にあると構成子パターンを捕まえて `(c p⃗, something, v)` に到達し行き詰まる(現行 Def 4.2 は ∈ だけを要求するのでこの逆順マッチャーも「整合」— (b) の反例)。標準ライブラリの慣習(catch-all 最後)を条件化する必要がある:「各 bare-hole 節の前に、Coverage が要求する全一般形節(積型なら一般タプル節)が現れる」。(ii) **節規則の適用対象**:MS-MATCHER 系規則に p の側条件がなく、`(x::xs) & $y` のような and パターンも catch-all に捕まり(MS-AND との非決定的重なり)、部分パターンの構成子が something に到達しうる。実装(Egison)は and/or/パターン関数適用/~x を**節照合の前に**構文主導で処理しており、規則側に「p は節適用形(構成子/タプル/変数/ワイルドカード/値パターン)」の側条件を付けて一致させるべき。**反映済み(2026-07-28)**:機械化 = `Pattern.isClauseForm` 側条件(MAtom 3 規則+`matomF` ガード+Adequacy 配管)+`ConsistentClauses.holeAfterGenerals`;論文 = Fig 2 側条件・§3.3・Def 4.2(2) 順序文・(1c) インスタンス注記・付録 C.3・付録 J(en 65p/ja 63p ビルド済);実装 = 逆順(catch-all 後の到達不能節)を型エラー化(Infer.hs、minitest/009)。lib/sample の全 36 マッチャーが順序条件を満たすことを全数調査で確認し、逆順マッチャーが「型検査通過→実行時 something エラー」になる反例も実機で再現してから条件化した。なお 1(a) の構造的許容性(穴の構造成分=標的の骨格改名)が「something を分解可能標的の穴に置く」誤りを既に静的排除していることも機械化で確認した(PP-Con の refresh がその機構;bare-hole 節だけが構造検査空虚で、だからこそ (i) の順序条件が要る)。
 - **(その 3、2026-07-28 最終設計:原子環境での先行評価+intercept-ok)PPP-VAL の捕捉評価**:pp の #$y に捕捉された p 側 #M の M は、**節選択時に原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される — これを公式の意味論として採用。従って**原子より前の束縛は使える**(実測:`($p :: _, $ls ++ #p :: $rs)` でタプル第 1 成分のピボット p を第 2 成分の `sortedList` ピボット節が参照して成功、`egison/mini-test/125`)が、**同じ原子内の左の穴の束縛は使えない**(実測:`$ys ++ #ys` は無音の `[]`;未束縛参照がシンボル化)。当初案の接頭条件 (i) は `sortedList` のピボット節 `$ ++ #$px :: $` や `assocMultiset` の `($, #$n) :: $` を殺すため撤回。この条件は**パターン単独でもマッチャー単独でも静的に決められない**(同じ #e が取り出し経路では左束縛を見られる — pair の #pat;捕捉深さはマッチャーの pp 形状に依存)ので、**パターン・マッチャー対の条件 = 値パターンスコープ条件、WT-ATOM の premise `vp-scoped`**(機械化 `capturedExprs`/`VPScoped`)として定式化。論文 = Def 4.2(4) 書き換え+Fig 6 WT-ATOM に premise+Def 5.3+付録 J(en/ja ビルド済)。実装 = 意味論は元からこの通り(thunk が原子環境を捕捉);**マッチャーの節形状が静的に既知の site(リテラル・そのタプル・トップレベル定義の適用)では型エラーとして静的検査を実装**、不明(スロット引数)な site は付録 J に開示のとおり検査対象外。
 
+## 残りの作業(ロードマップ、2026-07-29 現在)
+
+`lake build` 緑・`sorry`/`axiom` 0。Thm 5.1/5.3/5.4/5.5/5.7・Lem 5.2/C.2・
+適切性・正準形層は無条件に証明済み。Thm 5.6 は最終定理 `type_safety` として
+oracle 前提 5 つ(論文の証明規約の形式的インターフェース)つきで証明済み。
+残る作業はその放電で、大物 2 つ+中長期 3 項目:
+
+### 1. [b-5] `hevG` の放電(結合帰納法)
+- (a) `type_safety_a`(Eval.rec)と (b) `type_safety_b_at`(Step.rec)を、
+  相互帰納族の**単一結合再帰子**(Eval/Step の motive を同時に非自明化)へ統合する。
+  現状は (b)→(a) 方向のみパッケージ内で閉じており、(a)→(b) 方向が hevG。
+- 併せて hevG の ∀Γ'(環境なし)形の精密化が必要な箇所は 1 種類:
+  Lem 5.4 の値パターンパターン捕捉(#$y)の式の型付け文脈。分離済みの
+  vp-scoped 並行不変量(WellTyped.lean の設計注記)をここで transport する。
+- 完了時:`type_safety` から hevG が消える。
+
+### 2. [b-6] `hclorc`・`hinstF` の放電(内在型付けの使用点インスタンス輸送)
+- 論文 Notation 節の prevailing-substitution 規約の機械化。核は
+  **HasTy/PatTy/PPTy/PDTy/ClauseTy/ArmsTy 族の代入補題**(型代入で判定が
+  閉じること)。T-SOME が something の内在型を変数にピンするため、
+  代入後に**マッチャー添字の再フレッシュ化**(代入→改名の合成)が要る。
+- `hclorc`:値の ClausesTy@τm(内在)から shape 一致節の ClauseTy@τt を
+  再導出(供給先 = `preserve_matcher_step`;環境合成 `walk_env_typed` は証明済)。
+- `hinstF`:PATFUN-DEF の記録本体導出(`PatFunWF.bodyTyped`)を呼出しの
+  ss/ts でインスタンス化+実引数双対の到達不変量の正準化(fresh-leaf 読み。
+  宣言的には ss の病的選択で破れうるため正準化して供給する;第 16 版注記)。
+
+### 3. 中長期
+- **Stage 2:Algorithm W の機械化**(主要型・§4.6 rigidity をアルゴリズムとして)。
+  `hgen`(rigidity 制限つき一般化)と `hsiteReach`(§4.2 fresh-leaf)は
+  アルゴリズム的導出が構成的に満たすので、W の健全性からの放電が自然。
+- list/multiset の Def 4.2 具体マッチャー整合性検証(Examples 拡充)。
+- egison 実装側の積み残し:Coverage/(1c) の ML 流列挙の精密化
+  (`ebrConstructorEnv` 配管)・reject テスト。
+
+## 現状(2026-07-29 第 17 版:**Thm 5.6 最終パッケージ — hinit 放電・(b)→(a) 結合閉鎖**)
+
+- **最終定理 `type_safety`**(論文 Thm 5.6 の (a)(b) 対)を追加。oracle 前提は
+  論文の証明規約の形式的インターフェースとして明示:
+  | oracle | 内容 | 論文対応 |
+  |---|---|---|
+  | `hgen` | HM 一般化(rigidity 制限つき) | §4.6/Stage 2(Algorithm W) |
+  | `hsiteReach` | site 双対導出の構造添字の到達不変量 | §4.2 fresh-leaf 規約 |
+  | `hclorc`・`hinstF` | 内在型付けの使用点インスタンス輸送 | Notation 節 prevailing-substitution 規約([b-6]) |
+  | `hevG` | 評価型付け ∀ρ'∀Γ' 形 | [b-5] 結合帰納法の残項目 |
+- **旧 hinit oracle を完全放電**:`slot_atom` の σ 条件を「標的の改名 ∨ σ = τp
+  (site 由来)」に一般化し、`initial_atom_wt` が site スロット反転一発で
+  初期原子を組む(残る仮定は hsiteReach = §4.2 規約のみ)。
+- **(b)→(a) 方向の結合を閉鎖**:(a) の hb oracle を「noOr 保存つき連言形」に
+  精密化し、パッケージ内で `step_occs`+`type_safety_b_at` から供給。
+  必要な到達状態の stackNoOr 確立も証明(`patTy_nil_embedFree`:Φ=[] の
+  双対導出は ~x を含まない・`noEmbedInOr_of_embedFree`・`stackNoOr_init`・
+  `reaches_preservation_noOr`)。
+- 残る大物 2 つ(いずれも精密なインターフェースまで切り出し済み):
+  1. **[b-5]** hevG の放電 = (a) の Eval.rec と (b) の Step.rec を 1 つの
+     結合再帰子に統合する mega-induction(+hevG の ∀Γ' 形を環境つき形へ
+     精密化する vp-scoped transport)。
+  2. **[b-6]** hclorc/hinstF の放電 = HasTy/PatTy 族の代入補題
+     (マッチャー添字再フレッシュ化込み)による内在型付けの
+     インスタンス輸送(論文の prevailing-substitution 規約の機械化)。
+
 ## 現状(2026-07-29 第 16 版:**Thm 5.6(b) 全 14 分岐閉鎖 — sorry 0**)
 
 - **`type_safety_b` の全 14 分岐が証明され、リポジトリの `sorry` は 0 になった。**

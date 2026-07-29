@@ -220,6 +220,113 @@ theorem ctor_not_matcher {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
 
 /-! ## Theorem 5.6(a) -/
 
+/-! ### 到達状態の stackNoOr 確立(site パターンは Φ = [] で embed-free) -/
+
+mutual
+/-- Φ = [] の双対導出は ~x を含まない(PAT-EMBED の find? が空で失敗) -/
+theorem patTy_nil_embedFree {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} :
+    ∀ (p : Pattern) {Δ Δ' : BindCtx} {τp τt : Ty},
+    PatTy SD SP SF Γ [] Δ p τp τt Δ' → p.embedVars = []
+  | .pvar x, _, _, _, _, _ => rfl
+  | .wild, _, _, _, _, _ => rfl
+  | .pval e, _, _, _, _, _ => rfl
+  | .embed y, _, _, _, _, h => by
+      cases h with
+      | embed hf => exact nomatch hf
+  | .pctor c ps, _, _, _, _, h => by
+      cases h with
+      | pctor _ hps _ _ =>
+          simpa [Pattern.embedVars] using patTys_nil_embedFree ps hps
+  | .pand p₁ p₂, _, _, _, _, h => by
+      cases h with
+      | pand h₁ h₂ =>
+          simp [Pattern.embedVars, patTy_nil_embedFree p₁ h₁,
+            patTy_nil_embedFree p₂ h₂]
+  | .por p₁ p₂, _, _, _, _, h => by
+      cases h with
+      | por h₁ h₂ =>
+          simp [Pattern.embedVars, patTy_nil_embedFree p₁ h₁,
+            patTy_nil_embedFree p₂ h₂]
+  | .papp f qs, _, _, _, _, h => by
+      cases h with
+      | papp _ hqs _ _ =>
+          simpa [Pattern.embedVars] using patTys_nil_embedFree qs hqs
+  | .ptuple ps, _, _, _, _, h => by
+      cases h with
+      | ptuple hps =>
+          simpa [Pattern.embedVars] using patTys_nil_embedFree ps hps
+
+theorem patTys_nil_embedFree {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} :
+    ∀ (ps : List Pattern) {duals : List (Ty × Ty)} {Δ Δ' : BindCtx},
+    PatTys SD SP SF Γ [] Δ ps duals Δ' → embedVarsList ps = []
+  | [], _, _, _, _ => rfl
+  | p :: ps, _, _, _, h => by
+      cases h with
+      | cons hp hps =>
+          simp [embedVarsList, patTy_nil_embedFree p hp,
+            patTys_nil_embedFree ps hps]
+end
+
+mutual
+/-- embed-free なら noEmbedInOr は自明に成立 -/
+theorem noEmbedInOr_of_embedFree : ∀ (p : Pattern),
+    p.embedVars = [] → p.noEmbedInOr = true
+  | .pvar _, _ => rfl
+  | .wild, _ => rfl
+  | .pval _, _ => rfl
+  | .embed _, _ => rfl
+  | .pctor c ps, h => by
+      simp only [Pattern.embedVars] at h
+      simpa [Pattern.noEmbedInOr] using noEmbedInOrList_of_embedFree ps h
+  | .pand p₁ p₂, h => by
+      simp only [Pattern.embedVars, List.append_eq_nil_iff] at h
+      simp [Pattern.noEmbedInOr, noEmbedInOr_of_embedFree p₁ h.1,
+        noEmbedInOr_of_embedFree p₂ h.2]
+  | .por p₁ p₂, h => by
+      simp only [Pattern.embedVars, List.append_eq_nil_iff] at h
+      simp [Pattern.noEmbedInOr, h.1, h.2,
+        noEmbedInOr_of_embedFree p₁ h.1, noEmbedInOr_of_embedFree p₂ h.2]
+  | .papp f qs, h => by
+      simp only [Pattern.embedVars] at h
+      simpa [Pattern.noEmbedInOr] using noEmbedInOrList_of_embedFree qs h
+  | .ptuple ps, h => by
+      simp only [Pattern.embedVars] at h
+      simpa [Pattern.noEmbedInOr] using noEmbedInOrList_of_embedFree ps h
+
+theorem noEmbedInOrList_of_embedFree : ∀ (ps : List Pattern),
+    embedVarsList ps = [] → noEmbedInOrList ps = true
+  | [], _ => rfl
+  | p :: ps, h => by
+      simp only [embedVarsList, List.append_eq_nil_iff] at h
+      simp [noEmbedInOrList, noEmbedInOr_of_embedFree p h.1,
+        noEmbedInOrList_of_embedFree ps h.2]
+end
+
+/-- match site の初期 1 原子スタックは stackNoOr を満たす -/
+theorem stackNoOr_init {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {p : Pattern} {m v : Value} {τp τt : Ty} {Δ : BindCtx}
+    (hp : PatTy SD SP SF Γ [] [] p τp τt Δ) :
+    stackNoOr [.atom ⟨p, m, v⟩] = true := by
+  simp [stackNoOr, treeNoOr,
+    noEmbedInOr_of_embedFree p (patTy_nil_embedFree p hp)]
+
+/-- (b) の noOr つき反復((a) の EV-MATCHALL で使用;oracle は
+    「noOr を保存しつつ WT を保存する」連言形で受け取る) -/
+theorem reaches_preservation_noOr {SD : SigD} {SP : SigP} {SF : SigF}
+    {Γ : TyCtx} {Δgoal : BindCtx}
+    (hb : ∀ {s ss}, Step SF s ss → stackNoOr s.S = true →
+       WTState SD SP SF Γ s Δgoal →
+       ∀ s' ∈ ss, stackNoOr s'.S = true ∧ WTState SD SP SF Γ s' Δgoal)
+    {s s' : MState}
+    (hr : Reaches SF s s') (hno : stackNoOr s.S = true)
+    (hwt : WTState SD SP SF Γ s Δgoal) :
+    WTState SD SP SF Γ s' Δgoal := by
+  induction hr with
+  | refl => exact hwt
+  | step hstep hmem _ ih =>
+      obtain ⟨hno', hwt'⟩ := hb hstep hno hwt _ hmem
+      exact ih hno' hwt'
+
 /-- **Theorem 5.6(a) (式評価の型付け)**(**oracle 分解で証明済み**)。
     Γ ⊢ e : τ で ρ が Γ で型付けられ、ρ, e ⇓ v ならば v : τ。
     oracle:`hb` = 5.6(b)、`hgen` = HM 一般化補題(rigidity 制限つき;Stage 2)、
@@ -229,7 +336,8 @@ theorem type_safety_a
     {SD : SigD} {SP : SigP} {SF : SigF}
     (hwfD : SigDWF SD) (hL : ListSigOK SD)
     (hb : ∀ {Γ' : TyCtx} {Δ : BindCtx} {s ss}, Step SF s ss →
-       WTState SD SP SF Γ' s Δ → ∀ s' ∈ ss, WTState SD SP SF Γ' s' Δ)
+       stackNoOr s.S = true → WTState SD SP SF Γ' s Δ →
+       ∀ s' ∈ ss, stackNoOr s'.S = true ∧ WTState SD SP SF Γ' s' Δ)
     (hgen : ∀ {Γ' : TyCtx} {ρ' : Env} {e₁ : Expr} {v₁ : Value} {τ₁ : Ty}
        {L : List TyVar},
        Eval SF ρ' e₁ v₁ → EnvTyped SD SP SF Γ' ρ' → HasTy SD SP SF Γ' e₁ τ₁ →
@@ -554,7 +662,8 @@ theorem type_safety_a
           intro θ hθ
           obtain ⟨ρ', hreach⟩ := search_mem_reaches hsearch θ hθ
           exact terminal_subst_typed
-            (reaches_preservation (fun {s ss} hst hwt => hb hst hwt) hreach hwtinit)
+            (reaches_preservation_noOr (fun {s ss} hst hno hwt => hb hst hno hwt)
+              hreach (stackNoOr_init hp) hwtinit)
         refine mkListV_typed hL ?_
         intro x hx
         obtain ⟨θ, hzip⟩ := exists_mem_zip_right hlen hx
@@ -1339,6 +1448,15 @@ buildAtom のスロット版:m がスロット型で型付く値でありさえ�
 ptuple は成分ごとに再帰、それ以外は WT-ATOM-SLOT でスロットのまま担ぐ。
 MS-MATCHER の後続原子再建と MS-MNODE-VARPAT の積スロット原子転送の中核。 -/
 
+/-- スロットの ⊑ をパターン構造添字起点へ:σ が標的の改名なら到達不変量と
+    合成(oneWay_trans)、σ = τp(site 由来)なら slot の ⊑ がそのまま -/
+theorem slot_left_how {τp τt σ τm'' : Ty}
+    (hreach : StructReaches τp τt) (hσ : RenamesTo τt σ ∨ σ = τp)
+    (howσ : OneWay σ τm'') : OneWay τp τm'' := by
+  rcases hσ with hσr | rfl
+  · exact oneWay_trans (hreach σ hσr) howσ
+  · exact howσ
+
 mutual
 theorem slot_atom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
     ∀ (p : Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
@@ -1346,7 +1464,7 @@ theorem slot_atom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
     PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
     StructReaches τp τt →
     ValueTy SD SP SF m (.slot σ τt) →
-    RenamesTo τt σ →
+    (RenamesTo τt σ ∨ σ = τp) →
     ValueTy SD SP SF v τt →
     WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
   | .pand p₁ p₂, _, _, _, _, _, _, _, _, _, hp, hreach, hslot, hσ, hv => by
@@ -1366,7 +1484,7 @@ theorem slot_atom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ |
         ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD (.ptuple ps) hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · cases hp with
         | ptuple hps =>
           rename_i duals
@@ -1383,53 +1501,90 @@ theorem slot_atom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
             have h3 := structReaches_prod hreach
               (i := j) (by simpa using hj) (by simpa using hj)
             simpa [List.getElem_map] using h3
-          have hrencomp : ∀ pr ∈ (duals.map (·.2)).zip (prs.map (·.1)),
-              RenamesTo pr.1 pr.2 := by
-            have hσ' : RenamesTo (.prod (duals.map (·.2))) (.prod (prs.map (·.1))) := by
-              rw [← hσp]
-              exact hσ
-            exact (renamesTo_prod_comp hσ').2
+          have hσcomp : ∀ pr ∈ duals.zip prs,
+              RenamesTo pr.1.2 pr.2.1 ∨ pr.2.1 = pr.1.1 := by
+            rcases hσ with hσr | hσe
+            · have hσ' : RenamesTo (.prod (duals.map (·.2))) (.prod (prs.map (·.1))) := by
+                rw [← hσp]
+                exact hσr
+              have hcomp' := (renamesTo_prod_comp hσ').2
+              intro pr hpr
+              left
+              obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
+              have hid : i < duals.length := by
+                simp only [List.length_zip] at hi
+                omega
+              have hip : i < prs.length := by
+                simp only [List.length_zip] at hi
+                omega
+              rw [List.getElem_zip]
+              have h5 := hcomp' ((duals.map (·.2))[i]'(by simpa using hid),
+                (prs.map (·.1))[i]'(by simpa using hip)) (by
+                  rw [show ((duals.map (·.2))[i]'(by simpa using hid),
+                    (prs.map (·.1))[i]'(by simpa using hip))
+                    = ((duals.map (·.2)).zip (prs.map (·.1)))[i]'(by
+                        simp only [List.length_zip, List.length_map]
+                        omega) from (List.getElem_zip ..).symm]
+                  exact List.getElem_mem _)
+              simpa [List.getElem_map] using h5
+            · -- σ = τp = prod(duals-fst):prs-fst = duals-fst
+              have he : (prs.map (·.1)) = (duals.map (·.1)) := by
+                have h6 : (Ty.prod (prs.map (·.1))) = .prod (duals.map (·.1)) := by
+                  rw [← hσp, hσe]
+                injection h6
+              intro pr hpr
+              right
+              obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
+              have hid : i < duals.length := by
+                simp only [List.length_zip] at hi
+                omega
+              have hip : i < prs.length := by
+                simp only [List.length_zip] at hi
+                omega
+              rw [List.getElem_zip]
+              have h7 := List.getElem_of_eq he (by simpa using hip)
+              simpa [List.getElem_map] using h7
           refine WTTree.atomTuple ?_ ?_ ?_
           · omega
           · simp only [List.length_map] at hlenv
             omega
-          · exact slot_atoms hwfD ps hps hreachcomp hsnd hlen hcomp hrencomp
+          · exact slot_atoms hwfD ps hps hreachcomp hsnd hlen hcomp hσcomp
               (by simpa using hlenv) hvcomp (by omega)
   | .pvar x, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
   | .wild, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
   | .pval e, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
   | .pctor c ps, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
   | .papp f qs, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
   | .embed y, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
       rcases slot_value_inv hwfD hslot with
         ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
       · exact buildAtom hwfD _ hp hm hren
-          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+          (slot_left_how hreach hσ howσ) hreach huni hok hv
       · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
 
 theorem slot_atoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
@@ -1440,7 +1595,7 @@ theorem slot_atoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
     duals.map (·.2) = prs.map (·.2) →
     ms.length = prs.length →
     (∀ pr ∈ ms.zip prs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2)) →
-    (∀ pr ∈ (duals.map (·.2)).zip (prs.map (·.1)), RenamesTo pr.1 pr.2) →
+    (∀ pr ∈ duals.zip prs, RenamesTo pr.1.2 pr.2.1 ∨ pr.2.1 = pr.1.1) →
     vs.length = duals.length →
     (∀ pr ∈ vs.zip (duals.map (·.2)), ValueTy SD SP SF pr.1 pr.2) →
     ps.length = ms.length →
@@ -1473,7 +1628,7 @@ theorem slot_atoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
                   (hreaches pr0 (List.mem_cons_self ..))
                   (by rw [hsnd0]
                       exact hmall (m₀, q₀) (by simp [List.zip_cons_cons]))
-                  (hrall (pr0.2, q₀.1) (by simp [List.zip_cons_cons]))
+                  (hrall (pr0, q₀) (by simp [List.zip_cons_cons]))
                   (hvall (v₀, pr0.2) (by simp [List.zip_cons_cons]))) ?_
               exact slot_atoms hwfD ps hpst
                 (fun q hq => hreaches q (List.mem_cons_of_mem _ hq))
@@ -2461,16 +2616,18 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
                     have hlenpr : duals.length = pairs.length := by
                       have := congrArg List.length hsnd
                       simpa using this
-                    have hrall : ∀ pr ∈ (duals.map (·.2)).zip (pairs.map (·.1)),
-                        RenamesTo pr.1 pr.2 := by
+                    have hrall : ∀ pr ∈ duals.zip pairs,
+                        RenamesTo pr.1.2 pr.2.1 ∨ pr.2.1 = pr.1.1 := by
                       intro pr hpr
+                      left
                       obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
                       have hid : i < duals.length := by
-                        simp only [List.length_zip, List.length_map] at hi
+                        simp only [List.length_zip] at hi
                         omega
-                      have hip : i < pairs.length := by omega
+                      have hip : i < pairs.length := by
+                        simp only [List.length_zip] at hi
+                        omega
                       rw [List.getElem_zip]
-                      simp only [List.getElem_map]
                       have h2 : duals[i].2 = pairs[i].2 := by
                         have := List.getElem_of_eq hsnd (by simpa using hid)
                         simpa [List.getElem_map] using this
@@ -2490,16 +2647,18 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
                     have hlenpr : duals.length = pairs.length := by
                       have := congrArg List.length hsnd
                       simpa using this
-                    have hrall : ∀ pr ∈ (duals.map (·.2)).zip (pairs.map (·.1)),
-                        RenamesTo pr.1 pr.2 := by
+                    have hrall : ∀ pr ∈ duals.zip pairs,
+                        RenamesTo pr.1.2 pr.2.1 ∨ pr.2.1 = pr.1.1 := by
                       intro pr hpr
+                      left
                       obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
                       have hid : i < duals.length := by
-                        simp only [List.length_zip, List.length_map] at hi
+                        simp only [List.length_zip] at hi
                         omega
-                      have hip : i < pairs.length := by omega
+                      have hip : i < pairs.length := by
+                        simp only [List.length_zip] at hi
+                        omega
                       rw [List.getElem_zip]
-                      simp only [List.getElem_map]
                       have h2 : duals[i].2 = pairs[i].2 := by
                         have := List.getElem_of_eq hsnd (by simpa using hid)
                         simpa [List.getElem_map] using this
@@ -2878,5 +3037,82 @@ theorem type_safety_b
     (fun pr hpr => ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr,
       (hSigF pr hpr).paramsNodup⟩)
     hstep Γ [] Δgoal hno hwt
+
+/-! ## 最終形:Theorem 5.6 (Type Safety) のパッケージ
+
+(a)(b) を oracle 前提つきで束ねる。oracle は論文の証明規約の形式的
+インターフェース:
+
+* `hgen` — HM の一般化補題(§4.6 の rigidity 制限つき;Stage 2 = Algorithm W)。
+* `hsiteReach` — site 双対導出の構造添字は fresh-leaf 構成(§4.2 の
+  「independent fresh leaves」規約)。旧 hinit oracle はこれと
+  `initial_atom_wt` で**完全放電**した。
+* `hclorc` / `hinstF` — 値が持つ内在型付け(節型付け・記録本体導出)の
+  使用点インスタンスへの輸送。論文 Notation 節「Reading the relations
+  across a derivation」の prevailing-substitution 規約に対応([b-6])。
+* `hevG` — 評価型付けの ∀ρ'∀Γ' 形。(b)→(a) 方向はこのパッケージで
+  閉じている(`step_occs`+`type_safety_b_at`)が、(a)→(b) 方向
+  (hevG 自身の放電)は (a) との結合帰納法 [b-5] の残項目。 -/
+
+/-- match site の初期原子の整型(旧 hinit oracle の放電核):
+    site スロットは σ = τp なので `slot_atom` の site 分岐一発。 -/
+theorem initial_atom_wt {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    (hwfD : SigDWF SD)
+    {p : Pattern} {v_m v_t : Value} {τp τt : Ty} {Δ : BindCtx}
+    (hp : PatTy SD SP SF Γ [] [] p τp τt Δ)
+    (hreach : StructReaches τp τt)
+    (hm : ValueTy SD SP SF v_m (.slot τp τt))
+    (hv : ValueTy SD SP SF v_t τt) :
+    WTStack SD SP SF Γ [] [] [.atom ⟨p, v_m, v_t⟩] Δ :=
+  WTStack.cons (slot_atom hwfD p hp hreach hm (.inr rfl) hv) WTStack.nil
+
+/-- **Theorem 5.6 (Type Safety)**:評価の型保存 (a) とマッチング状態保存 (b)。
+    oracle 前提はモジュール docstring と README のロードマップを参照。 -/
+theorem type_safety {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
+    (hSigF : SigFWF SD SP SF Γ)
+    (hevG : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    (hgen : ∀ {Γ' : TyCtx} {ρ' : Env} {e₁ : Expr} {v₁ : Value} {τ₁ : Ty}
+       {L : List TyVar},
+       Eval SF ρ' e₁ v₁ → EnvTyped SD SP SF Γ' ρ' → HasTy SD SP SF Γ' e₁ τ₁ →
+       (∀ a ∈ L, a ∉ ftvCtx Γ') →
+       ∀ τ', Scheme.Inst ⟨L, τ₁⟩ τ' → ValueTy SD SP SF v₁ τ')
+    (hsiteReach : ∀ {Γ' : TyCtx} {p : Pattern} {τp τt : Ty} {Δ : BindCtx},
+       PatTy SD SP SF Γ' [] [] p τp τt Δ → StructReaches τp τt)
+    (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
+       ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
+       Unifiable τm τt → p.isClauseForm = true →
+       ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
+         ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
+    (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
+       {Γ' : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty},
+       List.find? (fun pr => pr.1 == f) SF = some (f, sig) →
+       PatTy SD SP SF Γ' Φ Δ₀ (.papp f qs) τp τt Δ' →
+       ∃ duals Δfin,
+         PatTys SD SP SF Γ' Φ Δ₀ qs duals Δ' ∧
+         (∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
+         PatTy SD SP SF Γ' (sig.params.zip duals) [] sig.body τp τt Δfin) :
+    (∀ {ρ : Env} {e : Expr} {v : Value} {Γ' : TyCtx} {τ : Ty},
+       Eval SF ρ e v → EnvTyped SD SP SF Γ' ρ → HasTy SD SP SF Γ' e τ →
+       ValueTy SD SP SF v τ) ∧
+    (∀ {s : MState} {ss : List MState} {Δgoal : BindCtx},
+       Step SF s ss → stackNoOr s.S = true → WTState SD SP SF Γ s Δgoal →
+       ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal) := by
+  have hSF' : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
+      pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup := fun pr hpr =>
+    ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr, (hSigF pr hpr).paramsNodup⟩
+  constructor
+  · intro ρ e v Γ' τ hev hρ hty
+    refine type_safety_a hwfD hL ?_ hgen ?_ hev hρ hty
+    · intro Γ'' Δ s ss hstep hno hwt s' hs'
+      exact ⟨(step_occs hSF' hstep hno s' hs').2,
+        type_safety_b_at hwfD hwfP hL hevG hclorc hinstF hSF' hstep
+          Γ'' [] Δ hno hwt s' hs'⟩
+    · intro Γ'' p v_m v_t τ_p τ_t Δ hp hm hv
+      exact initial_atom_wt hwfD hp (hsiteReach hp) hm hv
+  · intro s ss Δgoal hstep hno hwt
+    exact type_safety_b_at hwfD hwfP hL hevG hclorc hinstF hSF' hstep
+      Γ [] Δgoal hno hwt
 
 end TypePM

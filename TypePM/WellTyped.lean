@@ -190,7 +190,8 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
       StructReaches τp τt →
       ValueTy SD SP SF (.tuple ms) (.slot σ τt) →
-      RenamesTo τt σ →
+      -- σ は標的の改名(節スロット由来)か、パターン自身の構造添字(site 由来)
+      (RenamesTo τt σ ∨ σ = τp) →
       ValueTy SD SP SF v τt →
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p, .tuple ms, v⟩) Δ'
   | atomTuple {Γ Φ Δ Δ' ps ms vs} :                     -- WT-ATOM-TUPLE
