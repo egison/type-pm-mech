@@ -24,7 +24,8 @@ matcher/slot に限られ premise は prod/matcher なので、強制の入れ�
 `cases hty` をその深さだけ入れ子にし、強制層は値レベル対応物
 (`slotV`/`prodMatcher`/`prodSlot`;README 設計判断 11)で追随する。
 
-(b) `type_safety_b` は MS-PATFUN-ENTER([b-3])のみ sorry(他 13 分岐証明済)。
+(b) `type_safety_b` は**全 14 分岐証明済み**(oracle hevG・hclorc・hinstF は
+[b-5] 結合帰納法/[b-6] インスタンス輸送で放電;README ロードマップ)。
 -/
 
 namespace TypePM
@@ -2550,18 +2551,163 @@ theorem preserve_matcher_step {SD : SigD} {SP : SigP} {SF : SigF}
         intro as has
         exact ⟨hρ, Δ₀, by simpa using hθ, wtStack_append (hstacks as has) hrest⟩
 
+/-! ### MS-PATFUN-ENTER の保存([b-3]) -/
+
+/-- 位置ごとの find? 解決から RemInPhi を組む(Φf は固定なので添字一般化) -/
+theorem remInPhi_of_forall {Φf : PatParamCtx} : ∀ {rem : PiEnv} {duals : List (Ty × Ty)},
+    rem.length = duals.length →
+    (∀ i, (h1 : i < rem.length) → (h2 : i < duals.length) →
+       List.find? (fun x => x.1 == rem[i].1) Φf = some (rem[i].1, duals[i])) →
+    RemInPhi Φf rem duals
+  | [], [], _, _ => trivial
+  | [], _ :: _, hl, _ => by simp at hl
+  | _ :: _, [], hl, _ => by simp at hl
+  | pr :: rem, d :: duals, hl, hfind => by
+      refine ⟨?_, remInPhi_of_forall (by simpa using hl) ?_⟩
+      · have := hfind 0 (by simp) (by simp)
+        simpa using this
+      · intro i h1 h2
+        have := hfind (i + 1) (by simpa using Nat.succ_lt_succ h1)
+          (by simpa using Nat.succ_lt_succ h2)
+        simpa using this
+
+/-- 鍵つき zip の fst 射影(双対列版) -/
+theorem zip_map_fst' {α : Type _} : ∀ (l₁ : List String) (l₂ : List α),
+    l₁.length = l₂.length → (l₁.zip l₂).map (·.1) = l₁
+  | [], [], _ => by simp
+  | [], _ :: _, h => by simp at h
+  | y :: l₁, [], h => by simp at h
+  | y :: l₁, q :: l₂, h => by
+      simp [List.zip_cons_cons, zip_map_fst' l₁ l₂ (by simpa using h)]
+
+/-- MS-PATFUN-ENTER の保存。oracle `hinstF`([b-3] 双対スキームの
+    インスタンス化;[b-6] で放電):PATFUN-DEF の記録本体導出を呼出しの
+    ss/ts でインスタンス化した、実引数双対列(到達不変量つき)と
+    Φf = params.zip duals での本体双対導出(マッチャー添字は再フレッシュ化)。
+    m 側前提(hm/hren/how/htm/hok/hreach/hv)は本体原子の双対が呼出し原子と
+    同一 (τp ▷ τt) なので**素通しで転送**され、scalar なら buildAtom・
+    積スロットなら slot_atom で内側原子を組む。 -/
+theorem preserve_patfunEnter {SD : SigD} {SP : SigP} {SF : SigF}
+    (hwfD : SigDWF SD)
+    (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
+       pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
+    (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
+       {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty},
+       List.find? (fun pr => pr.1 == f) SF = some (f, sig) →
+       PatTy SD SP SF Γ Φ Δ₀ (.papp f qs) τp τt Δ' →
+       ∃ duals Δfin,
+         PatTys SD SP SF Γ Φ Δ₀ qs duals Δ' ∧
+         (∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
+         PatTy SD SP SF Γ (sig.params.zip duals) [] sig.body τp τt Δfin)
+    {Γ : TyCtx} {Φ : PatParamCtx} {f : String} {qs : List Pattern}
+    {m v : Value} {sig : PatFunSig} {S : List Tree} {ρ : Env} {θ : Subst}
+    {Δgoal : BindCtx}
+    (hfind : List.find? (fun pr => pr.1 == f) SF = some (f, sig))
+    (hlen : sig.params.length = qs.length)
+    (hwt : WTStateAt SD SP SF Γ Φ ⟨.atom ⟨.papp f qs, m, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    WTStateAt SD SP SF Γ Φ
+      ⟨.mnode [.atom ⟨sig.body, m, v⟩] ρ [] (sig.params.zip qs) :: S, ρ, θ⟩
+      Δgoal := by
+  obtain ⟨hlin, -, hnd⟩ := hSF _ (List.mem_of_find?_eq_some hfind)
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    have hd1 : ∀ y w, Env.find? ρ y = some w → ∃ σ, TyCtx.find? Γ y = some σ := by
+      intro y w hf
+      obtain ⟨σ, hσ, -⟩ := hρ y w hf
+      exact ⟨σ, hσ⟩
+    have hd2 : ∀ y w σ τ', Env.find? ρ y = some w → TyCtx.find? Γ y = some σ →
+        σ.Inst τ' → ValueTy SD SP SF w τ' := by
+      intro y w σ τ' hf hΓ hinst
+      obtain ⟨σ', hσ', hall⟩ := hρ y w hf
+      obtain rfl := Option.some.inj (hσ'.symm.trans hΓ)
+      exact hall τ' hinst
+    cases htree with
+    | atom hsc hp hm hren how hreach htm hok hv =>
+        obtain ⟨duals, Δfin, hqs, hdreach, hbody⟩ := hinstF hfind hp
+        have hlq : qs.length = duals.length := patTys_length hqs
+        refine ⟨hρ, Δ₀, hθ, WTStack.cons ?_ hrest⟩
+        refine WTTree.mnode (sig.params.zip qs) duals Γ [] Δfin
+          (sig.params.zip duals) ⟨0, rfl⟩ ?_ ?_ ?_ ?_ ?_ hd1 hd2 substTyped_nil ?_
+        · rw [zip_map_fst _ _ hlen]
+          exact hnd
+        · simp only [stackEmbedOccs, treeEmbedOccs, List.append_nil]
+          rw [hlin, zip_map_fst _ _ hlen]
+        · rw [zip_map_snd _ _ hlen]
+          exact hqs
+        · apply remInPhi_of_forall
+          · simp only [List.length_zip]
+            omega
+          · intro i h1 h2
+            have hip : i < sig.params.length := by
+              simp only [List.length_zip] at h1
+              omega
+            have hid : i < duals.length := h2
+            have h3 : (sig.params.zip qs)[i].1 = sig.params[i] := by
+              rw [List.getElem_zip]
+            rw [h3]
+            apply find?_eq_of_nodup_keys
+            · rw [zip_map_fst' _ _ (by omega)]
+              exact hnd
+            · have h4 : (sig.params.zip duals)[i]'(by
+                  simp only [List.length_zip]; omega) = (sig.params[i], duals[i]) :=
+                List.getElem_zip ..
+              rw [← h4]
+              exact List.getElem_mem _
+        · intro pr hpr
+          exact hdreach pr.2 (List.of_mem_zip hpr).2
+        · exact WTStack.cons
+            (buildAtom hwfD sig.body hbody hm hren how hreach htm hok hv)
+            WTStack.nil
+    | atomSlot hsc hp hreach hslot hσ hv =>
+        obtain ⟨duals, Δfin, hqs, hdreach, hbody⟩ := hinstF hfind hp
+        have hlq : qs.length = duals.length := patTys_length hqs
+        refine ⟨hρ, Δ₀, hθ, WTStack.cons ?_ hrest⟩
+        refine WTTree.mnode (sig.params.zip qs) duals Γ [] Δfin
+          (sig.params.zip duals) ⟨0, rfl⟩ ?_ ?_ ?_ ?_ ?_ hd1 hd2 substTyped_nil ?_
+        · rw [zip_map_fst _ _ hlen]
+          exact hnd
+        · simp only [stackEmbedOccs, treeEmbedOccs, List.append_nil]
+          rw [hlin, zip_map_fst _ _ hlen]
+        · rw [zip_map_snd _ _ hlen]
+          exact hqs
+        · apply remInPhi_of_forall
+          · simp only [List.length_zip]
+            omega
+          · intro i h1 h2
+            have hip : i < sig.params.length := by
+              simp only [List.length_zip] at h1
+              omega
+            have hid : i < duals.length := h2
+            have h3 : (sig.params.zip qs)[i].1 = sig.params[i] := by
+              rw [List.getElem_zip]
+            rw [h3]
+            apply find?_eq_of_nodup_keys
+            · rw [zip_map_fst' _ _ (by omega)]
+              exact hnd
+            · have h4 : (sig.params.zip duals)[i]'(by
+                  simp only [List.length_zip]; omega) = (sig.params[i], duals[i]) :=
+                List.getElem_zip ..
+              rw [← h4]
+              exact List.getElem_mem _
+        · intro pr hpr
+          exact hdreach pr.2 (List.of_mem_zip hpr).2
+        · exact WTStack.cons
+            (slot_atom hwfD sig.body hbody hreach hslot hσ hv)
+            WTStack.nil
+
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
     MS-MNODE-STEP の内側再帰に帰納法の仮定を供給する。
     仮定 `hSF` は PATFUN-DEF の意味論側条件(線形性・noEmbedInOr・仮引数相異)、
     `stackNoOr` は or 分岐が ~x を落とさないための状態不変量
     (site パターンは embed-free、本体は noOr なので到達状態で成立;
     維持は `step_occs` が同時に示す)。
-    **14 分岐のうち 13 は証明済み**(MS-SOME 系 4・MS-AND・MS-OR・MS-TUPLE・
-    MS-PROD-SOME・MS-MNODE 系 3・**MS-MATCHER 系 3 = 節歩行補題
-    `matom_matcher_preserve` 経由**)。残る sorry は MS-PATFUN-ENTER
-    ([b-3] 双対スキームのインスタンス化)のみ。
-    oracle `hevG`(評価型付け)と `hclorc`(τt 節型付け輸送)は
-    [b-6] で結合帰納法から放電する。 -/
+    **全 14 分岐証明済み**(MS-SOME 系 4・MS-AND・MS-OR・MS-TUPLE・
+    MS-PROD-SOME・MS-MNODE 系 3・MS-MATCHER 系 3 = 節歩行補題
+    `matom_matcher_preserve` 経由・MS-PATFUN-ENTER = `preserve_patfunEnter`)。
+    oracle は 3 つ:`hevG`(評価型付け;[b-5] で (a) との結合帰納法から)、
+    `hclorc`(shape 一致節の τt 節型付け輸送)、`hinstF`(双対スキームの
+    インスタンス化 [b-3])—— 後 2 者は [b-6] のインスタンス輸送で放電する。 -/
 theorem type_safety_b_at
     {SD : SigD} {SP : SigP} {SF : SigF}
     (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
@@ -2572,6 +2718,14 @@ theorem type_safety_b_at
        Unifiable τm τt → p.isClauseForm = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
+    (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
+       {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty},
+       List.find? (fun pr => pr.1 == f) SF = some (f, sig) →
+       PatTy SD SP SF Γ Φ Δ₀ (.papp f qs) τp τt Δ' →
+       ∃ duals Δfin,
+         PatTys SD SP SF Γ Φ Δ₀ qs duals Δ' ∧
+         (∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
+         PatTy SD SP SF Γ (sig.params.zip duals) [] sig.body τp τt Δfin)
     (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
        pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
     {s : MState} {ss : List MState}
@@ -2645,10 +2799,10 @@ theorem type_safety_b_at
           (MAtom.matcher hpc hppm hpd hevN hlist hvss hevM hms) hwt as has
   case patfun =>
     intro S ρ θ f qs m v sig hfind hlen
-    intro Γ Φ Δgoal hno hwt s' hs'
+    intro Γ Φ Δgoal _hno hwt s' hs'
     simp only [List.mem_singleton] at hs'
     subst hs'
-    sorry
+    exact preserve_patfunEnter hwfD hSF hinstF hfind hlen hwt
   case mstep =>
     intro S ρ θ t Srest ρf θf piE ss hcond hstep' ih
     intro Γ Φ Δgoal hno hwt s' hs'
@@ -2706,13 +2860,21 @@ theorem type_safety_b
        Unifiable τm τt → p.isClauseForm = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
+    (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
+       {Γ' : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty},
+       List.find? (fun pr => pr.1 == f) SF = some (f, sig) →
+       PatTy SD SP SF Γ' Φ Δ₀ (.papp f qs) τp τt Δ' →
+       ∃ duals Δfin,
+         PatTys SD SP SF Γ' Φ Δ₀ qs duals Δ' ∧
+         (∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
+         PatTy SD SP SF Γ' (sig.params.zip duals) [] sig.body τp τt Δfin)
     {s : MState} {ss : List MState} {Δgoal : BindCtx}
     (hSigF : SigFWF SD SP SF Γ)
     (hstep : Step SF s ss)
     (hno : stackNoOr s.S = true)
     (hwt : WTState SD SP SF Γ s Δgoal) :
     ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal :=
-  type_safety_b_at hwfD hwfP hL hevG hclorc
+  type_safety_b_at hwfD hwfP hL hevG hclorc hinstF
     (fun pr hpr => ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr,
       (hSigF pr hpr).paramsNodup⟩)
     hstep Γ [] Δgoal hno hwt

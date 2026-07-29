@@ -7,7 +7,7 @@ import TypePM.WellTyped
 * Lemma C.2 (Matcher-Value Slot Invariant) — `matcher_slot_invariant`(**証明済み**;
   oracle 不要の核は `slot_value_inv`)
 * Theorem 5.6 (Type Safety) は `Metatheory/TypeSafety.lean` に移設
-  ((a) は oracle 分解で証明済み・(b) は sorry)
+  ((a)(b) とも oracle 分解で全分岐証明済み)
 
 Lem 5.4・Lem C.2 は、論文の結合帰納法における (a) 部の帰納法の仮定を
 明示の oracle 仮定(この ρ/この評価に対する評価型付け)として受け取る形で
