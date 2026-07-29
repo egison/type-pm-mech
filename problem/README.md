@@ -38,6 +38,7 @@
 | R9 | [相対的主要性と Algorithm W の主張境界](resolved-relative-principality-boundary.md) | one-way の局所結果，固定入力に相対的な紙上補題，full principality の撤回 |
 | R10 | [条件付きメタ理論の正確な境界](resolved-conditional-metatheory-boundary.md) | `Adm`/`StepTotal` 前提，条件付き保存性・進行性・型安全性・整合性 |
 | R11 | [Egison 実装と検証結果の主張範囲](resolved-implementation-validation-scope.md) | 実装済み検査，部分近似，既存注釈を含む検証 corpus |
+| R12 | [matcher 定義の次マッチャー分解とホール検査](resolved-next-matcher-slot-checking.md) | 複数穴の明示タプル境界，構文形に依存しない成分別 `MatcherSlot` 検査 |
 
 ## P1 と R5 の境界
 
@@ -49,14 +50,16 @@
   `type_safety` には配線されていない．したがって R5 の完了を P1 の完了と
   みなしてはならない．
 
-## P2 と R7・R9 の境界
+## P2 と R7・R9・R12 の境界
 
 - R7 は，固定された単相導出内で matcher 値の固有能力を保ち，利用位置の
   `MatcherSlot` で検査する規則と実行時不変量を固定する．
 - R9 は，one-way 構造関係や固定入力に相対的な局所主要性までを切り出す．
+- R12 は，matcher 定義の次マッチャーをホールへ対応付け，各成分をその完全な
+  推論型から `MatcherSlot` に対して検査する静的手続きを固定する．
 - P2 は，一般化された `Matcher` の型スキームを利用点でインスタンス化しても
-  その能力を強化しない関係を設計する．通常の HM インスタンス化をそのまま
-  使う限り残るため，R7 や R9 の局所結果だけでは閉じない．
+  その能力を強化しない関係を設計する．R12 の成分検査へ渡される前に scheme
+  lookup が能力を失えば回復できないため，R7・R9・R12 の局所結果だけでは閉じない．
 
 ## 記録の読み方
 
@@ -69,7 +72,7 @@
 5. P1/P2，停止性，実装の部分近似など，解決に含めない境界．
 
 青字の abstract，introduction，conclusion，依存図，付録案内，例示は，
-R1–R11 の主張を各所へ反映したものである．独立した問題として重複登録しない．
+R1–R12 の主張を各所へ反映したものである．独立した問題として重複登録しない．
 
 ## 更新手順
 

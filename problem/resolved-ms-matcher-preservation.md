@@ -75,6 +75,10 @@ R8 は主として論文と Lean の保存性証明の補修である．Egison �
 hole target tuple のリスト型へ単一化する．next matcher の構造検査は一般には
 実装されるが，単一式が複数穴を供給する場合は完全な deferred component check が
 skip される．先頭穴への eager guard と hole target consistency check は残る．
+論文・Lean はこの場合に明示タプルを要求するので，skip は仕様上認めた代替経路
+ではない．また明示タプルの各成分についても，現実装は式の構文分類により検査を
+省略し得る．正確な補修条件は
+[R12](resolved-next-matcher-slot-checking.md) に分離して記録する．
 
 したがって R8 の紙上保存証明が，Egison checker による formal consistency 全条件の
 完全強制を意味するわけではない．
