@@ -289,6 +289,20 @@ theorem appVar_filter_ftv {θ : TySubst} {fv : List TyVar} {a : TyVar}
   subst hkey
   simpa using ha
 
+/-- **⊑ の witness パッケージ**:任意の代入の適用等式から、witness を
+    構造添字の自由変数に制限して dom 条件(Notation の ⊑ 定義)を満たす。
+    dom 制限の受け渡しはこの補題に一元化する(利用側は等式だけ示せばよい)。 -/
+theorem oneWay_of_applyTS {τp τm : Ty} {θ : TySubst}
+    (h : τp.applyTS θ = τm) : OneWay τp τm := by
+  refine ⟨θ.filter (fun pr => decide (pr.1 ∈ τp.ftv)), ?_, ?_⟩
+  · intro a ha
+    simp only [TySubst.dom, List.mem_map] at ha
+    obtain ⟨pr, hpr, rfl⟩ := ha
+    have := (List.mem_filter.mp hpr).2
+    simpa using this
+  · rw [applyTS_congr _ (fun a ha => appVar_filter_ftv ha)]
+    exact h
+
 /-- 鍵を保ち値を写す map と find? の可換性 -/
 theorem find?_map_val {θ : TySubst} {f : Ty → Ty} {a : TyVar} :
     List.find? (fun pr => pr.1 == a) (θ.map (fun pr => (pr.1, f pr.2)))
@@ -300,14 +314,13 @@ theorem find?_map_val {θ : TySubst} {f : Ty → Ty} {a : TyVar} :
       | true => simp [List.find?, hkey]
       | false => simp [List.find?, hkey, ih]
 
-/-- 合成代入:fv 上で θ₂ ∘ θ₁ と一致する有限代入(左が θ₁ の写像で右を遮蔽) -/
-def TySubst.compOn (θ₁ θ₂ : TySubst) (fv : List TyVar) : TySubst :=
-  θ₁.map (fun pr => (pr.1, pr.2.applyTS θ₂))
-    ++ θ₂.filter (fun pr => decide (pr.1 ∈ fv))
+/-- 合成代入:全変数上で θ₂ ∘ θ₁ と一致する有限代入(左が θ₁ の写像で右を遮蔽)。
+    dom 制限は持たない(⊑ の witness 化は `oneWay_of_applyTS` が担う)。 -/
+def TySubst.compOn (θ₁ θ₂ : TySubst) : TySubst :=
+  θ₁.map (fun pr => (pr.1, pr.2.applyTS θ₂)) ++ θ₂
 
-theorem appVar_compOn {θ₁ θ₂ : TySubst} {fv : List TyVar} {a : TyVar}
-    (ha : a ∈ fv) :
-    (TySubst.compOn θ₁ θ₂ fv).appVar a = (θ₁.appVar a).applyTS θ₂ := by
+theorem appVar_compOn {θ₁ θ₂ : TySubst} {a : TyVar} :
+    (TySubst.compOn θ₁ θ₂).appVar a = (θ₁.appVar a).applyTS θ₂ := by
   unfold TySubst.compOn TySubst.appVar
   cases hfind : List.find? (fun pr => pr.1 == a) θ₁ with
   | some pr =>
@@ -319,20 +332,8 @@ theorem appVar_compOn {θ₁ θ₂ : TySubst} {fv : List TyVar} {a : TyVar}
       have hmap : List.find? (fun pr => pr.1 == a)
           (θ₁.map (fun pr => (pr.1, pr.2.applyTS θ₂))) = none := by
         rw [find?_map_val, hfind]; rfl
-      rw [list_find?_append_none hmap, find?_key_filter
-        (fun pr _ hkey => by subst hkey; simpa using ha)]
+      rw [list_find?_append_none hmap]
       simp only [Ty.applyTS, TySubst.appVar]
-
-theorem compOn_dom {θ₁ θ₂ : TySubst} {fv : List TyVar}
-    (h₁ : ∀ a ∈ θ₁.dom, a ∈ fv) :
-    ∀ a ∈ (TySubst.compOn θ₁ θ₂ fv).dom, a ∈ fv := by
-  intro a ha
-  simp only [TySubst.compOn, TySubst.dom, List.map_append, List.mem_append,
-    List.map_map, List.mem_map, Function.comp] at ha
-  rcases ha with ⟨pr, hpr, rfl⟩ | ⟨pr, hpr, rfl⟩
-  · exact h₁ _ (List.mem_map_of_mem hpr)
-  · have := (List.mem_filter.mp hpr).2
-    simpa using this
 
 /-! ### 二重適用の pointwise 転送 -/
 
@@ -427,12 +428,13 @@ end
 /-- **⊑ の推移律**(合成代入 compOn による;Lem 5.4 強化と後続原子再建で使用) -/
 theorem oneWay_trans {A B C : Ty} (h₁ : OneWay A B) (h₂ : OneWay B C) :
     OneWay A C := by
-  obtain ⟨θ₁, hd₁, he₁⟩ := h₁
-  obtain ⟨θ₂, hd₂, he₂⟩ := h₂
-  refine ⟨TySubst.compOn θ₁ θ₂ A.ftv, compOn_dom hd₁, ?_⟩
-  rw [← he₂, ← he₁]
-  symm
-  exact applyTS_applyTS_pointwise A fun a ha => (appVar_compOn ha).symm
+  obtain ⟨θ₁, -, he₁⟩ := h₁
+  obtain ⟨θ₂, -, he₂⟩ := h₂
+  refine oneWay_of_applyTS (θ := TySubst.compOn θ₁ θ₂) ?_
+  calc A.applyTS (TySubst.compOn θ₁ θ₂)
+      = (A.applyTS θ₁).applyTS θ₂ :=
+        (applyTS_applyTS_pointwise A fun _ _ => appVar_compOn.symm).symm
+    _ = C := by rw [he₁, he₂]
 
 /-! ### 到達不変量の位置分解 -/
 
@@ -455,18 +457,6 @@ theorem applyRenList_eq_map {r : TyVar → TyVar} : ∀ {ts : List Ty},
     applyRenList r ts = ts.map (Ty.applyRen r)
   | [] => rfl
   | t :: ts => by simp [applyRenList, applyRenList_eq_map]
-
-/-- OneWay の witness を構造添字の自由変数に制限してパッケージする -/
-theorem oneWay_of_applyTS {τp τm : Ty} {θ : TySubst}
-    (h : τp.applyTS θ = τm) : OneWay τp τm := by
-  refine ⟨θ.filter (fun pr => decide (pr.1 ∈ τp.ftv)), ?_, ?_⟩
-  · intro a ha
-    simp only [TySubst.dom, List.mem_map] at ha
-    obtain ⟨pr, hpr, rfl⟩ := ha
-    have := (List.mem_filter.mp hpr).2
-    simpa using this
-  · rw [applyTS_congr _ (fun a ha => appVar_filter_ftv ha)]
-    exact h
 
 /-- **到達不変量の instSig 分解**(PAT-CON の位置分解)。
     Def 4.1 の整形性(res = data n (var 0 … var (np−1))、引数の型変数 < np)
@@ -524,6 +514,149 @@ theorem structReaches_prod {as bs : List Ty}
   rw [← hren]
   apply oneWay_of_applyTS (θ := θ)
   simpa [List.getElem_map] using h1
+
+/-! ### 適用の基本補題(空代入・長さ)と fresh 変数供給
+
+Notation の 3 関係(=・~・⊑)と改名の一般補題をここに集約する
+(使用側ファイルに散在していたものの移設;定義の直下に置く)。 -/
+
+theorem applyTS_nil : ∀ (τ : Ty), τ.applyTS [] = τ := by
+  intro τ
+  exact applyTS_congr_nil τ
+where
+  applyTS_congr_nil : ∀ (τ : Ty), τ.applyTS [] = τ := fun τ => by
+    induction τ using Ty.rec (motive_2 := fun ts => applyTSList [] ts = ts) with
+    | var a => rfl
+    | int => rfl
+    | bool => rfl
+    | data n ts ih => simp [Ty.applyTS, ih]
+    | prod ts ih => simp [Ty.applyTS, ih]
+    | fn t₁ t₂ ih₁ ih₂ => simp [Ty.applyTS, ih₁, ih₂]
+    | matcher t ih => simp [Ty.applyTS, ih]
+    | slot t₁ t₂ ih₁ ih₂ => simp [Ty.applyTS, ih₁, ih₂]
+    | nil => rfl
+    | cons t ts ih ihs => simp [applyTSList, ih, ihs]
+
+theorem applyTSList_length (θ : TySubst) : ∀ (l : List Ty),
+    (applyTSList θ l).length = l.length
+  | [] => rfl
+  | t :: l => by simp [applyTSList, applyTSList_length θ l]
+
+theorem applyRenList_length (r : TyVar → TyVar) : ∀ (l : List Ty),
+    (applyRenList r l).length = l.length
+  | [] => rfl
+  | t :: l => by simp [applyRenList, applyRenList_length r l]
+
+def freshFor (τ : Ty) : TyVar := τ.ftv.foldr max 0 + 1
+
+theorem foldr_max_ge : ∀ (l : List TyVar) {a : TyVar}, a ∈ l → a ≤ l.foldr max 0
+  | b :: l, a, h => by
+      rcases List.mem_cons.mp h with rfl | h
+      · exact Nat.le_max_left _ _
+      · exact Nat.le_trans (foldr_max_ge l h) (Nat.le_max_right _ _)
+
+theorem freshFor_not_mem (τ : Ty) : freshFor τ ∉ τ.ftv := by
+  intro h
+  have h2 := foldr_max_ge _ h
+  have h3 : τ.ftv.foldr max 0 + 1 ≤ τ.ftv.foldr max 0 := by
+    simpa [freshFor] using h2
+  exact Nat.not_succ_le_self _ h3
+
+theorem applyTS_single_not_mem {τ σ : Ty} {a : TyVar} (h : a ∉ τ.ftv) :
+    τ.applyTS [(a, σ)] = τ := by
+  have hcong := applyTS_congr τ (θ := [(a, σ)]) (θ' := []) ?_
+  · rw [hcong, applyTS_nil]
+  · intro b hb
+    have hba : (a == b) = false := by
+      simp only [beq_eq_false_iff_ne]
+      exact fun e => h (e ▸ hb)
+    simp [TySubst.appVar, List.find?, hba]
+
+/-- fresh 変数と任意の型は単一化可能(~ の基本供給) -/
+theorem unifiable_var_fresh (τ : Ty) : Unifiable (.var (freshFor τ)) τ := by
+  refine ⟨[(freshFor τ, τ)], ?_⟩
+  show TySubst.appVar _ _ = τ.applyTS _
+  rw [applyTS_single_not_mem (freshFor_not_mem τ)]
+  simp [TySubst.appVar, List.find?]
+
+/-- 変数はそれ自身への改名を持つ -/
+theorem renamesTo_var_refl (a : TyVar) : RenamesTo (.var a) (.var a) :=
+  ⟨id, fun _ _ h => h, by simp [Ty.applyRen]⟩
+
+/-- 変数は自分自身の one-way instance(空代入) -/
+theorem oneWay_var_refl (a : TyVar) : OneWay (.var a) (.var a) := by
+  refine ⟨[], ?_, applyTS_nil _⟩
+  intro b hb
+  simp [TySubst.dom] at hb
+
+/-! ### 3 関係の積成分分割(zip 形;WT-ATOM 再建で使用) -/
+
+theorem zip_applyRenList {r : TyVar → TyVar} : ∀ {τs τs' : List Ty},
+    applyRenList r τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyRen r = pr.2
+  | [], _, h, pr, hpr => by subst h; cases hpr
+  | τ :: τs, _, h, pr, hpr => by
+      subst h
+      simp only [applyRenList, List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · rfl
+      · exact zip_applyRenList rfl pr hpr
+
+theorem zip_applyTSList {θ : TySubst} : ∀ {τs τs' : List Ty},
+    applyTSList θ τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyTS θ = pr.2
+  | [], _, h, pr, hpr => by subst h; cases hpr
+  | τ :: τs, _, h, pr, hpr => by
+      subst h
+      simp only [applyTSList, List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · rfl
+      · exact zip_applyTSList rfl pr hpr
+
+theorem zip_applyTSList_eq {U : TySubst} : ∀ {τs τts : List Ty},
+    applyTSList U τs = applyTSList U τts → τs.length = τts.length →
+    ∀ pr ∈ τs.zip τts, pr.1.applyTS U = pr.2.applyTS U
+  | [], _, _, _, pr, hpr => by
+      cases hpr
+  | τ :: τs, [], _, hlen, _, _ => by simp at hlen
+  | τ :: τs, τt :: τts, h, hlen, pr, hpr => by
+      simp only [applyTSList, List.cons.injEq] at h
+      simp only [List.zip_cons_cons, List.mem_cons] at hpr
+      rcases hpr with rfl | hpr
+      · exact h.1
+      · exact zip_applyTSList_eq h.2 (by simpa using hlen) pr hpr
+
+/-- 積の改名は成分ごとの改名(同じ改名関数) -/
+theorem renamesTo_prod_comp {τs τs' : List Ty}
+    (h : RenamesTo (.prod τs) (.prod τs')) :
+    τs.length = τs'.length ∧ ∀ pr ∈ τs.zip τs', RenamesTo pr.1 pr.2 := by
+  obtain ⟨r, hinj, hr⟩ := h
+  simp only [Ty.applyRen, Ty.prod.injEq] at hr
+  constructor
+  · rw [← hr]
+    exact (applyRenList_length r τs).symm
+  · intro pr hpr
+    exact ⟨r, hinj, zip_applyRenList hr pr hpr⟩
+
+/-- 積の one-way instance は成分ごとの one-way instance
+    (成分等式を `oneWay_of_applyTS` でパッケージ;dom 制限は同補題が担う) -/
+theorem oneWay_prod_comp {τps τms : List Ty}
+    (h : OneWay (.prod τps) (.prod τms)) :
+    τps.length = τms.length ∧ ∀ pr ∈ τps.zip τms, OneWay pr.1 pr.2 := by
+  obtain ⟨θ, _, happ⟩ := h
+  simp only [Ty.applyTS, Ty.prod.injEq] at happ
+  constructor
+  · rw [← happ]
+    exact (applyTSList_length θ τps).symm
+  · intro pr hpr
+    exact oneWay_of_applyTS (zip_applyTSList happ pr hpr)
+
+/-- 積の単一化可能性は成分ごとの単一化可能性(同じ U) -/
+theorem unifiable_prod_comp {τs τts : List Ty}
+    (h : Unifiable (.prod τs) (.prod τts)) (hlen : τs.length = τts.length) :
+    ∀ pr ∈ τs.zip τts, Unifiable pr.1 pr.2 := by
+  obtain ⟨U, hU⟩ := h
+  simp only [Ty.applyTS, Ty.prod.injEq] at hU
+  intro pr hpr
+  exact ⟨U, zip_applyTSList_eq hU hlen pr hpr⟩
 
 end TypePM
 

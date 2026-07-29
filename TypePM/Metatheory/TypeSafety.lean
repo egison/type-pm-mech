@@ -1142,152 +1142,6 @@ theorem wtStack_append {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
       cases h₁ with
       | cons ht hS => exact WTStack.cons ht (wtStack_append hS h₂)
 
-/-! ### fresh 変数の具体的供給(再建で something の添字などに使う) -/
-
-def freshFor (τ : Ty) : TyVar := τ.ftv.foldr max 0 + 1
-
-theorem foldr_max_ge : ∀ (l : List TyVar) {a : TyVar}, a ∈ l → a ≤ l.foldr max 0
-  | b :: l, a, h => by
-      rcases List.mem_cons.mp h with rfl | h
-      · exact Nat.le_max_left _ _
-      · exact Nat.le_trans (foldr_max_ge l h) (Nat.le_max_right _ _)
-
-theorem freshFor_not_mem (τ : Ty) : freshFor τ ∉ τ.ftv := by
-  intro h
-  have h2 := foldr_max_ge _ h
-  have h3 : τ.ftv.foldr max 0 + 1 ≤ τ.ftv.foldr max 0 := by
-    simpa [freshFor] using h2
-  exact Nat.not_succ_le_self _ h3
-
-theorem applyTS_single_not_mem {τ σ : Ty} {a : TyVar} (h : a ∉ τ.ftv) :
-    τ.applyTS [(a, σ)] = τ := by
-  have hcong := applyTS_congr τ (θ := [(a, σ)]) (θ' := []) ?_
-  · rw [hcong, applyTS_nil]
-  · intro b hb
-    have hba : (a == b) = false := by
-      simp only [beq_eq_false_iff_ne]
-      exact fun e => h (e ▸ hb)
-    simp [TySubst.appVar, List.find?, hba]
-
-/-- fresh 変数と任意の型は単一化可能 -/
-theorem unifiable_var_fresh (τ : Ty) : Unifiable (.var (freshFor τ)) τ := by
-  refine ⟨[(freshFor τ, τ)], ?_⟩
-  show TySubst.appVar _ _ = τ.applyTS _
-  rw [applyTS_single_not_mem (freshFor_not_mem τ)]
-  simp [TySubst.appVar, List.find?]
-
-/-- 変数はそれ自身への改名を持つ -/
-theorem renamesTo_var_refl (a : TyVar) : RenamesTo (.var a) (.var a) :=
-  ⟨id, fun _ _ h => h, by simp [Ty.applyRen]⟩
-
-/-- 変数は自分自身の one-way instance(空代入) -/
-theorem oneWay_var_refl (a : TyVar) : OneWay (.var a) (.var a) := by
-  refine ⟨[], ?_, applyTS_nil _⟩
-  intro b hb
-  simp [TySubst.dom] at hb
-
-/-! ### 双対検査条件の積成分分割(再建用) -/
-
-theorem zip_applyRenList {r : TyVar → TyVar} : ∀ {τs τs' : List Ty},
-    applyRenList r τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyRen r = pr.2
-  | [], _, h, pr, hpr => by subst h; cases hpr
-  | τ :: τs, _, h, pr, hpr => by
-      subst h
-      simp only [applyRenList, List.zip_cons_cons, List.mem_cons] at hpr
-      rcases hpr with rfl | hpr
-      · rfl
-      · exact zip_applyRenList rfl pr hpr
-
-theorem zip_applyTSList {θ : TySubst} : ∀ {τs τs' : List Ty},
-    applyTSList θ τs = τs' → ∀ pr ∈ τs.zip τs', pr.1.applyTS θ = pr.2
-  | [], _, h, pr, hpr => by subst h; cases hpr
-  | τ :: τs, _, h, pr, hpr => by
-      subst h
-      simp only [applyTSList, List.zip_cons_cons, List.mem_cons] at hpr
-      rcases hpr with rfl | hpr
-      · rfl
-      · exact zip_applyTSList rfl pr hpr
-
-theorem zip_applyTSList_eq {U : TySubst} : ∀ {τs τts : List Ty},
-    applyTSList U τs = applyTSList U τts → τs.length = τts.length →
-    ∀ pr ∈ τs.zip τts, pr.1.applyTS U = pr.2.applyTS U
-  | [], _, _, _, pr, hpr => by
-      cases hpr
-  | τ :: τs, [], _, hlen, _, _ => by simp at hlen
-  | τ :: τs, τt :: τts, h, hlen, pr, hpr => by
-      simp only [applyTSList, List.cons.injEq] at h
-      simp only [List.zip_cons_cons, List.mem_cons] at hpr
-      rcases hpr with rfl | hpr
-      · exact h.1
-      · exact zip_applyTSList_eq h.2 (by simpa using hlen) pr hpr
-
-/-- 制限代入は自由変数上で元の代入と一致する -/
-theorem appVar_filter_mem {θ : TySubst} {l : List TyVar} {a : TyVar}
-    (ha : a ∈ l) :
-    TySubst.appVar (θ.filter (fun e => decide (e.1 ∈ l))) a =
-      TySubst.appVar θ a := by
-  induction θ with
-  | nil => rfl
-  | cons pr θ ih =>
-      cases hpa : (pr.1 == a) with
-      | true =>
-          have hpr1 : pr.1 = a := by simpa using hpa
-          rw [List.filter_cons_of_pos (by simp [hpr1, ha])]
-          unfold TySubst.appVar
-          simp [List.find?, hpa]
-      | false =>
-          cases hkeep : decide (pr.1 ∈ l) with
-          | true =>
-              rw [List.filter_cons_of_pos (by simp [hkeep])]
-              unfold TySubst.appVar
-              simp only [List.find?, hpa]
-              exact ih
-          | false =>
-              rw [List.filter_cons_of_neg (by simp_all)]
-              unfold TySubst.appVar at ih ⊢
-              simp only [List.find?, hpa]
-              exact ih
-
-/-- 積の改名は成分ごとの改名 -/
-theorem renamesTo_prod_comp {τs τs' : List Ty}
-    (h : RenamesTo (.prod τs) (.prod τs')) :
-    τs.length = τs'.length ∧ ∀ pr ∈ τs.zip τs', RenamesTo pr.1 pr.2 := by
-  obtain ⟨r, hinj, hr⟩ := h
-  simp only [Ty.applyRen, Ty.prod.injEq] at hr
-  constructor
-  · rw [← hr]
-    exact (applyRenList_length r τs).symm
-  · intro pr hpr
-    exact ⟨r, hinj, zip_applyRenList hr pr hpr⟩
-
-/-- 積の one-way instance は成分ごとの one-way instance(制限代入で witness) -/
-theorem oneWay_prod_comp {τps τms : List Ty}
-    (h : OneWay (.prod τps) (.prod τms)) :
-    τps.length = τms.length ∧ ∀ pr ∈ τps.zip τms, OneWay pr.1 pr.2 := by
-  obtain ⟨θ, hdom, happ⟩ := h
-  simp only [Ty.applyTS, Ty.prod.injEq] at happ
-  constructor
-  · rw [← happ]
-    exact (applyTSList_length θ τps).symm
-  · intro pr hpr
-    refine ⟨θ.filter (fun e => decide (e.1 ∈ pr.1.ftv)), ?_, ?_⟩
-    · intro a ha
-      simp only [TySubst.dom, List.mem_map] at ha
-      obtain ⟨e, he, rfl⟩ := ha
-      have := (List.mem_filter.mp he).2
-      simpa using this
-    · rw [applyTS_congr pr.1 (fun a ha => appVar_filter_mem ha)]
-      exact zip_applyTSList happ pr hpr
-
-/-- 積の単一化可能性は成分ごとの単一化可能性(同じ U) -/
-theorem unifiable_prod_comp {τs τts : List Ty}
-    (h : Unifiable (.prod τs) (.prod τts)) (hlen : τs.length = τts.length) :
-    ∀ pr ∈ τs.zip τts, Unifiable pr.1 pr.2 := by
-  obtain ⟨U, hU⟩ := h
-  simp only [Ty.applyTS, Ty.prod.injEq] at hU
-  intro pr hpr
-  exact ⟨U, zip_applyTSList_eq hU hlen pr hpr⟩
-
 /-- キー相異なら find? はその要素自身を返す -/
 theorem find?_eq_of_nodup_keys {α} : ∀ {l : List (String × α)} {y : String} {q : α},
     (l.map (·.1)).Nodup → (y, q) ∈ l →
@@ -1689,8 +1543,45 @@ theorem preserve_someVar {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : 
               subst hpr
               exact ⟨v, by simp [Env.find?, List.find?], hv⟩
 
-/-- MS-PROD-SOME の保存:素形パターンの積マッチャー原子は something 原子へ。
-    パターンの構造添字と something の添字を同じ fresh 変数に取り直す。 -/
+/-- 素形パターンの something 原子を fresh 構造添字で組む
+    (PAT-VAR/WILD/VALUE の構造側の自由度 = §4.2 fresh-leaf 構成を使い、
+    something の内在型変数と同じ fresh 変数へ取り直す;MS-PROD-SOME 保存の再建) -/
+theorem something_atom {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatParamCtx}
+    {Δ Δ' : BindCtx} {p : Pattern} {v : Value} {τp τt : Ty}
+    (hprim : p.isPrimForm = true)
+    (hp : PatTy SD SP SF Γ Φ Δ p τp τt Δ')
+    (hv : ValueTy SD SP SF v τt) :
+    WTTree SD SP SF Γ Φ Δ (.atom ⟨p, .something, v⟩) Δ' := by
+  cases p with
+  | pvar x =>
+      cases hp with
+      | pvar hx =>
+        exact WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+          rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
+          (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+          (unifiable_var_fresh _) MatcherOK.something hv
+  | wild =>
+      cases hp
+      exact WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+        rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
+        (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+        (unifiable_var_fresh _) MatcherOK.something hv
+  | pval e =>
+      cases hp with
+      | pval hty =>
+        exact WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+          rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
+          (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+          (unifiable_var_fresh _) MatcherOK.something hv
+  | pctor c ps => simp [Pattern.isPrimForm] at hprim
+  | ptuple ps => simp [Pattern.isPrimForm] at hprim
+  | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+  | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+  | papp f qs => simp [Pattern.isPrimForm] at hprim
+  | embed y => simp [Pattern.isPrimForm] at hprim
+
+/-- MS-PROD-SOME の保存:素形パターンの積マッチャー原子は something 原子へ
+    (scalar 形・スロット形とも `something_atom` で再建)。 -/
 theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatParamCtx}
     {p : Pattern} {ms : List Value} {v : Value}
     {S : List Tree} {ρ : Env} {θ : Subst} {Δgoal : BindCtx}
@@ -1702,73 +1593,12 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
   | cons htree hrest =>
     cases htree with
     | atom hsc hp hm hren how _hreach htm hok hv =>
-        rename_i τp τt τm τm'
-        cases p with
-        | pvar x =>
-            cases hp with
-            | pvar hx =>
-              refine ⟨hρ, Δ₀, hθ, WTStack.cons
-                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                  rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                  (unifiable_var_fresh _) MatcherOK.something ?_) hrest⟩
-              exact hv
-        | wild =>
-            cases hp
-            exact ⟨hρ, Δ₀, hθ, WTStack.cons
-              (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
-                (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
-        | pval e =>
-            cases hp with
-            | pval hty =>
-              exact ⟨hρ, Δ₀, hθ, WTStack.cons
-                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                  rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
-        | pctor c ps => simp [Pattern.isPrimForm] at hprim
-        | ptuple ps => simp [Pattern.isPrimForm] at hprim
-        | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
-        | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
-        | papp f qs => simp [Pattern.isPrimForm] at hprim
-        | embed y => simp [Pattern.isPrimForm] at hprim
+        exact ⟨hρ, Δ₀, hθ, WTStack.cons (something_atom hprim hp hv) hrest⟩
     | atomAnd h₁ h₂ => simp [Pattern.isPrimForm] at hprim
     | atomOr h₁ h₂ => simp [Pattern.isPrimForm] at hprim
     | atomTuple hlen1 hlen2 hcomp => simp [Pattern.isPrimForm] at hprim
     | atomSlot hsc hp hreach hslot hσ hv =>
-        -- スロット形の積マッチャー原子も something 原子へ(fresh 構造添字で再導出)
-        cases p with
-        | pvar x =>
-            cases hp with
-            | pvar hx =>
-              refine ⟨hρ, Δ₀, hθ, WTStack.cons
-                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                  rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
-        | wild =>
-            cases hp
-            exact ⟨hρ, Δ₀, hθ, WTStack.cons
-              (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
-                (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
-        | pval e =>
-            cases hp with
-            | pval hty =>
-              exact ⟨hρ, Δ₀, hθ, WTStack.cons
-                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
-                  rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
-                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
-        | pctor c ps => simp [Pattern.isPrimForm] at hprim
-        | ptuple ps => simp [Pattern.isPrimForm] at hprim
-        | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
-        | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
-        | papp f qs => simp [Pattern.isPrimForm] at hprim
-        | embed y => simp [Pattern.isPrimForm] at hprim
+        exact ⟨hρ, Δ₀, hθ, WTStack.cons (something_atom hprim hp hv) hrest⟩
 
 /-- MS-TUPLE の保存(WT-ATOM-TUPLE 型付けの原子):継続はちょうど成分原子列。 -/
 theorem preserve_tuple {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatParamCtx}

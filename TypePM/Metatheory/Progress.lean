@@ -318,23 +318,6 @@ end
 
 /-! ## 環境型付けの合成グルー(MS-MATCHER の分解関数評価環境の型付け) -/
 
-theorem applyTS_nil : ∀ (τ : Ty), τ.applyTS [] = τ := by
-  intro τ
-  exact applyTS_congr_nil τ
-where
-  applyTS_congr_nil : ∀ (τ : Ty), τ.applyTS [] = τ := fun τ => by
-    induction τ using Ty.rec (motive_2 := fun ts => applyTSList [] ts = ts) with
-    | var a => rfl
-    | int => rfl
-    | bool => rfl
-    | data n ts ih => simp [Ty.applyTS, ih]
-    | prod ts ih => simp [Ty.applyTS, ih]
-    | fn t₁ t₂ ih₁ ih₂ => simp [Ty.applyTS, ih₁, ih₂]
-    | matcher t ih => simp [Ty.applyTS, ih]
-    | slot t₁ t₂ ih₁ ih₂ => simp [Ty.applyTS, ih₁, ih₂]
-    | nil => rfl
-    | cons t ts ih ihs => simp [applyTSList, ih, ihs]
-
 /-- 単相スキームのインスタンスは本体そのもの -/
 theorem inst_mono {τ τ' : Ty} (h : (Scheme.mono τ).Inst τ') : τ' = τ := by
   obtain ⟨θ, hdom, happ⟩ := h
@@ -481,48 +464,17 @@ theorem envTyped_of_matcherV {SD : SigD} {SP : SigP} {SF : SigF}
 
 /-! ## 代入の合成と VShape の代入安定性(armExh のインスタンス発火に使用) -/
 
-mutual
-/-- 各自由変数上で「θ' = U ∘ θ」ならば適用結果も合成に一致する -/
-theorem applyTS_comp_pointwise : ∀ (τ : Ty) {θ θ' U : TySubst},
-    (∀ a ∈ τ.ftv, TySubst.appVar θ' a = (TySubst.appVar θ a).applyTS U) →
-    τ.applyTS θ' = (τ.applyTS θ).applyTS U
-  | .var a, θ, θ', U, h => by
-      simpa [Ty.applyTS] using h a (by simp [Ty.ftv])
-  | .int, _, _, _, _ => rfl
-  | .bool, _, _, _, _ => rfl
-  | .data n ts, θ, θ', U, h => by
-      simp only [Ty.applyTS]
-      rw [applyTSList_comp_pointwise ts fun a ha => h a (by simpa [Ty.ftv] using ha)]
-  | .prod ts, θ, θ', U, h => by
-      simp only [Ty.applyTS]
-      rw [applyTSList_comp_pointwise ts fun a ha => h a (by simpa [Ty.ftv] using ha)]
-  | .fn t₁ t₂, θ, θ', U, h => by
-      simp only [Ty.applyTS]
-      rw [applyTS_comp_pointwise t₁ fun a ha =>
-            h a (by simp only [Ty.ftv, List.mem_append]; exact .inl ha),
-          applyTS_comp_pointwise t₂ fun a ha =>
-            h a (by simp only [Ty.ftv, List.mem_append]; exact .inr ha)]
-  | .matcher t, θ, θ', U, h => by
-      simp only [Ty.applyTS]
-      rw [applyTS_comp_pointwise t fun a ha => h a (by simpa [Ty.ftv] using ha)]
-  | .slot t₁ t₂, θ, θ', U, h => by
-      simp only [Ty.applyTS]
-      rw [applyTS_comp_pointwise t₁ fun a ha =>
-            h a (by simp only [Ty.ftv, List.mem_append]; exact .inl ha),
-          applyTS_comp_pointwise t₂ fun a ha =>
-            h a (by simp only [Ty.ftv, List.mem_append]; exact .inr ha)]
+/-- 各自由変数上で「θ' = U ∘ θ」ならば適用結果も合成に一致する
+    (TypeRel の `applyTS_applyTS_pointwise` の向きを変えた薄い皮) -/
+theorem applyTS_comp_pointwise (τ : Ty) {θ θ' U : TySubst}
+    (h : ∀ a ∈ τ.ftv, TySubst.appVar θ' a = (TySubst.appVar θ a).applyTS U) :
+    τ.applyTS θ' = (τ.applyTS θ).applyTS U :=
+  (applyTS_applyTS_pointwise τ (fun a ha => (h a ha).symm)).symm
 
-theorem applyTSList_comp_pointwise : ∀ (ts : List Ty) {θ θ' U : TySubst},
-    (∀ a ∈ ftvList ts, TySubst.appVar θ' a = (TySubst.appVar θ a).applyTS U) →
-    applyTSList θ' ts = applyTSList U (applyTSList θ ts)
-  | [], _, _, _, _ => rfl
-  | t :: ts, θ, θ', U, h => by
-      simp only [applyTSList]
-      rw [applyTS_comp_pointwise t fun a ha =>
-            h a (by simp only [ftvList, List.mem_append]; exact .inl ha),
-          applyTSList_comp_pointwise ts fun a ha =>
-            h a (by simp only [ftvList, List.mem_append]; exact .inr ha)]
-end
+theorem applyTSList_comp_pointwise (ts : List Ty) {θ θ' U : TySubst}
+    (h : ∀ a ∈ ftvList ts, TySubst.appVar θ' a = (TySubst.appVar θ a).applyTS U) :
+    applyTSList θ' ts = applyTSList U (applyTSList θ ts) :=
+  (applyTSList_applyTS_pointwise ts (fun a ha => (h a ha).symm)).symm
 
 theorem zip_map_self {α β} (f : α → β) : ∀ (l : List α),
     l.zip (l.map f) = l.map fun a => (a, f a)
@@ -634,11 +586,6 @@ theorem armExh_instance {SD : SigD} {SP : SigP} {SF : SigF}
     exact vshape_applyTS hwfD U (vshape_of_valueTy hv))
 
 /-! ## 改名・値型付けの反転(構造前提による却下と MS-TUPLE の形) -/
-
-theorem applyRenList_length (r : TyVar → TyVar) : ∀ (l : List Ty),
-    (applyRenList r l).length = l.length
-  | [] => rfl
-  | t :: l => by simp [applyRenList, applyRenList_length r l]
 
 /-- 改名先がデータ頭なら元もデータ頭(同名・同アリティ) -/
 theorem renamesTo_data_inv {τm τm' : Ty} {n : String} {l' : List Ty}

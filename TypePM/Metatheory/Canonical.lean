@@ -60,11 +60,6 @@ theorem canonical_prod {SD : SigD} {SP : SigP} {SF : SigF}
 
 /-! ## 形状保存(代入・改名・one-way) -/
 
-theorem applyTSList_length (θ : TySubst) : ∀ (l : List Ty),
-    (applyTSList θ l).length = l.length
-  | [] => rfl
-  | t :: l => by simp [applyTSList, applyTSList_length θ l]
-
 /-- 改名は変数を変数に写す -/
 theorem renamesTo_var {a : TyVar} {τ' : Ty} (h : RenamesTo (.var a) τ') :
     ∃ b, τ' = .var b := by
