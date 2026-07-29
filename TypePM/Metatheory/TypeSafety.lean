@@ -1754,6 +1754,249 @@ theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
     | atomSlot hsc _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₂ hrest⟩
 
+/-! ### MS-MATCHER 歩行の支持補題([b-5.5] の部品)
+
+* `ppm_some_shapeOK` — pp ≈ p 成功なら shape 一致(τt 節型付け oracle は
+  shape 一致節に制限して仮定するので、発火節への適用にこれを使う)
+* `ppty_refresh_renames` — PP-Con/PP-Tuple の refresh 対は構造注釈 =
+  標的の改名(slot_atom の hσ 供給)
+* `decodeTuple_typed` — アーム本体の分解値の成分型付け
+* `decodeM_typed` — 次マッチャー式の分解評価値のスロット型付け
+* `walk_env_typed` — アーム本体 N の評価環境 ρd ++ ρp ++ ρm の型付け合成 -/
+
+mutual
+theorem ppm_some_shapeOK {SF : SigF} :
+    ∀ (pp : PPat) {ρ : Env} {p : Pattern} {r : List Pattern × Env},
+    PPM SF ρ pp p (some r) → ppShapeOK pp p = true
+  | .hole, _, _, _, hm => by cases hm; rfl
+  | .wild, _, _, _, hm => by cases hm; rfl
+  | .pval y, _, _, _, hm => by cases hm; rfl
+  | .ctor c pps, _, _, _, hm => by
+      cases hm with
+      | ctor hl1 hl2 hall =>
+          simp only [ppShapeOK, beq_self_eq_true, Bool.true_and]
+          exact ppm_some_shapeOK_list pps hl1 hl2 hall
+  | .tuple pps, _, _, _, hm => by
+      cases hm with
+      | tuple hl1 hl2 hall =>
+          simp only [ppShapeOK]
+          exact ppm_some_shapeOK_list pps hl1 hl2 hall
+
+theorem ppm_some_shapeOK_list {SF : SigF} :
+    ∀ (pps : List PPat) {ρ : Env} {ps : List Pattern}
+      {rs : List (List Pattern × Env)},
+    pps.length = ps.length → (pps.zip ps).length = rs.length →
+    (∀ tr ∈ (pps.zip ps).zip rs, PPM SF ρ tr.1.1 tr.1.2 (some tr.2)) →
+    ppShapeOKList pps ps = true
+  | [], _, ps, rs, hl1, _, _ => by
+      cases ps with
+      | nil => rfl
+      | cons _ _ => simp at hl1
+  | pp :: pps, _, ps, rs, hl1, hl2, hall => by
+      cases ps with
+      | nil => simp at hl1
+      | cons p ps =>
+          cases rs with
+          | nil => simp [List.zip_cons_cons] at hl2
+          | cons r rs =>
+              simp only [ppShapeOKList, Bool.and_eq_true]
+              refine ⟨ppm_some_shapeOK pp
+                (hall ((pp, p), r) (by simp [List.zip_cons_cons])), ?_⟩
+              exact ppm_some_shapeOK_list pps (by simpa using hl1)
+                (by simpa [List.zip_cons_cons] using hl2)
+                (fun tr htr => hall tr (by simp [List.zip_cons_cons]; exact .inr htr))
+end
+
+/-- refresh 対(PP-Con/PP-Tuple の premise)から:外側対の構造注釈は標的の改名 -/
+theorem ppty_refresh_renames {pairs pairs' : List (Ty × Ty)}
+    (hlen : pairs.length = pairs'.length)
+    (href : ∀ pr ∈ pairs.zip pairs', pr.1.2 = pr.2.2 ∧ FreshLike pr.1.2 pr.2.1) :
+    ∀ pr ∈ pairs', RenamesTo pr.2 pr.1 := by
+  intro pr hpr
+  obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
+  have hip : i < pairs.length := by omega
+  have hiz : i < (pairs.zip pairs').length := by
+    simp only [List.length_zip]
+    omega
+  have hf := href (pairs.zip pairs')[i] (List.getElem_mem hiz)
+  rw [List.getElem_zip] at hf
+  obtain ⟨heq, hfl⟩ := hf
+  rw [← heq]
+  exact hfl
+
+/-- 分解値の成分型付け:t : prodK τs(|τs| = k)の k 分解は τs で成分ごとに型付く -/
+theorem decodeTuple_typed {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD)
+    {k : Nat} {t : Value} {vs : List Value} {τs : List Ty}
+    (hd : decodeTuple k t = some vs)
+    (hlen : τs.length = k)
+    (ht : ValueTy SD SP SF t (prodK τs)) :
+    vs.length = k ∧ ∀ pr ∈ vs.zip τs, ValueTy SD SP SF pr.1 pr.2 := by
+  by_cases h1 : k = 1
+  · subst h1
+    simp only [decodeTuple, beq_self_eq_true, if_true, Option.some.injEq] at hd
+    subst hd
+    cases τs with
+    | nil => simp at hlen
+    | cons τ τs' =>
+      cases τs' with
+      | cons _ _ => simp at hlen
+      | nil =>
+        refine ⟨rfl, ?_⟩
+        intro pr hpr
+        simp only [List.zip_cons_cons, List.zip_nil_right, List.mem_singleton] at hpr
+        subst hpr
+        simpa [prodK] using ht
+  · have hk : (k == 1) = false := by simpa using h1
+    have hne : τs.length ≠ 1 := by omega
+    rw [prodK_of_len_ne_one hne] at ht
+    cases t with
+    | tuple ts =>
+        simp only [decodeTuple, hk, Bool.false_eq_true, if_false] at hd
+        by_cases h2 : ts.length = k
+        · rw [if_pos (by simpa using h2)] at hd
+          obtain rfl := Option.some.inj hd
+          obtain ⟨vs', heq, hlen', hcomp⟩ := canonical_prod hwfD ht
+          injection heq with heq'
+          subst heq'
+          exact ⟨h2, hcomp⟩
+        · rw [if_neg (by simpa using h2)] at hd
+          exact nomatch hd
+    | lit n => simp [decodeTuple, hk] at hd
+    | ctor c vs' => simp [decodeTuple, hk] at hd
+    | closure self ρc x e => simp [decodeTuple, hk] at hd
+    | matcherV ρm cls => simp [decodeTuple, hk] at hd
+    | something => simp [decodeTuple, hk] at hd
+
+/-- 次マッチャー式の分解評価:decomposeME の各成分のスロット型付けから、
+    評価値の decodeTuple 分解の各成分のスロット型付けを得る -/
+theorem decodeM_typed {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {ρm : Env}
+    (ha : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → EnvTyped SD SP SF Γ' ρ' →
+       HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    (hρm : EnvTyped SD SP SF Γm ρm)
+    {M : Expr} {k : Nat} {Ms : List Expr} {vM : Value} {ms : List Value}
+    {pairs : List (Ty × Ty)}
+    (hde : decomposeME M k = some Ms)
+    (hlenp : pairs.length = k)
+    (hslots : ∀ pr ∈ Ms.zip pairs, HasTy SD SP SF Γm pr.1 (.slot pr.2.1 pr.2.2))
+    (hev : Eval SF ρm M vM)
+    (hdt : decodeTuple k vM = some ms) :
+    ms.length = k ∧ ∀ pr ∈ ms.zip pairs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2) := by
+  by_cases h1 : k = 1
+  · subst h1
+    simp only [decomposeME, beq_self_eq_true, if_true, Option.some.injEq] at hde
+    simp only [decodeTuple, beq_self_eq_true, if_true, Option.some.injEq] at hdt
+    subst hde
+    subst hdt
+    cases pairs with
+    | nil => simp at hlenp
+    | cons pr₀ prt =>
+      cases prt with
+      | cons _ _ => simp at hlenp
+      | nil =>
+        refine ⟨rfl, ?_⟩
+        intro q hq
+        simp only [List.zip_cons_cons, List.zip_nil_right, List.mem_singleton] at hq
+        subst hq
+        exact ha hev hρm (hslots (M, pr₀) (by simp [List.zip_cons_cons]))
+  · have hk : (k == 1) = false := by simpa using h1
+    cases M with
+    | tuple es =>
+        simp only [decomposeME, hk, Bool.false_eq_true, if_false] at hde
+        by_cases h2 : es.length = k
+        · rw [if_pos (by simpa using h2)] at hde
+          obtain rfl := Option.some.inj hde
+          cases hev with
+          | tuple hlenv hall =>
+              rename_i vms
+              simp only [decodeTuple, hk, Bool.false_eq_true, if_false] at hdt
+              rw [if_pos (by simp only [beq_iff_eq]; omega)] at hdt
+              obtain rfl := Option.some.inj hdt
+              refine ⟨by omega, ?_⟩
+              intro q hq
+              obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hq
+              have hiv : i < vms.length := by
+                simp only [List.length_zip] at hi
+                omega
+              have hipr : i < pairs.length := by
+                simp only [List.length_zip] at hi
+                omega
+              have hie : i < es.length := by omega
+              rw [List.getElem_zip]
+              have hev_i : Eval SF ρm es[i] vms[i] := by
+                have hz : i < (es.zip vms).length := by
+                  simp only [List.length_zip]
+                  omega
+                have := hall (es.zip vms)[i] (List.getElem_mem hz)
+                rwa [List.getElem_zip] at this
+              have hslot_i : HasTy SD SP SF Γm es[i] (.slot pairs[i].1 pairs[i].2) := by
+                have hz : i < (es.zip pairs).length := by
+                  simp only [List.length_zip]
+                  omega
+                have := hslots (es.zip pairs)[i] (List.getElem_mem hz)
+                rwa [List.getElem_zip] at this
+              exact ha hev_i hρm hslot_i
+        · rw [if_neg (by simpa using h2)] at hde
+          exact nomatch hde
+    | var x => simp [decomposeME, hk] at hde
+    | lam x e => simp [decomposeME, hk] at hde
+    | app e₁ e₂ => simp [decomposeME, hk] at hde
+    | lit n => simp [decomposeME, hk] at hde
+    | letE x e₁ e₂ => simp [decomposeME, hk] at hde
+    | fix f x e => simp [decomposeME, hk] at hde
+    | ctor c es => simp [decomposeME, hk] at hde
+    | prim op es => simp [decomposeME, hk] at hde
+    | matchAll e₁ e₂ p e₃ => simp [decomposeME, hk] at hde
+    | matcher cls => simp [decomposeME, hk] at hde
+    | something => simp [decomposeME, hk] at hde
+
+/-- アーム本体 N の評価環境 ρd ++ ρp ++ ρm の型付け(ArmsTy の文脈形に対応) -/
+theorem walk_env_typed {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx}
+    {ρm ρd ρp : Env} {Γij Δi : BindCtx}
+    (hρm : EnvTyped SD SP SF Γm ρm)
+    (hddom : ∀ pr ∈ ρd, pr.1 ∈ Γij.map (·.1))
+    (hdbind : ∀ pr ∈ Γij, ∃ v, Env.find? ρd pr.1 = some v ∧ ValueTy SD SP SF v pr.2)
+    (hpdom : ∀ pr ∈ ρp, pr.1 ∈ Δi.map (·.1))
+    (hpbind : ∀ pr ∈ Δi, ∃ v, Env.find? ρp pr.1 = some v ∧ ValueTy SD SP SF v pr.2) :
+    EnvTyped SD SP SF (BindCtx.toCtx Γij ++ BindCtx.toCtx Δi ++ Γm)
+      (ρd ++ ρp ++ ρm) := by
+  have h₁ := envTyped_of_bindings hddom hdbind
+  have h₂ := envTyped_of_bindings hpdom hpbind
+  have h12 := envTyped_append h₁ (bindings_cover hdbind) h₂
+  refine envTyped_append h12 ?_ hρm
+  intro y hy
+  simp only [TyCtx.find?] at hy
+  cases hfd : List.find? (fun pr => pr.1 == y) (BindCtx.toCtx Γij) with
+  | some pr =>
+      have hd := bindings_cover hdbind y (by simp [TyCtx.find?, hfd])
+      cases hρd : Env.find? ρd y with
+      | none => exact absurd hρd hd
+      | some w =>
+          have : Env.find? (ρd ++ ρp) y = some w := Env.find?_append_left hρd
+          simp [this]
+  | none =>
+      rw [list_find?_append_none hfd] at hy
+      have hp := bindings_cover hpbind y (by simpa [TyCtx.find?] using hy)
+      cases hρd : Env.find? ρd y with
+      | some w =>
+          have : Env.find? (ρd ++ ρp) y = some w := Env.find?_append_left hρd
+          simp [this]
+      | none =>
+          have hstep : Env.find? (ρd ++ ρp) y = Env.find? ρp y := by
+            apply Env.find?_append_right
+            intro pr hpr heq
+            have : Env.find? ρd pr.1 ≠ none := by
+              simp only [Env.find?]
+              cases hf : List.find? (fun q => q.1 == pr.1) ρd with
+              | none =>
+                  have := List.find?_eq_none.mp hf pr hpr
+                  simp at this
+              | some _ => simp
+            rw [heq] at this
+            exact this hρd
+          rw [hstep]
+          exact hp
+
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
     MS-MNODE-STEP の内側再帰に帰納法の仮定を供給する。
     仮定 `hSF` は PATFUN-DEF の意味論側条件(線形性・noEmbedInOr・仮引数相異)、
