@@ -55,6 +55,28 @@
 - **(その 4、2026-07-28、論文・実装・機械化へ反映済み)bare-hole 節の順序条件と節規則の適用対象 — 散文・証明が前提していた規律の形式化**:順序(catch-all 最後)自体は論文が既に前提として明記していた(付録 C.3 の catch-all ケースは「by clause order」を根拠に使い、Def 4.2(2) の説明文は「他の節が残したパターンを扱う」、Def 4.2(4) は精密化節が一般節より「先に選ばれる」と述べる)。差分は、定理が量化する**形式述語としての** Def 4.2(2) が「∈ cls(存在)」しか要求しておらず「by clause order」がどの条項にも対応していなかったこと、および**実装が検査していなかった**こと(逆順マッチャーが型検査を通過し実行時 something エラー — 実機再現済みの実害)。(i) **順序**:catch-all(bare-hole 節)は「他の節が残したパターンを扱う」(Def 4.2(2))が、節は先頭から試され PPP-HOLE は任意のパターンに一致するので、bare-hole 節が Coverage の一般形節より**前**にあると構成子パターンを捕まえて `(c p⃗, something, v)` に到達し行き詰まる(現行 Def 4.2 は ∈ だけを要求するのでこの逆順マッチャーも「整合」— (b) の反例)。標準ライブラリの慣習(catch-all 最後)を条件化する必要がある:「各 bare-hole 節の前に、Coverage が要求する全一般形節(積型なら一般タプル節)が現れる」。(ii) **節規則の適用対象**:MS-MATCHER 系規則に p の側条件がなく、`(x::xs) & $y` のような and パターンも catch-all に捕まり(MS-AND との非決定的重なり)、部分パターンの構成子が something に到達しうる。実装(Egison)は and/or/パターン関数適用/~x を**節照合の前に**構文主導で処理しており、規則側に「p は節適用形(構成子/タプル/変数/ワイルドカード/値パターン)」の側条件を付けて一致させるべき。**反映済み(2026-07-28)**:機械化 = `Pattern.isClauseForm` 側条件(MAtom 3 規則+`matomF` ガード+Adequacy 配管)+`ConsistentClauses.holeAfterGenerals`;論文 = Fig 2 側条件・§3.3・Def 4.2(2) 順序文・(1c) インスタンス注記・付録 C.3・付録 J(en 65p/ja 63p ビルド済);実装 = 逆順(catch-all 後の到達不能節)を型エラー化(Infer.hs、minitest/009)。lib/sample の全 36 マッチャーが順序条件を満たすことを全数調査で確認し、逆順マッチャーが「型検査通過→実行時 something エラー」になる反例も実機で再現してから条件化した。なお 1(a) の構造的許容性(穴の構造成分=標的の骨格改名)が「something を分解可能標的の穴に置く」誤りを既に静的排除していることも機械化で確認した(PP-Con の refresh がその機構;bare-hole 節だけが構造検査空虚で、だからこそ (i) の順序条件が要る)。
 - **(その 3、2026-07-28 最終設計:原子環境での先行評価+intercept-ok)PPP-VAL の捕捉評価**:pp の #$y に捕捉された p 側 #M の M は、**節選択時に原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される — これを公式の意味論として採用。従って**原子より前の束縛は使える**(実測:`($p :: _, $ls ++ #p :: $rs)` でタプル第 1 成分のピボット p を第 2 成分の `sortedList` ピボット節が参照して成功、`egison/mini-test/125`)が、**同じ原子内の左の穴の束縛は使えない**(実測:`$ys ++ #ys` は無音の `[]`;未束縛参照がシンボル化)。当初案の接頭条件 (i) は `sortedList` のピボット節 `$ ++ #$px :: $` や `assocMultiset` の `($, #$n) :: $` を殺すため撤回。この条件は**パターン単独でもマッチャー単独でも静的に決められない**(同じ #e が取り出し経路では左束縛を見られる — pair の #pat;捕捉深さはマッチャーの pp 形状に依存)ので、**パターン・マッチャー対の条件 = 値パターンスコープ条件、WT-ATOM の premise `vp-scoped`**(機械化 `capturedExprs`/`VPScoped`)として定式化。論文 = Def 4.2(4) 書き換え+Fig 6 WT-ATOM に premise+Def 5.3+付録 J(en/ja ビルド済)。実装 = 意味論は元からこの通り(thunk が原子環境を捕捉);**マッチャーの節形状が静的に既知の site(リテラル・そのタプル・トップレベル定義の適用)では型エラーとして静的検査を実装**、不明(スロット引数)な site は付録 J に開示のとおり検査対象外。
 
+## 現状(2026-07-29 第 15 版:**MS-MATCHER 系 3 分岐閉鎖 —(b)は 14 分岐中 13**)
+
+- **節歩行補題 `matom_matcher_preserve` を完全証明**(MAtom.rec、motive_3 のみ非自明)。
+  設計どおり論文 C.3 の場合分けの機械化:
+  - 非バアホール節(ctor/tuple pp):Lem 5.4(強化版)+ `decodeM_typed` +
+    `decodeTuple_typed` + refresh 改名(`ppty_refresh_renames`)→ `slot_atoms` で
+    後続原子列を一括再建。
+  - バアホール節:prim は fresh 構造添字の再導出+slotV 反転束で scalar 再建
+    (⊑ は `oneWay_var_left`)、pctor/ptuple は **除外不変量 ExclInv**
+    (「対応する一般形節が接尾辞中でバアホールより前に残る」)の
+    hole 先頭矛盾(`generalBeforeHoles_hole_head`)で排除。
+  - ExclInv の初期確立 `exclInv_init` = WT-ATOM の構造前提(⊑ が τm の頭を
+    データ/積頭に固定、論文 2360 行の議論)+ Def 4.2(3) Coverage +
+    (2′) holeAfterGenerals。PP-FAIL 維持 `exclInv_ppfail` = shape 一致する
+    一般形節は PPM が失敗しえない(`ppShapeOK_generalPP`)ことによる矛盾。
+  - 状態への持ち上げ `preserve_matcher_step` + 3 分岐配線済。
+- **残る sorry は MS-PATFUN-ENTER([b-3])のみ**(1 宣言 1 分岐)。
+- oracle(すべて [b-6] で放電予定、`type_safety_b_at` の仮定):
+  `hevG`(評価型付け ∀ρ'∀Γ' 形 = (a) との結合帰納法)・
+  `hclorc`(shape 一致節の τt 節型付け輸送 = 値の内在節型付けの
+  τt インスタンス化;`walk_env_typed` はこの放電用に証明済)。
+
 ## 現状(2026-07-29 第 14 版:歩行支持補題+歩行補題の完全設計)
 
 - 支持補題 5 本を証明(全緑):`ppm_some_shapeOK`(pp≈p 成功 → shape 一致)・

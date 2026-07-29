@@ -583,6 +583,15 @@ theorem unifiable_var_fresh (τ : Ty) : Unifiable (.var (freshFor τ)) τ := by
 theorem renamesTo_var_refl (a : TyVar) : RenamesTo (.var a) (.var a) :=
   ⟨id, fun _ _ h => h, by simp [Ty.applyRen]⟩
 
+/-- 変数構造添字は任意の型の one-way instance を許す(単一束縛代入) -/
+theorem oneWay_var_left {a : TyVar} {τ : Ty} : OneWay (.var a) τ := by
+  refine ⟨[(a, τ)], ?_, ?_⟩
+  · intro b hb
+    simp only [TySubst.dom, List.map_cons, List.map_nil, List.mem_singleton] at hb
+    subst hb
+    simp [Ty.ftv]
+  · simp [Ty.applyTS, TySubst.appVar, List.find?]
+
 /-- 変数は自分自身の one-way instance(空代入) -/
 theorem oneWay_var_refl (a : TyVar) : OneWay (.var a) (.var a) := by
   refine ⟨[], ?_, applyTS_nil _⟩

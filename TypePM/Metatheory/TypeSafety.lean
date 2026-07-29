@@ -24,7 +24,7 @@ matcher/slot に限られ premise は prod/matcher なので、強制の入れ�
 `cases hty` をその深さだけ入れ子にし、強制層は値レベル対応物
 (`slotV`/`prodMatcher`/`prodSlot`;README 設計判断 11)で追随する。
 
-(b) `type_safety_b` は未機械化(sorry;README ロードマップ [b-3]〜[b-5])。
+(b) `type_safety_b` は MS-PATFUN-ENTER([b-3])のみ sorry(他 13 分岐証明済)。
 -/
 
 namespace TypePM
@@ -1997,20 +1997,581 @@ theorem walk_env_typed {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx}
           rw [hstep]
           exact hp
 
+/-! ### バアホール節の除外不変量(論文 C.3「by clause order」の歩行版)
+
+構成子/タプルパターンの歩行はバアホール節($ 節、catch-all 含む)に達する
+前に、shape の合う一般形節で必ず発火する(一般形節の pp は穴だけなので
+PPM が失敗しえない)。これを「対応する一般形節が現在の節接尾辞中で
+最初のバアホール節より前に残っている」という不変量として carry する。
+初期確立 = WT-ATOM の構造前提(⊑ が τm の頭を揃える、論文 2360 行の議論)
++ Def 4.2(3) Coverage + (2′) holeAfterGenerals。 -/
+
+/-- pp 列に gpp があり、その前にバアホールが無い -/
+def GeneralBeforeHoles (pps : List PPat) (gpp : PPat) : Prop :=
+  ∃ i, ∃ h : i < pps.length, pps[i] = gpp ∧
+    ∀ j, (h' : j < pps.length) → j < i → pps[j] ≠ PPat.hole
+
+theorem generalBeforeHoles_of_mem_order : ∀ {pps : List PPat} {gpp : PPat},
+    gpp ∈ pps →
+    (∀ i, (h : i < pps.length) → pps[i] = PPat.hole → gpp ∈ pps.take i) →
+    GeneralBeforeHoles pps gpp
+  | [], gpp, hmem, _ => nomatch hmem
+  | pp₀ :: rest, gpp, hmem, hord => by
+      by_cases hh : pp₀ = PPat.hole
+      · exfalso
+        have := hord 0 (by simp) (by simpa using hh)
+        simp at this
+      · by_cases hg : pp₀ = gpp
+        · exact ⟨0, by simp, by simpa using hg, fun j h' hj => by omega⟩
+        · have hmem' : gpp ∈ rest := by
+            rcases List.mem_cons.mp hmem with heq | hm'
+            · exact absurd heq.symm hg
+            · exact hm'
+          have hord' : ∀ i, (h : i < rest.length) → rest[i] = PPat.hole →
+              gpp ∈ rest.take i := by
+            intro i h hi
+            have h2 := hord (i + 1) (by simpa using Nat.succ_lt_succ h)
+              (by simpa using hi)
+            rw [List.take_succ_cons] at h2
+            rcases List.mem_cons.mp h2 with heq | hm'
+            · exact absurd heq.symm hg
+            · exact hm'
+          obtain ⟨i, h, hgi, hnoh⟩ :=
+            generalBeforeHoles_of_mem_order hmem' hord'
+          refine ⟨i + 1, by simpa using Nat.succ_lt_succ h,
+            by simpa using hgi, ?_⟩
+          intro j h' hj
+          cases j with
+          | zero => simpa using hh
+          | succ j' =>
+              have := hnoh j' (by simpa using Nat.lt_of_succ_lt_succ h') (by omega)
+              simpa using this
+
+theorem generalBeforeHoles_tail {pp₀ : PPat} {rest : List PPat} {gpp : PPat}
+    (h : GeneralBeforeHoles (pp₀ :: rest) gpp) (hne : pp₀ ≠ gpp) :
+    GeneralBeforeHoles rest gpp := by
+  obtain ⟨i, hi, hg, hnoh⟩ := h
+  cases i with
+  | zero => exact absurd (by simpa using hg) hne
+  | succ i' =>
+      refine ⟨i', Nat.lt_of_succ_lt_succ hi, by simpa using hg, ?_⟩
+      intro j h' hj
+      have := hnoh (j + 1) (by simpa using Nat.succ_lt_succ h') (by omega)
+      simpa using this
+
+theorem generalBeforeHoles_hole_head {pp₀ : PPat} {rest : List PPat} {gpp : PPat}
+    (h : GeneralBeforeHoles (pp₀ :: rest) gpp) (hh : pp₀ = PPat.hole)
+    (hne : gpp ≠ PPat.hole) : False := by
+  obtain ⟨i, hi, hg, hnoh⟩ := h
+  cases i with
+  | zero => exact hne ((by simpa using hg : pp₀ = gpp) ▸ hh)
+  | succ i' =>
+      have := hnoh 0 (by simp) (by omega)
+      simp only [List.getElem_cons_zero] at this
+      exact this hh
+
+/-- 一般形節の pp は同じ構成子・同アリティのパターンに必ず shape 一致する -/
+theorem ppShapeOKList_replicate : ∀ (ps : List Pattern),
+    ppShapeOKList (List.replicate ps.length .hole) ps = true
+  | [] => rfl
+  | p :: ps => by
+      simp only [List.length_cons, List.replicate_succ, ppShapeOKList,
+        ppShapeOK, Bool.true_and]
+      exact ppShapeOKList_replicate ps
+
+theorem ppShapeOK_generalPP {c : String} {ps : List Pattern} {k : Nat}
+    (hlen : ps.length = k) :
+    ppShapeOK (generalPP c k) (.pctor c ps) = true := by
+  subst hlen
+  simp only [generalPP, ppShapeOK, beq_self_eq_true, Bool.true_and]
+  exact ppShapeOKList_replicate ps
+
+theorem ppShapeOK_generalTuple {ps : List Pattern} {k : Nat}
+    (hlen : ps.length = k) :
+    ppShapeOK (PPat.tuple (List.replicate k .hole)) (.ptuple ps) = true := by
+  subst hlen
+  simp only [ppShapeOK]
+  exact ppShapeOKList_replicate ps
+
+/-- 除外不変量:p が構成子/タプル形なら対応する一般形節が
+    接尾辞の pp 列でバアホールより前に残る -/
+def ExclInv (SP : SigP) (p : Pattern) (cls : List Clause) : Prop :=
+  (∀ c ps sig, p = .pctor c ps →
+     List.find? (fun pr => pr.1 == c) SP = some (c, sig) →
+     GeneralBeforeHoles (cls.map (·.1)) (generalPP c sig.args.length)) ∧
+  (∀ ps, p = .ptuple ps →
+     GeneralBeforeHoles (cls.map (·.1)) (PPat.tuple (List.replicate ps.length .hole)))
+
+/-- 除外不変量の初期確立(WT-ATOM の構造前提+Def 4.2(3)+(2′)) -/
+theorem exclInv_init {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {Φ : PatParamCtx} {Δ Δ' : BindCtx} (hwfP : SigPWF SP)
+    {p : Pattern} {ρm : Env} {cls : List Clause} {τp τt τm τm' : Ty}
+    (hp : PatTy SD SP SF Γ Φ Δ p τp τt Δ')
+    (hm : ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm))
+    (hren : RenamesTo τm τm') (how : OneWay τp τm') :
+    ExclInv SP p cls := by
+  have hcons := valueTy_matcherV_consistent hm
+  constructor
+  · intro c ps sig hpe hfind
+    subst hpe
+    cases hp with
+    | pctor hfind' hps hstr htgt =>
+        rename_i sig₁ ss ts duals
+        have hsig : sig₁ = sig :=
+          congrArg (·.2) (Option.some.inj (hfind'.symm.trans hfind))
+        subst hsig
+        obtain ⟨⟨n, hres⟩, -⟩ := hwfP _ (List.mem_of_find?_eq_some hfind)
+        obtain ⟨θ, -, happ⟩ := how
+        rw [hres] at happ
+        simp only [Ty.instSig, Ty.applyTS] at happ
+        obtain ⟨l₀, hτm, -⟩ := renamesTo_data_inv hren happ.symm
+        subst hτm
+        have hhm : Ty.headMatches sig₁.res (.data n l₀) = true := by
+          rw [hres]
+          simp [Ty.headMatches]
+        obtain ⟨M, arms, hmem⟩ :=
+          hcons.coverage _ (List.mem_of_find?_eq_some hfind) hhm
+        apply generalBeforeHoles_of_mem_order (List.mem_map.mpr ⟨_, hmem, rfl⟩)
+        intro i h hi
+        have h' : i < cls.length := by simpa using h
+        rw [List.getElem_map] at hi
+        obtain ⟨M', arms', hmem'⟩ :=
+          (hcons.holeAfterGenerals i h' hi).1 _ (List.mem_of_find?_eq_some hfind) hhm
+        rw [← List.map_take]
+        exact List.mem_map.mpr ⟨_, hmem', rfl⟩
+  · intro ps hpe
+    subst hpe
+    cases hp with
+    | ptuple hps =>
+        rename_i duals
+        obtain ⟨θ, -, happ⟩ := how
+        simp only [Ty.applyTS] at happ
+        obtain ⟨l₀, hτm, hlen₀⟩ := renamesTo_prod_inv hren happ.symm
+        subst hτm
+        obtain ⟨M, arms, hmem⟩ := hcons.coverageProd l₀ rfl
+        have hlar : l₀.length = ps.length := by
+          rw [hlen₀, applyTSList_length]
+          simp only [List.length_map]
+          exact (patTys_length hps).symm
+        rw [← hlar]
+        apply generalBeforeHoles_of_mem_order (List.mem_map.mpr ⟨_, hmem, rfl⟩)
+        intro i h hi
+        have h' : i < cls.length := by simpa using h
+        rw [List.getElem_map] at hi
+        obtain ⟨M', arms', hmem'⟩ := (hcons.holeAfterGenerals i h' hi).2 l₀ rfl
+        rw [← List.map_take]
+        exact List.mem_map.mpr ⟨_, hmem', rfl⟩
+/-- 除外不変量の PP-FAIL 維持:shape 一致する一般形節は PPM が失敗しえない
+    (穴は何にでも一致)ので、失敗した先頭節は対応する一般形節ではない -/
+theorem exclInv_ppfail {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
+    {Φ : PatParamCtx} {Δ Δ' : BindCtx}
+    {p : Pattern} {τp τt : Ty} {pp : PPat} {M : Expr}
+    {arms : List (DPat × Expr)} {cls : List Clause}
+    (hp : PatTy SD SP SF Γ Φ Δ p τp τt Δ')
+    (hshape : ppShapeOK pp p = false)
+    (hex : ExclInv SP p ((pp, M, arms) :: cls)) :
+    ExclInv SP p cls := by
+  obtain ⟨h1, h2⟩ := hex
+  constructor
+  · intro c ps sig hpe hfind
+    have hg := h1 c ps sig hpe hfind
+    simp only [List.map_cons] at hg
+    refine generalBeforeHoles_tail hg ?_
+    intro hpp
+    subst hpe
+    subst hpp
+    cases hp with
+    | pctor hfind' hps hstr htgt =>
+        rename_i sig₁ ss ts duals
+        have hsig : sig₁ = sig :=
+          congrArg (·.2) (Option.some.inj (hfind'.symm.trans hfind))
+        subst hsig
+        have hlen : ps.length = sig₁.args.length := by
+          have ha := patTys_length hps
+          have hb := congrArg List.length hstr
+          simp only [List.length_map] at hb
+          omega
+        rw [ppShapeOK_generalPP hlen] at hshape
+        exact nomatch hshape
+  · intro ps hpe
+    have hg := h2 ps hpe
+    simp only [List.map_cons] at hg
+    refine generalBeforeHoles_tail hg ?_
+    intro hpp
+    subst hpe
+    subst hpp
+    rw [ppShapeOK_generalTuple rfl] at hshape
+    exact nomatch hshape
+
+/-! ### MS-MATCHER 系の節歩行保存([b-5.5] 本体)
+
+MAtom.rec(motive_3 のみ非自明)。不変量は節接尾辞に membership 単調
+(hclat/hppnd/harmnd)+除外不変量 ExclInv(PP-FAIL で先頭を落として維持)。
+oracle:`hevG` = 評価型付け(∀ρ'∀Γ' 形;[b-6] で結合帰納法から放電)、
+`hclat` = shape 一致節の τt での節型付け(値の内在節型付けの τt インスタンス
+への輸送;[b-6] で放電)。発火時は論文 C.3 の場合分けどおり:
+非バアホール節 = refresh 対で slot_atoms、バアホール節 = prim なら fresh
+構造添字で scalar 再建・pctor/ptuple は ExclInv が矛盾で排除。 -/
+
+theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
+    (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
+    (hevG : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    {ρθ : Env} {p₀ : Pattern} {m₀ v₀ : Value}
+    {conts : List (List Atom)} {θ'' : Subst}
+    (hma : MAtom SF ρθ p₀ m₀ v₀ conts θ'') :
+    ∀ {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty}
+      {ρm : Env} {cls : List Clause} {Γm : TyCtx},
+    m₀ = .matcherV ρm cls →
+    p₀.isClauseForm = true →
+    PatTy SD SP SF Γ Φ Δ₀ p₀ τp τt Δ' →
+    StructReaches τp τt →
+    ValueTy SD SP SF v₀ τt →
+    EnvTyped SD SP SF Γm ρm →
+    (∀ cl ∈ cls, ppShapeOK cl.1 p₀ = true → ClauseTy SD SP SF Γm τt cl) →
+    (∀ cl ∈ cls, ∀ {τ' : Ty} {pairs : List (Ty × Ty)} {Δpp : BindCtx},
+       PPTy SP cl.1 τ' pairs Δpp → (Δpp.map (·.1)).Nodup) →
+    (∀ cl ∈ cls, ∀ arm ∈ cl.2.2, ∀ {τ' : Ty} {Γij : List (String × Ty)},
+       PDTy SD arm.1 τ' Γij → (Γij.map (·.1)).Nodup) →
+    ExclInv SP p₀ cls →
+    θ'' = [] ∧ ∀ as ∈ conts, WTStack SD SP SF Γ Φ Δ₀ (as.map Tree.atom) Δ' := by
+  refine MAtom.rec (SF := SF)
+    (motive_1 := fun _ _ _ _ => True)
+    (motive_2 := fun _ _ _ _ _ => True)
+    (motive_3 := fun _ p₀ m₀ v₀ conts θ'' _ =>
+      ∀ {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty}
+        {ρm : Env} {cls : List Clause} {Γm : TyCtx},
+      m₀ = .matcherV ρm cls →
+      p₀.isClauseForm = true →
+      PatTy SD SP SF Γ Φ Δ₀ p₀ τp τt Δ' →
+      StructReaches τp τt →
+      ValueTy SD SP SF v₀ τt →
+      EnvTyped SD SP SF Γm ρm →
+      (∀ cl ∈ cls, ppShapeOK cl.1 p₀ = true → ClauseTy SD SP SF Γm τt cl) →
+      (∀ cl ∈ cls, ∀ {τ' : Ty} {pairs : List (Ty × Ty)} {Δpp : BindCtx},
+         PPTy SP cl.1 τ' pairs Δpp → (Δpp.map (·.1)).Nodup) →
+      (∀ cl ∈ cls, ∀ arm ∈ cl.2.2, ∀ {τ' : Ty} {Γij : List (String × Ty)},
+         PDTy SD arm.1 τ' Γij → (Γij.map (·.1)).Nodup) →
+      ExclInv SP p₀ cls →
+      θ'' = [] ∧ ∀ as ∈ conts, WTStack SD SP SF Γ Φ Δ₀ (as.map Tree.atom) Δ')
+    (motive_4 := fun _ _ _ => True)
+    (motive_5 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_
+    ?someWC ?someVar ?someValEq ?someValNeq ?mand ?mor ?mtuple ?mprodSome
+    ?mppfail ?mdpfail ?mmatcher
+    ?_ ?_ ?_ ?_ ?_
+    ?_ ?_
+    hma
+  case someWC =>
+    intro ρ v
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case someVar =>
+    intro ρ x v
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case someValEq =>
+    intro ρ e v ve _hev _hsE _ih
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case someValNeq =>
+    intro ρ e v ve _hev _hsE _ih
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case mand =>
+    intro ρ p₁ p₂ m v
+    intro _ _ _ _ _ _ _ _ _ _ hpc _ _ _ _ _ _ _ _
+    simp [Pattern.isClauseForm] at hpc
+  case mor =>
+    intro ρ p₁ p₂ m v
+    intro _ _ _ _ _ _ _ _ _ _ hpc _ _ _ _ _ _ _ _
+    simp [Pattern.isClauseForm] at hpc
+  case mtuple =>
+    intro ρ ps ms vs hl1 hl2
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case mprodSome =>
+    intro ρ p ms v _hprim
+    intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
+    exact nomatch hme
+  case mppfail =>
+    intro ρ ρm₀ p v pp M arms cls₀ conts θ' _hpc hppm _hma _ihppm ihma
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+    injection hme with hρ hcls
+    subst hρ
+    subst hcls
+    have hshape : ppShapeOK pp p = false := by
+      cases hppm with
+      | fail hs => exact hs
+    exact ihma rfl hpc' hp hreach hv henv
+      (fun cl hcl hsh => hclat cl (List.mem_cons_of_mem _ hcl) hsh)
+      (fun cl hcl => hppnd cl (List.mem_cons_of_mem _ hcl))
+      (fun cl hcl => harmnd cl (List.mem_cons_of_mem _ hcl))
+      (exclInv_ppfail hp hshape hexcl)
+  case mdpfail =>
+    intro ρ ρm₀ p v pp M dp N arms cls₀ ps' ρp conts θ'
+      _hpc _hppm _hpd _hma _ihppm ihma
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+    injection hme with hρ hcls
+    subst hρ
+    subst hcls
+    refine ihma rfl hpc' hp hreach hv henv ?_ ?_ ?_ hexcl
+    · intro cl hcl hsh
+      rcases List.mem_cons.mp hcl with rfl | hcl'
+      · have hcl0 := hclat _ (List.mem_cons_self ..) hsh
+        cases hcl0 with
+        | mk hppty hdec hslots harms0 =>
+            cases harms0 with
+            | cons _ _ harmst =>
+                exact ClauseTy.mk hppty hdec hslots harmst
+      · exact hclat cl (List.mem_cons_of_mem _ hcl') hsh
+    · intro cl hcl
+      rcases List.mem_cons.mp hcl with rfl | hcl'
+      · exact fun hppty => hppnd _ (List.mem_cons_self ..) hppty
+      · exact fun hppty => hppnd cl (List.mem_cons_of_mem _ hcl') hppty
+    · intro cl hcl arm harm
+      rcases List.mem_cons.mp hcl with rfl | hcl'
+      · exact fun hpd' => harmnd _ (List.mem_cons_self ..) arm
+          (List.mem_cons_of_mem _ harm) hpd'
+      · exact fun hpd' => harmnd cl (List.mem_cons_of_mem _ hcl') arm harm hpd'
+  case mmatcher =>
+    intro ρ ρm₀ p v pp M dp N arms cls₀ ps' ρp ρd vN tuples vss vM ms
+      hpc₀ hppm hpd hevN hlist hvss hevM hms
+      _ihppm _ihevN _ihevM
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+    injection hme with hρ hcls
+    subst hρ
+    subst hcls
+    refine ⟨rfl, ?_⟩
+    intro as has
+    simp only [List.mem_map] at has
+    obtain ⟨vs, hvs, rfl⟩ := has
+    -- 発火節の τt 型付け(shape 一致は PPM 成功から)
+    have hshape := ppm_some_shapeOK pp hppm
+    have hcl := hclat _ (List.mem_cons_self ..) hshape
+    cases hcl with
+    | mk hppty hdec hslots harms0 =>
+        rename_i pairs Δi Ms
+        cases harms0 with
+        | cons hPD hNty harmst =>
+            rename_i Γij
+            -- Lem 5.4(強化版;原子環境の評価型付けは hevG から)
+            obtain ⟨⟨duals, hduals, hsnd, hdreach⟩, hρpdom, hρpbind⟩ :=
+              ppp_core pp hwfP (fun hev hty => hevG hev hty) hppty hp hreach hppm
+            have hlen54 := ppm_length pp hppm hppty
+            -- アーム本体の評価値の型付けとリスト分解
+            have hvN := hevG hevN hNty
+            obtain ⟨l, hlistv, hlty⟩ := canonical_list hwfD hL hvN _ rfl
+            rw [hlist] at hlistv
+            obtain rfl := Option.some.inj hlistv
+            -- この vs の分解元タプル
+            obtain ⟨t, htmem, htdec⟩ := mapM_mem_inv hvss vs hvs
+            obtain ⟨hvslen, hvscomp⟩ := decodeTuple_typed hwfD htdec
+              (by simp only [List.length_map]; omega) (hlty t htmem)
+            -- 次マッチャー分解のスロット型付け
+            rw [hlen54] at hms
+            obtain ⟨hmslen, hmscomp⟩ := decodeM_typed
+              (fun hev _ hty => hevG hev hty) henv hdec rfl hslots hevM hms
+            -- pp の形で分岐
+            cases pp with
+            | wild =>
+                cases hppm
+                cases hppty
+                cases hduals
+                simpa using (WTStack.nil : WTStack SD SP SF Γ Φ Δ₀ [] Δ₀)
+            | pval y =>
+                cases hppm
+                cases hppty
+                cases hduals
+                simpa using (WTStack.nil : WTStack SD SP SF Γ Φ Δ₀ [] Δ₀)
+            | hole =>
+                -- バアホール節:後続は (p, vM, t) の 1 原子
+                cases hppm
+                cases hppty
+                rename_i a
+                -- ms = [vM]・vs = [t]
+                simp [decodeTuple] at hms htdec
+                subst hms
+                subst htdec
+                -- スロット値 vM : slot (var a) τt
+                have hslotv : ValueTy SD SP SF vM (.slot (.var a) τt) :=
+                  hmscomp (vM, (.var a, τt)) (by simp [List.zip_cons_cons])
+                have hvt : ValueTy SD SP SF t τt := by
+                  have := hvscomp (t, τt) (by simp [List.zip_cons_cons])
+                  simpa using this
+                rcases slot_value_inv hwfD hslotv with
+                  ⟨τm₁, τm₁'', hm₁, hren₁, _, htm₁, hok₁⟩ |
+                  ⟨ms', prs, heqv, hσp, hτp, hlenp, hcompp⟩
+                · -- 単一マッチャー:p の形で分岐(prim = fresh 再導出、
+                  -- pctor/ptuple = 除外不変量の矛盾)
+                  cases p with
+                  | pand p₁ p₂ => simp [Pattern.isClauseForm] at hpc'
+                  | por p₁ p₂ => simp [Pattern.isClauseForm] at hpc'
+                  | papp f qs => simp [Pattern.isClauseForm] at hpc'
+                  | embed z => simp [Pattern.isClauseForm] at hpc'
+                  | pctor c psargs =>
+                      exfalso
+                      cases hp with
+                      | pctor hfind' hps hstr htgt =>
+                          rename_i sig₁ ss ts duals₁
+                          have hg := hexcl.1 c psargs (c, sig₁).2 rfl hfind'
+                          simp only [List.map_cons] at hg
+                          exact generalBeforeHoles_hole_head hg rfl
+                            (by simp [generalPP])
+                  | ptuple psargs =>
+                      exfalso
+                      have hg := hexcl.2 psargs rfl
+                      simp only [List.map_cons] at hg
+                      exact generalBeforeHoles_hole_head hg rfl (by simp)
+                  | pvar x =>
+                      cases hp with
+                      | pvar hx =>
+                        refine WTStack.cons (WTTree.atom
+                          (τm := τm₁) (τm' := τm₁'')
+                          rfl (PatTy.pvar (τp := .var (freshFor τt)) hx)
+                          hm₁ hren₁ oneWay_var_left structReaches_var
+                          htm₁ hok₁ hvt) ?_
+                        simpa using WTStack.nil
+                  | wild =>
+                      cases hp
+                      refine WTStack.cons (WTTree.atom
+                        (τm := τm₁) (τm' := τm₁'')
+                        rfl (PatTy.wild (τp := .var (freshFor τt)))
+                        hm₁ hren₁ oneWay_var_left structReaches_var
+                        htm₁ hok₁ hvt) ?_
+                      simpa using WTStack.nil
+                  | pval e =>
+                      cases hp with
+                      | pval hty =>
+                        refine WTStack.cons (WTTree.atom
+                          (τm := τm₁) (τm' := τm₁'')
+                          rfl (PatTy.pval (τp := .var (freshFor τt)) hty)
+                          hm₁ hren₁ oneWay_var_left structReaches_var
+                          htm₁ hok₁ hvt) ?_
+                        simpa using WTStack.nil
+                · -- 積スロット:σ = var は prod 形と両立しない
+                  exact absurd hσp (by simp)
+            | ctor c pps =>
+                cases hppty with
+                | ctor hfindpp hpps hlenp hrefresh =>
+                    have hrenpairs := ppty_refresh_renames hlenp hrefresh
+                    have hlend := patTys_length hduals
+                    have hlenpr : duals.length = pairs.length := by
+                      have := congrArg List.length hsnd
+                      simpa using this
+                    have hrall : ∀ pr ∈ (duals.map (·.2)).zip (pairs.map (·.1)),
+                        RenamesTo pr.1 pr.2 := by
+                      intro pr hpr
+                      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
+                      have hid : i < duals.length := by
+                        simp only [List.length_zip, List.length_map] at hi
+                        omega
+                      have hip : i < pairs.length := by omega
+                      rw [List.getElem_zip]
+                      simp only [List.getElem_map]
+                      have h2 : duals[i].2 = pairs[i].2 := by
+                        have := List.getElem_of_eq hsnd (by simpa using hid)
+                        simpa [List.getElem_map] using this
+                      rw [h2]
+                      exact hrenpairs pairs[i] (pairs.getElem_mem hip)
+                    have hstack := slot_atoms hwfD ps' (vs := vs) hduals hdreach hsnd
+                      hmslen hmscomp hrall
+                      (by omega)
+                      (by rw [hsnd]; exact hvscomp)
+                      (by omega)
+                    simpa [List.map_map, Function.comp_def] using hstack
+            | tuple pps =>
+                cases hppty with
+                | tuple hpps hlenp hrefresh =>
+                    have hrenpairs := ppty_refresh_renames hlenp hrefresh
+                    have hlend := patTys_length hduals
+                    have hlenpr : duals.length = pairs.length := by
+                      have := congrArg List.length hsnd
+                      simpa using this
+                    have hrall : ∀ pr ∈ (duals.map (·.2)).zip (pairs.map (·.1)),
+                        RenamesTo pr.1 pr.2 := by
+                      intro pr hpr
+                      obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hpr
+                      have hid : i < duals.length := by
+                        simp only [List.length_zip, List.length_map] at hi
+                        omega
+                      have hip : i < pairs.length := by omega
+                      rw [List.getElem_zip]
+                      simp only [List.getElem_map]
+                      have h2 : duals[i].2 = pairs[i].2 := by
+                        have := List.getElem_of_eq hsnd (by simpa using hid)
+                        simpa [List.getElem_map] using this
+                      rw [h2]
+                      exact hrenpairs pairs[i] (pairs.getElem_mem hip)
+                    have hstack := slot_atoms hwfD ps' (vs := vs) hduals hdreach hsnd
+                      hmslen hmscomp hrall
+                      (by omega)
+                      (by rw [hsnd]; exact hvscomp)
+                      (by omega)
+                    simpa [List.map_map, Function.comp_def] using hstack
+  all_goals intros; trivial
+
+/-- MS-MATCHER 系 3 規則の状態レベル保存(歩行補題の状態への持ち上げ)。
+    oracle `hclorc` は「マッチャー値の shape 一致節は使用点の標的型 τt でも
+    型付く」(値の内在節型付けの τt インスタンスへの輸送;[b-6] で放電)。 -/
+theorem preserve_matcher_step {SD : SigD} {SP : SigP} {SF : SigF}
+    (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
+    (hevG : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
+       ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
+       Unifiable τm τt → p.isClauseForm = true →
+       ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
+         ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
+    {Γ : TyCtx} {Φ : PatParamCtx} {p : Pattern} {ρm : Env} {cls : List Clause}
+    {v : Value} {S : List Tree} {ρ : Env} {θ θ' : Subst}
+    {conts : List (List Atom)} {Δgoal : BindCtx}
+    (hpc : p.isClauseForm = true)
+    (hma : MAtom SF (θ ++ ρ) p (.matcherV ρm cls) v conts θ')
+    (hwt : WTStateAt SD SP SF Γ Φ ⟨.atom ⟨p, .matcherV ρm cls, v⟩ :: S, ρ, θ⟩ Δgoal) :
+    ∀ as ∈ conts,
+      WTStateAt SD SP SF Γ Φ ⟨as.map .atom ++ S, ρ, θ' ++ θ⟩ Δgoal := by
+  obtain ⟨hρ, Δ₀, hθ, hstack⟩ := hwt
+  cases hstack with
+  | cons htree hrest =>
+    cases htree with
+    | atomAnd h₁ h₂ => simp [Pattern.isClauseForm] at hpc
+    | atomOr h₁ h₂ => simp [Pattern.isClauseForm] at hpc
+    | atom hsc hp hm hren how hreach htm hok hv =>
+        obtain ⟨Γm, henv, hclat⟩ := hclorc hm htm hpc
+        have hcons := valueTy_matcherV_consistent hm
+        obtain ⟨hz, hstacks⟩ := matom_matcher_preserve hwfD hwfP hL hevG hma
+          rfl hpc hp hreach hv henv hclat
+          (fun cl hcl {τ' pairs Δpp} hppty => hcons.ppBindNodup cl hcl hppty)
+          (fun cl hcl arm harm {τ' Γij} hpd => hcons.armBindNodup cl hcl arm harm hpd)
+          (exclInv_init hwfP hp hm hren how)
+        subst hz
+        intro as has
+        exact ⟨hρ, Δ₀, by simpa using hθ, wtStack_append (hstacks as has) hrest⟩
+
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
     MS-MNODE-STEP の内側再帰に帰納法の仮定を供給する。
     仮定 `hSF` は PATFUN-DEF の意味論側条件(線形性・noEmbedInOr・仮引数相異)、
     `stackNoOr` は or 分岐が ~x を落とさないための状態不変量
     (site パターンは embed-free、本体は noOr なので到達状態で成立;
     維持は `step_occs` が同時に示す)。
-    **14 分岐のうち 10(MS-SOME-WC/VAR/VAL-EQ/VAL-NEQ・MS-AND・MS-OR・
-    MS-TUPLE・MS-PROD-SOME・MS-MNODE-DONE・MS-MNODE-STEP)は証明済み**。
-    残る sorry は MS-MATCHER 系 3([b-4] 後続 vp transport+[b-5.5]
-    役割別 τt 取り直し)と MS-PATFUN-ENTER / MS-MNODE-VARPAT
-    ([b-3] 双対スキームのインスタンス化)。 -/
+    **14 分岐のうち 13 は証明済み**(MS-SOME 系 4・MS-AND・MS-OR・MS-TUPLE・
+    MS-PROD-SOME・MS-MNODE 系 3・**MS-MATCHER 系 3 = 節歩行補題
+    `matom_matcher_preserve` 経由**)。残る sorry は MS-PATFUN-ENTER
+    ([b-3] 双対スキームのインスタンス化)のみ。
+    oracle `hevG`(評価型付け)と `hclorc`(τt 節型付け輸送)は
+    [b-6] で結合帰納法から放電する。 -/
 theorem type_safety_b_at
     {SD : SigD} {SP : SigP} {SF : SigF}
-    (hwfD : SigDWF SD)
+    (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
+    (hevG : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
+       ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
+       Unifiable τm τt → p.isClauseForm = true →
+       ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
+         ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     (hSF : ∀ pr ∈ SF, pr.2.body.embedVars = pr.2.params ∧
        pr.2.body.noEmbedInOr = true ∧ pr.2.params.Nodup)
     {s : MState} {ss : List MState}
@@ -2073,9 +2634,15 @@ theorem type_safety_b_at
         simp only [List.mem_singleton] at has
         subst has
         simpa using preserve_prodSome hprim hwt
-    | matcherPPFail hpc hppm hma' => sorry
-    | matcherDPFail hpc hppm hpd hma' => sorry
-    | matcher hpc hppm hpd hevN hlist hvss hevM hms => sorry
+    | matcherPPFail hpc hppm hma' =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
+          (MAtom.matcherPPFail hpc hppm hma') hwt as has
+    | matcherDPFail hpc hppm hpd hma' =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
+          (MAtom.matcherDPFail hpc hppm hpd hma') hwt as has
+    | matcher hpc hppm hpd hevN hlist hvss hevM hms =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
+          (MAtom.matcher hpc hppm hpd hevN hlist hvss hevM hms) hwt as has
   case patfun =>
     intro S ρ θ f qs m v sig hfind hlen
     intro Γ Φ Δgoal hno hwt s' hs'
@@ -2131,14 +2698,21 @@ theorem type_safety_b_at
     (MS-PATFUN-ENTER の双対スキーム実現)で使う予定の interface。) -/
 theorem type_safety_b
     {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
-    (hwfD : SigDWF SD)
+    (hwfD : SigDWF SD) (hwfP : SigPWF SP) (hL : ListSigOK SD)
+    (hevG : ∀ {ρ' : Env} {Γ' : TyCtx} {e : Expr} {w : Value} {τ' : Ty},
+       Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
+    (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
+       ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
+       Unifiable τm τt → p.isClauseForm = true →
+       ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
+         ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     {s : MState} {ss : List MState} {Δgoal : BindCtx}
     (hSigF : SigFWF SD SP SF Γ)
     (hstep : Step SF s ss)
     (hno : stackNoOr s.S = true)
     (hwt : WTState SD SP SF Γ s Δgoal) :
     ∀ s' ∈ ss, WTState SD SP SF Γ s' Δgoal :=
-  type_safety_b_at hwfD
+  type_safety_b_at hwfD hwfP hL hevG hclorc
     (fun pr hpr => ⟨(hSigF pr hpr).linearity, (hSigF pr hpr).noOr,
       (hSigF pr hpr).paramsNodup⟩)
     hstep Γ [] Δgoal hno hwt
