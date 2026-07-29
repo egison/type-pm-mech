@@ -105,12 +105,13 @@ def Pattern.isPrimForm : Pattern → Bool
   | .pval _ => true
   | _       => false
 
-/-- マッチャー節照合の対象になるパターン形(MS-MATCHER 系規則の側条件)。
+/-- マッチャーへディスパッチ可能なパターン形
+    (MS-MATCHER 系規則の側条件)。
     and/or/パターン関数適用/~x は専用規則が構文主導で先に処理する
     (実装 `processMState'` のディスパッチ準拠;これが無いと例えば
     `(x::xs) & $y` が catch-all 節に捕まり、部分パターンの構成子が
     something に到達する行き詰まり分岐が生じる — 細部その 4(ii))。 -/
-def Pattern.isClauseForm : Pattern → Bool
+def Pattern.isMatcherDispatchable : Pattern → Bool
   | .pvar _    => true
   | .wild      => true
   | .pval _    => true
@@ -228,18 +229,18 @@ inductive MAtom (SF : SigF) : Env → Pattern → Value → Value →
       p.isPrimForm = true →
       MAtom SF ρ p (.tuple ms) v [[⟨p, .something, v⟩]] []
   | matcherPPFail {ρ ρm p v pp M arms cls conts θ'} :          -- MS-MATCHER-PP-FAIL
-      p.isClauseForm = true →                                  -- 節適用形(細部その 4(ii))
+      p.isMatcherDispatchable = true →                         -- matcher 節へ dispatch 可能
       PPM SF ρ pp p none →
       MAtom SF ρ p (.matcherV ρm cls) v conts θ' →
       MAtom SF ρ p (.matcherV ρm ((pp, M, arms) :: cls)) v conts θ'
   | matcherDPFail {ρ ρm p v pp M dp N arms cls ps' ρp conts θ'} :  -- MS-MATCHER-DP-FAIL
-      p.isClauseForm = true →
+      p.isMatcherDispatchable = true →
       PPM SF ρ pp p (some (ps', ρp)) →
       pdMatch dp v = none →
       MAtom SF ρ p (.matcherV ρm ((pp, M, arms) :: cls)) v conts θ' →
       MAtom SF ρ p (.matcherV ρm ((pp, M, (dp, N) :: arms) :: cls)) v conts θ'
   | matcher {ρ ρm p v pp M dp N arms cls ps' ρp ρd vN tuples vss vM ms} :  -- MS-MATCHER
-      p.isClauseForm = true →
+      p.isMatcherDispatchable = true →
       PPM SF ρ pp p (some (ps', ρp)) →
       pdMatch dp v = some ρd →
       Eval SF (ρd ++ ρp ++ ρm) N vN →

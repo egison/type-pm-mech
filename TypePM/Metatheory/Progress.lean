@@ -852,7 +852,7 @@ theorem arms_walk {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {τm : Ty}
     (hwfD : SigDWF SD) (hL : ListSigOK SD)
     {ρθ ρm ρp : Env} {p : Pattern} {v : Value} {pp : PPat} {M : Expr}
     {ps' : List Pattern} {pairs : List (Ty × Ty)} {Δi : BindCtx} {Ms : List Expr}
-    (hpc : p.isClauseForm = true)
+    (hmd : p.isMatcherDispatchable = true)
     (hppm : PPM SF ρθ pp p (some (ps', ρp)))
     (hppty : PPTy SP pp τm pairs Δi)
     (hMs : decomposeME M pairs.length = some Ms) :
@@ -874,8 +874,8 @@ theorem arms_walk {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {τm : Ty}
               · rw [hpdm] at hsome; simp at hsome
               · exact ⟨arm, hmem, hsome⟩
             obtain ⟨conts, θ', hMA⟩ :=
-              arms_walk htotal heval hwfD hL hpc hppm hppty hMs arms' cls' harmsT hex'
-            exact ⟨conts, θ', MAtom.matcherDPFail hpc hppm hpdm hMA⟩
+              arms_walk htotal heval hwfD hL hmd hppm hppty hMs arms' cls' harmsT hex'
+            exact ⟨conts, θ', MAtom.matcherDPFail hmd hppm hpdm hMA⟩
         | some ρd =>
             have hk : ps'.length = pairs.length := ppm_length pp hppm hppty
             -- 分解関数の評価と像の形
@@ -913,14 +913,15 @@ theorem arms_walk {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {τm : Ty}
                     rw [← hlenv, hMslen, hk]
                   exact ⟨vms, by simp [decodeTuple, h1, hveq]⟩
             obtain ⟨ms, hms⟩ := hdecM
-            exact ⟨_, _, MAtom.matcher hpc hppm hpdm hevN hlist hvss hevM hms⟩
+            exact ⟨_, _, MAtom.matcher hmd hppm hpdm hevN hlist hvss hevM hms⟩
 
 theorem clause_walk {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {τm : Ty}
     (htotal : ∀ ρ e, ∃ v, Eval SF ρ e v)
     (heval : ∀ {Γ' : TyCtx} {e : Expr} {v : Value} {τ' : Ty} {ρ' : Env},
        Eval SF ρ' e v → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF v τ')
     (hwfD : SigDWF SD) (hL : ListSigOK SD)
-    {ρθ ρm : Env} {p : Pattern} {v : Value} (hpc : p.isClauseForm = true) :
+    {ρθ ρm : Env} {p : Pattern} {v : Value}
+    (hmd : p.isMatcherDispatchable = true) :
     ∀ (cls' : List Clause),
     ClausesTy SD SP SF Γm τm cls' →
     (∀ cl ∈ cls', ∃ arm ∈ cl.2.2, (pdMatch arm.1 v).isSome) →
@@ -940,14 +941,14 @@ theorem clause_walk {SD : SigD} {SP : SigP} {SF : SigF} {Γm : TyCtx} {τm : Ty}
               · rw [hshape] at htrue; simp at htrue
               · exact ⟨cl, hmem, htrue⟩
             obtain ⟨conts, θ', hMA⟩ :=
-              clause_walk htotal heval hwfD hL hpc cls' hclstyT
+              clause_walk htotal heval hwfD hL hmd cls' hclstyT
                 (fun cl h => hArm cl (List.mem_cons_of_mem _ h)) hex'
-            exact ⟨conts, θ', MAtom.matcherPPFail hpc (PPM.fail hshape) hMA⟩
+            exact ⟨conts, θ', MAtom.matcherPPFail hmd (PPM.fail hshape) hMA⟩
         | true =>
             obtain ⟨ps', ρp, hppm⟩ := ppm_total htotal pp p ρθ hshape
             cases hclty with
             | mk hppty hdecM hslots harms =>
-              exact arms_walk htotal heval hwfD hL hpc hppm hppty hdecM arms cls' harms
+              exact arms_walk htotal heval hwfD hL hmd hppm hppty hdecM arms cls' harms
                 (hArm (pp, M, arms) (by simp))
 
 /-- matcherV に対する原子は必ず簡約できる(形状一致節の存在を仮定に取る核補題) -/
@@ -957,13 +958,13 @@ theorem matcherV_progress {SD : SigD} {SP : SigP} {SF : SigF}
        Eval SF ρ' e v → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF v τ')
     (hwfD : SigDWF SD) (hL : ListSigOK SD)
     {ρθ ρm : Env} {cls : List Clause} {p : Pattern} {v : Value} {τm τ : Ty}
-    (hpc : p.isClauseForm = true)
+    (hmd : p.isMatcherDispatchable = true)
     (hm : ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm))
     (huni : Unifiable τm τ) (hv : ValueTy SD SP SF v τ)
     (hwit : ∃ cl ∈ cls, ppShapeOK cl.1 p = true) :
     ∃ conts θ', MAtom SF ρθ p (.matcherV ρm cls) v conts θ' := by
   obtain ⟨Γm, hclsty⟩ := valueTy_matcherV_clausesTy hm
-  exact clause_walk htotal heval hwfD hL hpc cls hclsty
+  exact clause_walk htotal heval hwfD hL hmd cls hclsty
     (armExh_instance hwfD (valueTy_matcherV_consistent hm) huni hv) hwit
 
 /-! ## Lemma 5.5 本体 -/

@@ -139,9 +139,10 @@ def matomF (SF : SigF) : Nat → Env → Pattern → Value → Value →
     | _, .tuple _ =>
         if p.isPrimForm then some ([[⟨p, .something, v⟩]], []) else none
     | _, .matcherV ρm cls =>
-        -- 節適用形のみ節照合へ(MS-MATCHER 系規則の側条件と一致;
+        -- matcher 節へ dispatch 可能な形のみ節照合へ
+        -- (MS-MATCHER 系規則の側条件と一致;
         -- and/or は上の行が先に処理し、papp/embed は stepF が扱う)
-        if p.isClauseForm then clausesF SF fuel ρ ρm cls p v else none
+        if p.isMatcherDispatchable then clausesF SF fuel ρ ρm cls p v else none
     | _, _ => none
 
 /-- MS-MATCHER-PP-FAIL:節を順に試す -/

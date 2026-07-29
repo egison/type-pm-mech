@@ -53,7 +53,8 @@ structural witness の制限・合成だけを使う．
 5. `PPP-WILD`／zero-hole：空 tuple と `()` を正しく扱う．
 6. catch-all：`tgt : τ` の下の `N : [τ]` と，一つの next matcher `M` を使う．
 
-R2 の `clause-form` と R3 の catch-all-last により，catch-all ケースへ来るのは
+R2 の `matcher-dispatchable` と R3 の catch-all-last により，
+catch-all ケースへ来るのは
 変数，ワイルドカード，未捕捉の値パターンだけになる．
 
 ## 論文との対応

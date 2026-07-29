@@ -868,15 +868,15 @@ theorem matom_occs {SF : SigF} {ρ : Env} {p : Pattern} {m v : Value}
     subst has
     simp [stackEmbedOccs, treeEmbedOccs]
   case mppfail =>
-    intro ρ ρm p v pp M arms cls conts θ' _hpc _hppm _hma _ihppm ihma
+    intro ρ ρm p v pp M arms cls conts θ' _hmd _hppm _hma _ihppm ihma
     exact fun hno as has => ihma hno as has
   case mdpfail =>
     intro ρ ρm p v pp M dp N arms cls ps' ρp conts θ'
-      _hpc _hppm _hpd _hma _ihppm ihma
+      _hmd _hppm _hpd _hma _ihppm ihma
     exact fun hno as has => ihma hno as has
   case mmatcher =>
     intro ρ ρm p v pp M dp N arms cls ps' ρp ρd vN tuples vss vM ms
-      _hpc hppm _hpd _hevN hlist hvss _hevM hms
+      _hmd hppm _hpd _hevN hlist hvss _hevM hms
       _ihppm _ihevN _ihevM
     intro _ as has
     simp only [List.mem_map] at has
@@ -1054,15 +1054,15 @@ theorem matom_noOr {SF : SigF} {ρ : Env} {p : Pattern} {m v : Value}
     subst has
     simp [noEmbedInOrList, hno]
   case nppfail =>
-    intro ρ ρm p v pp M arms cls conts θ' _hpc _hppm _hma _ihppm ihma
+    intro ρ ρm p v pp M arms cls conts θ' _hmd _hppm _hma _ihppm ihma
     exact fun hno as has => ihma hno as has
   case ndpfail =>
     intro ρ ρm p v pp M dp N arms cls ps' ρp conts θ'
-      _hpc _hppm _hpd _hma _ihppm ihma
+      _hmd _hppm _hpd _hma _ihppm ihma
     exact fun hno as has => ihma hno as has
   case nmatcher =>
     intro ρ ρm p v pp M dp N arms cls ps' ρp ρd vN tuples vss vM ms
-      _hpc hppm _hpd _hevN _hlist hvss _hevM hms
+      _hmd hppm _hpd _hevN _hlist hvss _hevM hms
       _ihppm _ihevN _ihevM
     intro hno as has
     simp only [List.mem_map] at has
@@ -2379,7 +2379,7 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
     ∀ {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty}
       {ρm : Env} {cls : List Clause} {Γm : TyCtx},
     m₀ = .matcherV ρm cls →
-    p₀.isClauseForm = true →
+    p₀.isMatcherDispatchable = true →
     PatTy SD SP SF Γ Φ Δ₀ p₀ τp τt Δ' →
     StructReaches τp τt →
     ValueTy SD SP SF v₀ τt →
@@ -2398,7 +2398,7 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
       ∀ {Γ : TyCtx} {Φ : PatParamCtx} {Δ₀ Δ' : BindCtx} {τp τt : Ty}
         {ρm : Env} {cls : List Clause} {Γm : TyCtx},
       m₀ = .matcherV ρm cls →
-      p₀.isClauseForm = true →
+      p₀.isMatcherDispatchable = true →
       PatTy SD SP SF Γ Φ Δ₀ p₀ τp τt Δ' →
       StructReaches τp τt →
       ValueTy SD SP SF v₀ τt →
@@ -2437,12 +2437,12 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
     exact nomatch hme
   case mand =>
     intro ρ p₁ p₂ m v
-    intro _ _ _ _ _ _ _ _ _ _ hpc _ _ _ _ _ _ _ _
-    simp [Pattern.isClauseForm] at hpc
+    intro _ _ _ _ _ _ _ _ _ _ hmd _ _ _ _ _ _ _ _
+    simp [Pattern.isMatcherDispatchable] at hmd
   case mor =>
     intro ρ p₁ p₂ m v
-    intro _ _ _ _ _ _ _ _ _ _ hpc _ _ _ _ _ _ _ _
-    simp [Pattern.isClauseForm] at hpc
+    intro _ _ _ _ _ _ _ _ _ _ hmd _ _ _ _ _ _ _ _
+    simp [Pattern.isMatcherDispatchable] at hmd
   case mtuple =>
     intro ρ ps ms vs hl1 hl2
     intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
@@ -2452,27 +2452,27 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
     intro _ _ _ _ _ _ _ _ _ hme _ _ _ _ _ _ _ _ _
     exact nomatch hme
   case mppfail =>
-    intro ρ ρm₀ p v pp M arms cls₀ conts θ' _hpc hppm _hma _ihppm ihma
-    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+    intro ρ ρm₀ p v pp M arms cls₀ conts θ' _hmd hppm _hma _ihppm ihma
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hmd' hp hreach hv henv hclat hppnd harmnd hexcl
     injection hme with hρ hcls
     subst hρ
     subst hcls
     have hshape : ppShapeOK pp p = false := by
       cases hppm with
       | fail hs => exact hs
-    exact ihma rfl hpc' hp hreach hv henv
+    exact ihma rfl hmd' hp hreach hv henv
       (fun cl hcl hsh => hclat cl (List.mem_cons_of_mem _ hcl) hsh)
       (fun cl hcl => hppnd cl (List.mem_cons_of_mem _ hcl))
       (fun cl hcl => harmnd cl (List.mem_cons_of_mem _ hcl))
       (exclInv_ppfail hp hshape hexcl)
   case mdpfail =>
     intro ρ ρm₀ p v pp M dp N arms cls₀ ps' ρp conts θ'
-      _hpc _hppm _hpd _hma _ihppm ihma
-    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+      _hmd _hppm _hpd _hma _ihppm ihma
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hmd' hp hreach hv henv hclat hppnd harmnd hexcl
     injection hme with hρ hcls
     subst hρ
     subst hcls
-    refine ihma rfl hpc' hp hreach hv henv ?_ ?_ ?_ hexcl
+    refine ihma rfl hmd' hp hreach hv henv ?_ ?_ ?_ hexcl
     · intro cl hcl hsh
       rcases List.mem_cons.mp hcl with rfl | hcl'
       · have hcl0 := hclat _ (List.mem_cons_self ..) hsh
@@ -2493,9 +2493,9 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
       · exact fun hpd' => harmnd cl (List.mem_cons_of_mem _ hcl') arm harm hpd'
   case mmatcher =>
     intro ρ ρm₀ p v pp M dp N arms cls₀ ps' ρp ρd vN tuples vss vM ms
-      hpc₀ hppm hpd hevN hlist hvss hevM hms
+      hmd₀ hppm hpd hevN hlist hvss hevM hms
       _ihppm _ihevN _ihevM
-    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hpc' hp hreach hv henv hclat hppnd harmnd hexcl
+    intro Γ Φ Δ₀ Δ' τp τt ρm cls Γm hme hmd' hp hreach hv henv hclat hppnd harmnd hexcl
     injection hme with hρ hcls
     subst hρ
     subst hcls
@@ -2562,10 +2562,10 @@ theorem matom_matcher_preserve {SD : SigD} {SP : SigP} {SF : SigF}
                 · -- 単一マッチャー:p の形で分岐(prim = fresh 再導出、
                   -- pctor/ptuple = 除外不変量の矛盾)
                   cases p with
-                  | pand p₁ p₂ => simp [Pattern.isClauseForm] at hpc'
-                  | por p₁ p₂ => simp [Pattern.isClauseForm] at hpc'
-                  | papp f qs => simp [Pattern.isClauseForm] at hpc'
-                  | embed z => simp [Pattern.isClauseForm] at hpc'
+                  | pand p₁ p₂ => simp [Pattern.isMatcherDispatchable] at hmd'
+                  | por p₁ p₂ => simp [Pattern.isMatcherDispatchable] at hmd'
+                  | papp f qs => simp [Pattern.isMatcherDispatchable] at hmd'
+                  | embed z => simp [Pattern.isMatcherDispatchable] at hmd'
                   | pctor c psargs =>
                       exfalso
                       cases hp with
@@ -2681,13 +2681,13 @@ theorem preserve_matcher_step {SD : SigD} {SP : SigP} {SF : SigF}
        Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
     (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
        ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
-       Unifiable τm τt → p.isClauseForm = true →
+       Unifiable τm τt → p.isMatcherDispatchable = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     {Γ : TyCtx} {Φ : PatParamCtx} {p : Pattern} {ρm : Env} {cls : List Clause}
     {v : Value} {S : List Tree} {ρ : Env} {θ θ' : Subst}
     {conts : List (List Atom)} {Δgoal : BindCtx}
-    (hpc : p.isClauseForm = true)
+    (hmd : p.isMatcherDispatchable = true)
     (hma : MAtom SF (θ ++ ρ) p (.matcherV ρm cls) v conts θ')
     (hwt : WTStateAt SD SP SF Γ Φ ⟨.atom ⟨p, .matcherV ρm cls, v⟩ :: S, ρ, θ⟩ Δgoal) :
     ∀ as ∈ conts,
@@ -2696,13 +2696,13 @@ theorem preserve_matcher_step {SD : SigD} {SP : SigP} {SF : SigF}
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atomAnd h₁ h₂ => simp [Pattern.isClauseForm] at hpc
-    | atomOr h₁ h₂ => simp [Pattern.isClauseForm] at hpc
+    | atomAnd h₁ h₂ => simp [Pattern.isMatcherDispatchable] at hmd
+    | atomOr h₁ h₂ => simp [Pattern.isMatcherDispatchable] at hmd
     | atom hsc hp hm hren how hreach htm hok hv =>
-        obtain ⟨Γm, henv, hclat⟩ := hclorc hm htm hpc
+        obtain ⟨Γm, henv, hclat⟩ := hclorc hm htm hmd
         have hcons := valueTy_matcherV_consistent hm
         obtain ⟨hz, hstacks⟩ := matom_matcher_preserve hwfD hwfP hL hevG hma
-          rfl hpc hp hreach hv henv hclat
+          rfl hmd hp hreach hv henv hclat
           (fun cl hcl {τ' pairs Δpp} hppty => hcons.ppBindNodup cl hcl hppty)
           (fun cl hcl arm harm {τ' Γij} hpd => hcons.armBindNodup cl hcl arm harm hpd)
           (exclInv_init hwfP hp hm hren how)
@@ -2874,7 +2874,7 @@ theorem type_safety_b_at
        Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
     (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
        ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
-       Unifiable τm τt → p.isClauseForm = true →
+       Unifiable τm τt → p.isMatcherDispatchable = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
@@ -2947,15 +2947,15 @@ theorem type_safety_b_at
         simp only [List.mem_singleton] at has
         subst has
         simpa using preserve_prodSome hprim hwt
-    | matcherPPFail hpc hppm hma' =>
-        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
-          (MAtom.matcherPPFail hpc hppm hma') hwt as has
-    | matcherDPFail hpc hppm hpd hma' =>
-        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
-          (MAtom.matcherDPFail hpc hppm hpd hma') hwt as has
-    | matcher hpc hppm hpd hevN hlist hvss hevM hms =>
-        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hpc
-          (MAtom.matcher hpc hppm hpd hevN hlist hvss hevM hms) hwt as has
+    | matcherPPFail hmd hppm hma' =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hmd
+          (MAtom.matcherPPFail hmd hppm hma') hwt as has
+    | matcherDPFail hmd hppm hpd hma' =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hmd
+          (MAtom.matcherDPFail hmd hppm hpd hma') hwt as has
+    | matcher hmd hppm hpd hevN hlist hvss hevM hms =>
+        exact preserve_matcher_step hwfD hwfP hL hevG hclorc hmd
+          (MAtom.matcher hmd hppm hpd hevN hlist hvss hevM hms) hwt as has
   case patfun =>
     intro S ρ θ f qs m v sig hfind hlen
     intro Γ Φ Δgoal _hno hwt s' hs'
@@ -3016,7 +3016,7 @@ theorem type_safety_b
        Eval SF ρ' e w → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF w τ')
     (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
        ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
-       Unifiable τm τt → p.isClauseForm = true →
+       Unifiable τm τt → p.isMatcherDispatchable = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}
@@ -3082,7 +3082,7 @@ theorem type_safety {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
        PatTy SD SP SF Γ' [] [] p τp τt Δ → StructReaches τp τt)
     (hclorc : ∀ {ρm : Env} {cls : List Clause} {τm τt : Ty} {p : Pattern},
        ValueTy SD SP SF (.matcherV ρm cls) (.matcher τm) →
-       Unifiable τm τt → p.isClauseForm = true →
+       Unifiable τm τt → p.isMatcherDispatchable = true →
        ∃ Γm, EnvTyped SD SP SF Γm ρm ∧
          ∀ cl ∈ cls, ppShapeOK cl.1 p = true → ClauseTy SD SP SF Γm τt cl)
     (hinstF : ∀ {f : String} {sig : PatFunSig} {qs : List Pattern}

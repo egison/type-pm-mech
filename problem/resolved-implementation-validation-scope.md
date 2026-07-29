@@ -38,7 +38,7 @@ prototype checker の存在から，次を一括して結論するのは強す�
 | `MatcherSlot` dual check | `checkMatcherAdmissibility` と one-way/target check | dual-type probe の任意の推論失敗で fresh fallback |
 | 単相 matcher rigidity | 異なる `TMatcher` 添字の通常単一化を拒否 | scheme instantiation は通常 HM のまま |
 | matcher literal checking | 定義注釈との専用 checking mode | P2 の一般 instance relation ではない |
-| clause-form dispatch | core の複合形を先に構文分解 | Egison 固有 `IIndexedPat` は core 分類外，専用の負回帰テストはない |
+| matcher-dispatchable | core の複合形を先に構文分解 | Egison 固有 `IIndexedPat` は core 分類外，専用の負回帰テストはない |
 | catch-all ordering | bare-hole 後の節を hard error | catch-all の正式な arm 形全体は未強制 |
 | arm body の型 | hole target tuple のリスト型へ単一化 | 中核条件 (1b) に対応 |
 | arm exhaustiveness | 外側 literal で保守的 hard check | 別 matcher body 内の literal と一般 ADT 列挙は不完全 |

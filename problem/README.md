@@ -28,7 +28,7 @@
 | ID | 問題 | 固定したもの |
 |---|---|---|
 | R1 | [`match` の表層意味論と定理の射程](resolved-surface-match-boundary.md) | 単一節 `matchAll` の成功評価，表層の逐次試行・失敗との境界 |
-| R2 | [matcher 節へ送るパターン形の限定](resolved-matcher-clause-dispatch.md) | `clause-form` と構文主導ディスパッチ |
+| R2 | [matcher 節へ送るパターン形の限定](resolved-matcher-clause-dispatch.md) | `matcher-dispatchable` と構文主導ディスパッチ |
 | R3 | [matcher 節の到達可能性と arm 網羅性](resolved-matcher-consistency-reachability.md) | catch-all-last，Coverage/refinement の到達性，全インスタンスでの arm 網羅性 |
 | R4 | [`StepTotal` と MNode を含む進行性](resolved-step-total-mnode-progress.md) | 埋込み big-step の停止前提，MNode 深さによる進行性証明 |
 | R5 | [値パターンパターン捕捉の実行時意味論](resolved-value-pattern-capture-runtime.md) | 原子入力環境の捕捉，同一原子内の穴との順序 |

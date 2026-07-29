@@ -342,19 +342,19 @@ theorem matomF_sound' : ∀ (n : Nat) {SF : SigF} {ρ : Env} {p : Pattern} {m v 
         obtain rfl := Option.some.inj h
         exact MAtom.prodSome hprim
       · exact nomatch h
-    -- matcherV(節適用形ガードつき)
+    -- matcherV(matcher-dispatchable ガードつき)
     · split at h
-      · next hpc => exact clausesF_sound' n hpc h
+      · next hmd => exact clausesF_sound' n hmd h
       · exact nomatch h
     -- default
     · exact nomatch h
 
 theorem clausesF_sound' : ∀ (n : Nat) {SF : SigF} {ρ ρm : Env} {cls : List Clause}
     {p : Pattern} {v : Value} {res : List (List Atom) × Subst},
-    p.isClauseForm = true →
+    p.isMatcherDispatchable = true →
     clausesF SF n ρ ρm cls p v = some res →
     MAtom SF ρ p (.matcherV ρm cls) v res.1 res.2
-  | n+1, SF, ρ, ρm, cls, p, v, res, hpc, h => by
+  | n+1, SF, ρ, ρm, cls, p, v, res, hmd, h => by
     unfold clausesF at h
     split at h
     · exact nomatch h
@@ -362,26 +362,26 @@ theorem clausesF_sound' : ∀ (n : Nat) {SF : SigF} {ρ ρm : Env} {cls : List C
       obtain ⟨r, h₁, h⟩ := bind_eq_some h
       have hppm := ppmF_sound' n h₁
       cases r with
-      | none => exact MAtom.matcherPPFail hpc hppm (clausesF_sound' n hpc h)
+      | none => exact MAtom.matcherPPFail hmd hppm (clausesF_sound' n hmd h)
       | some pr =>
         obtain ⟨ps', ρp⟩ := pr
-        exact armsF_sound' n hpc h hppm
+        exact armsF_sound' n hmd h hppm
 
 theorem armsF_sound' : ∀ (n : Nat) {SF : SigF} {ρ ρm ρp : Env}
     {arms : List (DPat × Expr)} {ps' : List Pattern} {M : Expr} {v : Value}
     {res : List (List Atom) × Subst} {pp : PPat} {p : Pattern} {cls : List Clause},
-    p.isClauseForm = true →
+    p.isMatcherDispatchable = true →
     armsF SF n ρm ρp arms ps' M v = some res →
     PPM SF ρ pp p (some (ps', ρp)) →
     MAtom SF ρ p (.matcherV ρm ((pp, M, arms) :: cls)) v res.1 res.2
-  | n+1, SF, ρ, ρm, ρp, arms, ps', M, v, res, pp, p, cls, hpc, h, hppm => by
+  | n+1, SF, ρ, ρm, ρp, arms, ps', M, v, res, pp, p, cls, hmd, h, hppm => by
     unfold armsF at h
     split at h
     · exact nomatch h
     · next dp N arms' =>
       split at h
       · next hpd =>
-        exact MAtom.matcherDPFail hpc hppm hpd (armsF_sound' n hpc h hppm)
+        exact MAtom.matcherDPFail hmd hppm hpd (armsF_sound' n hmd h hppm)
       · next ρd hpd =>
         obtain ⟨vN, h₁, h⟩ := bind_eq_some h
         obtain ⟨tuples, h₂, h⟩ := bind_eq_some h
@@ -389,7 +389,7 @@ theorem armsF_sound' : ∀ (n : Nat) {SF : SigF} {ρ ρm ρp : Env}
         obtain ⟨vM, h₄, h⟩ := bind_eq_some h
         obtain ⟨ms, h₅, h⟩ := bind_eq_some h
         obtain rfl := pure_eq_some h
-        exact MAtom.matcher hpc hppm hpd (evalF_sound' n h₁) h₂ h₃
+        exact MAtom.matcher hmd hppm hpd (evalF_sound' n h₁) h₂ h₃
           (evalF_sound' n h₄) h₅
 
 theorem stepF_sound' : ∀ (n : Nat) {SF : SigF} {s : MState} {ss : List MState},

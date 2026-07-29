@@ -21,7 +21,9 @@
 
 ## 固定した解決
 
-user-defined matcher の3規則に `clause-form(p)` を要求する．節へ送るのは次だけである．
+user-defined matcher の3規則に `matcher-dispatchable(p)` を要求する．
+`matcher-dispatchable(p)` は，外側の構文主導ディスパッチが `p` を
+matcher 節へ送れることを表す．節へ送るのは次だけである．
 
 - パターン変数
 - ワイルドカード
@@ -34,7 +36,7 @@ user-defined matcher の3規則に `clause-form(p)` を要求する．節へ送�
 
 ## 論文との対応
 
-- 操作的意味論の `clause-form` 定義
+- 操作的意味論の `matcher-dispatchable` 定義
 - `MS-MATCHER-PP-FAIL`
 - `MS-MATCHER-DP-FAIL`
 - `MS-MATCHER`
@@ -49,7 +51,7 @@ R2 は catch-all の**位置**を決める R3 と補完関係にある．R2 は�
 [`Core.hs`](../../egison/hs-src/Language/Egison/Core.hs) の `processMState'` は，
 pattern-function application，連言，選言などを構文的に処理した後でのみ
 `UserMatcher` の `inductiveMatch` へ進む．したがって，**論文 core に含まれる
-pattern forms について**実装の dispatch 順序は `clause-form` と一致する．
+pattern forms について**実装の dispatch 順序は `matcher-dispatchable` と一致する．
 Egison 固有の indexed pattern `IIndexedPat` はこの core 分類の外側にあり，
 `UserMatcher` へ到達するため，実装の全 pattern forms が同じ五分類に収まるとは
 主張しない．
@@ -59,13 +61,14 @@ Egison 固有の indexed pattern `IIndexedPat` はこの core 分類の外側に
 - [`mini-test/120-patfun-struct-index.egi`](../../egison/mini-test/120-patfun-struct-index.egi)
 - [`mini-test/121-matcher-arm-typeclass.egi`](../../egison/mini-test/121-matcher-arm-typeclass.egi)
 
-これらは該当経路を通るが，`clause-form` だけを狙った負の回帰テストは現在ない．
+これらは該当経路を通るが，`matcher-dispatchable` だけを狙った負の回帰テストは
+現在ない．
 
 ## Lean 機械化との対応
 
 [`TypePM/Semantics.lean`](../TypePM/Semantics.lean) の
-`Pattern.isClauseForm` が対象形を定義し，次の3構成子が
-`p.isClauseForm = true` を要求する．
+`Pattern.isMatcherDispatchable` が対象形を定義し，次の3構成子が
+`p.isMatcherDispatchable = true` を要求する．
 
 - `MAtom.matcherPPFail`
 - `MAtom.matcherDPFail`
@@ -83,11 +86,11 @@ R2 は実行時 dispatch の曖昧性を解く．次は別問題である．
 - matcher 節そのものの Coverage と arm 網羅性（R3）
 - 値パターンパターンの捕捉環境（R5/P1）
 - matcher 値の能力保存インスタンス化（P2）
-- Egison に専用の clause-form 負テストを追加すること
+- Egison に専用の matcher-dispatchable 負テストを追加すること
 
 ## 回帰確認
 
-- `MS-MATCHER` 系の新規規則には同じ `clause-form` 前提を付ける．
+- `MS-MATCHER` 系の新規規則には同じ `matcher-dispatchable` 前提を付ける．
 - 実装で新しい複合パターン形を追加したときは，matcher 節より前に専用 dispatch
-  するか，明示的に clause form に含めるかを決める．
+  するか，明示的に matcher-dispatchable に含めるかを決める．
 - `($x :: $xs) & $y` のような連言を catch-all に直接渡さない．
