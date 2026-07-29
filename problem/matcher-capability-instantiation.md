@@ -61,6 +61,33 @@
 
 未解決なのは，この剛性を型スキームの一般化・インスタンス化へどう持ち上げるかである．
 
+## 論文・Egison 実装の対応表（最新版）
+
+記号の意味は，`✓` が要求された一般経路を実装済み，`△` が局所的または
+一部の経路だけ，`✗` が要求された一般経路を実装していない，である．
+「通常の match」は `matchAll` の matcher 利用位置，「next matcher」は
+matcher 定義の各 primitive-pattern-pattern ホールへ送る式を指す．
+
+| 項目 | 論文 | Egison 通常の match | Egison next matcher |
+|---|---|---|---|
+| 1．固有型・固有能力の保存 | △ 固定単相導出では明記済み．scheme lookup 後の共有変数を通る特殊化は P2 | △ 直接の裸 matcher は保つが，高階・共有変数経路では失う | △ 一部の成分だけ単一化前の型を保存する構文依存処理 |
+| 2．各穴に完全な slot を構成 | ✓ `T-MATCHER`／Consistency (1a) の宣言規則 | ✓ match site の完全な `MatcherSlot τp τt` を構成 | ✗ hole target と部分的 shape 情報に分かれ，完全な期待 slot へ一律に送らない |
+| 3．`Matcher μ` の双対検査 | ✓ `fresh_rename(μ) ⊑ τp` と target 単一化を分離 | ✓ `coerceMatcherToSlot` が構造先行で検査 | ✗ eager／deferred の個別検査であり，既存 coercion へ一律に送らない |
+| 4．既存 `MatcherSlot` の両成分検査 | ✓ Step 3a を伝播する等式と MGU に修正済み | ✓ slot--slot の構造・target 両成分を順に単一化 | ✗ `HCSlot` は両成分を期待 slot と比較せず通す |
+| 5．型構造を保存する再帰的な変数改名 | ✓ `fresh_rename` を一文で再帰的に定義済み | △ 明示改名はせず，構造先行の one-way 検査を局所的な等価実装としている | △ matcher 側の `freshenTypeVars` は再帰的だが，hole 側の `freshLeavesOf` は入れ子構造を保存しない |
+| 6．成分検査の式構文形への非依存 | ✓ 成分境界の決定後は完全な推論型だけで検査 | ✓ matcher 位置の任意の式を推論型から coercion へ送る | ✗ 変数・`something`・application などで登録・省略を分岐 |
+| 7．scheme lookup 後の共有変数具体化を能力保存的に制限 | ✗ P2 の中心であり未規定 | ✗ fresh lookup 後に通常引数などから能力添字を具体化できる | ✗ 通常経路と同じ問題に加え，成分検査前の型情報欠落がある |
+
+2--6 の next-matcher 列にある不足は，
+[R12](resolved-next-matcher-slot-checking.md) で仕様が固定済みの**実装補修**であり，
+追加の設計判断ではない．P2 として残る本質は，1 の scheme／高階フロー部分と
+7，すなわち定義元の能力を通常の型代入から独立にどう保持するかである．
+
+なお，単純な `mPoly : ∀a. Matcher a` の直接利用では，Egison の lookup は
+`Matcher β` へ fresh 化するだけなので，cons slot に到達した時点の構造検査
+`β' ⊑ [α]` が失敗する．現実装にも残る反例は，fresh 化後の `β` が通常引数などの
+非 `Matcher` 位置と共有され，slot 到達前に `[Integer]` へ具体化される経路である．
+
 ## `mPoly` 反例
 
 論文の反例は次の形である．
