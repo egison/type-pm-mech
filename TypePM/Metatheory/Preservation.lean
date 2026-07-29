@@ -42,30 +42,6 @@ theorem nodup_append_split {α} : ∀ {l₁ l₂ : List α}, (l₁ ++ l₂).Nodu
       · exact fun hmem => hnotin (List.mem_append.mpr (.inr hmem))
       · exact hdisj x hx
 
-theorem list_find?_append_some {α} {f : α → Bool} : ∀ {l₁ l₂ : List α} {a : α},
-    List.find? f l₁ = some a → List.find? f (l₁ ++ l₂) = some a
-  | [], _, _, h => nomatch h
-  | b :: l₁, l₂, a, h => by
-      rw [List.cons_append]
-      simp only [List.find?] at h ⊢
-      cases hb : f b
-      · rw [hb] at h
-        exact list_find?_append_some h
-      · rw [hb] at h
-        exact h
-
-theorem list_find?_append_none {α} {f : α → Bool} : ∀ {l₁ l₂ : List α},
-    List.find? f l₁ = none → List.find? f (l₁ ++ l₂) = List.find? f l₂
-  | [], _, _ => rfl
-  | b :: l₁, l₂, h => by
-      rw [List.cons_append]
-      simp only [List.find?] at h ⊢
-      cases hb : f b
-      · rw [hb] at h
-        exact list_find?_append_none h
-      · rw [hb] at h
-        exact nomatch h
-
 theorem Env.find?_append_left {ρ₁ ρ₂ : Env} {x : String} {v : Value}
     (h : Env.find? ρ₁ x = some v) : Env.find? (ρ₁ ++ ρ₂) x = some v := by
   simp only [Env.find?] at h ⊢
@@ -134,32 +110,38 @@ theorem ppp_core {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
        Eval SF ρ e v → HasTy SD SP SF Γ' e τ' → ValueTy SD SP SF v τ') →
     PPTy SP pp τ pairs Δpp →
     PatTy SD SP SF Γ Φ Δ₀ p τp₀ τ Δn →
+    StructReaches τp₀ τ →
     PPM SF ρ pp p (some (ps', ρp)) →
     (∃ duals, PatTys SD SP SF Γ Φ Δ₀ ps' duals Δn ∧
-       duals.map (·.2) = pairs.map (·.2)) ∧
+       duals.map (·.2) = pairs.map (·.2) ∧
+       ∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
     (∀ pr ∈ ρp, pr.1 ∈ Δpp.map (·.1)) ∧
     ((Δpp.map (·.1)).Nodup →
       ∀ pr ∈ Δpp, ∃ v, Env.find? ρp pr.1 = some v ∧ ValueTy SD SP SF v pr.2)
-  | .hole, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hm => by
+  | .hole, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hreach, hm => by
       cases hm
       cases hpp
-      refine ⟨⟨[(τp₀, τ)], PatTys.cons hp PatTys.nil, rfl⟩, ?_, ?_⟩
+      refine ⟨⟨[(τp₀, τ)], PatTys.cons hp PatTys.nil, rfl, ?_⟩, ?_, ?_⟩
+      · intro pr hpr
+        simp only [List.mem_singleton] at hpr
+        subst hpr
+        exact hreach
       · intro pr hpr; cases hpr
       · intro _ pr hpr; cases hpr
-  | .wild, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hm => by
+  | .wild, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, _hreach, hm => by
       cases hm
       cases hpp
       cases hp
-      refine ⟨⟨[], PatTys.nil, rfl⟩, ?_, ?_⟩
+      refine ⟨⟨[], PatTys.nil, rfl, fun pr hpr => nomatch hpr⟩, ?_, ?_⟩
       · intro pr hpr; cases hpr
       · intro _ pr hpr; cases hpr
-  | .pval y, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hm => by
+  | .pval y, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, _hreach, hm => by
       cases hm with
       | pval hev =>
         cases hpp
         cases hp with
         | pval hty =>
-          refine ⟨⟨[], PatTys.nil, rfl⟩, ?_, ?_⟩
+          refine ⟨⟨[], PatTys.nil, rfl, fun pr hpr => nomatch hpr⟩, ?_, ?_⟩
           · intro pr hpr
             simp only [List.mem_singleton] at hpr
             subst hpr
@@ -168,7 +150,7 @@ theorem ppp_core {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
             simp only [List.mem_singleton] at hpr
             subst hpr
             exact ⟨_, by simp [Env.find?, List.find?], heval hev hty⟩
-  | .ctor c pps, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hm => by
+  | .ctor c pps, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hreach, hm => by
       cases hm with
       | ctor hl1 hl2 hall =>
         cases hpp with
@@ -188,11 +170,30 @@ theorem ppp_core {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
             have htgt' : duals₁.map (·.2) = sig.args.map (Ty.instSig ts₀) := by
               rw [htgt]
               exact (List.map_congr_left fun τa hτa => hagree τa hτa).symm
-            obtain ⟨⟨duals, hd, hmap⟩, hdom, hbind⟩ :=
-              ppp_list pps hwfP heval hpps hps htgt' hl1 hl2 hall
-            refine ⟨⟨duals, hd, ?_⟩, hdom, hbind⟩
+            -- 各引数位置の到達不変量(instSig 分解)
+            have hlen₁ : duals₁.length = sig.args.length := by
+              have := congrArg List.length hstr
+              simpa using this
+            have hdreach : ∀ pr ∈ duals₁, StructReaches pr.1 pr.2 := by
+              intro pr hpr
+              obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hpr
+              have hja : j < sig.args.length := hlen₁ ▸ hj
+              have h1 : duals₁[j].1 = Ty.instSig ss sig.args[j] := by
+                have := List.getElem_of_eq hstr (by simpa using hj)
+                simpa [List.getElem_map] using this
+              have h2 : duals₁[j].2 = Ty.instSig ts₀ sig.args[j] := by
+                have := List.getElem_of_eq htgt' (by simpa using hj)
+                simpa [List.getElem_map] using this
+              rw [h1, h2]
+              obtain ⟨⟨nn, hres_eq⟩, hargsv⟩ := hwf
+              exact structReaches_instSig hres_eq hreach
+                (fun a ha => hargsv a
+                  (mem_ftvList_of_mem (sig.args.getElem_mem hja) ha))
+            obtain ⟨⟨duals, hd, hmap, hdualreach⟩, hdom, hbind⟩ :=
+              ppp_list pps hwfP heval hpps hps htgt' hdreach hl1 hl2 hall
+            refine ⟨⟨duals, hd, ?_, hdualreach⟩, hdom, hbind⟩
             rw [hmap, refresh_map_snd hlenp hrefresh]
-  | .tuple pps, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hm => by
+  | .tuple pps, p, ps', ρp, τ, pairs, Δpp, Δ₀, Δn, τp₀, hwfP, heval, hpp, hp, hreach, hm => by
       cases hm with
       | tuple hl1 hl2 hall =>
         cases hpp with
@@ -206,9 +207,23 @@ theorem ppp_core {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
             have htgt' : duals₁.map (·.2) = τs := by
               injection hres with h
               exact h.symm
-            obtain ⟨⟨duals, hd, hmap⟩, hdom, hbind⟩ :=
-              ppp_list pps hwfP heval hpps hps htgt' hl1 hl2 hall
-            refine ⟨⟨duals, hd, ?_⟩, hdom, hbind⟩
+            -- 各成分位置の到達不変量(積分解)
+            have hdreach : ∀ pr ∈ duals₁, StructReaches pr.1 pr.2 := by
+              intro pr hpr
+              obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hpr
+              have hia : j < (duals₁.map (·.1)).length := by simpa using hj
+              have hib : j < τs.length := by
+                have := congrArg List.length htgt'
+                simp only [List.length_map] at this
+                omega
+              have h3 := structReaches_prod hreach hia hib
+              have h2 : τs[j] = duals₁[j].2 := by
+                have := List.getElem_of_eq htgt' (by simpa using hj)
+                simpa [List.getElem_map] using this.symm
+              simpa [List.getElem_map, h2] using h3
+            obtain ⟨⟨duals, hd, hmap, hdualreach⟩, hdom, hbind⟩ :=
+              ppp_list pps hwfP heval hpps hps htgt' hdreach hl1 hl2 hall
+            refine ⟨⟨duals, hd, ?_, hdualreach⟩, hdom, hbind⟩
             rw [hmap, refresh_map_snd hlenp hrefresh]
 
 theorem ppp_list {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
@@ -222,17 +237,19 @@ theorem ppp_list {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
     PPTys SP pps τs pairs Δpp →
     PatTys SD SP SF Γ Φ Δ₀ ps duals₁ Δn →
     duals₁.map (·.2) = τs →
+    (∀ pr ∈ duals₁, StructReaches pr.1 pr.2) →
     pps.length = ps.length →
     (pps.zip ps).length = rs.length →
     (∀ tr ∈ (pps.zip ps).zip rs, PPM SF ρ tr.1.1 tr.1.2 (some tr.2)) →
     (∃ duals, PatTys SD SP SF Γ Φ Δ₀ ((rs.map (·.1)).flatten) duals Δn ∧
-       duals.map (·.2) = pairs.map (·.2)) ∧
+       duals.map (·.2) = pairs.map (·.2) ∧
+       ∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
     (∀ pr ∈ (rs.map (·.2)).flatten, pr.1 ∈ Δpp.map (·.1)) ∧
     ((Δpp.map (·.1)).Nodup →
       ∀ pr ∈ Δpp, ∃ v, Env.find? ((rs.map (·.2)).flatten) pr.1 = some v ∧
         ValueTy SD SP SF v pr.2)
   | [], ps, rs, τs, pairs, Δpp, Δ₀, Δn, duals₁,
-      hwfP, heval, hpps, hps, hmap, hl1, hl2, hall => by
+      hwfP, heval, hpps, hps, hmap, hreaches, hl1, hl2, hall => by
       cases hpps
       cases ps with
       | cons p ps => simp at hl1
@@ -241,11 +258,11 @@ theorem ppp_list {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
         cases rs with
         | cons r rs => simp at hl2
         | nil =>
-          refine ⟨⟨[], PatTys.nil, rfl⟩, ?_, ?_⟩
+          refine ⟨⟨[], PatTys.nil, rfl, fun pr hpr => nomatch hpr⟩, ?_, ?_⟩
           · intro pr hpr; simp at hpr
           · intro _ pr hpr; cases hpr
   | pp :: pps, ps, rs, τs, pairs, Δpp, Δ₀, Δn, duals₁,
-      hwfP, heval, hpps, hps, hmap, hl1, hl2, hall => by
+      hwfP, heval, hpps, hps, hmap, hreaches, hl1, hl2, hall => by
       cases ps with
       | nil => simp at hl1
       | cons p ps =>
@@ -266,19 +283,26 @@ theorem ppp_list {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx}
                 hall ((pp, p), (nexts, ρpc)) (by simp [List.zip_cons_cons])
               -- 先頭に本体補題を適用(hph の標的添字を τh に書き換え)
               rw [hmh] at hph
-              obtain ⟨⟨dualsh, hdh, hmaph⟩, hdomh, hbindh⟩ :=
-                ppp_core pp hwfP heval hpph hph hPPMh
+              have hreachh : StructReaches prh.1 τh :=
+                hmh ▸ hreaches prh (List.mem_cons_self ..)
+              obtain ⟨⟨dualsh, hdh, hmaph, hreachdh⟩, hdomh, hbindh⟩ :=
+                ppp_core pp hwfP heval hpph hph hreachh hPPMh
               -- 残りに再帰
-              obtain ⟨⟨dualst', hdt, hmapt⟩, hdomt, hbindt⟩ :=
+              obtain ⟨⟨dualst', hdt, hmapt, hreachdt⟩, hdomt, hbindt⟩ :=
                 ppp_list pps hwfP heval hppt hpst hmt
+                  (fun pr hpr => hreaches pr (List.mem_cons_of_mem _ hpr))
                   (by simpa using hl1)
                   (by simpa [List.zip_cons_cons] using hl2)
                   (fun tr htr => hall tr
                     (by simp [List.zip_cons_cons]; exact .inr htr))
-              refine ⟨⟨dualsh ++ dualst', ?_, ?_⟩, ?_, ?_⟩
+              refine ⟨⟨dualsh ++ dualst', ?_, ?_, ?_⟩, ?_, ?_⟩
               · simpa [List.map_cons, List.flatten_cons] using
                   patTys_append hdh hdt
               · simp only [List.map_append, hmaph, hmapt]
+              · intro pr hpr
+                rcases List.mem_append.mp hpr with hpr | hpr
+                · exact hreachdh pr hpr
+                · exact hreachdt pr hpr
               · -- ドメインの上界
                 intro pr hpr
                 simp only [List.map_cons, List.flatten_cons,
@@ -326,13 +350,16 @@ theorem ppp_preservation
     (hnd : (Δpp.map (·.1)).Nodup)
     (hpp : PPTy SP pp τ pairs Δpp)
     (hp : PatTy SD SP SF Γ Φ Δ₀ p τp₀ τ Δn)
+    (hreach : StructReaches τp₀ τ)
     (hm : PPM SF ρ pp p (some (ps', ρp))) :
     ps'.length = pairs.length ∧
     (∃ duals, PatTys SD SP SF Γ Φ Δ₀ ps' duals Δn ∧
-      duals.map (·.2) = pairs.map (·.2)) ∧
+      duals.map (·.2) = pairs.map (·.2) ∧
+      ∀ pr ∈ duals, StructReaches pr.1 pr.2) ∧
     (∀ pr ∈ Δpp, ∃ v, Env.find? ρp pr.1 = some v ∧ ValueTy SD SP SF v pr.2) := by
-  obtain ⟨⟨duals, hd, hmap⟩, hdom, hbind⟩ := ppp_core pp hwfP heval hpp hp hm
-  refine ⟨?_, ⟨duals, hd, hmap⟩, hbind hnd⟩
+  obtain ⟨⟨duals, hd, hmap, hdreach⟩, hdom, hbind⟩ :=
+    ppp_core pp hwfP heval hpp hp hreach hm
+  refine ⟨?_, ⟨duals, hd, hmap, hdreach⟩, hbind hnd⟩
   have h1 := patTys_length hd
   have h2 : duals.length = pairs.length := by
     have := congrArg List.length hmap

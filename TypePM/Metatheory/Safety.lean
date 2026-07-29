@@ -66,6 +66,7 @@ theorem matcher_consistency
     (hm : ValueTy SD SP SF m (.matcher τm))              -- m の内在型
     (hren : RenamesTo τm τm')
     (hstr : OneWay τp τm')                               -- 構造条件 τm' ⊑ τp
+    (hreach : StructReaches τp τt)                       -- 到達不変量(§4.2 fresh-leaf)
     (htm : Unifiable τm τt)                              -- 標的条件 τm ~ τt
     (hok : MatcherOK SD SP m)                            -- m は整合(Def 4.2)
     (hv : ValueTy SD SP SF v τt)                         -- v : τt(標的型)
@@ -73,7 +74,7 @@ theorem matcher_consistency
     SubstTyped SD SP SF Δ θ := by
   have hinit : WTState SD SP SF Γ ⟨[.atom ⟨p, m, v⟩], ρ, []⟩ Δ :=
     ⟨hρ, [], substTyped_nil,
-      WTStack.cons (WTTree.atom hsc hp hm hren hstr htm hok hv) WTStack.nil⟩
+      WTStack.cons (WTTree.atom hsc hp hm hren hstr hreach htm hok hv) WTStack.nil⟩
   exact terminal_subst_typed (reaches_preservation hb hrun hinit)
 
 /-! ## Search と Reaches の接続(相互帰納族の結合再帰子による証明) -/

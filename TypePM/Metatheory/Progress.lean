@@ -481,11 +481,6 @@ theorem envTyped_of_matcherV {SD : SigD} {SP : SigP} {SF : SigF}
 
 /-! ## 代入の合成と VShape の代入安定性(armExh のインスタンス発火に使用) -/
 
-theorem applyTSList_eq_map (θ : TySubst) : ∀ (l : List Ty),
-    applyTSList θ l = l.map (Ty.applyTS θ)
-  | [] => rfl
-  | t :: l => by simp [applyTSList, applyTSList_eq_map θ l]
-
 mutual
 /-- 各自由変数上で「θ' = U ∘ θ」ならば適用結果も合成に一致する -/
 theorem applyTS_comp_pointwise : ∀ (τ : Ty) {θ θ' U : TySubst},
@@ -1049,10 +1044,10 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
       ∀ (ρ : Env) (θ : Subst),
       (∀ y m v, t₀ ≠ .atom ⟨.embed y, m, v⟩) →
       ∃ ss, Step SF ⟨t₀ :: rest, ρ, θ⟩ ss)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ hwt
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hwt
   -- WT-ATOM:原子の場合分け(論文付録 C.2 の全ケース)
   case _ =>
-    intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how htm hok hv
+    intro Γ Φ Δ Δ' p m v τp τt τm τm' hsc hp hm hren how _hreach htm hok hv
     intro S ρ θ hne
     cases p with
     | embed y => exact absurd rfl (hne y m v)
@@ -1173,6 +1168,49 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
     intro Γ Φ Δ Δ' p₁ p₂ m v _h₁ _h₂ _ih₁ _ih₂
     intro S ρ θ _hne
     exact ⟨_, Step.reduce MAtom.or⟩
+  -- WT-ATOM-SLOT:積スロット原子(prim → MS-PROD-SOME、papp → ENTER、
+  -- pand/por/ptuple は側条件が排除、pctor は前提矛盾で空虚)
+  case _ =>
+    intro Γ Φ Δ Δ' p ms v τp τt σ hsc hp _hreach hslot _hσ hv
+    intro S ρ θ hne
+    cases p with
+    | embed y => exact absurd rfl (hne y _ v)
+    | pand p₁ p₂ => simp [atomScalarOK] at hsc
+    | por p₁ p₂ => simp [atomScalarOK] at hsc
+    | ptuple ps => simp [atomScalarOK] at hsc
+    | pvar x => exact ⟨_, Step.reduce (MAtom.prodSome rfl)⟩
+    | wild => exact ⟨_, Step.reduce (MAtom.prodSome rfl)⟩
+    | pval e => exact ⟨_, Step.reduce (MAtom.prodSome rfl)⟩
+    | papp f qs =>
+        cases hp with
+        | papp hfind hqs hd1 hd2 =>
+          rename_i sig ss ts duals
+          refine ⟨_, Step.patfunEnter hfind ?_⟩
+          have h1 : qs.length = duals.length := patTys_length hqs
+          have h2 := congrArg List.length hd1
+          have h3 : sig.params.length = sig.argDuals.length :=
+            (hSigF _ (List.mem_of_find?_eq_some hfind)).arity
+          simp only [List.length_map] at h2
+          omega
+    | pctor c ps' =>
+        -- 標的はデータ頭(Def 4.1 整形性)なので積スロット値と両立しない
+        exfalso
+        cases hp with
+        | pctor hfind hps hstr htgt =>
+          rename_i sig ss ts duals
+          obtain ⟨⟨n, hres⟩, -⟩ := hwfP _ (List.mem_of_find?_eq_some hfind)
+          rcases slot_value_inv hwfD hslot with
+            ⟨τm, τm', hm, hren, how, huni, hok⟩ |
+            ⟨ms', prs, heq, hσp, hτp, hlen, hcomp⟩
+          · obtain ⟨τs, hτm, -, -⟩ := valueTy_tuple_matcher_inv hm
+            subst hτm
+            obtain ⟨θu, hu⟩ := huni
+            rw [hres] at hu
+            simp only [Ty.instSig, Ty.applyTS] at hu
+            exact Ty.noConfusion hu
+          · rw [hres] at hτp
+            simp only [Ty.instSig, Ty.applyTS] at hτp
+            exact Ty.noConfusion hτp
   -- WT-ATOM-TUPLE:成分分解形はそのまま MS-TUPLE で簡約できる
   case _ =>
     intro Γ Φ Δ Δ' ps ms vs hlen1 hlen2 _hstack _ih_stack
@@ -1181,7 +1219,7 @@ theorem wtTree_progress {SD : SigD} {SP : SigP} {SF : SigF} {Γ₀ : TyCtx}
   -- WT-MNODE:内側スタックの場合分け(varpat / done / 内側ステップ)
   case _ =>
     intro Γ Φ Δ Δ' S' ρf θf piE rem duals Γf Δθf Δfin Φf
-      h_j h_nd h_occ _h_q _h_forall _h_d1 _h_d2 _h_θ _h_stack ih_stack
+      h_j h_nd h_occ _h_q _h_forall _h_reachΦ _h_d1 _h_d2 _h_θ _h_stack ih_stack
     intro S ρ θ _hne
     cases S' with
     | nil => exact ⟨_, Step.mnodeDone⟩
@@ -1260,7 +1298,10 @@ theorem ms_progress
       · -- トップレベルは Φ = [] なので embed 原子は整型でない
         exfalso
         cases htree with
-        | atom _hsc hp _ _ _ _ _ _ =>
+        | atom _hsc hp _ _ _ _ _ _ _ =>
+          cases hp with
+          | embed hfind => exact nomatch hfind
+        | atomSlot _hsc hp _ _ _ _ =>
           cases hp with
           | embed hfind => exact nomatch hfind
       · exact wtTree_progress htotal heval hSigF hwfD hwfP hL htree St ρ θ

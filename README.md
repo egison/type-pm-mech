@@ -55,6 +55,39 @@
 - **(その 4、2026-07-28、論文・実装・機械化へ反映済み)bare-hole 節の順序条件と節規則の適用対象 — 散文・証明が前提していた規律の形式化**:順序(catch-all 最後)自体は論文が既に前提として明記していた(付録 C.3 の catch-all ケースは「by clause order」を根拠に使い、Def 4.2(2) の説明文は「他の節が残したパターンを扱う」、Def 4.2(4) は精密化節が一般節より「先に選ばれる」と述べる)。差分は、定理が量化する**形式述語としての** Def 4.2(2) が「∈ cls(存在)」しか要求しておらず「by clause order」がどの条項にも対応していなかったこと、および**実装が検査していなかった**こと(逆順マッチャーが型検査を通過し実行時 something エラー — 実機再現済みの実害)。(i) **順序**:catch-all(bare-hole 節)は「他の節が残したパターンを扱う」(Def 4.2(2))が、節は先頭から試され PPP-HOLE は任意のパターンに一致するので、bare-hole 節が Coverage の一般形節より**前**にあると構成子パターンを捕まえて `(c p⃗, something, v)` に到達し行き詰まる(現行 Def 4.2 は ∈ だけを要求するのでこの逆順マッチャーも「整合」— (b) の反例)。標準ライブラリの慣習(catch-all 最後)を条件化する必要がある:「各 bare-hole 節の前に、Coverage が要求する全一般形節(積型なら一般タプル節)が現れる」。(ii) **節規則の適用対象**:MS-MATCHER 系規則に p の側条件がなく、`(x::xs) & $y` のような and パターンも catch-all に捕まり(MS-AND との非決定的重なり)、部分パターンの構成子が something に到達しうる。実装(Egison)は and/or/パターン関数適用/~x を**節照合の前に**構文主導で処理しており、規則側に「p は節適用形(構成子/タプル/変数/ワイルドカード/値パターン)」の側条件を付けて一致させるべき。**反映済み(2026-07-28)**:機械化 = `Pattern.isClauseForm` 側条件(MAtom 3 規則+`matomF` ガード+Adequacy 配管)+`ConsistentClauses.holeAfterGenerals`;論文 = Fig 2 側条件・§3.3・Def 4.2(2) 順序文・(1c) インスタンス注記・付録 C.3・付録 J(en 65p/ja 63p ビルド済);実装 = 逆順(catch-all 後の到達不能節)を型エラー化(Infer.hs、minitest/009)。lib/sample の全 36 マッチャーが順序条件を満たすことを全数調査で確認し、逆順マッチャーが「型検査通過→実行時 something エラー」になる反例も実機で再現してから条件化した。なお 1(a) の構造的許容性(穴の構造成分=標的の骨格改名)が「something を分解可能標的の穴に置く」誤りを既に静的排除していることも機械化で確認した(PP-Con の refresh がその機構;bare-hole 節だけが構造検査空虚で、だからこそ (i) の順序条件が要る)。
 - **(その 3、2026-07-28 最終設計:原子環境での先行評価+intercept-ok)PPP-VAL の捕捉評価**:pp の #$y に捕捉された p 側 #M の M は、**節選択時に原子の環境(MS-REDUCE の ρ∪θ)で先に**評価される — これを公式の意味論として採用。従って**原子より前の束縛は使える**(実測:`($p :: _, $ls ++ #p :: $rs)` でタプル第 1 成分のピボット p を第 2 成分の `sortedList` ピボット節が参照して成功、`egison/mini-test/125`)が、**同じ原子内の左の穴の束縛は使えない**(実測:`$ys ++ #ys` は無音の `[]`;未束縛参照がシンボル化)。当初案の接頭条件 (i) は `sortedList` のピボット節 `$ ++ #$px :: $` や `assocMultiset` の `($, #$n) :: $` を殺すため撤回。この条件は**パターン単独でもマッチャー単独でも静的に決められない**(同じ #e が取り出し経路では左束縛を見られる — pair の #pat;捕捉深さはマッチャーの pp 形状に依存)ので、**パターン・マッチャー対の条件 = 値パターンスコープ条件、WT-ATOM の premise `vp-scoped`**(機械化 `capturedExprs`/`VPScoped`)として定式化。論文 = Def 4.2(4) 書き換え+Fig 6 WT-ATOM に premise+Def 5.3+付録 J(en/ja ビルド済)。実装 = 意味論は元からこの通り(thunk が原子環境を捕捉);**マッチャーの節形状が静的に既知の site(リテラル・そのタプル・トップレベル定義の適用)では型エラーとして静的検査を実装**、不明(スロット引数)な site は付録 J に開示のとおり検査対象外。
 
+## 現状(2026-07-29 第 13 版)
+
+- `lake build` 成功(エラー 0)。`sorry` は **1 宣言** = `type_safety_b_at`(残 4 分岐)。
+- 第 13 版:**到達不変量 StructReaches と再建インフラ完成(MS-MATCHER 歩行補題の全部品)**:
+  - **StructReaches τp τt := ∀ τr, RenamesTo τt τr → OneWay τp τr**(TypeRel.lean)。
+    §4.2 の「構造添字は同じ頭・fresh な葉で作る」構成の宣言的帰結を WT-ATOM の
+    premise に切り出したもの。**⊑ は論文の定義そのもの**(∃θ. dom θ ⊆ ftv τp ∧ θ(τp) = τm')で扱う。
+  - 支持層:`oneWay_trans`(⊑ の推移律;合成代入 compOn)・
+    `structReaches_instSig`(PAT-CON の位置分解;Def 4.1 整形性の res 形を使用)・
+    `structReaches_prod`(PAT-TUPLE の位置分解)・`structReaches_var`。
+  - **Lem 5.4 を強化**:仮定に原子の StructReaches を取り、抽出双対列の各対の
+    StructReaches を返す(hole=そのまま、ctor/tuple=位置分解で伝播)。
+  - WT-ATOM に hreach、WT-MNODE に Φf 対の到達条件を追加(全ファイル配線済)。
+  - **WT-ATOM-SLOT 新設**:積スロット値(COERCE-SLOT-TUPLE 由来)を成分合成せず
+    スロット型のまま担ぐ変種(Lem C.2「積の witness は成分の直和」の規則化。
+    成分の改名・代入は変数を共有しうるので単一 τm への合成は一般に不可能)。
+    進行性は prim→MS-PROD-SOME・papp→ENTER・pctor→前提矛盾で処理。
+  - **slot_atom / slot_atoms**:スロット型値の万能原子ビルダー
+    (slotV 反転→ buildAtom(⊑ は hreach と slot の ⊑ の trans 合成)、
+    prodSlot 反転→ and/or は子へ・ptuple は成分再帰・他は WT-ATOM-SLOT)。
+    MS-MNODE-VARPAT の積スロット転送も slot_atom で閉じた。
+- **残る [b-5.5] の設計(確定済・次版で実装)**:MS-MATCHER 系 3 分岐は独立の
+  歩行補題(MAtom.rec、motive_3 のみ非自明)で閉じる。仮定 =
+  ρm の型付けパーツ(Γm)+ (a)-oracle 2 形(原子環境 ρθ 用の ∀Γ' 形と一般 ∀ρ'Γ' 形)+
+  **τt 節型付け oracle**(∀ cl ∈ cls, ppShapeOK cl.1 p → ClauseTy Γm τt cl;
+  [b-6] で値の内在節型付けから放電)+ ppBindNodup/armBindNodup(Def 4.2、membership 単調)。
+  発火ケース:節型付けの pairs は標的が Lem 5.4 の duals と整列し(refresh_map_snd)、
+  構造注釈 σᵢ = rename(標的)(PP-Con refresh)なので、
+  各後続原子は `slot_atom`(σᵢ・スロット型付き Mᵢ 評価値・Lem 5.4 の dual+reach・
+  分解値の型付け)で組める。N の環境 ρd ++ ρp ++ ρm の型付けは
+  pdMatch_typed + Lem 5.4 の束縛型付け + Γm パーツから組む。
+  PP-FAIL 再帰=節接尾辞へ制限、DP-FAIL 再帰=ArmsTy 反転で先頭アームを落とす。
+
 ## 現状(2026-07-29 第 12 版)
 
 - `lake build` 成功(エラー 0)。`sorry` は **1 宣言** = `type_safety_b_at`(残 4 分岐 = MS-MATCHER 系 3・MS-PATFUN-ENTER)。

@@ -155,6 +155,7 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       ValueTy SD SP SF m (.matcher τm) →                -- m の内在型
       RenamesTo τm τm' →                                -- τm' = fresh_rename(τm)
       OneWay τp τm' →                                   -- 構造前提 τm' ⊑ τp
+      StructReaches τp τt →                             -- 到達不変量(§4.2 fresh-leaf)
       Unifiable τm τt →                                 -- 標的前提 τm ~ τt
       MatcherOK SD SP m →                               -- マッチャー選言
       ValueTy SD SP SF v τt →                           -- v はパターン標的型そのもの
@@ -179,6 +180,19 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p₁, m, v⟩) Δ' →
       WTTree SD SP SF Γ Φ Δ (.atom ⟨p₂, m, v⟩) Δ' →
       WTTree SD SP SF Γ Φ Δ (.atom ⟨.por p₁ p₂, m, v⟩) Δ'
+  | atomSlot {Γ Φ Δ Δ' p ms v τp τt σ} :                -- WT-ATOM-SLOT
+      -- 積スロット値(COERCE-SLOT-TUPLE 由来のタプルマッチャー)を成分合成せず
+      -- **スロット型のまま**担ぐ変種(Lem C.2 の「積の witness は成分の直和」を
+      -- 規則レベルで保持)。成分の改名/代入は変数を共有しうるので単一 τm への
+      -- 合成は一般に不可能(atomTuple の注記と同じ理由)。p が ptuple の場合は
+      -- atomTuple 側(atomScalarOK が排除)。σ は標的の改名(PP-Con refresh 由来)。
+      atomScalarOK p (.tuple ms) = true →
+      PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
+      StructReaches τp τt →
+      ValueTy SD SP SF (.tuple ms) (.slot σ τt) →
+      RenamesTo τt σ →
+      ValueTy SD SP SF v τt →
+      WTTree SD SP SF Γ Φ Δ (.atom ⟨p, .tuple ms, v⟩) Δ'
   | atomTuple {Γ Φ Δ Δ' ps ms vs} :                     -- WT-ATOM-TUPLE
       -- タプル原子の成分分解形:成分原子の列を WTStack で左→右にスレッディング。
       -- (i) COERCE-SLOT-TUPLE 由来の site(成分ごとのスロット witness を
@@ -205,6 +219,9 @@ inductive WTTree (SD : SigD) (SP : SigP) (SF : SigF) :
       -- (Φf は展開時の全仮引数双対文脈;rem が縮んでも Φf は不変なので、
       --  VARPAT の再建で内側スタックの Φ 転送が不要になる)
       RemInPhi Φf rem duals →
+      -- Φf の各双対対の到達不変量(PATFUN-ENTER 時に実引数双対から確立;
+      -- MS-MNODE-VARPAT が ~y を Π(y) に差し替えた原子の hreach に供給)
+      (∀ pr ∈ Φf, StructReaches pr.2.1 pr.2.2) →
       -- Γf が ρf を型付ける
       (∀ y v, Env.find? ρf y = some v → ∃ σ, TyCtx.find? Γf y = some σ) →
       (∀ y v σ τ', Env.find? ρf y = some v → TyCtx.find? Γf y = some σ →

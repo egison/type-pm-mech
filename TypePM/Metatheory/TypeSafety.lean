@@ -1322,22 +1322,22 @@ theorem buildAtom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
       {m v : Value} {τp τt τm τm' : Ty},
     PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
     ValueTy SD SP SF m (.matcher τm) →
-    RenamesTo τm τm' → OneWay τp τm' → Unifiable τm τt →
+    RenamesTo τm τm' → OneWay τp τm' → StructReaches τp τt → Unifiable τm τt →
     MatcherOK SD SP m → ValueTy SD SP SF v τt →
     WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
-  | .pand p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+  | .pand p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
       cases hp with
       | pand hp₁ hp₂ =>
         exact WTTree.atomAnd
-          (buildAtom hwfD p₁ hp₁ hm hren how htm hok hv)
-          (buildAtom hwfD p₂ hp₂ hm hren how htm hok hv)
-  | .por p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+          (buildAtom hwfD p₁ hp₁ hm hren how hreach htm hok hv)
+          (buildAtom hwfD p₂ hp₂ hm hren how hreach htm hok hv)
+  | .por p₁ p₂, _, _, _, _, _, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
       cases hp with
       | por hp₁ hp₂ =>
         exact WTTree.atomOr
-          (buildAtom hwfD p₁ hp₁ hm hren how htm hok hv)
-          (buildAtom hwfD p₂ hp₂ hm hren how htm hok hv)
-  | .ptuple ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
+          (buildAtom hwfD p₁ hp₁ hm hren how hreach htm hok hv)
+          (buildAtom hwfD p₂ hp₂ hm hren how hreach htm hok hv)
+  | .ptuple ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
       cases m with
       | tuple ms =>
           cases hp with
@@ -1357,6 +1357,12 @@ theorem buildAtom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
             have hokall : ∀ m' ∈ ms, MatcherOK SD SP m' := by
               cases hok with
               | prod hall => exact hall
+            have hreachcomp : ∀ pr ∈ duals, StructReaches pr.1 pr.2 := by
+              intro pr hpr
+              obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hpr
+              have h3 := structReaches_prod hreach
+                (i := j) (by simpa using hj) (by simpa using hj)
+              simpa [List.getElem_map] using h3
             refine WTTree.atomTuple ?_ ?_ ?_
             · have := patTys_length hps
               simp only [List.length_map] at hlen3
@@ -1364,7 +1370,7 @@ theorem buildAtom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
             · have := patTys_length hps
               simp only [List.length_map] at hlen3 hlenv
               omega
-            · exact buildAtoms hwfD ps hps hlenms hcomp hlen2 hrencomp
+            · exact buildAtoms hwfD ps hps hreachcomp hlenms hcomp hlen2 hrencomp
                 (by simpa using hlen3) howcomp hunicomp hokall
                 (by simpa using hlenv) hvcomp
                 (by have := patTys_length hps
@@ -1373,41 +1379,42 @@ theorem buildAtom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
       | matcherV ρm cls =>
           cases hp with
           | ptuple hps =>
-            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how hreach htm hok hv
       | something =>
           cases hp with
           | ptuple hps =>
-            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how hreach htm hok hv
       | lit n =>
           cases hp with
           | ptuple hps =>
-            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how hreach htm hok hv
       | ctor c vs =>
           cases hp with
           | ptuple hps =>
-            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how hreach htm hok hv
       | closure self ρc x e =>
           cases hp with
           | ptuple hps =>
-            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how htm hok hv
-  | .pvar x, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
-  | .wild, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
-  | .pval e, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
-  | .pctor c ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
-  | .papp f qs, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
-  | .embed y, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, htm, hok, hv => by
-      exact WTTree.atom (by cases m <;> rfl) hp hm hren how htm hok hv
+            exact WTTree.atom rfl (PatTy.ptuple hps) hm hren how hreach htm hok hv
+  | .pvar x, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
+  | .wild, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
+  | .pval e, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
+  | .pctor c ps, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
+  | .papp f qs, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
+  | .embed y, _, _, _, _, m, _, _, _, _, _, hp, hm, hren, how, hreach, htm, hok, hv => by
+      exact WTTree.atom (by cases m <;> rfl) hp hm hren how hreach htm hok hv
 
 theorem buildAtoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
     ∀ (ps : List Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
       {duals : List (Ty × Ty)} {ms : List Value} {τs τs' : List Ty}
       {vs : List Value},
     PatTys SD SP SF Γ Φ Δ ps duals Δ' →
+    (∀ pr ∈ duals, StructReaches pr.1 pr.2) →
     ms.length = τs.length →
     (∀ pr ∈ ms.zip τs, ValueTy SD SP SF pr.1 (.matcher pr.2)) →
     τs.length = τs'.length →
@@ -1421,12 +1428,12 @@ theorem buildAtoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
     ps.length = ms.length →
     WTStack SD SP SF Γ Φ Δ
       ((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) Δ'
-  | [], _, _, _, _, _, ms, _, _, vs, hps, _, _, _, _, _, _, _, _, _, _, hlp => by
+  | [], _, _, _, _, _, ms, _, _, vs, hps, _, _, _, _, _, _, _, _, _, _, _, hlp => by
       cases hps
       cases ms with
       | cons _ _ => simp at hlp
       | nil => exact WTStack.nil
-  | p :: ps, _, _, _, _, duals, ms, τs, τs', vs, hps, hl1, hmall, hl2, hrall,
+  | p :: ps, _, _, _, _, duals, ms, τs, τs', vs, hps, hreaches, hl1, hmall, hl2, hrall,
       hl3, hoall, huall, hokall, hl4, hvall, hlp => by
       cases hps with
       | cons hph hpst =>
@@ -1449,10 +1456,12 @@ theorem buildAtoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
                     (hmall (m₀, τm₀) (by simp [List.zip_cons_cons]))
                     (hrall (τm₀, τm₀') (by simp [List.zip_cons_cons]))
                     (hoall (pr0.1, τm₀') (by simp [List.zip_cons_cons]))
+                    (hreaches pr0 (List.mem_cons_self ..))
                     (huall (τm₀, pr0.2) (by simp [List.zip_cons_cons]))
                     (hokall m₀ (by simp))
                     (hvall (v₀, pr0.2) (by simp [List.zip_cons_cons]))) ?_
                 exact buildAtoms hwfD ps hpst
+                  (fun q hq => hreaches q (List.mem_cons_of_mem _ hq))
                   (by simpa using hl1)
                   (fun q hq => hmall q (by simp [List.zip_cons_cons]; exact .inr hq))
                   (by simpa using hl2)
@@ -1466,6 +1475,162 @@ theorem buildAtoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
                   (by simpa using hlp)
 end
 
+/-! ### スロット値の万能原子ビルダー(slot_atom)
+
+buildAtom のスロット版:m がスロット型で型付く値でありさえすれば、
+パターン形状に応じて WT-ATOM 変種を組む。witness が単一マッチャー
+(slotV 反転)なら buildAtom へ(⊑ は到達不変量と slot の ⊑ の
+`oneWay_trans` 合成)、積スロット(prodSlot 反転)なら and/or は子へ、
+ptuple は成分ごとに再帰、それ以外は WT-ATOM-SLOT でスロットのまま担ぐ。
+MS-MATCHER の後続原子再建と MS-MNODE-VARPAT の積スロット原子転送の中核。 -/
+
+mutual
+theorem slot_atom {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
+    ∀ (p : Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
+      {m v : Value} {τp τt σ : Ty},
+    PatTy SD SP SF Γ Φ Δ p τp τt Δ' →
+    StructReaches τp τt →
+    ValueTy SD SP SF m (.slot σ τt) →
+    RenamesTo τt σ →
+    ValueTy SD SP SF v τt →
+    WTTree SD SP SF Γ Φ Δ (.atom ⟨p, m, v⟩) Δ'
+  | .pand p₁ p₂, _, _, _, _, _, _, _, _, _, hp, hreach, hslot, hσ, hv => by
+      cases hp with
+      | pand hp₁ hp₂ =>
+        exact WTTree.atomAnd
+          (slot_atom hwfD p₁ hp₁ hreach hslot hσ hv)
+          (slot_atom hwfD p₂ hp₂ hreach hslot hσ hv)
+  | .por p₁ p₂, _, _, _, _, _, _, _, _, _, hp, hreach, hslot, hσ, hv => by
+      cases hp with
+      | por hp₁ hp₂ =>
+        exact WTTree.atomOr
+          (slot_atom hwfD p₁ hp₁ hreach hslot hσ hv)
+          (slot_atom hwfD p₂ hp₂ hreach hslot hσ hv)
+  | .ptuple ps, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ |
+        ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD (.ptuple ps) hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · cases hp with
+        | ptuple hps =>
+          rename_i duals
+          have hsnd : duals.map (·.2) = prs.map (·.2) := by
+            injection hτp
+          obtain ⟨vs, rfl, hlenv, hvcomp⟩ := canonical_prod hwfD hv
+          have hlend : duals.length = prs.length := by
+            have := congrArg List.length hsnd
+            simpa using this
+          have hlenp := patTys_length hps
+          have hreachcomp : ∀ pr ∈ duals, StructReaches pr.1 pr.2 := by
+            intro pr hpr
+            obtain ⟨j, hj, rfl⟩ := List.mem_iff_getElem.mp hpr
+            have h3 := structReaches_prod hreach
+              (i := j) (by simpa using hj) (by simpa using hj)
+            simpa [List.getElem_map] using h3
+          have hrencomp : ∀ pr ∈ (duals.map (·.2)).zip (prs.map (·.1)),
+              RenamesTo pr.1 pr.2 := by
+            have hσ' : RenamesTo (.prod (duals.map (·.2))) (.prod (prs.map (·.1))) := by
+              rw [← hσp]
+              exact hσ
+            exact (renamesTo_prod_comp hσ').2
+          refine WTTree.atomTuple ?_ ?_ ?_
+          · omega
+          · simp only [List.length_map] at hlenv
+            omega
+          · exact slot_atoms hwfD ps hps hreachcomp hsnd hlen hcomp hrencomp
+              (by simpa using hlenv) hvcomp (by omega)
+  | .pvar x, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+  | .wild, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+  | .pval e, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+  | .pctor c ps, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+  | .papp f qs, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+  | .embed y, _, _, _, _, _, _, _, _, σ, hp, hreach, hslot, hσ, hv => by
+      rcases slot_value_inv hwfD hslot with
+        ⟨τm, τm'', hm, hren, howσ, huni, hok⟩ | ⟨ms, prs, rfl, hσp, hτp, hlen, hcomp⟩
+      · exact buildAtom hwfD _ hp hm hren
+          (oneWay_trans (hreach σ hσ) howσ) hreach huni hok hv
+      · exact WTTree.atomSlot rfl hp hreach hslot hσ hv
+
+theorem slot_atoms {SD : SigD} {SP : SigP} {SF : SigF} (hwfD : SigDWF SD) :
+    ∀ (ps : List Pattern) {Γ : TyCtx} {Φ : PatParamCtx} {Δ Δ' : BindCtx}
+      {duals : List (Ty × Ty)} {ms vs : List Value} {prs : List (Ty × Ty)},
+    PatTys SD SP SF Γ Φ Δ ps duals Δ' →
+    (∀ pr ∈ duals, StructReaches pr.1 pr.2) →
+    duals.map (·.2) = prs.map (·.2) →
+    ms.length = prs.length →
+    (∀ pr ∈ ms.zip prs, ValueTy SD SP SF pr.1 (.slot pr.2.1 pr.2.2)) →
+    (∀ pr ∈ (duals.map (·.2)).zip (prs.map (·.1)), RenamesTo pr.1 pr.2) →
+    vs.length = duals.length →
+    (∀ pr ∈ vs.zip (duals.map (·.2)), ValueTy SD SP SF pr.1 pr.2) →
+    ps.length = ms.length →
+    WTStack SD SP SF Γ Φ Δ
+      ((ps.zip (ms.zip vs)).map fun x => .atom ⟨x.1, x.2.1, x.2.2⟩) Δ'
+  | [], _, _, _, _, _, ms, _, _, hps, _, _, _, _, _, _, _, hlp => by
+      cases hps
+      cases ms with
+      | cons _ _ => simp at hlp
+      | nil => exact WTStack.nil
+  | p :: ps, _, _, _, _, duals, ms, vs, prs, hps, hreaches, hsnd, hl1, hmall,
+      hrall, hl2, hvall, hlp => by
+      cases hps with
+      | cons hph hpst =>
+        rename_i Δmid pr0 dualst
+        cases ms with
+        | nil => simp at hlp
+        | cons m₀ ms' =>
+          cases prs with
+          | nil => simp at hl1
+          | cons q₀ prst =>
+            cases vs with
+            | nil => simp at hl2
+            | cons v₀ vst =>
+              simp only [List.map_cons, List.cons.injEq] at hsnd
+              obtain ⟨hsnd0, hsndt⟩ := hsnd
+              simp only [List.zip_cons_cons, List.map_cons] at *
+              refine WTStack.cons
+                (slot_atom hwfD p hph
+                  (hreaches pr0 (List.mem_cons_self ..))
+                  (by rw [hsnd0]
+                      exact hmall (m₀, q₀) (by simp [List.zip_cons_cons]))
+                  (hrall (pr0.2, q₀.1) (by simp [List.zip_cons_cons]))
+                  (hvall (v₀, pr0.2) (by simp [List.zip_cons_cons]))) ?_
+              exact slot_atoms hwfD ps hpst
+                (fun q hq => hreaches q (List.mem_cons_of_mem _ hq))
+                hsndt
+                (by simpa using hl1)
+                (fun q hq => hmall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                (fun q hq => hrall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                (by simpa using hl2)
+                (fun q hq => hvall q (by simp [List.zip_cons_cons]; exact .inr hq))
+                (by simpa using hlp)
+end
+
 /-! ### MS-REDUCE の易ケース群(継続の再建が文脈素通し・単一束縛のもの) -/
 
 /-- MS-SOME-WC の保存 -/
@@ -1477,7 +1642,7 @@ theorem preserve_someWC {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : P
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv =>
+    | atom hsc hp hm hren how _hreach htm hok hv =>
         cases hp
         exact ⟨hρ, Δ₀, hθ, hrest⟩
 
@@ -1490,7 +1655,7 @@ theorem preserve_someValEq {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv =>
+    | atom hsc hp hm hren how _hreach htm hok hv =>
         cases hp
         exact ⟨hρ, Δ₀, hθ, hrest⟩
 
@@ -1504,7 +1669,7 @@ theorem preserve_someVar {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv =>
+    | atom hsc hp hm hren how _hreach htm hok hv =>
         cases hp with
         | pvar hx =>
           refine ⟨hρ, _, ⟨?_, ?_⟩, hrest⟩
@@ -1536,7 +1701,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | atom hsc hp hm hren how htm hok hv =>
+    | atom hsc hp hm hren how _hreach htm hok hv =>
         rename_i τp τt τm τm'
         cases p with
         | pvar x =>
@@ -1545,7 +1710,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
               refine ⟨hρ, Δ₀, hθ, WTStack.cons
                 (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                   rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _)
+                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
                   (unifiable_var_fresh _) MatcherOK.something ?_) hrest⟩
               exact hv
         | wild =>
@@ -1553,7 +1718,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
             exact ⟨hρ, Δ₀, hθ, WTStack.cons
               (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                 rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
-                (renamesTo_var_refl _) (oneWay_var_refl _)
+                (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
                 (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
         | pval e =>
             cases hp with
@@ -1561,7 +1726,7 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
               exact ⟨hρ, Δ₀, hθ, WTStack.cons
                 (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
                   rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
-                  (renamesTo_var_refl _) (oneWay_var_refl _)
+                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
                   (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
         | pctor c ps => simp [Pattern.isPrimForm] at hprim
         | ptuple ps => simp [Pattern.isPrimForm] at hprim
@@ -1572,6 +1737,38 @@ theorem preserve_prodSome {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
     | atomAnd h₁ h₂ => simp [Pattern.isPrimForm] at hprim
     | atomOr h₁ h₂ => simp [Pattern.isPrimForm] at hprim
     | atomTuple hlen1 hlen2 hcomp => simp [Pattern.isPrimForm] at hprim
+    | atomSlot hsc hp hreach hslot hσ hv =>
+        -- スロット形の積マッチャー原子も something 原子へ(fresh 構造添字で再導出)
+        cases p with
+        | pvar x =>
+            cases hp with
+            | pvar hx =>
+              refine ⟨hρ, Δ₀, hθ, WTStack.cons
+                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                  rfl (PatTy.pvar (τp := .var (freshFor _)) hx) ValueTy.something
+                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
+        | wild =>
+            cases hp
+            exact ⟨hρ, Δ₀, hθ, WTStack.cons
+              (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                rfl (PatTy.wild (τp := .var (freshFor _))) ValueTy.something
+                (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+                (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
+        | pval e =>
+            cases hp with
+            | pval hty =>
+              exact ⟨hρ, Δ₀, hθ, WTStack.cons
+                (WTTree.atom (τm := .var (freshFor _)) (τm' := .var (freshFor _))
+                  rfl (PatTy.pval (τp := .var (freshFor _)) hty) ValueTy.something
+                  (renamesTo_var_refl _) (oneWay_var_refl _) structReaches_var
+                  (unifiable_var_fresh _) MatcherOK.something hv) hrest⟩
+        | pctor c ps => simp [Pattern.isPrimForm] at hprim
+        | ptuple ps => simp [Pattern.isPrimForm] at hprim
+        | pand p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+        | por p₁ p₂ => simp [Pattern.isPrimForm] at hprim
+        | papp f qs => simp [Pattern.isPrimForm] at hprim
+        | embed y => simp [Pattern.isPrimForm] at hprim
 
 /-- MS-TUPLE の保存(WT-ATOM-TUPLE 型付けの原子):継続はちょうど成分原子列。 -/
 theorem preserve_tuple {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatParamCtx}
@@ -1587,6 +1784,7 @@ theorem preserve_tuple {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : Pa
   | cons htree hrest =>
     cases htree with
     | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomSlot hsc _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomTuple hlen1 hlen2 hcomp =>
         exact ⟨hρ, Δ₀, hθ, wtStack_append hcomp hrest⟩
 
@@ -1601,7 +1799,7 @@ theorem preserve_mnodeDone {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ 
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
+    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hreachΦ hd1 hd2 hθf hinner =>
       have hrem : rem = [] := by
         cases rem with
         | nil => rfl
@@ -1628,7 +1826,7 @@ theorem preserve_mnodeVarpat {SD : SigD} {SP : SigP} {SF : SigF}
   cases hstack with
   | cons htree hrest =>
     cases htree with
-    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
+    | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hreachΦ hd1 hd2 hθf hinner =>
       cases rem with
       | nil => simp [stackEmbedOccs, treeEmbedOccs, Pattern.embedVars] at hocc
       | cons re rem' =>
@@ -1652,7 +1850,7 @@ theorem preserve_mnodeVarpat {SD : SigD} {SP : SigP} {SF : SigF}
           cases hinner with
           | cons hemb hinnerrest =>
             cases hemb with
-            | atom hsc hpEmb hm hren how htm hok hv =>
+            | atom hsc hpEmb hm hren how hreachE htm hok hv =>
                 cases hpEmb with
                 | embed hpfind =>
                   rename_i pr
@@ -1660,10 +1858,25 @@ theorem preserve_mnodeVarpat {SD : SigD} {SP : SigP} {SF : SigF}
                     (Option.some.inj (hpfind.symm.trans hfhead))
                   subst hpd
                   refine ⟨hρ, Δ₀, hθ, WTStack.cons
-                    (buildAtom hwfD q hqhead hm hren how htm hok hv)
+                    (buildAtom hwfD q hqhead hm hren how hreachE htm hok hv)
                     (WTStack.cons ?_ hrest)⟩
                   refine WTTree.mnode rem' _ Γf Δθf Δfin Φf
-                    ⟨j+1, ?_⟩ hnd hoccrest hqtail hftail hd1 hd2 hθf hinnerrest
+                    ⟨j+1, ?_⟩ hnd hoccrest hqtail hftail hreachΦ hd1 hd2 hθf hinnerrest
+                  calc rem' = ((y, q) :: rem').drop 1 := rfl
+                    _ = (piE.drop j).drop 1 := by rw [hj]
+                    _ = piE.drop (j + 1) := by rw [List.drop_drop]
+            | atomSlot hscE hpEmb hreachE hslotE hσE hv =>
+                cases hpEmb with
+                | embed hpfind =>
+                  rename_i pr
+                  have hpd := congrArg Prod.snd
+                    (Option.some.inj (hpfind.symm.trans hfhead))
+                  subst hpd
+                  refine ⟨hρ, Δ₀, hθ, WTStack.cons
+                    (slot_atom hwfD q hqhead hreachE hslotE hσE hv)
+                    (WTStack.cons ?_ hrest)⟩
+                  refine WTTree.mnode rem' _ Γf Δθf Δfin Φf
+                    ⟨j+1, ?_⟩ hnd hoccrest hqtail hftail hreachΦ hd1 hd2 hθf hinnerrest
                   calc rem' = ((y, q) :: rem').drop 1 := rfl
                     _ = (piE.drop j).drop 1 := by rw [hj]
                     _ = piE.drop (j + 1) := by rw [List.drop_drop]
@@ -1679,6 +1892,7 @@ theorem preserve_and {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : PatP
   | cons htree hrest =>
     cases htree with
     | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomSlot hsc _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomAnd h₁ h₂ =>
         exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ (WTStack.cons h₂ hrest)⟩
 
@@ -1693,6 +1907,7 @@ theorem preserve_or_left {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ : 
   | cons htree hrest =>
     cases htree with
     | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomSlot hsc _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₁ hrest⟩
 
 /-- MS-OR の保存(右分枝) -/
@@ -1706,6 +1921,7 @@ theorem preserve_or_right {SD : SigD} {SP : SigP} {SF : SigF} {Γ : TyCtx} {Φ :
   | cons htree hrest =>
     cases htree with
     | atom hsc _ _ _ _ _ _ _ => simp [atomScalarOK] at hsc
+    | atomSlot hsc _ _ _ _ _ => simp [atomScalarOK] at hsc
     | atomOr h₁ h₂ => exact ⟨hρ, Δ₀, hθ, WTStack.cons h₂ hrest⟩
 
 /-- Theorem 5.6(b) の Φ 一般化形。Step の結合再帰子(motive_4)で帰納し、
@@ -1805,7 +2021,7 @@ theorem type_safety_b_at
     cases hstack with
     | cons htree hrest =>
       cases htree with
-      | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hd1 hd2 hθf hinner =>
+      | mnode rem duals Γf Δθf Δfin Φf hj hnd hocc hq hforall hreachΦ hd1 hd2 hθf hinner =>
         have hwtIn : WTStateAt SD SP SF Γf Φf
             ⟨t :: Srest, ρf, θf⟩ Δfin :=
           ⟨envTyped_of_parts hd1 hd2, Δθf, hθf, hinner⟩
@@ -1821,7 +2037,7 @@ theorem type_safety_b_at
           exact hocc
         exact ⟨hρ, Δ₀, hθ,
           WTStack.cons (WTTree.mnode rem duals Γf Δθf' Δfin Φf hj hnd hocc' hq
-            hforall hd1 hd2 hθf' hinner') hrest⟩
+            hforall hreachΦ hd1 hd2 hθf' hinner') hrest⟩
   case mvarpat =>
     intro S ρ θ y q m v Srest ρf θf piE hfind
     intro Γ Φ Δgoal _hno hwt s' hs'
