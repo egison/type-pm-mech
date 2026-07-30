@@ -36,11 +36,13 @@ MatcherSlot κ τ
 
 この文書は採用する中核設計，partial matcher に対する capability と Coverage の
 境界，移行範囲を固定する．`ShapeCap` については，general／refinement clause から
-partial evidence を集め，未観測を中立に exact agreement で合成する方針まで決定した．
-constructor signature から capability parameter 位置への正確な投影，tuple，
-通常型付けと安全な部分集合の形式化，`CapGen`，再帰 matcher，`CapTargetOK` の
-正規化境界には詳細設計が残る．論文，Egison 本体，Lean の実変更と，P2 に由来する
-capability-admissibility 仮定の除去も完了していないため，P2 自体は未解決として残す．
+partial evidence を集め，未観測を中立に exact agreement で合成する方針と，
+parameter observability を capability-visible path の依存方程式の least fixpoint
+として決める方針まで決定した．constructor signature から capability parameter
+位置への正確な投影，tuple，通常型付けと安全な部分集合の形式化，`CapGen`，
+再帰 matcher の checking，`CapTargetOK` の正規化境界には詳細設計が残る．論文，
+Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の除去も
+完了していないため，P2 自体は未解決として残す．
 
 ## 一言でいうと
 
@@ -63,7 +65,7 @@ capability-admissibility 仮定の除去も完了していないため，P2 自�
 
 `κ` は，matcher が定義上公開する構造形状を表す．`ShapeCap` が認める general
 constructor clause または constructor／tuple-headed refinement clause の証拠を
-少なくとも一つ持ち，shape-relevant な全 parameter の evidence を確定できる partial
+少なくとも一つ持ち，observable な全 parameter の evidence を確定できる partial
 matcher にも structured capability を与える．したがって `κ` 単独は同じ型形成子の
 全 constructor を処理できるという完全性の証明ではない．その全称的保証は，独立な
 `CoverageOK` と組み合わせたときに得る．
@@ -321,7 +323,10 @@ matcher literal 内の primitive-pattern-pattern は，各 hole について，
 producer capability `•` ではなく fresh consumer 変数 `χ_d` を構造要求として
 生成する．同様に，top-level の `PP-Hole` は fresh consumer hole capability を
 生成する．constructor の下にある hole では，pattern signature から得た
-capability skeleton を要求する．
+capability skeleton を要求する．この signature-directed lift は product と
+capability-visible な型形成子の observable parameter 位置だけをたどり，
+inductive pattern declaration を持たない opaque former と関数型を境界として止まる．
+observable でない parameter は skeleton 上でも canonical `•` とする．
 
 ### `T-SOME`
 
@@ -346,7 +351,7 @@ matcher literal の capability と target を別々に決める．
 
 matcher literal の root capability は，`ShapeCap` が証拠として認める constructor
 clause と hole の capability から **shape capability** として合成する．同じ
-型形成子 `K` の証拠 clause が少なくとも一つあり，合成後の shape-relevant な
+型形成子 `K` の証拠 clause が少なくとも一つあり，合成後の observable な
 parameter がすべて確定すれば，完全な Coverage がなくても `K κ₁ ... κₙ` を与える．
 shape の証拠を持たない catch-all-only literal は必ず `•` になる．したがって
 `ShapeCap` は「この matcher が `K` の構造を少なくとも一部観測する」という存在的な
@@ -363,10 +368,10 @@ catch-all と top-level value／wildcard clause は structured root evidence を
 同じ capability 位置の証拠は，`unseen` を中立として provenance-preserving な exact
 agreement で合成する．既に正当化された capability substitution の適用後に同じ
 producer capability でなければ型エラーとし，この合成自体は producer 変数の
-単一化や capability weakening を行わない．structured root を得た後も shape-relevant
-な capability parameter 位置が `unseen` のままなら，target 型や annotation から
-補わず型エラーとする．詳細な partial evidence と合成規則，および残る投影問題は
-下記 D1 に記す．
+単一化や capability weakening を行わない．structured root を得た後，observable な
+capability parameter 位置が `unseen` のままなら，target 型や annotation から補わず
+型エラーとする．宣言全体で unobservable な parameter は canonical に `•` とする．
+詳細な partial evidence，observability，合成規則，および残る投影問題は下記 D1 に記す．
 
 `CoverageOK` は target 型ではなく capability を基準にする独立な述語とする．
 
@@ -587,8 +592,11 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 
 1. 型文法に capability sort と `Matcher κ τ` を導入する．
 2. `MatcherSlot` の第1添字を capability，第2添字を target と明記する．
-3. 通常型／`Σ_P` signature から capability signature への全域的な lift を定義し，
-   pattern／primitive-pattern-pattern の構造成分を capability として定義する．
+3. 通常型／`Σ_P` signature から capability signature への signature-directed lift
+   を定義する．lift は演算として全域的だが，opaque former／関数型では内部へ入らず，
+   capability-visible path の observable parameter だけを投影し，unobservable
+   parameter を canonical `•` とする．その結果から pattern／
+   primitive-pattern-pattern の構造成分を定義する．
 4. `T-SOME`，`T-MATCHER`，tuple coercion，slot coercion を二添字化する．
 5. `ShapeCap` 合成と独立な `CoverageOK` を定義し，matcher target
    ではなく capability に索引付けする．
@@ -608,7 +616,8 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 - `Ty.matcher : Cap -> Ty -> Ty`
 - `Ty.matcherSlot : Cap -> Ty -> Ty`
 - capability binder と通常型 binder を持つ `Scheme`
-- 通常型／pattern signature から capability skeleton への lift
+- 通常型／pattern signature から capability skeleton への signature-directed lift，
+  capability-visible／opaque barrier，parameter observability の least fixpoint
 
 ### `TypeRel`
 
@@ -694,6 +703,8 @@ applySubst s (TMatcher t) = TMatcher (applySubst s t)
 
 ### matcher literal
 
+- pattern declaration 群から parameter observability を先に計算し，opaque／function
+  内部と seed のない recursive-only parameter を canonical `•` にする
 - primitive-pattern-pattern の hole ごとに最初から完全な
   `MatcherSlot κ_l τ_l` を構成する
 - arm body は target tuple の collection として検査する
@@ -711,7 +722,8 @@ R12 で実装した明示タプル境界，構文形非依存，完全 slot 検�
 再帰 matcher では，ShapeCap の収集と自己参照型の設定を Coverage 診断から分離し，
 最終 capability と照合する checking／fixpoint 手続きが必要である．正確な初期案と
 完了条件は D4 に記録する．capability が確定する前の再帰 binding を一般化しては
-ならない．
+ならない．再帰 occurrence は，非再帰 field または入力からすでに得た evidence の
+伝播・検証だけを行い，capability の seed を無から作らない．
 
 ### 実行時
 
@@ -737,7 +749,7 @@ homogeneous 仕様へ変更するか，将来の第三の型軸として分離�
 
 Coverage を structured capability の生成条件から分離する．ある型形成子 `K` について
 `ShapeCap` が証拠として認める general または constructor／tuple-headed refinement
-clause が少なくとも一つ観測され，必要な capability parameter が確定すれば，その
+clause が少なくとも一つ観測され，observable な capability parameter が確定すれば，その
 matcher は `K`-headed な shape capability を持つ．すべての constructor を扱わない
 partial matcher も
 `Matcher (K κ₁ ... κₙ) (K τ₁ ... τₙ)` として型付けでき，target 型を後から
@@ -868,12 +880,59 @@ capability を `•` へ weakening したりしない．同じ型パラメータ
 内に複数回現れる場合も，複数 clause の場合と同じ merge を使う．したがって演算が
 成功する範囲では clause の順序に依存せず，同じ exact evidence tree が得られる．
 
+**parameter observability．** 型形成子 `K` の各 parameter 位置 `i` が capability
+として観測可能かを，pattern constructor signature 全体から計算する．この判定は
+選択された matcher clauses や target annotation ではなく宣言だけに依存する．
+概念的には，各 capability-visible な型形成子 `F` に parameter observability mask
+`Obs_F` を持たせ，constructor field 型の中を次のようにたどる．
+
+- result parameter `α_i` へ直接到達すれば `i` の seed を得る
+- product は全 component へ入る
+- `List`，`Maybe` のように pattern 構造を公開する型形成子 `F` では，
+  `Obs_F` が真の parameter 位置だけへ入る
+- inductive pattern declaration を持たない opaque former と関数型の内側へは入らない
+- 自身または相互再帰群の型形成子へ戻る辺は，その parameter の現在の
+  observability を伝播するだけで seed を作らない
+
+この有限な依存方程式の **least fixpoint** を `Obs_K` とする．したがって，
+
+```text
+Phantom a := tag Integer
+```
+
+の `a` は true phantom であり unobservable である．
+
+```text
+Hidden a := hidden (Opaque a)
+```
+
+で `Opaque` が inductive pattern declaration を持たない場合も，その内側の `a` は
+unobservable である．opaque value 全体を variable／wildcard／value pattern で扱えても，
+そのことから内側の capability を生成しない．
+
+```text
+Rose a := node (List (Rose a))
+```
+
+では observability 方程式が `o = o` だけになり，least solution は `false` である．
+有限の `Rose a` 値のどこにも `a` の payload は現れないので，この recursive-only
+parameter は再帰的に隠された phantom と同じく unobservable になる．一方，
+
+```text
+Tree a := leaf a | node (List (Tree a))
+```
+
+では `leaf a` が seed を与えるので `a` は observable である．`node` の recursive
+occurrence はその evidence を伝播・検証するが，新しい capability を無から作らない．
+
 structured root evidence が一つもなければ matcher literal の capability は `•` と
-する．一方，root `K` を観測した後も shape-relevant な capability parameter 位置が
-`unseen` のままなら型エラーとする．例えば `Maybe a` の `Nothing` や `List a` の
-`Nil` のように `a` を確定しない constructor clause しかなければ，target 型や
-annotation から capability を作らず拒否する．`Nothing` が `unseen`，`Just $` が
-`p` を与える場合は `unseen` が中立なので `Maybe p` となる．
+する．root `K` を観測した後，`Obs_K(i) = true` の位置が `unseen` のままなら型エラー
+とし，`Obs_K(i) = false` の位置は canonical `•` で埋める．例えば `Maybe a` の `a`
+は `Just a` により宣言上 observable なので，`Nothing` のように `a` を確定しない
+constructor clause しかなければ，target 型や annotation から capability を作らず
+拒否する．`Nothing` が `unseen`，`Just $` が `p` を与える場合は `unseen` が中立なので
+`Maybe p` となる．一方，`Phantom a`，opaque 内部だけの `a`，seed のない
+recursive-only `a` は canonical `•` となる．
 
 **refinement interception．** refinement は general clause より前に選択され得るため，
 合成から単に無視しても安全ではない．例えば general clause がある child 位置へ `p`
@@ -903,12 +962,13 @@ calculus に相対的な一意性／主要性として述べる．
   capability parameter 位置へ partial evidence を投影する正確な規則
 - 同じ型パラメータが複数 field／異なる深さに現れる場合の投影と merge の順序
 - general／refinement tuple clause を同じ投影へ含める正確な product 規則
-- true phantom position と shape-relevant だが未観測の位置を判別する境界
+- capability-visible former の signature normalization と投影可能な head の境界
 - 上記 merge の決定性，順序独立性，健全性，相対的主要性の定理
 
 **完了条件．** signature-directed な投影を含む合成が決定的で，annotation や target
 型から capability を作らず，catch-all-only が必ず `•` になり，observable position
-の未確定と exact mismatch を拒否し，採用する相対的主要性命題を明示して示せること．
+の未確定と exact mismatch を拒否し，unobservable position を canonical `•` とし，
+採用する相対的主要性命題を明示して示せること．
 
 ### D2：型付けと `CoverageOK` を運ぶ二層の形式化
 
@@ -963,7 +1023,9 @@ witness を型・制約全体へ適用した後，target 側の型クラス制�
 ### D4：再帰 matcher の capability 推論
 
 **現状．** 再帰 binding の本体を検査するとき，自己参照へ暫定 capability を与える
-必要があるが，ShapeCap は clause 全体を見て初めて確定する．
+必要があるが，ShapeCap は clause 全体を見て初めて確定する．parameter observability
+自体は pattern signature の依存方程式の least fixpoint で先に決め，再帰 occurrence
+だけから capability evidence を生成しない方針は固定した．
 
 **決めること．** capability 注釈を必須にするか，least fixpoint／二段階 checking で
 annotation-free な単相再帰を許すかを固定する．
@@ -972,7 +1034,9 @@ annotation-free な単相再帰を許すかを固定する．
 refinement clauses を先に走査し，partial evidence と capability 等式を収集する．
 得た暫定 ShapeCap を単相な自己参照型として置いた後，next matcher と arm body を
 検査する二段階方式とする．第2段階で capability 等式を fixpoint まで解き，解が
-安定して finalization 後の ShapeCap と一致するまで一般化しない．
+安定して finalization 後の ShapeCap と一致するまで一般化しない．非再帰 field の
+hole または入力 capability を seed とし，自己参照はその seed の伝播・検証に限る．
+unobservable な recursive-only parameter は暫定変数を一般化せず canonical `•` とする．
 
 **完了条件．** 標準再帰 matcher の capability が一意に推論され，自己参照から新しい
 能力を循環的に捏造できず，annotation あり／なしの結果が整合すること．相互再帰を
@@ -1040,7 +1104,7 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 ### partial shape capability と Coverage
 
 - D1 で証拠と認める同じ型形成子の constructor clause が一つだけでも，合成後の
-  shape-relevant な parameter がすべて確定すれば structured `ShapeCap` を推論する
+  observable な parameter がすべて確定すれば structured `ShapeCap` を推論する
 - 残りの general constructor clauses が欠けている場合，capability を `•` に
   落とさず不足 constructor の warning を出す
 - Coverage warning の有効・無効で推論 capability が変わらない
@@ -1053,6 +1117,12 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - refinement の `_`／`#$x` は `•` でなく `unseen` を与え，他の証拠を弱めない
 - `Nothing`／`Nil` のように型パラメータを確定しない clause しかない場合，
   capability を target 型や annotation から補わず型エラーにする
+- true phantom，opaque／function 内部だけの parameter，seed のない recursive-only
+  parameter は unobservable とし，canonical `•` にする
+- observability は pattern signature の capability-visible path の依存方程式を
+  least fixpoint で解き，再帰辺だけでは seed を作らない
+- `Tree a` の `leaf a` のような非再帰 seed があれば observable とし，再帰 occurrence
+  はその evidence の伝播・検証だけを行う
 - general／refinement の同じ capability 位置の evidence は exact agreement を要求し，
   不一致を型エラーにする
 - refinement-only の shape evidence は `CoverageOK` の証拠にはならず，不足 general
@@ -1117,7 +1187,9 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
   clause から partial evidence を集め，`unseen` を中立とする exact agreement で
   `ShapeCap` として合成する
 - `_`／`#$x` は `unseen`，hole は next matcher capability を与え，不一致または
-  structured root 以下の shape-relevant な最終 `unseen` は型エラーにする
+  structured root 以下の observable な最終 `unseen` は型エラーにする
+- true phantom，opaque／function 内部，seed のない recursive-only parameter は
+  least-fixpoint observability により unobservable とし，canonical `•` にする
 - refinement は `ShapeCap` の存在的証拠にはなるが `CoverageOK` には数えない
 - partial matcher も structured `ShapeCap` を持ち，Coverage warning の有効・無効は
   capability を変更しない
@@ -1148,6 +1220,9 @@ kind 付き変数か，表面表示，診断，型消去などは，これらを
 - [ ] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
       matcher 値の `CapTargetOK` 不変量が定義されている．
 - [ ] matcher literal の `ShapeCap` 合成規則と主要性の主張範囲が定義されている．
+- [ ] capability-visible path による parameter observability の least-fixpoint 規則，
+      opaque／function barrier，recursive-only parameter と canonical `•` が
+      signature-directed lift と `ShapeCap` finalization に反映されている．
 - [ ] `CoverageOK` が `ShapeCap` と独立に定義され，partial matcher の受理，
       target-based warning，安全な部分集合の境界が固定されている．
 - [ ] 二種 Scheme／Subst／Inst，`CapGen`，witness 伝播，Algorithm W が定義されている．

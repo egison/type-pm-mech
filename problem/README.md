@@ -63,7 +63,7 @@
   未実施である．R12 の成分検査へ渡される前に scheme lookup が能力を失えば
   回復できないため，R7・R9・R12 の局所結果だけでは閉じない．
 - P2 の capability は，`ShapeCap` が証拠として認める constructor clause を
-  少なくとも一つ持ち，shape-relevant な全 parameter evidence を確定できる matcher
+  少なくとも一つ持ち，observable な全 parameter evidence を確定できる matcher
   に構造 head を与える **shape capability** とし，全 constructor の処理を保証する
   `CoverageOK` とは分離する方針を採用した．
   partial matcher は structured capability を保ったまま受理でき，warning を
@@ -71,11 +71,13 @@
   `CoverageOK` を満たす部分集合に限る．`ShapeCap` は general と
   constructor／tuple-headed refinement clause から partial evidence を集め，hole
   は next matcher capability，`_`／`#$x` は `unseen` として exact agreement で
-  合成する．不一致と，structured root 以下で最後まで未観測な shape-relevant
-  parameter は型エラーにし，refinement は `CoverageOK` には数えない．constructor
-  signature から capability parameter 位置への正確な投影，通常型付けと安全部分集合を
-  結ぶ judgment／runtime 不変量，`CapGen`，再帰 matcher，`CapTargetOK` の
-  正規化境界は詳細設計が残る．
+  合成する．不一致と，structured root 以下で最後まで未観測な observable parameter
+  は型エラーにし，refinement は `CoverageOK` には数えない．observability は pattern
+  signature の capability-visible path が作る依存方程式の least fixpoint とし，
+  true phantom，opaque／function 内部，seed のない recursive-only parameter は
+  unobservable として canonical `•` にする．constructor signature から capability
+  parameter 位置への正確な投影，通常型付けと安全部分集合を結ぶ judgment／runtime
+  不変量，`CapGen`，再帰 matcher，`CapTargetOK` の正規化境界は詳細設計が残る．
 
 ## 記録の読み方
 
