@@ -35,10 +35,12 @@ MatcherSlot κ τ
 という分離を，型，スキーム，Algorithm W，値型付けまで貫くことである．
 
 この文書は採用する中核設計，partial matcher に対する capability と Coverage の
-境界，移行範囲を固定する．正確な capability 合成，通常型付けと安全な部分集合の
-形式化，`CapGen`，再帰 matcher，`CapTargetOK` の正規化境界には詳細設計が残る．
-論文，Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の
-除去も完了していないため，P2 自体は未解決として残す．
+境界，移行範囲を固定する．`ShapeCap` については，general／refinement clause から
+partial evidence を集め，未観測を中立に exact agreement で合成する方針まで決定した．
+constructor signature から capability parameter 位置への正確な投影，tuple，
+通常型付けと安全な部分集合の形式化，`CapGen`，再帰 matcher，`CapTargetOK` の
+正規化境界には詳細設計が残る．論文，Egison 本体，Lean の実変更と，P2 に由来する
+capability-admissibility 仮定の除去も完了していないため，P2 自体は未解決として残す．
 
 ## 一言でいうと
 
@@ -59,10 +61,12 @@ MatcherSlot κ τ
 
 ### capability `κ`
 
-`κ` は，matcher が定義上公開する構造形状を表す．`ShapeCap` が認める constructor
-clause の証拠を少なくとも一つ持つ partial matcher にも structured capability を
-与えるため，`κ` 単独は同じ型形成子の全 constructor を処理できるという完全性の
-証明ではない．その全称的保証は，独立な `CoverageOK` と組み合わせたときに得る．
+`κ` は，matcher が定義上公開する構造形状を表す．`ShapeCap` が認める general
+constructor clause または constructor／tuple-headed refinement clause の証拠を
+少なくとも一つ持ち，shape-relevant な全 parameter の evidence を確定できる partial
+matcher にも structured capability を与える．したがって `κ` 単独は同じ型形成子の
+全 constructor を処理できるという完全性の証明ではない．その全称的保証は，独立な
+`CoverageOK` と組み合わせたときに得る．
 
 役割を区別する箇所では，producer の capability を `κ_m`，pattern／slot の
 要求を `κ_p`，hole の要求を `κ_l` と書く．通常型とは別 sort とし，
@@ -342,17 +346,27 @@ matcher literal の capability と target を別々に決める．
 
 matcher literal の root capability は，`ShapeCap` が証拠として認める constructor
 clause と hole の capability から **shape capability** として合成する．同じ
-型形成子 `K` の証拠 clause が少なくとも一つあれば，完全な Coverage がなくても
-`K κ₁ ... κₙ` を与える．shape の証拠を持たない catch-all-only literal は必ず
-`•` になる．したがって `ShapeCap` は「この matcher が `K` の構造を少なくとも
-一部観測する」という存在的な may 近似であり，`K` の任意の constructor を安全に
-処理するという証明ではない．principal 性の正確な主張は D1 で固定する．
+型形成子 `K` の証拠 clause が少なくとも一つあり，合成後の shape-relevant な
+parameter がすべて確定すれば，完全な Coverage がなくても `K κ₁ ... κₙ` を与える．
+shape の証拠を持たない catch-all-only literal は必ず `•` になる．したがって
+`ShapeCap` は「この matcher が `K` の構造を少なくとも一部観測する」という存在的な
+may 近似であり，`K` の任意の constructor を安全に処理するという証明ではない．
+principal 性の正確な主張は D1 で固定する．
 
-正確にどの constructor clause を shape の証拠に数え，子 capability をどう合成するかは
-下記 D1 の詳細設計で固定する．初期案では general constructor clause だけを証拠とし，
-refinement clause は exported capability を強化しない．子 capability は対応する
-next matcher から得て，証拠がない位置を `•` とし，両立しない証拠は union を導入せず
-型エラーとする．
+general constructor／tuple clause と，constructor／tuple-headed refinement clause
+を `ShapeCap` の証拠に数える．refinement は固定 prefix のため完全な capability
+ではなく，`unseen` を含む partial evidence を与える．hole `$` は対応する next
+matcher の capability，wildcard `_` と value-pattern-pattern `#$x` は `unseen`，
+nested constructor／tuple はその head と内部の partial evidence を与える．bare-hole
+catch-all と top-level value／wildcard clause は structured root evidence を与えない．
+
+同じ capability 位置の証拠は，`unseen` を中立として provenance-preserving な exact
+agreement で合成する．既に正当化された capability substitution の適用後に同じ
+producer capability でなければ型エラーとし，この合成自体は producer 変数の
+単一化や capability weakening を行わない．structured root を得た後も shape-relevant
+な capability parameter 位置が `unseen` のままなら，target 型や annotation から
+補わず型エラーとする．詳細な partial evidence と合成規則，および残る投影問題は
+下記 D1 に記す．
 
 `CoverageOK` は target 型ではなく capability を基準にする独立な述語とする．
 
@@ -722,9 +736,10 @@ homogeneous 仕様へ変更するか，将来の第三の型軸として分離�
 ### 採用する境界
 
 Coverage を structured capability の生成条件から分離する．ある型形成子 `K` について
-`ShapeCap` が証拠として認める constructor clause が少なくとも一つ観測されれば，
-その matcher は `K`-headed な shape capability を持つ．すべての constructor を
-扱わない partial matcher も
+`ShapeCap` が証拠として認める general または constructor／tuple-headed refinement
+clause が少なくとも一つ観測され，必要な capability parameter が確定すれば，その
+matcher は `K`-headed な shape capability を持つ．すべての constructor を扱わない
+partial matcher も
 `Matcher (K κ₁ ... κₙ) (K τ₁ ... τₙ)` として型付けでき，target 型を後から
 特殊化してもこの capability は変化しない．
 
@@ -738,7 +753,7 @@ Coverage に数えるのは general clause だけであり，refinement clause �
 以下は依存する型付け context などを省略した概念図である．
 
 ```text
-ShapeCap cls κ                 -- 存在的：観測された構造形状
+ShapeCap cls κ                 -- root head は存在的，子は全 evidence の exact consistency
 CoverageOK cls κ               -- 全称的：全 general constructor clause
 CoveredShape cls κ
   := ShapeCap cls κ ∧ CoverageOK cls κ
@@ -780,31 +795,120 @@ Coverage，P1 の capture-admissibility，`StepTotal` まで同時に取り除�
 
 ### D1：principal `ShapeCap` の合成
 
-**現状．** 「`ShapeCap` が証拠と認める constructor clause が一つでもあれば，
-その型形成子を capable とする」という外側の方針は決定したが，どの clause を証拠と
-認め，capability 木の各位置でどう集めるかという正確な規則は未定義である．
+**決定済みの証拠範囲．** general constructor／tuple clause に加えて，
+constructor／tuple-headed refinement clause も `ShapeCap` の証拠に数える．
+refinement は pattern constructor の一部の形だけを処理するため `CoverageOK` の
+証拠にはならないが，partial matcher が実際に観測する shape の存在的証拠にはなる．
+top-level の value-pattern-pattern，wildcard，bare-hole catch-all は structured
+root evidence を与えない．
 
-**決めること．**
+general clause だけに限定すると，例えば `headSlot` の `$ :: _` や
+`assocMultiset` の `($, $) :: $` のような refinement-only の構造を失う．後者は
+general clause が `[]` しかないため，要素 capability が最後まで未観測となり，
+下記の未確定位置規則によって matcher literal 全体が型エラーになる．したがって，
+既存の partial matcher と「必要な observable position が確定する限り，pattern
+constructor を一つでも観測すれば capable」という方針を維持するには refinement の
+partial evidence が必要である．
 
-- general clause と refinement clause のどちらを shape の証拠に数えるか
-- constructor の hole と next matcher から子 capability をどう対応付けるか
-- nullary constructor しか観測されない型パラメータ位置をどう扱うか
-- 複数節が同じ位置へ与える capability 証拠をどう合成するか
-- tuple capability を同じ合成へどう含めるか
+**partial evidence．** capability を直接集める代わりに，合成中だけ次の evidence
+tree を用いる．
 
-**初期案．** general constructor clause と general tuple clause だけを exported
-capability の証拠とし，refinement clause は強化に使わない．refinement まで数えると，
-入力 capability `p` と固定 refinement が与える shape の和
-`p ∨ K κ₁ ... κₙ` が必要になり，現在の capability 文法では principal に表せない
-場合があるためである．子 capability は general clause の next matcher から得て，
-証拠がない位置は `•`，同じ子位置の両立しない capability 証拠は初期版では
-型エラーとする．general tuple clause では各 component hole を R12 の成分境界で
-対応する next matcher へ結び，target product と同じ arity の component capability
-から product capability を作る．
+```text
+e ::= unseen
+    | •
+    | χ
+    | K e₁ ... eₙ
+    | (e₁, ..., eₙ)
+```
 
-**完了条件．** 合成が決定的で，annotation や target 型から capability を作らず，
-catch-all-only が必ず `•` になり，採用する主要性命題を明示してその命題を
-示せること．
+constructor／tuple-headed primitive-pattern-pattern の内部と，R12 で分離した next
+matcher 成分から，概念的に次を抽出する．
+
+```text
+childEvidence($, m)              = capability(m)
+childEvidence(_, -)              = unseen
+childEvidence(#$x, -)            = unseen
+childEvidence(C pp₁ ... ppₙ, ms) =
+  lift_C(childEvidence(pp₁, ms|pp₁), ..., childEvidence(ppₙ, ms|ppₙ))
+childEvidence((pp₁,...,ppₙ), ms) =
+  (childEvidence(pp₁, ms|pp₁),...,childEvidence(ppₙ, ms|ppₙ))
+```
+
+ここで `_` と `#$x` は producer capability `•` ではない．それらは利用者の
+wildcard／value pattern をその場で処理して successor pattern を作らないため，
+next matcher の能力を何も観測しない．`C` は surface pattern constructor，`lift_C`
+はその signature が与える結果型形成子 `K` と field 型式を用いる未定義の投影である．
+したがって `Nothing` と `Just` を capability head `Maybe` へ，`[]` と `::` を
+`List` へ対応付けるのは surface constructor 名ではなく signature である．nested
+constructor／tuple はこの対応を通して既知の capability head と内部の partial
+evidence を与える．`ms|ppᵢ` は flatten 済み next matcher 成分 `ms` のうち，`ppᵢ`
+の hole 数に対応する左から右への部分列であり，R12 の成分境界を変えない．その正確な
+signature-directed 投影は下記の残件である．
+
+`childEvidence` は constructor／tuple 内部の hole にだけ用いる．top-level の bare
+hole `$` は catch-all であり，その next matcher が structured capability を持っても
+matcher literal の structured root evidence にはしない．
+
+**exact merge．** 同じ capability 位置へ届く general／refinement の全 evidence は，
+次の部分演算で合成する．
+
+```text
+merge(unseen, e) = e
+merge(e, unseen) = e
+merge(•, •) = •
+merge(χ, χ) = χ                         -- 同じ provenance の場合だけ
+merge(K ē, K f̄) = K merge(ē, f̄)     -- 同じ head／arity
+merge((ē), (f̄)) = (merge(ē, f̄))     -- 同じ arity
+merge(e, f) = error                     -- その他
+```
+
+この比較は，別の理由ですでに得た capability substitution を適用した後に行う．
+合成を成功させるために異なる producer capability 変数を単一化したり，強い
+capability を `•` へ weakening したりしない．同じ型パラメータが一つの clause
+内に複数回現れる場合も，複数 clause の場合と同じ merge を使う．したがって演算が
+成功する範囲では clause の順序に依存せず，同じ exact evidence tree が得られる．
+
+structured root evidence が一つもなければ matcher literal の capability は `•` と
+する．一方，root `K` を観測した後も shape-relevant な capability parameter 位置が
+`unseen` のままなら型エラーとする．例えば `Maybe a` の `Nothing` や `List a` の
+`Nil` のように `a` を確定しない constructor clause しかなければ，target 型や
+annotation から capability を作らず拒否する．`Nothing` が `unseen`，`Just $` が
+`p` を与える場合は `unseen` が中立なので `Maybe p` となる．
+
+**refinement interception．** refinement は general clause より前に選択され得るため，
+合成から単に無視しても安全ではない．例えば general clause がある child 位置へ `p`
+を公開する一方，先行 refinement が同じ位置の hole を `something : •` へ渡すと，
+`p` が structured capability である利用時に refinement が pattern を先取りして
+stuck し得る．exact merge は `p` と `•` の不一致としてこの定義を拒否する．
+wildcard／value 固定位置には successor がないので `unseen` とし，他の証拠を
+不必要に弱めない．
+
+refinement が general の `p` に加えて固定 shape `K κ̄` だけを処理する場合，実際の
+accepted-pattern language は `p` とその固定 shape の順序付きの和に近い．現在の
+capability 文法には `p ∨ K κ̄` がなく，単純な union では nested path，複数 hole
+間の相関，clause priority も表せない．初期版はこの場合を exact mismatch として
+拒否する．したがって主要性は，runtime が処理できる全 pattern language に対する
+完全な主要性ではなく，union を必要とする不一致を拒否するこの exact-evidence
+calculus に相対的な一意性／主要性として述べる．
+
+**Coverage との境界．** refinement-only clause は structured `ShapeCap` を生成できる
+が，`CoverageOK` に数えるのは従来どおり general clauses だけである．例えば
+`$ :: _` だけを持つ `headSlot` は `List •` を持てるが，general cons clause を
+欠くため Coverage warning の対象であり，no-stuck を主張する安全な部分集合には
+入らない．
+
+**残ること．**
+
+- pattern constructor signature の型式から，nested／recursive occurrence を含む
+  capability parameter 位置へ partial evidence を投影する正確な規則
+- 同じ型パラメータが複数 field／異なる深さに現れる場合の投影と merge の順序
+- general／refinement tuple clause を同じ投影へ含める正確な product 規則
+- true phantom position と shape-relevant だが未観測の位置を判別する境界
+- 上記 merge の決定性，順序独立性，健全性，相対的主要性の定理
+
+**完了条件．** signature-directed な投影を含む合成が決定的で，annotation や target
+型から capability を作らず，catch-all-only が必ず `•` になり，observable position
+の未確定と exact mismatch を拒否し，採用する相対的主要性命題を明示して示せること．
 
 ### D2：型付けと `CoverageOK` を運ぶ二層の形式化
 
@@ -864,10 +968,11 @@ witness を型・制約全体へ適用した後，target 側の型クラス制�
 **決めること．** capability 注釈を必須にするか，least fixpoint／二段階 checking で
 annotation-free な単相再帰を許すかを固定する．
 
-**推奨案．** general constructor clauses を先に走査して shape と capability 等式を
-収集し，得た暫定 ShapeCap を単相な自己参照型として置いた後，next matcher と arm
-body を検査する二段階方式とする．第2段階で capability 等式を fixpoint まで解き，
-解が安定して最終 ShapeCap と一致するまで一般化しない．
+**推奨案．** `ShapeCap` の証拠となる general と constructor／tuple-headed
+refinement clauses を先に走査し，partial evidence と capability 等式を収集する．
+得た暫定 ShapeCap を単相な自己参照型として置いた後，next matcher と arm body を
+検査する二段階方式とする．第2段階で capability 等式を fixpoint まで解き，解が
+安定して finalization 後の ShapeCap と一致するまで一般化しない．
 
 **完了条件．** 標準再帰 matcher の capability が一意に推論され，自己参照から新しい
 能力を循環的に捏造できず，annotation あり／なしの結果が整合すること．相互再帰を
@@ -934,8 +1039,8 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 ### partial shape capability と Coverage
 
-- D1 で証拠と認める同じ型形成子の constructor clause が一つだけでも structured
-  `ShapeCap` を推論する
+- D1 で証拠と認める同じ型形成子の constructor clause が一つだけでも，合成後の
+  shape-relevant な parameter がすべて確定すれば structured `ShapeCap` を推論する
 - 残りの general constructor clauses が欠けている場合，capability を `•` に
   落とさず不足 constructor の warning を出す
 - Coverage warning の有効・無効で推論 capability が変わらない
@@ -943,10 +1048,18 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - catch-all-only の structured target に対する既存の target-based warning を維持する
 - full Coverage を持つ matcher が `CoverageOK` の安全な部分集合に入る
 - partial matcher の未被覆 constructor 利用を，定義済みの空結果と誤認しない
-- D1 の初期案を採る場合，refinement-only clause は exported capability を強化しない
-- D1 の初期案を採る場合，nullary constructor だけから観測されない子 capability を
-  一般化せず `•` にする
-- D1 の初期案を採る場合，同じ capability 位置の両立しない capability 証拠を拒否する
+- constructor／tuple-headed refinement-only clause からも partial `ShapeCap`
+  evidence を得られる
+- refinement の `_`／`#$x` は `•` でなく `unseen` を与え，他の証拠を弱めない
+- `Nothing`／`Nil` のように型パラメータを確定しない clause しかない場合，
+  capability を target 型や annotation から補わず型エラーにする
+- general／refinement の同じ capability 位置の evidence は exact agreement を要求し，
+  不一致を型エラーにする
+- refinement-only の shape evidence は `CoverageOK` の証拠にはならず，不足 general
+  clause の warning と安全な部分集合の境界を維持する
+- `headSlot` の `$ :: _` から `List •` を推論する
+- `assocMultiset` の cons refinement 内の tuple holes から要素 capability を推論し，
+  value 固定位置は `unseen` とする
 
 ### capability combinator
 
@@ -1000,8 +1113,12 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - `Matcher κ τ` を論文・Lean・Egison で明示する
 - capability と target を別 sort・別代入にする
 - catch-all-only 能力を `•` とする
-- capability は matcher literal について D1 で証拠と認める constructor clause と
-  next matcher から `ShapeCap` として合成する
+- capability は matcher literal の general と constructor／tuple-headed refinement
+  clause から partial evidence を集め，`unseen` を中立とする exact agreement で
+  `ShapeCap` として合成する
+- `_`／`#$x` は `unseen`，hole は next matcher capability を与え，不一致または
+  structured root 以下の shape-relevant な最終 `unseen` は型エラーにする
+- refinement は `ShapeCap` の存在的証拠にはなるが `CoverageOK` には数えない
 - partial matcher も structured `ShapeCap` を持ち，Coverage warning の有効・無効は
   capability を変更しない
 - `CoverageOK` は `ShapeCap` と独立な安全性条件として capability 側で検査する
@@ -1015,7 +1132,8 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 ### 残る設計判断
 
-- D1：principal `ShapeCap` の証拠，子 capability，合成規則
+- D1：constructor signature から capability parameter 位置への partial evidence の
+  投影，tuple 規則，相対的主要性の形式化
 - D2：partial matcher の通常型付けと `CoverageOK` を持つ安全な部分集合の形式化
 - D3：`CapGen`，rigid／flexible provenance，一般化順序
 - D4：再帰 matcher の ShapeCap 推論
