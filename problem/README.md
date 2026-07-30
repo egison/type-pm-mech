@@ -75,9 +75,13 @@
   は型エラーにし，refinement は `CoverageOK` には数えない．observability は pattern
   signature の capability-visible path が作る依存方程式の least fixpoint とし，
   true phantom，opaque／function 内部，seed のない recursive-only parameter は
-  unobservable として canonical `•` にする．constructor signature から capability
-  parameter 位置への正確な投影，通常型付けと安全部分集合を結ぶ judgment／runtime
-  不変量，`CapGen`，再帰 matcher，`CapTargetOK` の正規化境界は詳細設計が残る．
+  unobservable として canonical `•` にする．constructor field evidence は signature
+  parameter の provenance を保つ fresh instantiation 後，source binder 順でなく
+  result argument slot へ投影する．product と capability-visible former をたどり，
+  opaque／function で止まり，`unseen` は非寄与，既知 head mismatch は型エラー，
+  重複 occurrence は exact merge とする．D1 はこの calculus の形式化・証明が残る．
+  通常型付けと安全部分集合を結ぶ judgment／runtime 不変量，`CapGen`，再帰 matcher，
+  `CapTargetOK` の正規化境界は詳細設計が残る．
 
 ## 記録の読み方
 

@@ -2,7 +2,7 @@
 
 ## 状態
 
-中核方針・Coverage 方針決定，詳細設計・再構成未実施．
+中核方針・Coverage・D1 設計方針決定，残る詳細設計・再構成未実施．
 
 P2 の解決方針として，従来の一添字
 
@@ -38,9 +38,10 @@ MatcherSlot κ τ
 境界，移行範囲を固定する．`ShapeCap` については，general／refinement clause から
 partial evidence を集め，未観測を中立に exact agreement で合成する方針と，
 parameter observability を capability-visible path の依存方程式の least fixpoint
-として決める方針まで決定した．constructor signature から capability parameter
-位置への正確な投影，tuple，通常型付けと安全な部分集合の形式化，`CapGen`，
-再帰 matcher の checking，`CapTargetOK` の正規化境界には詳細設計が残る．論文，
+として決める方針に加え，constructor field の evidence を fresh instantiate 後の
+result argument slot へ signature-directed に投影する規則まで決定した．D1 はこの
+calculus の形式化と証明が残る．通常型付けと安全な部分集合の形式化，`CapGen`，
+再帰 matcher の checking，`CapTargetOK` の正規化境界には設計判断が残る．論文，
 Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の除去も
 完了していないため，P2 自体は未解決として残す．
 
@@ -326,7 +327,10 @@ producer capability `•` ではなく fresh consumer 変数 `χ_d` を構造要
 capability skeleton を要求する．この signature-directed lift は product と
 capability-visible な型形成子の observable parameter 位置だけをたどり，
 inductive pattern declaration を持たない opaque former と関数型を境界として止まる．
-observable でない parameter は skeleton 上でも canonical `•` とする．
+field evidence は fresh instantiate 後の result argument slot へ投影し，`unseen` は
+何も寄与しない．投影が必要な path で既知の head／arity が一致しなければ，
+`unseen` へ落とさず型エラーにする．observable でない parameter は skeleton 上でも
+canonical `•` とする．
 
 ### `T-SOME`
 
@@ -371,7 +375,8 @@ producer capability でなければ型エラーとし，この合成自体は pr
 単一化や capability weakening を行わない．structured root を得た後，observable な
 capability parameter 位置が `unseen` のままなら，target 型や annotation から補わず
 型エラーとする．宣言全体で unobservable な parameter は canonical に `•` とする．
-詳細な partial evidence，observability，合成規則，および残る投影問題は下記 D1 に記す．
+詳細な partial evidence，observability，signature-directed projection，合成規則は
+下記 D1 に記す．
 
 `CoverageOK` は target 型ではなく capability を基準にする独立な述語とする．
 
@@ -594,8 +599,9 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 2. `MatcherSlot` の第1添字を capability，第2添字を target と明記する．
 3. 通常型／`Σ_P` signature から capability signature への signature-directed lift
    を定義する．lift は演算として全域的だが，opaque former／関数型では内部へ入らず，
-   capability-visible path の observable parameter だけを投影し，unobservable
-   parameter を canonical `•` とする．その結果から pattern／
+   capability-visible path の observable parameter だけを fresh instantiate 後の
+   result argument slot へ投影する．`unseen` は非寄与，既知 head mismatch は失敗，
+   unobservable parameter は canonical `•` とする．その結果から pattern／
    primitive-pattern-pattern の構造成分を定義する．
 4. `T-SOME`，`T-MATCHER`，tuple coercion，slot coercion を二添字化する．
 5. `ShapeCap` 合成と独立な `CoverageOK` を定義し，matcher target
@@ -617,7 +623,8 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 - `Ty.matcherSlot : Cap -> Ty -> Ty`
 - capability binder と通常型 binder を持つ `Scheme`
 - 通常型／pattern signature から capability skeleton への signature-directed lift，
-  capability-visible／opaque barrier，parameter observability の least fixpoint
+  fresh result-slot projection，product／capability-visible／opaque barrier，
+  parameter observability の least fixpoint
 
 ### `TypeRel`
 
@@ -709,8 +716,9 @@ applySubst s (TMatcher t) = TMatcher (applySubst s t)
   `MatcherSlot κ_l τ_l` を構成する
 - arm body は target tuple の collection として検査する
 - next matcher は完全な期待 slot へ検査する
-- outer capability は D1 で定める constructor 証拠と next matcher から
-  `ShapeCap` として合成する
+- outer capability は D1 で定める constructor 証拠と next matcher evidence を
+  fresh instantiate 後の result argument slot へ投影し，field／clause 間で exact
+  merge して `ShapeCap` として finalization する
 - 形式用の `CoverageOK` は `ShapeCap` と独立に定義し，Egison では既存の
   target-based Coverage 診断を維持して，診断を有効にした場合は不足を warning
   として報告する
@@ -803,9 +811,9 @@ matcher に限定する．warning が出なかったこと自体を定理の前�
 P2 が取り除くのは scheme instantiation による capability-admissibility 仮定であり，
 Coverage，P1 の capture-admissibility，`StepTotal` まで同時に取り除くものではない．
 
-## 残る設計課題
+## 残る設計課題と形式化課題
 
-### D1：principal `ShapeCap` の合成
+### D1：principal `ShapeCap` の合成（設計方針決定済み）
 
 **決定済みの証拠範囲．** general constructor／tuple clause に加えて，
 constructor／tuple-headed refinement clause も `ShapeCap` の証拠に数える．
@@ -849,17 +857,126 @@ childEvidence((pp₁,...,ppₙ), ms) =
 ここで `_` と `#$x` は producer capability `•` ではない．それらは利用者の
 wildcard／value pattern をその場で処理して successor pattern を作らないため，
 next matcher の能力を何も観測しない．`C` は surface pattern constructor，`lift_C`
-はその signature が与える結果型形成子 `K` と field 型式を用いる未定義の投影である．
-したがって `Nothing` と `Just` を capability head `Maybe` へ，`[]` と `::` を
-`List` へ対応付けるのは surface constructor 名ではなく signature である．nested
-constructor／tuple はこの対応を通して既知の capability head と内部の partial
-evidence を与える．`ms|ppᵢ` は flatten 済み next matcher 成分 `ms` のうち，`ppᵢ`
-の hole 数に対応する左から右への部分列であり，R12 の成分境界を変えない．その正確な
-signature-directed 投影は下記の残件である．
+はその signature が与える結果型形成子 `K`，result argument slot，field 型式を用いる
+下記の投影である．したがって `Nothing` と `Just` を capability head `Maybe` へ，
+`[]` と `::` を `List` へ対応付けるのは surface constructor 名ではなく signature
+である．nested constructor／tuple はこの対応を通して既知の capability head と
+内部の partial evidence を与える．`ms|ppᵢ` は flatten 済み next matcher 成分 `ms`
+のうち，`ppᵢ` の hole 数に対応する左から右への部分列であり，R12 の成分境界を
+変えない．
 
 `childEvidence` は constructor／tuple 内部の hole にだけ用いる．top-level の bare
 hole `$` は catch-all であり，その next matcher が structured capability を持っても
 matcher literal の structured root evidence にはしない．
+
+**signature-directed projection．** pattern constructor signature を fresh
+instantiate した結果を
+
+```text
+C : τ₁, ..., τᵣ -> K ρ₁ ... ρₙ
+```
+
+とする．`ρ₁, ..., ρₙ` は root capability `K e₁ ... eₙ` の位置に対応する
+**result argument slot** である．各 field 型 `τⱼ` と，その primitive-pattern-pattern
+から得た evidence `dⱼ` について，
+
+```text
+project_{ρ̄}(τⱼ, dⱼ) ⇓ (e₁, ..., eₙ)
+```
+
+を，長さ `n` の partial-evidence vector を返す部分 judgment として定義する．
+投影は概念的に次の二段階で行う．
+
+ここで fresh instantiation は signature binder を fresh rename して同一 parameter
+の provenance を保持する操作であり，通常 target substitution を capability へ
+lift する操作ではない．例えば，
+
+```text
+Just : a -> Maybe a
+target substitution = {a ↦ List Integer}
+```
+
+でも，field matcher capability が `•` なら結果 evidence は `Maybe •`，
+`List •` なら `Maybe (List •)` である．target が `List Integer` になったという理由だけで
+`List` capability を生成してはならない．
+
+1. field 型式と evidence を同時にたどり，result argument に現れる fresh signature
+   parameter への partial assignment `Θ` を集める．
+2. `Θ` を result argument slot `ρ₁, ..., ρₙ` の順序と型式へ配置し直す．
+
+第1段階の規則は次である．
+
+```text
+collect(τ, unseen) = ∅
+collect(α, d) = {α ↦ d}                         α が result argument に現れる
+collect((τ₁,...,τₘ), (d₁,...,dₘ))
+  = collect(τ₁,d₁) ⊔ ... ⊔ collect(τₘ,dₘ)
+collect(F τ₁...τₘ, F d₁...dₘ)
+  = ⊔_{i | Obs_F(i)} collect(τᵢ,dᵢ)
+```
+
+ここで `⊔` は同じ signature parameter への assignment を下記の `merge` で合成する
+部分演算である．product と capability-visible former は既知の head と arity が
+一致するときだけ componentwise にたどる．`unseen` は head 検査より先に空 assignment
+を返すため，他の clause の証拠に対して中立である．一方，result argument への
+observable path をたどる必要があるのに evidence が `•` または異なる既知の
+constructor／product head を持つ場合は，projection failure とする．これを
+`unseen` に変換してはならない．別の理由で正当化された capability substitution は
+projection より先に適用するが，必要な former head の位置に裸の `χ` が残る場合，
+projection のために単一化せず，未解決 constraint／型エラーとして D3 の provenance
+規則へ渡す．
+
+inductive pattern declaration を持たない opaque former と関数型は barrier とし，
+内部へ入らない．result argument の parameter を含まない ground branch も root
+evidence へ寄与せず，その branch の matcher capability と target の適合は通常の
+slot／target judgment に任せる．recursive former は `Obs` が認める位置について
+既に得た evidence を伝播・検証するだけであり，projection 自体を observability の
+seed にはしない．独立な child matcher から得た既知の `K p` は recursive field を
+通して `p` を伝播できるが，自己参照だけから生じる `χ = χ` は D4 の bottom／
+fixpoint checking で seed として扱わない．
+
+第2段階では，assignment を各 `ρᵢ` の型式へ埋め込む．その slot へ届く assignment が
+なければ vector 成分全体を `unseen` とする．届く assignment があれば product と
+capability-visible former の構造を保存して evidence tree を作り，未割当の observable
+leaf は `unseen`，ground／unobservable branch は canonical `•` とする．したがって，
+
+```text
+C : a -> b -> K b a
+field evidence = p, q
+project result = K q p
+
+D : a -> K (a, Integer)
+field evidence = p
+project result = K (p, •)
+```
+
+となる．投影先を source declaration の変数順ではなく fresh instantiate 後の result
+argument slot とするため，parameter の並べ替え，product，nested result argument を
+同じ規則で扱える．fresh instantiation は，同じ signature parameter の provenance を
+保持してからこの投影を行う．
+
+例えば，
+
+```text
+Cons : a -> List a -> List a
+```
+
+で head field の evidence が `p`，tail field が `List q` なら，両方を result の唯一の
+parameter slot へ投影して `merge(p, q)` する．また，
+
+```text
+Wrap : List a -> Wrap a
+```
+
+で field evidence が `List p` なら `Wrap p` を得る．同じ field evidence が `•`
+なら，必要な `List` head との既知 mismatch であり型エラーになる．`unseen` なら
+この field は何も寄与せず，他の field／clause からも evidence が来なければ
+finalization で observable parameter の未確定として型エラーになる．
+
+一つの field 型内，同じ clause の複数 field，異なる clause，異なる入れ子深さから
+同じ result slot へ届く evidence は，すべて同じ `merge` で合成する．投影用に別の
+単一化や優先順位を導入しない．head equality の前に行う alias／normalization の
+正確な境界だけは D5 に従う．
 
 **exact merge．** 同じ capability 位置へ届く general／refinement の全 evidence は，
 次の部分演算で合成する．
@@ -956,14 +1073,12 @@ calculus に相対的な一意性／主要性として述べる．
 欠くため Coverage warning の対象であり，no-stuck を主張する安全な部分集合には
 入らない．
 
-**残ること．**
+**形式化・証明として残ること．**
 
-- pattern constructor signature の型式から，nested／recursive occurrence を含む
-  capability parameter 位置へ partial evidence を投影する正確な規則
-- 同じ型パラメータが複数 field／異なる深さに現れる場合の投影と merge の順序
-- general／refinement tuple clause を同じ投影へ含める正確な product 規則
-- capability-visible former の signature normalization と投影可能な head の境界
-- 上記 merge の決定性，順序独立性，健全性，相対的主要性の定理
+- 上記 projection judgment と exact merge の Lean／論文上の帰納的定義
+- projection と merge の決定性，clause／field 順序独立性，健全性
+- exact-evidence calculus に相対的な一意性／主要性の定理
+- D5 で決める signature normalization 境界を projection の head equality へ接続する
 
 **完了条件．** signature-directed な投影を含む合成が決定的で，annotation や target
 型から capability を作らず，catch-all-only が必ず `•` になり，observable position
@@ -1076,8 +1191,9 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 3. producer equality と `COERCE-MATCHER-TO-SLOT` を二成分化する．
 4. 通常の `match`／`matchAll` と pattern binding を二成分化する．
 5. tuple matcher と `COERCE-SLOT-TUPLE` を二成分化する．
-6. matcher literal の hole，arm，next matcher と `ShapeCap` 合成を
-   二成分化する．
+6. matcher literal の hole，arm，next matcher を二成分化し，signature-directed
+   result-slot projection，exact merge，observability finalization の順で
+   `ShapeCap` を合成する．
 7. 形式用の `CoverageOK` を `ShapeCap` から独立に定義し，Egison では既存の
    target-based Coverage warning を維持する．
 8. D4 で採用する再帰 matcher checking と matcher annotation checking を
@@ -1123,6 +1239,16 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
   least fixpoint で解き，再帰辺だけでは seed を作らない
 - `Tree a` の `leaf a` のような非再帰 seed があれば observable とし，再帰 occurrence
   はその evidence の伝播・検証だけを行う
+- `C : a -> b -> K b a` の field evidence `p, q` を source binder 順でなく
+  result argument slot 順の `K q p` へ投影する
+- `D : a -> K (a, Integer)` の evidence `p` を product slot の `K (p, •)` へ投影する
+- `Just : a -> Maybe a` の target parameter を `List Integer` に特殊化しても
+  capability を target から生成せず，field evidence `•` から `Maybe •` を得る
+- `Wrap : List a -> Wrap a` の field evidence `List p` から `Wrap p` を得るが，
+  field evidence `•` や異なる既知 head は `unseen` にせず projection error にする
+- 同じ result slot への複数 occurrence は field 内／field 間／clause 間のすべてで
+  exact merge し，同一 provenance の `p, p` は受理，異なる provenance の `p, q`
+  や `p, •` は拒否する
 - general／refinement の同じ capability 位置の evidence は exact agreement を要求し，
   不一致を型エラーにする
 - refinement-only の shape evidence は `CoverageOK` の証拠にはならず，不足 general
@@ -1164,7 +1290,8 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 - capability／target の二種代入の反射性，合成，改名不変性，相互非干渉
 - capability one-way の健全性，完全性，一意性
-- matcher literal `ShapeCap` 合成の健全性，決定性，D1 で採用する主要性
+- signature-directed projection と exact merge の健全性，決定性，field／clause
+  順序独立性，D1 の exact-evidence calculus に相対的な主要性
 - matcher 値についての `CapTargetOK` と，normalization／substitution preservation
 - target substitution 下での `ShapeCap` と `CoverageOK` の不変性
 - capability substitution 下での parameterized `ShapeCap`／`CoverageOK` の保存
@@ -1190,6 +1317,13 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
   structured root 以下の observable な最終 `unseen` は型エラーにする
 - true phantom，opaque／function 内部，seed のない recursive-only parameter は
   least-fixpoint observability により unobservable とし，canonical `•` にする
+- constructor field evidence は signature parameter の provenance を保つ fresh
+  instantiation の後，source binder 順でなく result argument slot へ投影する
+- projection は direct occurrence，product，capability-visible former をたどり，
+  opaque／function で止まる．`unseen` は非寄与，既知 head／arity mismatch は
+  型エラー，重複 occurrence は exact merge とする
+- projection は通常 target substitution から capability を生成せず，ground branch
+  は root evidence に寄与しないまま通常の slot／target 検査へ残す
 - refinement は `ShapeCap` の存在的証拠にはなるが `CoverageOK` には数えない
 - partial matcher も structured `ShapeCap` を持ち，Coverage warning の有効・無効は
   capability を変更しない
@@ -1204,14 +1338,14 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 ### 残る設計判断
 
-- D1：constructor signature から capability parameter 位置への partial evidence の
-  投影，tuple 規則，相対的主要性の形式化
 - D2：partial matcher の通常型付けと `CoverageOK` を持つ安全な部分集合の形式化
 - D3：`CapGen`，rigid／flexible provenance，一般化順序
 - D4：再帰 matcher の ShapeCap 推論
 - D5：`CapTargetOK` の alias／normalization／ground equivalence 境界
 
-各課題の現状，推奨初期案，完了条件は上の「残る設計課題」に記録した．専用 ADT か
+D1 の projection／tuple／merge／observability の設計判断は固定したが，形式化と
+健全性・決定性・順序独立性・相対的主要性の証明は未実施である．各課題の現状，
+推奨初期案，完了条件は上の「残る設計課題と形式化課題」に記録した．専用 ADT か
 kind 付き変数か，表面表示，診断，型消去などは，これらを変えない表現上の詳細である．
 
 ## 受入条件
@@ -1220,6 +1354,10 @@ kind 付き変数か，表面表示，診断，型消去などは，これらを
 - [ ] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
       matcher 値の `CapTargetOK` 不変量が定義されている．
 - [ ] matcher literal の `ShapeCap` 合成規則と主要性の主張範囲が定義されている．
+- [ ] fresh instantiate 後の result argument slot への projection が direct
+      occurrence，product，capability-visible former，opaque／function barrier，
+      ground branch，重複 occurrence について定義され，`unseen` と既知 head
+      mismatch を区別している．
 - [ ] capability-visible path による parameter observability の least-fixpoint 規則，
       opaque／function barrier，recursive-only parameter と canonical `•` が
       signature-directed lift と `ShapeCap` finalization に反映されている．
