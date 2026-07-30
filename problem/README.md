@@ -21,7 +21,7 @@
 | ID | 問題 | 現在の論文への影響 | 状態 |
 |---|---|---|---|
 | P1 | [不透明・高階なマッチャーフローに対する値パターンスコープ条件](value-pattern-scope.md) | 捕捉許容性，条件付き保存性・型安全性 | 設計判断待ち |
-| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，partial matcher と安全性定理の境界 | 中核・Coverage・D1・D3・D4 方針決定，残る詳細設計・再構成未実施 |
+| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，partial matcher と安全性定理の境界 | D1--D4・D5-core 方針決定，D5-CAS pattern-view 設計・再構成未実施 |
 
 ## 解決済みの問題
 
@@ -89,9 +89,21 @@
   first-order evidence へ正規化して，alias／高階 application と binder–RHS knot を
   通る origin を保存する．自己参照，consumer demand，結果注釈は seed にせず，
   finalization と全代入適用後に SCC 外で通常どおり一般化する．この設計の十分性は
-  Lean で検証する．通常型付けと
-  安全部分集合を結ぶ judgment／runtime 不変量と，`CapTargetOK` の正規化境界には
-  詳細設計が残る．
+  Lean で検証する．Coverage の形式化は `ordinary`／`covered` の mode-indexed
+  typing とし，後者だけが全 matcher literal に `CoverageOK` を要求する．
+  `ValueTy`／`EnvTyped`／slot／closure／data／matching state に同じ mode を再帰的に
+  通し，通常層には完了評価の partial correctness と `DispatchOK` 付き局所保存だけ，
+  covered 層には Preservation／Progress／Type Safety を主張する．Coverage 依存の
+  `holeAfterGenerals` は，唯一の canonical bare-hole catch-all が最終にある
+  `CatchAllLast` へ置き換える．`CapTargetOK` は closed acyclic alias 展開と明示的な
+  surface synonym だけを使う frozen canonical signature environment 上で検査し，
+  CAS `groundEquiv`／subtype／reshape／semantic normalization は含めない．open
+  combinator は実 slot 値由来の仮定と coupled substitution で整合性を運ぶ．ただし
+  現行 `factor`／`term` は nullary `MathValue` pattern signature から evidence を得る
+  ため，単純な head view では child capability を保持できない．CAS 向け
+  target-indexed pattern-view signature，view-qualified constructor ID，
+  kind-aware index projection，runtime extraction preservation が残る最優先の
+  設計 blocker である．
 
 ## 記録の読み方
 
