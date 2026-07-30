@@ -58,7 +58,7 @@
 - R12 は，matcher 定義の次マッチャーをホールへ対応付け，各成分をその完全な
   推論型から `MatcherSlot` に対して検査する静的手続きを固定する．
 - P2 は，`Matcher κ τ` として capability と target を別 sort・別代入へ
-  分離し，capability provenance，scheme generalization，one-way witness の伝播を
+  分離し，二種 scheme generalization，capability substitution，one-way witness の伝播を
   value flow 全体で保持する方針を採用した．論文・Lean・Egison の再構成と証明は
   未実施である．R12 の成分検査へ渡される前に scheme lookup が能力を失えば
   回復できないため，R7・R9・R12 の局所結果だけでは閉じない．
@@ -76,12 +76,15 @@
   signature の capability-visible path が作る依存方程式の least fixpoint とし，
   true phantom，opaque／function 内部，seed のない recursive-only parameter は
   unobservable として canonical `•` にする．constructor field evidence は signature
-  parameter の provenance を保つ fresh instantiation 後，source binder 順でなく
+  parameter の variable identity を保つ fresh instantiation 後，source binder 順でなく
   result argument slot へ投影する．product と capability-visible former をたどり，
   opaque／function で止まり，`unseen` は非寄与，既知 head mismatch は型エラー，
   重複 occurrence は exact merge とする．D1 はこの calculus の形式化・証明が残る．
-  通常型付けと安全部分集合を結ぶ judgment／runtime 不変量，`CapGen`，再帰 matcher，
-  `CapTargetOK` の正規化境界は詳細設計が残る．
+  capability 変数は provenance 付き `CapGen` で制限せず，通常型変数と同じ HM
+  generalization を別 sort 上で行う．ただし，全 substitution を一般化前に型・環境・
+  制約へ適用し，明示量化は rigid skolem として検査し，literal root は D1 で確定する．
+  この簡潔な設計の十分性は Lean で検証する．通常型付けと安全部分集合を結ぶ
+  judgment／runtime 不変量，再帰 matcher，`CapTargetOK` の正規化境界は詳細設計が残る．
 
 ## 記録の読み方
 

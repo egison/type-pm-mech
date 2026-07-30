@@ -2,7 +2,7 @@
 
 ## 状態
 
-中核方針・Coverage・D1 設計方針決定，残る詳細設計・再構成未実施．
+中核方針・Coverage・D1・D3 設計方針決定，残る詳細設計・再構成未実施．
 
 P2 の解決方針として，従来の一添字
 
@@ -40,10 +40,12 @@ partial evidence を集め，未観測を中立に exact agreement で合成す�
 parameter observability を capability-visible path の依存方程式の least fixpoint
 として決める方針に加え，constructor field の evidence を fresh instantiate 後の
 result argument slot へ signature-directed に投影する規則まで決定した．D1 はこの
-calculus の形式化と証明が残る．通常型付けと安全な部分集合の形式化，`CapGen`，
-再帰 matcher の checking，`CapTargetOK` の正規化境界には設計判断が残る．論文，
-Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の除去も
-完了していないため，P2 自体は未解決として残す．
+calculus の形式化と証明が残る．D3 は provenance 付き `CapGen` を置かず，二種の
+substitution を全体へ適用した後，capability 変数も通常の HM 規則で一般化し，
+明示量化を rigid skolem として検査する方針に決定した．通常型付けと安全な部分集合の
+形式化，再帰 matcher の checking，`CapTargetOK` の正規化境界には設計判断が残る．
+論文，Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の
+除去も完了していないため，P2 自体は未解決として残す．
 
 ## 一言でいうと
 
@@ -99,8 +101,9 @@ pattern へ渡すことはできない．
 - producer 側の既確定 capability を consumer 要求から具体化してはならない
 
 正確な inductive 定義では，現在の one-way 構造関係を capability sort 上へ
-移す．`fresh_rename` も capability 構造と同一変数の共有を保ったまま，
-capability 変数だけを再帰的に改名する．
+移す．fresh rename は scheme instantiation で量化変数に一度だけ行い，
+capability 構造内の同一変数の共有を保つ．単相な局所変数の lookup や
+slot coercion では fresh rename せず，同じ meta-variable identity を維持する．
 
 ### target `τ`
 
@@ -369,7 +372,7 @@ matcher の capability，wildcard `_` と value-pattern-pattern `#$x` は `unsee
 nested constructor／tuple はその head と内部の partial evidence を与える．bare-hole
 catch-all と top-level value／wildcard clause は structured root evidence を与えない．
 
-同じ capability 位置の証拠は，`unseen` を中立として provenance-preserving な exact
+同じ capability 位置の証拠は，`unseen` を中立として variable-identity-preserving な exact
 agreement で合成する．既に正当化された capability substitution の適用後に同じ
 producer capability でなければ型エラーとし，この合成自体は producer 変数の
 単一化や capability weakening を行わない．structured root を得た後，observable な
@@ -408,8 +411,7 @@ producer matcher を consumer slot へ送る規則は，概念的に次となる
 
 ```text
 Γ ⊢ e : Matcher κ_m τ_m
-fresh_rename(κ_m) = κ_m'
-matchCap(κ_m', κ_p) = S_κ
+matchCap(κ_m, κ_p) = S_κ
 mgu(S_κ τ_m, S_κ τ_t) = S_τ
 S = S_τ ∘ S_κ
 --------------------------------
@@ -417,10 +419,13 @@ S Γ ⊢ e : MatcherSlot (S_κ κ_p) (S τ_t)
 ```
 
 構造検査は capability 成分だけ，target 検査は通常型成分だけを見る．
-`matchCap` は producer 側を rigid に扱い，consumer 側 capability 変数だけを
-束縛する witness `S_κ` を返す．この witness は期待 slot だけでなく，型付き式，
-関数結果，環境，一般化前の型にある同じ consumer 変数の全 occurrence へ
-**必ず**伝播する．未適用の consumer 変数を generalize してはならない．
+`matchCap` は既知の producer head を consumer 要求で変更しないが，通常の推論で
+導入した flexible capability meta-variable はどちら側に現れても制約で解ける．
+明示量化から導入した skolem は解かない．`matchCap` が返す witness `S_κ` は局所的な
+成功証拠ではなく Algorithm W が返して合成する capability substitution である．
+期待 slot だけでなく，型付き式，関数結果，環境，残余制約にある同じ変数の全
+occurrence へ **必ず**適用し，その後でだけ generalization を行う．`matchCap` が
+内部で witness を得ても yes／no だけを返して捨てる checker は採用設計に含めない．
 
 例えば `list` の fresh な `p` へ `something : Matcher • a` を渡すと，
 `S_κ = {p ↦ •}` を結果型にも適用し，
@@ -429,8 +434,10 @@ S Γ ⊢ e : MatcherSlot (S_κ κ_p) (S τ_t)
 Matcher (List •) (List a)
 ```
 
-を得る．`p` を未解決のまま一般化すると，後から `p := Maybe •` として能力を
-偽造できるため不健全である．
+を得る．正しい Algorithm W では，generalization が見る型に `p` はすでに存在せず，
+通常の free-variable generalization の候補にならない．代入前の raw result
+`Matcher (List p) (List a)` を一般化する経路は，`CapGen` で後から除外するのではなく，
+Algorithm W の substitution-threading invariant に違反するものとして排除する．
 
 target 側は独立した存在検査 `τ_m ∼ τ_t` ではなく，その occurrence の通常 HM
 制約を prevailing MGU `S_τ` へ統合する．同じ単相 matcher target を異なる型へ
@@ -445,18 +452,23 @@ capability 成分と target 成分をそれぞれの sort の通常 MGU で検�
 
 `Matcher` 同士の等式は，
 
-- capability は provenance を保存する capability equality
+- capability は capability sort 上の kind-correct equality／unification
 - target は通常型の equality／unification
 
-として分離する．異なる capability constructor は一致しない．producer literal
-由来の `•` や constructor skeleton，annotation skolem は rigid であり，
-constructor capability へ単一化してはならない．capability 変数を解けるのは，
-関数／matcher／slot 入力から同じ能力を返す parametric flow など，導出が
-正当化した flexible 変数に限る．
+として分離する．異なる capability constructor は一致しない．通常の推論で導入した
+flexible capability meta-variable は MGU で解けるが，明示 `forall` の skolem，
+`•`，finalized constructor skeleton は rigid であり，別の constructor capability
+へ変更できない．flexible meta-variable を structured capability に解くことは，
+lambda 入力など未確定な型へ必要な能力を制約する操作であり，既に構成済みの producer
+値を後から強化する操作ではない．
 
-この provenance 不変量と generalization 規則が value flow 全体で証明できるまで，
-producer capability 同士は exact equality を要求する保守的規則を採る．
-証明後は，安全な flexible capability 変数だけを単一化する規則へ広げられる．
+matcher literal の root head は D1 の finalization で `•` または structured
+constructor に確定し，evidence-free な root meta-variable を外へ出さない．next
+matcher／入力 evidence に支えられた child meta-variable は，同じ variable identity
+を保って structured capability 内に残せる．したがって一般化可能性を入力 origin で
+分類する provenance metadata は導入しない．ただし，D1 の partial evidence に対する
+exact merge は Algorithm W の MGU とは別の部分演算であり，異なる evidence 変数を
+merge のために単一化しない方針を維持する．
 
 capability が同じなら target の正当な特殊化を許せるため，最終的には現在の
 「`Matcher` 添字全体を完全一致させる」剛性を，capability mismatch と通常
@@ -498,7 +510,8 @@ matcher の capability を作り出してはならず，capability 注釈は推�
 
 ```text
 S_τ (Matcher κ τ) = Matcher κ (S_τ τ)
-S_κ (Matcher κ τ) = Matcher (S_κ κ) τ
+S_κ (Matcher κ τ) = Matcher (S_κ κ) (S_κ τ)
+S_τ (S_κ T) = S_κ (S_τ T)
 ```
 
 ただし，型全体の入れ子にある各 `Matcher` occurrence には同じ規則を再帰的に
@@ -513,36 +526,62 @@ list :
 ```
 
 では，引数 slot から得た `p` を結果 capability へ伝播する必要がある．
-安全性を担うのは「全 capability 変数を固定すること」ではなく，
-
-- literal 由来の能力を `•` または固定された constructor 骨格へ確定する
-- cap-polymorphic な注釈を skolem として本体検査する
-- matcher／slot／関数入力から結果へ流れる parametric capability 変数を
-  導出上追跡する
-- producer を consumer demand から強化しない
-
-という規則である．
-
-二種 Scheme／Subst だけでは，危険な
+capability 変数の一般化にも provenance 付きの特別な `CapGen` は置かず，通常の
+HM generalization を capability／type の二 sort へ拡張する．Algorithm W が返す
+全 capability substitution `S_κ` と通常型 substitution `S_τ` を，型，環境，
+残余制約へ先に適用した結果を `τ'`，`Γ'` とすると，概念的に
 
 ```text
-∀p : Cap. Matcher p a
+Gen(Γ', τ') =
+  ∀(ftv_Cap(τ') \ ftv_Cap(Γ') : Cap).
+  ∀(ftv_Ty (τ') \ ftv_Ty (Γ') : Type).
+  τ'
 ```
 
-の導入を排除できない．一般化には，capability 変数がどの入力または環境上の
-抽象能力に由来し，producer occurrence までどのように流れたかを示す
-`CapGen`（仮称）の導出／証拠を要求する．少なくとも，
+とする．二種 substitution は相互に侵入しないが，型全体の全 occurrence へ再帰的に
+適用し，generalization は必ずその後に行う．したがって `list something` の
+`p ↦ •` は結果型へ適用済みであり，`p` は generalization 候補に残らない．
+ここで量化候補に数えるのは flexible meta-variable だけであり，rigid skolem は
+量化せず，annotation checking の scope 外へ escape させない．
+残余の型クラス制約がある場合も同じ二種 substitution を先に適用し，scheme に保持する
+制約を含めた free variables から量化集合を計算する．
 
-- matcher literal の root に生じた未拘束 capability meta-variable は一般化しない
-- explicit capability parameter は skolem として本体を検査する
-- `∀p a. Matcher p a -> Matcher p a` のような matcher 恒等関数は許す
-- `∀p a. MatcherSlot p a -> Matcher (List p) (List a)` の slot 依存を許す
-- 入力・環境との依存を持たない `∀p. Matcher p a` の constant producer は拒否する
-- one-way witness で解いた consumer 変数を未解決のまま一般化しない
+安全性には通常の HM 規則に加えて次の境界を置く．
 
-ことが必要である．`CapGen` を Scheme に証拠として持たせるか，Algorithm W の
-生成可能スキーム judgment とするかは形式化時に決めるが，この provenance 条件
-自体は採用設計の中核であり，単なる実装最適化ではない．
+- 推論中の未解決変数は flexible meta-variable，明示 `forall` の変数は rigid
+  skolem として区別する
+- matcher literal の root head は D1 の finalization で `•` または structured
+  constructor に確定し，evidence-free な meta-variable を一般化点へ出さない．入力
+  evidence と identity を共有する child variable は通常 generalization の対象にできる
+- explicit capability parameter は skolem として本体を検査し，producer の既知能力を
+  annotation に合わせて変更しない
+- 再帰 binding は D4 の capability checking が完了するまで単相に保ち，再帰 SCC の
+  外側でだけ通常の HM generalization を行う
+
+この規則では，
+
+```text
+bad : ∀p a. Matcher p a
+bad = something
+```
+
+の `p` は rigid skolem なので，`something` の `•` と一致せず拒否される．一方，
+
+```text
+∀p a. Matcher p a -> Matcher p a
+∀p a. MatcherSlot p a -> Matcher (List p) (List a)
+```
+
+は通常の parametric な関数型として一般化できる．annotation を持たない constant
+producer から危険な `∀p. Matcher p a` が推論されないことは，literal finalization，
+substitution threading，通常 generalization から Lean で導く．この簡潔な体系で
+Algorithm W の健全性または能力非強化を証明できない反例が見つかった場合に限り，
+必要な最小範囲の provenance／一般化制限を再検討する．
+
+初期環境の primitive／foreign scheme は kind-correct であるだけでは足りない．
+source typing から導出された scheme か，その全 instance で runtime matcher invariant
+を満たす trusted declaration であることを `EnvTyped` の前提にする．外部環境から
+根拠のない `∀p. Matcher p a` を公理として注入することは許さない．
 
 ## 現行仕様・実装との対応表
 
@@ -556,13 +595,15 @@ matcher 定義の各 hole へ送る式を指す．
 | 2．各穴に完全な slot を構成 | ✓ `T-MATCHER`／Consistency (1a) | ✓ 完全な `MatcherSlot` | ✓ R12 で実装済み | 二種の添字を持つ slot として維持 |
 | 3．producer の双対検査 | ✓ 構造と target を別判定 | ✓ 構造先行 coercion | ✓ freeze 済み能力で検査 | capability と target を別 sort で検査 |
 | 4．既存 slot の両成分検査 | ✓ Step 3a | ✓ | ✓ R12 で実装済み | capability MGU と target MGU に分離 |
-| 5．再帰的な fresh rename | ✓ 記述済み | ✓ 局所 one-way | ✓ R12 で実装済み | capability だけを再帰的に改名 |
+| 5．scheme instantiation の fresh rename | ✓ 記述済み | ✓ 局所 one-way | ✓ R12 で実装済み | 二 sort の量化変数だけを再帰的に改名し，単相 identity は保存 |
 | 6．式構文形への非依存 | ✓ | ✓ | ✓ R12 で実装済み | 型に capability が残るため自然に維持 |
-| 7．scheme lookup 後の能力保存 | ✗ P2 | ✗ 共有型変数経路 | ✗ 同じ scheme 経路 | 二種 Scheme／Subst，`CapGen`，witness 伝播を実装・証明する |
+| 7．scheme lookup 後の能力保存 | ✗ P2 | ✗ 共有型変数経路 | ✗ 同じ scheme 経路 | 二種 Scheme／Subst，全 substitution 伝播，通常 HM generalization／skolemization を実装・証明する |
 
-R12 が解決した 2--6 の固定単相 next-matcher 検査は，二添字化後も維持する．
-P2 の実装対象は，主に 1 と 7 を型表現・scheme・value flow 全体で閉じることである．
-表の二添字案は採用した目標であり，実装済み・証明済みという意味ではない．
+R12 が解決した成分境界，完全 slot 検査，構文形非依存という 2--4，6 の結果は
+二添字化後も維持する．一方，5 の局所 fresh rename は，scheme instantiation だけを
+fresh にし単相 identity を保つ D3 の規則へ置き換える．P2 の実装対象は，主に 1 と 7
+を型表現・scheme・value flow 全体で閉じることである．表の二添字案は採用した目標で
+あり，実装済み・証明済みという意味ではない．
 
 ## 一添字の代案を採用しない理由
 
@@ -608,8 +649,8 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
    ではなく capability に索引付けする．
 6. catch-all の target 検査を一般 hole／arm 規則と同じ経路にする．
 7. matcher rigidity 節を，capability 保存と通常 target 多相の分離として書き直す．
-8. Scheme.Inst，`CapGen`，Algorithm W，主要性の instance relation を
-   二種代入と witness 伝播へ変更する．
+8. Scheme.Inst，二種 HM generalization，Algorithm W，主要性の instance relation を，
+   二種代入，全 substitution 伝播，明示量化の skolem checking へ変更する．
 9. runtime matcher typing，slot invariant，canonical forms を二添字化する．
 10. `capability-admissible` を source typing から導き，P2 に由来する仮定を除く．
 11. 全標準 matcher の型，本文例，付録の導出を新しい型へ更新する．
@@ -632,7 +673,8 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 - capability の free variables，apply，fresh rename，composition
 - capability 上の one-way 構造関係
 - 二種の変数を扱う `Scheme.Inst`
-- capability provenance／生成可能スキームを表す `CapGen`
+- flexible capability meta-variable と rigid skolem
+- 全 substitution 適用後の二種 HM generalization
 - kind preservation と二種代入の相互非干渉
 
 ### `Typing`
@@ -650,7 +692,11 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 - `MatcherOK`，`WTTree.atom`，runtime matcher invariant
 - target substitution が `ShapeCap`／`CoverageOK` を変えない補題
 - capability substitution lemma と one-way の一意性
-- one-way witness を全 consumer occurrence へ伝播する補題
+- `matchCap` witness を型・環境・制約の同一 meta-variable occurrence へ伝播する補題
+- Algorithm W の返す二種 substitution が結果型，環境，残余制約の全 occurrence へ
+  適用される不変量
+- 二種 generalize／instantiate と明示量化の skolem checking の健全性
+- 通常 HM generalization から closed constant producer の能力非強化を導く補題
 - Structural-Hole Transfer の capability 版
 - `CoverageOK` を持つ安全な部分集合の constructor Progress
 - `CoverageOK` の下で capability を保持し target だけを輸送する Preservation
@@ -686,10 +732,10 @@ TMatcherSlot Capability Type
 
 - `Type/Types.hs`：型構成子，free variables，変換，正規化，型注釈
 - `Type/Subst.hs`：target substitution と capability substitution の分離
-- `Type/Env.hs`：二種 generalize／instantiate
+- `Type/Env.hs`：全 substitution 適用後の二種 generalize／instantiate
 - `Type/Unify.hs`：capability equality，one-way，二成分 coercion
 - `Type/Infer.hs`／`Type/Check.hs`：`something`，match site，matcher literal，
-  tuple，annotation
+  tuple，二種 substitution threading，annotation skolem checking
 - `AST.hs`／`NonS.hs`／`Types.hs`：二添字 `TEMatcher`，capability binder，
   type-expression 変換
 - parser／pretty printer／type error：二添字の表示，round-trip，変数改名，診断
@@ -888,7 +934,7 @@ project_{ρ̄}(τⱼ, dⱼ) ⇓ (e₁, ..., eₙ)
 投影は概念的に次の二段階で行う．
 
 ここで fresh instantiation は signature binder を fresh rename して同一 parameter
-の provenance を保持する操作であり，通常 target substitution を capability へ
+の variable identity を保持する操作であり，通常 target substitution を capability へ
 lift する操作ではない．例えば，
 
 ```text
@@ -923,8 +969,10 @@ observable path をたどる必要があるのに evidence が `•` または�
 constructor／product head を持つ場合は，projection failure とする．これを
 `unseen` に変換してはならない．別の理由で正当化された capability substitution は
 projection より先に適用するが，必要な former head の位置に裸の `χ` が残る場合，
-projection のために単一化せず，未解決 constraint／型エラーとして D3 の provenance
-規則へ渡す．
+projection の exact merge だけで単一化せず，通常の Algorithm W へ head constraint
+として返す．W は flexible meta-variable なら capability MGU で解き，rigid skolem
+なら拒否する．返却 substitution を全体へ適用した後も literal root に未解決位置が
+残れば，D1 の finalization で型エラーにする．
 
 inductive pattern declaration を持たない opaque former と関数型は barrier とし，
 内部へ入らない．result argument の parameter を含まない ground branch も root
@@ -952,7 +1000,7 @@ project result = K (p, •)
 
 となる．投影先を source declaration の変数順ではなく fresh instantiate 後の result
 argument slot とするため，parameter の並べ替え，product，nested result argument を
-同じ規則で扱える．fresh instantiation は，同じ signature parameter の provenance を
+同じ規則で扱える．fresh instantiation は，同じ signature parameter の identity を
 保持してからこの投影を行う．
 
 例えば，
@@ -985,7 +1033,7 @@ finalization で observable parameter の未確定として型エラーになる
 merge(unseen, e) = e
 merge(e, unseen) = e
 merge(•, •) = •
-merge(χ, χ) = χ                         -- 同じ provenance の場合だけ
+merge(χ, χ) = χ                         -- 同じ variable identity の場合だけ
 merge(K ē, K f̄) = K merge(ē, f̄)     -- 同じ head／arity
 merge((ē), (f̄)) = (merge(ē, f̄))     -- 同じ arity
 merge(e, f) = error                     -- その他
@@ -1113,27 +1161,50 @@ catch-all，bare-hole より後ろに節を置かない順序条件，arm exhaus
 matcher／環境不変量，Progress／Preservation／Type Safety の正確な前提がそれぞれ
 定義されていること．
 
-### D3：capability provenance と `CapGen`
+### D3：二種 HM generalization と substitution threading（設計方針決定済み）
 
-**現状．** capability 変数を別 sort で量化するだけでは，入力に由来しない危険な
-`∀p. Matcher p a` を導入できる．入力 slot や環境上の抽象能力から producer へ流れる
-変数だけを一般化できるという原則は決定済みだが，正式な judgment は未定義である．
+**決定．** capability 変数の一般化に provenance 付き `CapGen` は導入しない．
+capability／type の sort を分けたまま，通常の HM generalization を両方へ適用する．
+Algorithm W の各規則は `S_κ` と `S_τ` を返して合成し，結果型，環境，残余制約，
+後続推論の全 occurrence へ適用した後にだけ `Gen` を行う．scheme instantiation は
+量化変数を fresh flexible meta-variable にし，明示 `forall` annotation の本体検査は
+fresh rigid skolem を用いて escape を禁止する．
 
-**決めること．** rigid／flexible capability meta-variable の区別，origin の表現，
-一般化可能性を Scheme の証拠に持たせるか Algorithm W の生成可能スキーム judgment
-にするか，型クラス制約を解く順序を定める．
+matcher literal では，根拠のない observable `unseen` と evidence-free な root
+meta-variable を D1 の finalization で拒否する．next matcher／入力の evidence に
+支えられた capability 変数は同じ variable identity を保って structured root に残せる
+ため，外側の関数で通常どおり一般化できる．再帰 binding は D4 の checking が終わるまで
+単相に保ち，再帰 SCC の外側で全 substitution 適用後に一般化する．
 
-**初期案．** literal skeleton と annotation skolem は rigid，matcher／slot／関数入力
-から流れる capability meta-variable は provenance 付き flexible とする．consumer
-witness を一般化前の全 occurrence へ適用し，入力・環境との依存を持たない root
-meta-variable は一般化しない．producer capability 同士は初期版では exact equality
-を要求し，安全な parametric unification は将来拡張とする．通常型代入と capability
-witness を型・制約全体へ適用した後，target 側の型クラス制約を解消済み／残余へ分け，
-残余制約と通常型変数，`CapGen` が許す capability 変数を同じ scheme へ一般化する．
+`list something` で得る `p ↦ •` は Algorithm W の返却 substitution なので，
+generalization 前に結果の全 occurrence へ適用される．したがって `p` は自由変数として
+残らず，特別な `CapGen` で除外する必要はない．反対に，
 
-**完了条件．** `mPoly`，`f`，高階関数，tuple，データ格納の全 value-flow 経路で
-能力強化を拒否しつつ，matcher identity と
-`∀p a. MatcherSlot p a -> Matcher (List p) (List a)` を一般化できること．
+```text
+bad : ∀p a. Matcher p a
+bad = something
+```
+
+は annotation の `p` が rigid skolem なので拒否される．matcher identity と
+`∀p a. MatcherSlot p a -> Matcher (List p) (List a)` は，通常の parametric な
+二種 HM scheme として一般化できる．
+
+**Lean で検証すること．** 二種 substitution の kind preservation・合成・相互非干渉，
+W が返す substitution の全 occurrence への伝播，二種 `Gen`／`Inst` の健全性，
+annotation skolem の non-escape，`EnvTyped` が scheme の全 instance を満たすこと，
+Algorithm W の健全性・完全性・最汎性を示す．そこから `mPoly`，`f`，
+`list something`，let，高階関数，tuple，データ格納を通した到達可能な matcher value の
+能力非強化と，P2 に由来する `capability-admissible` 仮定の除去を導く．
+
+一般再帰による発散項が任意型を持ち得ても，matcher value を生成せず到達しない限り
+能力偽造の反例ではない．主張するのは「危険に見える scheme が構文上まったく導出
+不能」ではなく，「到達可能な matcher value が生成時の capability を超えない」
+ことである．この簡潔な体系で Lean 証明が失敗する具体的反例が得られた場合に限り，
+必要な最小範囲の provenance／一般化制限を再検討する．
+
+**完了条件．** 上記の W／Gen／Inst／skolem の定義と証明により，正当な capability
+多相を保ったまま全 value-flow 経路で到達可能な matcher value の能力強化を拒否し，
+`capability-admissible` 仮定を除去できること．
 
 ### D4：再帰 matcher の capability 推論
 
@@ -1187,7 +1258,8 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 ## 実装順
 
 1. capability syntax／kind と二添字 `Matcher`／`MatcherSlot` を追加する．
-2. free variables，二種 substitution，generalize，instantiate の単体回帰を作る．
+2. free variables，二種 substitution，全代入適用後の generalize，scheme instantiate，
+   annotation skolem checking の単体回帰を作る．
 3. producer equality と `COERCE-MATCHER-TO-SLOT` を二成分化する．
 4. 通常の `match`／`matchAll` と pattern binding を二成分化する．
 5. tuple matcher と `COERCE-SLOT-TUPLE` を二成分化する．
@@ -1247,7 +1319,7 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - `Wrap : List a -> Wrap a` の field evidence `List p` から `Wrap p` を得るが，
   field evidence `•` や異なる既知 head は `unseen` にせず projection error にする
 - 同じ result slot への複数 occurrence は field 内／field 間／clause 間のすべてで
-  exact merge し，同一 provenance の `p, p` は受理，異なる provenance の `p, q`
+  exact merge し，同一 variable identity の `p, p` は受理，異なる identity の `p, q`
   や `p, •` は拒否する
 - general／refinement の同じ capability 位置の evidence は exact agreement を要求し，
   不一致を型エラーにする
@@ -1261,21 +1333,24 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 - `list something` の単純 cons を受理
 - `list something` の要素 constructor パターンを拒否
-- `let lm = list something` を挟んでも capability witness `p := •` が保存され，
-  要素 constructor パターンを拒否
+- `let lm = list something` では capability substitution `p := •` を結果型へ適用して
+  から generalize し，`p` が scheme に残らず要素 constructor パターンを拒否
 - `list (maybe integer)` の入れ子 `Just` パターンを受理
 - `multiset`，`set`，`sortedList` でも capability が再帰的に伝播
 - tuple producer が capability 積と target 積をともに保存
 - matcher を collection／ユーザー定義データに格納しても capability を保存
+- matcher／slot 入力の flexible capability meta-variable を利用位置の制約で解き，
+  推論された関数入力型と結果型の同じ occurrence へ反映できる
 
 ### 不正な能力生成
 
 - catch-all-only literal を annotation で list capability に変更できない
 - `Matcher • a` と `Matcher (List p) (List a)` の異種 collection を拒否
 - target 引数との共有変数から capability を具体化できない
-- consumer slot の capability 変数を解く代入が producer capability を変更しない
-- consumer witness が関数結果と一般化前の型へ必ず伝播する
-- cap-polymorphic annotation の未検証 root capability を一般化できない
+- consumer demand から finalized producer の既知 capability head を変更できない
+- Algorithm W の capability substitution が関数結果，環境，残余制約へ必ず伝播する
+- `bad : ∀p a. Matcher p a` の `p` を rigid skolem として検査し，`something` の
+  producer capability `•` を annotation に合わせて強化できない
 - 同じ単相 matcher target を独立な target witness で異なる型に利用できない
 
 ### R12 回帰
@@ -1290,6 +1365,10 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 
 - capability／target の二種代入の反射性，合成，改名不変性，相互非干渉
 - capability one-way の健全性，完全性，一意性
+- Algorithm W が返す `S_κ`／`S_τ` を結果型，環境，残余制約，後続推論へ適用する
+  substitution-threading invariant
+- 全 substitution 適用後の二種 `Gen`／`Inst` の健全性，instance relation の
+  反射性・推移性，annotation skolem の non-escape
 - signature-directed projection と exact merge の健全性，決定性，field／clause
   順序独立性，D1 の exact-evidence calculus に相対的な主要性
 - matcher 値についての `CapTargetOK` と，normalization／substitution preservation
@@ -1297,9 +1376,10 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - capability substitution 下での parameterized `ShapeCap`／`CoverageOK` の保存
 - slot-value invariant と canonical forms
 - Structural-Hole Transfer の capability 版
-- scheme instance の反射性，推移性，代入合成
 - `EnvTyped` が全二種 instance を満たす一般化補題
 - Algorithm W の健全性，完全性，最汎性
+- `mPoly`，`f`，`list something`，let，高階関数，tuple，データ格納を通した
+  到達可能な matcher value の能力非強化
 - `CoverageOK` を持つ安全な部分集合の constructor Progress と Preservation
 - P2 に由来する `capability-admissible` 仮定の除去
 
@@ -1317,7 +1397,7 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
   structured root 以下の observable な最終 `unseen` は型エラーにする
 - true phantom，opaque／function 内部，seed のない recursive-only parameter は
   least-fixpoint observability により unobservable とし，canonical `•` にする
-- constructor field evidence は signature parameter の provenance を保つ fresh
+- constructor field evidence は signature parameter の variable identity を保つ fresh
   instantiation の後，source binder 順でなく result argument slot へ投影する
 - projection は direct occurrence，product，capability-visible former をたどり，
   opaque／function で止まる．`unseen` は非寄与，既知 head／arity mismatch は
@@ -1332,21 +1412,25 @@ trusted primitive／外部環境が不整合な matcher 値を導入できない
 - data pattern，arm，next target の整合は target 側で行う
 - `f [1,2]` 自体は許可し，constructor use site で拒否する
 - standard matcher combinator は slot capability を結果 capability へ再帰的に伝播する
-- one-way capability witness を一般化前の全 consumer occurrence へ必ず伝播する
-- capability 変数の一般化には provenance／`CapGen` を要求する
+- Algorithm W が返す capability substitution を一般化前に型，環境，残余制約の
+  全 occurrence へ必ず適用する
+- capability 変数も全 substitution 適用後に通常の HM 規則で一般化し，特別な
+  provenance／`CapGen` は要求しない
+- scheme instantiation は flexible meta-variable，明示量化の本体検査は rigid
+  skolem を用い，skolem escape を拒否する
 - 高階フローでは各 `Matcher` occurrence の capability を型スキームに保持する
 
 ### 残る設計判断
 
 - D2：partial matcher の通常型付けと `CoverageOK` を持つ安全な部分集合の形式化
-- D3：`CapGen`，rigid／flexible provenance，一般化順序
 - D4：再帰 matcher の ShapeCap 推論
 - D5：`CapTargetOK` の alias／normalization／ground equivalence 境界
 
-D1 の projection／tuple／merge／observability の設計判断は固定したが，形式化と
-健全性・決定性・順序独立性・相対的主要性の証明は未実施である．各課題の現状，
-推奨初期案，完了条件は上の「残る設計課題と形式化課題」に記録した．専用 ADT か
-kind 付き変数か，表面表示，診断，型消去などは，これらを変えない表現上の詳細である．
+D1 の projection／tuple／merge／observability と，D3 の二種 HM generalization／
+substitution threading／skolem checking の設計判断は固定したが，形式化と証明は
+未実施である．各課題の現状，推奨初期案，完了条件は上の「残る設計課題と形式化課題」
+に記録した．専用 ADT か kind 付き変数か，表面表示，診断，型消去などは，これらを
+変えない表現上の詳細である．
 
 ## 受入条件
 
@@ -1363,7 +1447,8 @@ kind 付き変数か，表面表示，診断，型消去などは，これらを
       signature-directed lift と `ShapeCap` finalization に反映されている．
 - [ ] `CoverageOK` が `ShapeCap` と独立に定義され，partial matcher の受理，
       target-based warning，安全な部分集合の境界が固定されている．
-- [ ] 二種 Scheme／Subst／Inst，`CapGen`，witness 伝播，Algorithm W が定義されている．
+- [ ] 二種 Scheme／Subst／Inst，全 substitution 適用後の通常 HM generalization，
+      flexible meta／rigid skolem，witness 伝播を持つ Algorithm W が定義されている．
 - [ ] 再帰 matcher の capability 推論／checking 手続きが定義されている．
 - [ ] `mPoly` と `f` の能力強化が全 value-flow 経路で拒否される．
 - [ ] `f [1,2]` と `mPoly` の安全な変数パターン利用が受理される．
