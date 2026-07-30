@@ -21,7 +21,7 @@
 | ID | 問題 | 現在の論文への影響 | 状態 |
 |---|---|---|---|
 | P1 | [不透明・高階なマッチャーフローに対する値パターンスコープ条件](value-pattern-scope.md) | 捕捉許容性，条件付き保存性・型安全性 | 設計判断待ち |
-| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，partial matcher と安全性定理の境界 | 中核・Coverage 方針決定，詳細設計・再構成未実施 |
+| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，partial matcher と安全性定理の境界 | 中核・Coverage・D1・D3・D4 方針決定，残る詳細設計・再構成未実施 |
 
 ## 解決済みの問題
 
@@ -83,8 +83,15 @@
   capability 変数は provenance 付き `CapGen` で制限せず，通常型変数と同じ HM
   generalization を別 sort 上で行う．ただし，全 substitution を一般化前に型・環境・
   制約へ適用し，明示量化は rigid skolem として検査し，literal root は D1 で確定する．
-  この簡潔な設計の十分性は Lean で検証する．通常型付けと安全部分集合を結ぶ
-  judgment／runtime 不変量，再帰 matcher，`CapTargetOK` の正規化境界は詳細設計が残る．
+  再帰 binding は通常の単相 HM SCC 規則で推論し，matcher literal 固有の向き付き
+  Shape generation obligation だけを別の least-evidence solver で解く．型とは別の
+  producer-flow summary を通常の expression rule と同じ構文再帰で計算し，
+  first-order evidence へ正規化して，alias／高階 application と binder–RHS knot を
+  通る origin を保存する．自己参照，consumer demand，結果注釈は seed にせず，
+  finalization と全代入適用後に SCC 外で通常どおり一般化する．この設計の十分性は
+  Lean で検証する．通常型付けと
+  安全部分集合を結ぶ judgment／runtime 不変量と，`CapTargetOK` の正規化境界には
+  詳細設計が残る．
 
 ## 記録の読み方
 
