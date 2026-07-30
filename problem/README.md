@@ -21,7 +21,7 @@
 | ID | 問題 | 現在の論文への影響 | 状態 |
 |---|---|---|---|
 | P1 | [不透明・高階なマッチャーフローに対する値パターンスコープ条件](value-pattern-scope.md) | 捕捉許容性，条件付き保存性・型安全性 | 設計判断待ち |
-| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，無条件の進行性・型安全性 | 採用方針決定・再構成未実施 |
+| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，partial matcher と安全性定理の境界 | 中核・Coverage 方針決定，詳細設計・再構成未実施 |
 
 ## 解決済みの問題
 
@@ -62,6 +62,14 @@
   value flow 全体で保持する方針を採用した．論文・Lean・Egison の再構成と証明は
   未実施である．R12 の成分検査へ渡される前に scheme lookup が能力を失えば
   回復できないため，R7・R9・R12 の局所結果だけでは閉じない．
+- P2 の capability は，`ShapeCap` が証拠として認める constructor clause を
+  少なくとも一つ持つ matcher に構造 head を与える **shape capability** とし，
+  全 constructor の処理を保証する `CoverageOK` とは分離する方針を採用した．
+  partial matcher は structured capability を保ったまま受理でき，warning を
+  有効にすれば Coverage 不足を非致命的に報告できるが，安全性定理は
+  `CoverageOK` を満たす部分集合に限る．`ShapeCap` 合成，通常型付けと安全部分集合を
+  結ぶ judgment／runtime 不変量，`CapGen`，再帰 matcher，`CapTargetOK` の
+  正規化境界は詳細設計が残る．
 
 ## 記録の読み方
 

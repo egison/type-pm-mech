@@ -2,7 +2,7 @@
 
 ## 状態
 
-採用方針決定・再構成未実施．
+中核方針・Coverage 方針決定，詳細設計・再構成未実施．
 
 P2 の解決方針として，従来の一添字
 
@@ -34,9 +34,11 @@ MatcherSlot κ τ
 
 という分離を，型，スキーム，Algorithm W，値型付けまで貫くことである．
 
-この文書は採用する中核設計と移行範囲を固定する．論文，Egison 本体，Lean の
-実変更と，主要型・無条件の型安全性の証明はまだ完了していないため，P2 自体は
-未解決として残す．
+この文書は採用する中核設計，partial matcher に対する capability と Coverage の
+境界，移行範囲を固定する．正確な capability 合成，通常型付けと安全な部分集合の
+形式化，`CapGen`，再帰 matcher，`CapTargetOK` の正規化境界には詳細設計が残る．
+論文，Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の
+除去も完了していないため，P2 自体は未解決として残す．
 
 ## 一言でいうと
 
@@ -57,7 +59,11 @@ MatcherSlot κ τ
 
 ### capability `κ`
 
-`κ` は，matcher がどの構造のパターンを安全に分解できるかを表す．
+`κ` は，matcher が定義上公開する構造形状を表す．`ShapeCap` が認める constructor
+clause の証拠を少なくとも一つ持つ partial matcher にも structured capability を
+与えるため，`κ` 単独は同じ型形成子の全 constructor を処理できるという完全性の
+証明ではない．その全称的保証は，独立な `CoverageOK` と組み合わせたときに得る．
+
 役割を区別する箇所では，producer の capability を `κ_m`，pattern／slot の
 要求を `κ_p`，hole の要求を `κ_l` と書く．通常型とは別 sort とし，
 少なくとも次を持つ．
@@ -326,32 +332,38 @@ capability skeleton を要求する．
 
 matcher literal の capability と target を別々に決める．
 
-- capability は primitive-pattern-pattern の一般節，Coverage，product 構造，
-  next matcher の capability から構成する
+- capability は `ShapeCap` が証拠として認める primitive-pattern-pattern の
+  constructor clause，product 構造，next matcher の capability から構成する
 - target は primitive-pattern-pattern の宣言型，primitive data pattern，
   decomposition body，next matcher slot の target 成分から通常推論する
 - primitive data pattern と arm body は capability を強化しない
+- Coverage は capability 生成と独立に検査する
 - target 代入を適用した後に capability や Coverage を再計算しない
 
-matcher literal の root capability は，一般節と hole の capability から
-**最大の certified capability** として合成する．ここで「最大」とは，その
-literal が安全に公開できる constructor 構造を最も精密に表すという意味であり，
-能力順序，合成演算，principal な選択を形式的に定義する必要がある．単に最弱の
-`•` を常に選ぶのでも，未拘束 root capability 変数を残すのでもない．
-catch-all-only literal は必ず `•` になる．
+matcher literal の root capability は，`ShapeCap` が証拠として認める constructor
+clause と hole の capability から **shape capability** として合成する．同じ
+型形成子 `K` の証拠 clause が少なくとも一つあれば，完全な Coverage がなくても
+`K κ₁ ... κₙ` を与える．shape の証拠を持たない catch-all-only literal は必ず
+`•` になる．したがって `ShapeCap` は「この matcher が `K` の構造を少なくとも
+一部観測する」という存在的な may 近似であり，`K` の任意の constructor を安全に
+処理するという証明ではない．principal 性の正確な主張は D1 で固定する．
 
-初期の形式化では，異なる一般節／next matcher 証拠が同じ capability 位置に
-両立しない構造を要求した場合，intersection や union を導入せず型エラーとする．
-完全な Matcher Consistency と Coverage の下で，一意な exact skeleton を
-合成できる範囲を先に定める．partial matcher の principal capability は
-Coverage 方針と合わせて別途扱う．
+正確にどの constructor clause を shape の証拠に数え，子 capability をどう合成するかは
+下記 D1 の詳細設計で固定する．初期案では general constructor clause だけを証拠とし，
+refinement clause は exported capability を強化しない．子 capability は対応する
+next matcher から得て，証拠がない位置を `•` とし，両立しない証拠は union を導入せず
+型エラーとする．
 
-Coverage は target 型ではなく capability を基準にする．
+`CoverageOK` は target 型ではなく capability を基準にする独立な述語とする．
 
 - `Matcher • τ` では constructor Coverage は空虚
-- `Matcher (List p) (List a)` では List の一般節を要求する
+- `Matcher (List p) (List a)` では，安全な部分集合に入るために List の全一般節を
+  要求する
 - user-defined product matcher literal では，全体に一つの一般 tuple 節
   `($, ..., $)` を要求する
+- Coverage を満たさない `Matcher (List p) (List a)` も Egison の通常検査では
+  受理でき，warning を有効にすれば不足を非致命的に報告できるが，安全性定理の
+  対象外とする
 
 tuple-of-matchers 値は各 component matcher から構成される producer であり，
 matcher literal の clause Coverage は持たない．その capability と target は
@@ -564,7 +576,7 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 3. 通常型／`Σ_P` signature から capability signature への全域的な lift を定義し，
    pattern／primitive-pattern-pattern の構造成分を capability として定義する．
 4. `T-SOME`，`T-MATCHER`，tuple coercion，slot coercion を二添字化する．
-5. 最大の certified capability の合成と Coverage を定義し，matcher target
+5. `ShapeCap` 合成と独立な `CoverageOK` を定義し，matcher target
    ではなく capability に索引付けする．
 6. catch-all の target 検査を一般 hole／arm 規則と同じ経路にする．
 7. matcher rigidity 節を，capability 保存と通常 target 多相の分離として書き直す．
@@ -597,20 +609,21 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 
 - `PatTy`／`PPTy` の構造成分を capability 化
 - `ClauseTy`／`ArmsTy`／`ClausesTy` の二添字化
-- `ConsistentClauses` と Coverage の capability index 化
+- `ShapeCap` と `CoverageOK` を分離し，`ConsistentClauses` の安全な部分集合へ
+  `CoverageOK` を接続
 - `HasTy.matcherE`，`something`，tuple／slot coercion の二添字化
-- matcher literal の最大 certified capability 合成
+- matcher literal の `ShapeCap` 合成と主要性境界
 
 ### `WellTyped` とメタ理論
 
 - `ValueTy.matcherV`，`something`，product matcher，derived slot typing
 - `MatcherOK`，`WTTree.atom`，runtime matcher invariant
-- target substitution が capability／Coverage を変えない補題
+- target substitution が `ShapeCap`／`CoverageOK` を変えない補題
 - capability substitution lemma と one-way の一意性
 - one-way witness を全 consumer occurrence へ伝播する補題
 - Structural-Hole Transfer の capability 版
-- constructor Progress を capability Coverage から得る証明
-- Preservation で capability を保持し target だけを輸送する証明
+- `CoverageOK` を持つ安全な部分集合の constructor Progress
+- `CoverageOK` の下で capability を保持し target だけを輸送する Preservation
 - `hgen` を二種一般化補題で放電する証明
 - P2 に由来する capability-admissibility を安全性定理から除く証明
 - Algorithm W の健全性・完全性・最汎二種代入
@@ -671,15 +684,20 @@ applySubst s (TMatcher t) = TMatcher (applySubst s t)
   `MatcherSlot κ_l τ_l` を構成する
 - arm body は target tuple の collection として検査する
 - next matcher は完全な期待 slot へ検査する
-- outer capability は節と Coverage から最大の certified capability として合成する
+- outer capability は D1 で定める constructor 証拠と next matcher から
+  `ShapeCap` として合成する
+- 形式用の `CoverageOK` は `ShapeCap` と独立に定義し，Egison では既存の
+  target-based Coverage 診断を維持して，診断を有効にした場合は不足を warning
+  として報告する
 - outer target は primitive pattern，data pattern，arm，next target から推論する
 - annotation は capability を生成せず，推論された capability を検証する
 
 R12 で実装した明示タプル境界，構文形非依存，完全 slot 検査は維持する．
 
-再帰 matcher では，自己参照へ与える暫定 capability，Coverage 確定，最終
-capability の照合を一つの checking／fixpoint 手続きにする必要がある．
-capability が確定する前の再帰 binding を一般化してはならない．
+再帰 matcher では，ShapeCap の収集と自己参照型の設定を Coverage 診断から分離し，
+最終 capability と照合する checking／fixpoint 手続きが必要である．正確な初期案と
+完了条件は D4 に記録する．capability が確定する前の再帰 binding を一般化しては
+ならない．
 
 ### 実行時
 
@@ -699,20 +717,188 @@ runtime の `something` が受理する一部の product pattern と，typed sem
 homogeneous 仕様へ変更するか，将来の第三の型軸として分離する必要がある．
 これは capability と target の分離だけでは解決しない．
 
-## Coverage に残る設計判断
+## Coverage と partial shape capability の設計判断
 
-形式仕様で structured capability を与えるには，その capability が要求する
-constructor Coverage を保証しなければならない．現行 Egison の Coverage は
-warning-level の近似であり，ここは実装時に次の安全な方針から選ぶ必要がある．
+### 採用する境界
 
-1. typed matcher では Coverage を hard error にする
-2. Coverage を証明できない matcher には保守的に `•` を与える
-3. capability を constructor 集合まで精密化する
+Coverage を structured capability の生成条件から分離する．ある型形成子 `K` について
+`ShapeCap` が証拠として認める constructor clause が少なくとも一つ観測されれば，
+その matcher は `K`-headed な shape capability を持つ．すべての constructor を
+扱わない partial matcher も
+`Matcher (K κ₁ ... κₙ) (K τ₁ ... τₙ)` として型付けでき，target 型を後から
+特殊化してもこの capability は変化しない．
 
-この選択は単なる診断レベルではなく，受理プログラム，推論される capability，
-principal capability を変える．P2 の最小実装では 1 または 2 が必要である．
-3 は表現力を高める拡張であり，二添字化の初期実装には必須としない．論文の
-現在の Matcher Consistency をそのまま実装目標にするなら 1 が自然である．
+一方，`CoverageOK cls (K κ₁ ... κₙ)` は，matcher literal の root capability head
+が `K` であるとき，結果型の head が `K` である全 pattern constructor に general
+clause `c $...$` があることを表す独立な全称的条件とする．子 capability の Coverage
+は，対応する next matcher 値自身の `CoverageOK` が担う．`CoverageOK cls •` は
+空虚であり，product head では適切な arity の general tuple clause を要求する．
+Coverage に数えるのは general clause だけであり，refinement clause は数えない．
+
+以下は依存する型付け context などを省略した概念図である．
+
+```text
+ShapeCap cls κ                 -- 存在的：観測された構造形状
+CoverageOK cls κ               -- 全称的：全 general constructor clause
+CoveredShape cls κ
+  := ShapeCap cls κ ∧ CoverageOK cls κ
+```
+
+`ShapeCap` の推論結果は，Coverage warning の有効・無効によって変えてはならない．
+形式的な `CoverageOK` は capability head に索引付けする一方，現行 Egison の診断は
+target 型の head に宣言された全 constructor と general clause の集合を独立に比較し，
+欠けている constructor を報告する．したがって，例えば
+`Matcher • (List a)` は constructor pattern の利用を capability 検査で拒否するので
+`CoverageOK` が空虚でも，catch-all-only の list target に対する既存 warning は
+引き続き出せる．この target-based warning は advisory な診断であり，
+`CoverageOK` の証拠ではない．
+
+### 実装と安全性定理の境界
+
+Egison の通常検査では partial matcher を structured capability のまま受理し，
+Coverage warning を有効にした場合は不足を非致命的に報告する．これは，粗い一つの
+式型に多数の pattern constructor を宣言し，互いに異なる部分集合だけを扱う数式
+matcher 群を維持するためである．ここで緩めるのは primitive-pattern-pattern の
+constructor Coverage だけであり，選択済み節内の primitive data pattern arm の
+網羅性と catch-all の到達性・順序条件は従来どおり通常の型検査条件に残す．
+
+未被覆 constructor のパターンも同じ `K`-headed capability の利用時検査を通るため，
+この近似だけから no-stuck は導けない．現行意味論では，そのパターンが catch-all
+から `something` へ委譲されると runtime error／stuck になり得る．これは
+`matchAll` の空結果や表層 `match` の定義済み failure とは異なる．
+
+したがって，型推論で受理する集合と，Progress／Preservation／Type Safety を主張する
+集合を二層化する．後者は `CoverageOK` を含む完全な Matcher Consistency を満たす
+matcher に限定する．warning が出なかったこと自体を定理の前提にはしない．現行 warning
+は opt-in で，入れ子の matcher では抑制される場合があるため，定理は意味的な
+`CoverageOK` を直接要求する．
+
+P2 が取り除くのは scheme instantiation による capability-admissibility 仮定であり，
+Coverage，P1 の capture-admissibility，`StepTotal` まで同時に取り除くものではない．
+
+## 残る設計課題
+
+### D1：principal `ShapeCap` の合成
+
+**現状．** 「`ShapeCap` が証拠と認める constructor clause が一つでもあれば，
+その型形成子を capable とする」という外側の方針は決定したが，どの clause を証拠と
+認め，capability 木の各位置でどう集めるかという正確な規則は未定義である．
+
+**決めること．**
+
+- general clause と refinement clause のどちらを shape の証拠に数えるか
+- constructor の hole と next matcher から子 capability をどう対応付けるか
+- nullary constructor しか観測されない型パラメータ位置をどう扱うか
+- 複数節が同じ位置へ与える capability 証拠をどう合成するか
+- tuple capability を同じ合成へどう含めるか
+
+**初期案．** general constructor clause と general tuple clause だけを exported
+capability の証拠とし，refinement clause は強化に使わない．refinement まで数えると，
+入力 capability `p` と固定 refinement が与える shape の和
+`p ∨ K κ₁ ... κₙ` が必要になり，現在の capability 文法では principal に表せない
+場合があるためである．子 capability は general clause の next matcher から得て，
+証拠がない位置は `•`，同じ子位置の両立しない capability 証拠は初期版では
+型エラーとする．general tuple clause では各 component hole を R12 の成分境界で
+対応する next matcher へ結び，target product と同じ arity の component capability
+から product capability を作る．
+
+**完了条件．** 合成が決定的で，annotation や target 型から capability を作らず，
+catch-all-only が必ず `•` になり，採用する主要性命題を明示してその命題を
+示せること．
+
+### D2：型付けと `CoverageOK` を運ぶ二層の形式化
+
+**現状．** capability を推論する通常型付けと，`CoverageOK` を含む安全な部分集合を
+二層化する方針は決定した．現行 Lean の `ConsistentClauses` は Coverage，
+catch-all，`holeAfterGenerals`，arm exhaustiveness を一つに持ち，Progress と
+Preservation は Coverage を直接使う．一方，Egison は Coverage 不足を非致命的に
+受理する．
+
+**決めること．** `HasTy`／clause shape judgment／`CoverageOK` をどの単位で分割するか，
+runtime matcher と環境が `CoverageOK` の証拠を全到達 occurrence へどう運ぶか，
+通常型付けだけの Preservation と安全な部分集合の Preservation をどう区別して述べるか
+を固定する．
+
+**採用方針．** catch-all の到達性・順序条件と arm exhaustiveness は今回緩めない．
+未被覆 constructor を通常の空結果へ変える意味論変更も行わず，Coverage 不足の
+matcher を含む実行の runtime error／stuck は安全性定理の外に置く．
+
+**初期案．** 通常の `HasTy.matcherE` から constructor Coverage だけを分離し，
+catch-all，bare-hole より後ろに節を置かない順序条件，arm exhaustiveness，
+`ShapeCap` をまとめた coverage 非依存の clause judgment を置く．これと
+`CoverageOK` を再結合した `SafeMatcher` judgment を runtime の `ValueTy`，
+`MatcherOK`，`EnvTyped` へ運び，安全な state の全到達 matcher occurrence が
+`SafeMatcher` を満たすことを不変量とする．
+
+**完了条件．** partial matcher の受理 judgment，`CoverageOK` を保持する runtime
+matcher／環境不変量，Progress／Preservation／Type Safety の正確な前提がそれぞれ
+定義されていること．
+
+### D3：capability provenance と `CapGen`
+
+**現状．** capability 変数を別 sort で量化するだけでは，入力に由来しない危険な
+`∀p. Matcher p a` を導入できる．入力 slot や環境上の抽象能力から producer へ流れる
+変数だけを一般化できるという原則は決定済みだが，正式な judgment は未定義である．
+
+**決めること．** rigid／flexible capability meta-variable の区別，origin の表現，
+一般化可能性を Scheme の証拠に持たせるか Algorithm W の生成可能スキーム judgment
+にするか，型クラス制約を解く順序を定める．
+
+**初期案．** literal skeleton と annotation skolem は rigid，matcher／slot／関数入力
+から流れる capability meta-variable は provenance 付き flexible とする．consumer
+witness を一般化前の全 occurrence へ適用し，入力・環境との依存を持たない root
+meta-variable は一般化しない．producer capability 同士は初期版では exact equality
+を要求し，安全な parametric unification は将来拡張とする．通常型代入と capability
+witness を型・制約全体へ適用した後，target 側の型クラス制約を解消済み／残余へ分け，
+残余制約と通常型変数，`CapGen` が許す capability 変数を同じ scheme へ一般化する．
+
+**完了条件．** `mPoly`，`f`，高階関数，tuple，データ格納の全 value-flow 経路で
+能力強化を拒否しつつ，matcher identity と
+`∀p a. MatcherSlot p a -> Matcher (List p) (List a)` を一般化できること．
+
+### D4：再帰 matcher の capability 推論
+
+**現状．** 再帰 binding の本体を検査するとき，自己参照へ暫定 capability を与える
+必要があるが，ShapeCap は clause 全体を見て初めて確定する．
+
+**決めること．** capability 注釈を必須にするか，least fixpoint／二段階 checking で
+annotation-free な単相再帰を許すかを固定する．
+
+**推奨案．** general constructor clauses を先に走査して shape と capability 等式を
+収集し，得た暫定 ShapeCap を単相な自己参照型として置いた後，next matcher と arm
+body を検査する二段階方式とする．第2段階で capability 等式を fixpoint まで解き，
+解が安定して最終 ShapeCap と一致するまで一般化しない．
+
+**完了条件．** 標準再帰 matcher の capability が一意に推論され，自己参照から新しい
+能力を循環的に捏造できず，annotation あり／なしの結果が整合すること．相互再帰を
+許す場合は，再帰 binding 群について同じ性質を満たすこと．
+
+### D5：`CapTargetOK` の正規化境界
+
+**現状．** structured capability と target の head former を対応させる必要があるが，
+Egison には type alias，inductive normalization，CAS の ground equivalence がある．
+
+**決めること．** どの正規化までを `CapTargetOK` と capability constructor equality
+の一部にし，どこからを型クラス／外部理論／将来拡張へ分離するかを固定する．
+
+**推奨案．** 初期版では type alias の展開と，型表現が既に行う構文的 canonicalization
+の後の型形成子 head の一致，およびその引数の再帰的 `CapTargetOK` だけを認める．
+追加の inductive normalization，CAS ground equivalence，その他の意味的
+normalization は初期版に含めず，capability を target から再計算しない別の明示的
+拡張とする．
+
+**完了条件．** standard matcher の全型で `CapTargetOK` が決定可能かつ代入で保存され，
+trusted primitive／外部環境が不整合な matcher 値を導入できないこと．
+
+### 実装時に選べる表現上の詳細
+
+次は上記 D1--D5 を変えない限り，P2 の意味論的な blocker ではない．
+
+- capability syntax を専用 ADT にするか kind 付き型変数にするか
+- capability binder／pretty-printer／エラー表示の表面構文
+- 型付き中間表現に capability を残すか型検査後に消去するか
+- current rigidity error を capability mismatch としてどう表示するか
+- 二種 substitution／rename の内部データ構造
 
 ## 実装順
 
@@ -721,12 +907,16 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 3. producer equality と `COERCE-MATCHER-TO-SLOT` を二成分化する．
 4. 通常の `match`／`matchAll` と pattern binding を二成分化する．
 5. tuple matcher と `COERCE-SLOT-TUPLE` を二成分化する．
-6. matcher literal の hole，arm，next matcher，capability 合成を二成分化する．
-7. matcher annotation checking を capability 保存型へ変更する．
-8. standard library と全 example の型注釈を移行する．
-9. 旧一添字の freeze／rigidity workaround を削除する．
-10. Lean の宣言規則と値型付けを移行し，補題を下から再証明する．
-11. 論文英語版・日本語版を新規則と実装・Lean の到達点に同期する．
+6. matcher literal の hole，arm，next matcher と `ShapeCap` 合成を
+   二成分化する．
+7. 形式用の `CoverageOK` を `ShapeCap` から独立に定義し，Egison では既存の
+   target-based Coverage warning を維持する．
+8. D4 で採用する再帰 matcher checking と matcher annotation checking を
+   capability 保存型へ変更する．
+9. standard library と全 example の型注釈を移行する．
+10. 旧一添字の freeze／rigidity workaround を削除する．
+11. Lean の宣言規則と値型付けを移行し，補題を下から再証明する．
+12. 論文英語版・日本語版を新規則と実装・Lean の到達点に同期する．
 
 後方互換性のための一添字 `Matcher` shim は作らない．
 
@@ -741,6 +931,22 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 - `f [1,2]` の変数パターン利用を受理
 - `f [1,2]` の cons 利用を拒否
 - alias，`let`，lambda，application，function result を介しても同じ
+
+### partial shape capability と Coverage
+
+- D1 で証拠と認める同じ型形成子の constructor clause が一つだけでも structured
+  `ShapeCap` を推論する
+- 残りの general constructor clauses が欠けている場合，capability を `•` に
+  落とさず不足 constructor の warning を出す
+- Coverage warning の有効・無効で推論 capability が変わらない
+- catch-all-only literal は Coverage の診断設定にかかわらず `•` のまま
+- catch-all-only の structured target に対する既存の target-based warning を維持する
+- full Coverage を持つ matcher が `CoverageOK` の安全な部分集合に入る
+- partial matcher の未被覆 constructor 利用を，定義済みの空結果と誤認しない
+- D1 の初期案を採る場合，refinement-only clause は exported capability を強化しない
+- D1 の初期案を採る場合，nullary constructor だけから観測されない子 capability を
+  一般化せず `•` にする
+- D1 の初期案を採る場合，同じ capability 位置の両立しない capability 証拠を拒否する
 
 ### capability combinator
 
@@ -775,16 +981,16 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 
 - capability／target の二種代入の反射性，合成，改名不変性，相互非干渉
 - capability one-way の健全性，完全性，一意性
-- matcher literal capability 合成の健全性，最大性，一意性
+- matcher literal `ShapeCap` 合成の健全性，決定性，D1 で採用する主要性
 - matcher 値についての `CapTargetOK` と，normalization／substitution preservation
-- target substitution 下での Coverage と matcher consistency の保存
-- capability substitution 下での parameterized matcher consistency の保存
+- target substitution 下での `ShapeCap` と `CoverageOK` の不変性
+- capability substitution 下での parameterized `ShapeCap`／`CoverageOK` の保存
 - slot-value invariant と canonical forms
 - Structural-Hole Transfer の capability 版
 - scheme instance の反射性，推移性，代入合成
 - `EnvTyped` が全二種 instance を満たす一般化補題
 - Algorithm W の健全性，完全性，最汎性
-- constructor Progress と Preservation
+- `CoverageOK` を持つ安全な部分集合の constructor Progress と Preservation
 - P2 に由来する `capability-admissible` 仮定の除去
 
 ## 今回固定したことと残る詳細
@@ -794,8 +1000,12 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 - `Matcher κ τ` を論文・Lean・Egison で明示する
 - capability と target を別 sort・別代入にする
 - catch-all-only 能力を `•` とする
-- capability は matcher literal の構造から最大の certified capability として合成する
-- Coverage，next matcher の構造検査は capability 側で行う
+- capability は matcher literal について D1 で証拠と認める constructor clause と
+  next matcher から `ShapeCap` として合成する
+- partial matcher も structured `ShapeCap` を持ち，Coverage warning の有効・無効は
+  capability を変更しない
+- `CoverageOK` は `ShapeCap` と独立な安全性条件として capability 側で検査する
+- next matcher の構造検査は capability 側で行う
 - data pattern，arm，next target の整合は target 側で行う
 - `f [1,2]` 自体は許可し，constructor use site で拒否する
 - standard matcher combinator は slot capability を結果 capability へ再帰的に伝播する
@@ -803,29 +1013,27 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 - capability 変数の一般化には provenance／`CapGen` を要求する
 - 高階フローでは各 `Matcher` occurrence の capability を型スキームに保持する
 
-### 残る設計判断・形式化詳細
+### 残る設計判断
 
-- capability syntax を専用 ADT にするか kind 付き型変数にするか
-- 通常型／`Σ_P` signature から capability skeleton への lift と，
-  `CapTargetOK` における inductive normalization／ground equivalence
-- certified capability の能力順序，最大性，exact skeleton 合成アルゴリズム
-- capability の表面 binder／pretty-print 構文
-- Egison の Coverage を hard error にするか，未証明 matcher を `•` に落とすか
-- producer capability 同士を exact equality から安全な parametric unification へ
-  広げる条件
-- 型クラス制約と capability binder の generalization 順序
-- current rigidity error を capability mismatch 診断へどう移行するか
+- D1：principal `ShapeCap` の証拠，子 capability，合成規則
+- D2：partial matcher の通常型付けと `CoverageOK` を持つ安全な部分集合の形式化
+- D3：`CapGen`，rigid／flexible provenance，一般化順序
+- D4：再帰 matcher の ShapeCap 推論
+- D5：`CapTargetOK` の alias／normalization／ground equivalence 境界
 
-これらは二添字化という中核方針を再検討する問題ではないが，受理プログラム，
-principal capability，証明の形を変えるため，実装前に明示的に決定する．
+各課題の現状，推奨初期案，完了条件は上の「残る設計課題」に記録した．専用 ADT か
+kind 付き変数か，表面表示，診断，型消去などは，これらを変えない表現上の詳細である．
 
 ## 受入条件
 
 - [ ] capability sort と target type sort が形式的に定義されている．
 - [ ] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
       matcher 値の `CapTargetOK` 不変量が定義されている．
-- [ ] matcher literal の最大 certified capability 合成規則が定義されている．
+- [ ] matcher literal の `ShapeCap` 合成規則と主要性の主張範囲が定義されている．
+- [ ] `CoverageOK` が `ShapeCap` と独立に定義され，partial matcher の受理，
+      target-based warning，安全な部分集合の境界が固定されている．
 - [ ] 二種 Scheme／Subst／Inst，`CapGen`，witness 伝播，Algorithm W が定義されている．
+- [ ] 再帰 matcher の capability 推論／checking 手続きが定義されている．
 - [ ] `mPoly` と `f` の能力強化が全 value-flow 経路で拒否される．
 - [ ] `f [1,2]` と `mPoly` の安全な変数パターン利用が受理される．
 - [ ] `∀p a. MatcherSlot p a -> Matcher (List p) (List a)` が推論・利用できる．
@@ -835,6 +1043,8 @@ principal capability，証明の形を変えるため，実装前に明示的に
 - [ ] runtime matcher capability と利用時型の対応が `ValueTy`／`EnvTyped` 上で証明される．
 - [ ] Algorithm W の健全性・完全性・主要性の主張範囲が確定する．
 - [ ] P2 に由来する capability-admissibility の仮定を安全性定理から除ける．
+- [ ] `CoverageOK` を持つ部分集合について Progress／Preservation／Type Safety の
+      正確な定理境界が固定されている．
 - [ ] 論文の英語版・日本語版，Egison 実装，Lean，回帰テストが同期している．
 
 ## 参照ポインタ
