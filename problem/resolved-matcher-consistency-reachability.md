@@ -82,13 +82,13 @@ matcher literal は診断対象外である．user-defined ADT の全構成子�
 である．
 
 Coverage は opt-in の warning-level 診断であり，hard error ではない．また，
-単一 next-matcher 式が複数穴を供給する場合，完全な deferred component check を
-現在は skip する．先頭穴への eager `something` guard と hole target consistency
-check は残るが，(1a) 全体の保証にはならない．したがって Egison が形式的
-Matcher Consistency 全体を強制するとは記述しない．
-形式仕様と Lean は複数穴で明示的な同要素数のタプルを要求するため，この
-非タプル式の受理と skip は許容構文を広げる設計判断ではなく，
-[R12](resolved-next-matcher-slot-checking.md) に記録した実装ギャップである．
+next matcher の固定単相検査は
+[R12](resolved-next-matcher-slot-checking.md) に従って実装済みである．1 hole
+では式全体を一成分とし，0 hole または複数 hole では明示的な同要素数の
+タプルだけを受理する．各成分は完全な `MatcherSlot` の構造・target 両添字に
+対して検査され，式構文形による skip はない．それでも Coverage，scoped arm
+exhaustiveness，scheme-level の P2 が残るため，Egison が形式的 Matcher
+Consistency 全体を強制するとは記述しない．
 
 ## Lean 機械化との対応
 

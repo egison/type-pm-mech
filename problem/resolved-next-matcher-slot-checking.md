@@ -5,8 +5,8 @@
 - 状態：設計と形式上の判定は解決済み
 - 論文での表示：今回補った Algorithm W と `fresh_rename` の説明は青字（`\new`）
 - Lean：宣言的な成分境界と成分別 slot 型付けは実装済み
-- Egison：利用できる一般 coercion はあるが，次マッチャー経路への配線は未完成
-- 残作業の分類：設計判断ではなく実装補修
+- Egison：明示タプル境界，完全型の freeze，成分別 slot 検査を実装済み
+- 残作業の分類：本項の実装補修は完了（scheme-level の P2 は別）
 
 ## 問題
 
@@ -125,42 +125,34 @@ Appendix の Algorithm W Step 3b にある「タプル式またはそれに束�
 
 ## Egison 実装との対応
 
-現行 [`Type/Infer.hs`](../../egison/hs-src/Language/Egison/Type/Infer.hs) には，
-必要な処理の一部があるが，形式仕様と一致していない．
+現行 [`Type/Infer.hs`](../../egison/hs-src/Language/Egison/Type/Infer.hs) は，
+本項の成分境界と成分検査を形式仕様に合わせて実装している．
 
 ### 成分境界
 
-- `ITupleExpr`／`TITupleExpr` を成分へ分ける処理はある．
-- しかし `extractInnerTypesFromMatcher` は，複数穴で
-  `Matcher (τ₁, ..., τₖ)` や積 `MatcherSlot` を，外側の式構文にかかわらず
-  型だけから分解する．
-- 外側が非タプルで成分式数とホール数が一致しない場合，
-  deferred structural check はエラーではなく `skip` される．
-
-これは「任意の product-matcher 式も許す」という採用仕様ではなく，
-明示タプルを要求する論文・Lean からの実装逸脱である．非タプルを受理して検査を
-省略するのではなく，`k ≠ 1` ならその場で型エラーにする必要がある．
+- `k = 1` では次マッチャー式全体を一成分として扱う．
+- `k ≠ 1`（0 を含む）では，外側が明示的な正確な `k` 要素
+  `ITupleExpr`／`TITupleExpr` の場合だけ成分へ分ける．
+- 変数や application が積 matcher 型を返しても，型から複数穴へ暗黙分解せず
+  その場で型エラーにする．
 
 ### 成分検査
 
-`HoleCompShape = HCSlot | HCBareVar | HCShape` は，型だけでなく
-`TIConstantExpr SomethingExpr`，`TIVarExpr`，application などの構文形を使って
-経路を分ける．そのため，
+各成分は式構文によらず完全な推論型から `HoleComponentType` へ取り込まれる．
+すべての成分を hole target 単一化より先に一括して取り込む．各 hole 成分では，
+そこに含まれるすべての `Matcher μ` の能力を一つの injective な置換で再帰的に
+改名し，元の target 型と分離して保存する．このため同じ変数の反復出現だけでなく，
+積内の複数 `Matcher` 葉が共有する変数も保存される．未確定変数は
+`MatcherSlot` へ確定する．
 
-- application の結果が `Matcher α` だと deferred check を登録しない場合がある
-- `HCSlot` は期待 slot の構造・ターゲット両成分を比較せず成功する
-- `freshLeavesOf` は入れ子の型構造を再帰的に保存しない
-
-という不足が残る．
-
-一方，[`Type/Unify.hs`](../../egison/hs-src/Language/Egison/Type/Unify.hs) には，
-
-- `MatcherSlot` 同士の両成分を代入を受け渡しながら単一化する規則
-- `Matcher μ` を期待 slot へ送る `coerceMatcherToSlot`
-- 構造検査をターゲット単一化より先に行う `matchOneWay`
-
-が既にある．したがって補修の中心は，各ホールについて完全な期待 slot を構成し，
-次マッチャー成分の完全な推論型をこの既存経路へ一律に送ることである．
+最終注釈を含む代入が得られた後，各 hole の完全な期待 slot を構成し，
+[`Type/Unify.hs`](../../egison/hs-src/Language/Egison/Type/Unify.hs) の既存経路へ送る．
+積 slot の one-way 検査では，最初の structural slot に属した型変数の集合を
+入れ子を含む全成分へ固定して渡す．先行成分の代入で matcher 側の変数が後続 slot
+位置へ現れても，その変数を新たに束縛可能とは扱わない．
+`Matcher μ` は freeze 済み能力で構造検査し，元の `μ` で target を検査する．
+既存 `MatcherSlot` は構造・target の両成分を通常の MGU で検査し，その代入を
+型付き構文木と一般化前の型へ反映する．
 
 ## P2 との境界
 
@@ -174,20 +166,25 @@ instantiation が `mPoly : Matcher a` を `Matcher [Integer]` に能力強化で
 
 ## 実装補修の完了条件
 
-- [ ] `k = 1` では式全体を一成分として検査する．
-- [ ] `k ≠ 1` では明示的な正確な `k` 要素タプルだけを受理する．
-- [ ] 各成分の固有型をホールのターゲット単一化前に保存する．
-- [ ] 各ホールについて完全な `MatcherSlot κ_l λ_l` を構成する．
-- [ ] `Matcher μ` は再帰的 `fresh_rename` と既存 dual check で検査する．
-- [ ] `MatcherSlot κ' λ'` は期待 slot と両成分を通常の MGU で検査する．
-- [ ] 変数・application・lambda などの構文形による検査の省略をなくす．
-- [ ] `id (m1, m2)` のような非タプル外形を複数穴で拒否する回帰を追加する．
-- [ ] 同じ `Matcher α` を持つ変数・application 形が構造ホールで同じ結果になる
+- [x] `k = 1` では式全体を一成分として検査する．
+- [x] `k ≠ 1` では明示的な正確な `k` 要素タプルだけを受理する．
+- [x] 各成分の固有型をホールのターゲット単一化前に保存する．
+- [x] 各ホールについて完全な `MatcherSlot κ_l λ_l` を構成する．
+- [x] `Matcher μ` は再帰的 `fresh_rename` と既存 dual check で検査する．
+- [x] `MatcherSlot κ' λ'` は期待 slot と両成分を通常の MGU で検査する．
+- [x] 変数・application・lambda などの構文形による検査の省略をなくす．
+- [x] `id (m1, m2)` のような非タプル外形を複数穴で拒否する回帰を追加する．
+- [x] 同じ `Matcher α` を持つ変数・application 形が構造ホールで同じ結果になる
       正負の回帰を追加する．
-- [ ] 入れ子の型構造を保存する fresh rename の回帰を追加する．
+- [x] 入れ子の型構造を保存する fresh rename の回帰を追加する．
+- [x] 一つの積成分内で共有された matcher 能力変数を同じ fresh 変数へ写す正回帰を
+      追加する．
+- [x] 反復 slot 変数を介して matcher 側変数を再束縛しない one-way の負回帰を
+      追加する．
 
 ## 保証範囲
 
-R12 で解決したのは，次マッチャーの成分境界と，各成分に適用すべき静的判断である．
-Egison の補修，P2 の能力保存インスタンス化，P1 の値パターンスコープ，
-Algorithm W 全体の主要性証明は，この記録だけでは完了しない．
+R12 で解決し実装したのは，次マッチャーの成分境界と，各成分に適用すべき
+固定単相の静的判断である．P2 の scheme-level 能力保存インスタンス化，
+P1 の値パターンスコープ，Algorithm W 全体の主要性証明は，
+この記録だけでは完了しない．

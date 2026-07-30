@@ -72,16 +72,15 @@ R8 は主として論文と Lean の保存性証明の補修である．Egison �
 
 静的側では [`Type/Infer.hs`](../../egison/hs-src/Language/Egison/Type/Infer.hs) の
 `inferDataClauseWithCheck` が decomposition body の返り値を
-hole target tuple のリスト型へ単一化する．next matcher の構造検査は一般には
-実装されるが，単一式が複数穴を供給する場合は完全な deferred component check が
-skip される．先頭穴への eager guard と hole target consistency check は残る．
-論文・Lean はこの場合に明示タプルを要求するので，skip は仕様上認めた代替経路
-ではない．また明示タプルの各成分についても，現実装は式の構文分類により検査を
-省略し得る．正確な補修条件は
-[R12](resolved-next-matcher-slot-checking.md) に分離して記録する．
+hole target tuple のリスト型へ単一化する．next matcher は
+[R12](resolved-next-matcher-slot-checking.md) に従い，1 hole では式全体，
+0 hole または複数 hole では正確な要素数の明示タプルだけを成分境界とする．
+非タプルの積型式は拒否し，明示タプルの各成分は式構文形によらず完全な
+`MatcherSlot` の構造・target 両添字に対して検査する．
 
 したがって R8 の紙上保存証明が，Egison checker による formal consistency 全条件の
-完全強制を意味するわけではない．
+完全強制を意味するわけではない．Coverage，scoped arm exhaustiveness，
+scheme-level の P2 などは別の境界として残る．
 
 ## Lean 機械化との対応
 

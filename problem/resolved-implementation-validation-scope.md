@@ -43,7 +43,7 @@ prototype checker の存在から，次を一括して結論するのは強す�
 | arm body の型 | hole target tuple のリスト型へ単一化 | 中核条件 (1b) に対応 |
 | arm exhaustiveness | 外側 literal で保守的 hard check | 別 matcher body 内の literal と一般 ADT 列挙は不完全 |
 | Coverage | opt-in warning | hard consistency guarantee ではない |
-| next matcher 構造 | 明示タプルでは成分別の部分検査 | 形式仕様は複数穴で明示タプルを要求するが，非タプルの積型式も受理し得て deferred check を skip する．成分検査も構文分類に依存する（R12） |
+| next matcher 構造 | 明示タプル境界と完全型による成分別 slot 検査 | 固定単相の R12 は実装済み．scheme lookup 後の能力保存は P2 |
 | value-pattern scope | 既知 matcher shape で局所検査 | opaque/higher-order flow は P1 |
 | pattern-function structure | 直接名の signature と線形性を検査 | 高階関数式では fresh fallback |
 | type-class constraints | scheme と辞書展開に統合済み | qualified principality proof ではない |
@@ -97,7 +97,15 @@ prototype checker の存在から，次を一括して結論するのは強す�
 - pattern-function linearity：
   `test/type-error/20-patfun-linearity-unused.egi` から
   `23-patfun-linearity-under-or.egi`
+- pattern-function 内の deferred slot 検査：
+  `test/type-error/24-patfun-nested-matcher-slot.egi`
 - next matcher structure：`test/type-error/40-matcher-next-structural.egi`
+- next matcher component boundary／完全 slot／再帰的改名／one-way の束縛領域：
+  `test/type-error/57-next-matcher-nontuple.egi` から
+  `66-next-matcher-repeated-slot.egi`
+- next matcher の正回帰（構文形非依存・入れ子構造・1 hole の積 matcher・
+  積内の共有型変数・既存 slot）：
+  `test/lib/core/matcher-slot.egi`
 - matcher rigidity/cast：
   `50-matcher-collection-hetero.egi`，
   `51-matcher-cast-structured.egi`，
@@ -148,5 +156,5 @@ R11 で解決したのは，実装済み事実を再現可能な範囲で述べ�
 - “accepts the standard library” には既存注釈を含むことを書く．
 - warning，保守近似，fallback，skip を hard guarantee と呼ばない．
 - Haskell 実装，論文形式条件，Lean proposition を三段階で比較する．
-- 複数穴の非タプル式受理と，変数・application による成分検査の差を
-  未決の設計選択と呼ばない．R12 に対する実装ギャップとして記録する．
+- R12 の固定単相実装完了を，scheme-level の P2 や full principality の
+  完了と呼ばない．
