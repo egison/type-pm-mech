@@ -21,7 +21,7 @@
 | ID | 問題 | 現在の論文への影響 | 状態 |
 |---|---|---|---|
 | P1 | [不透明・高階なマッチャーフローに対する値パターンスコープ条件](value-pattern-scope.md) | 捕捉許容性，条件付き保存性・型安全性 | 設計判断待ち |
-| P2 | [`Matcher κ_p κ_t` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，無条件の進行性・型安全性 | 採用方針決定・再構成未実施 |
+| P2 | [`Matcher κ τ` による capability と target の分離](matcher-capability-instantiation.md) | 能力許容性，`mPoly`，主要型，無条件の進行性・型安全性 | 採用方針決定・再構成未実施 |
 
 ## 解決済みの問題
 
@@ -57,7 +57,7 @@
 - R9 は，one-way 構造関係や固定入力に相対的な局所主要性までを切り出す．
 - R12 は，matcher 定義の次マッチャーをホールへ対応付け，各成分をその完全な
   推論型から `MatcherSlot` に対して検査する静的手続きを固定する．
-- P2 は，`Matcher κ_p κ_t` として capability と target を別 sort・別代入へ
+- P2 は，`Matcher κ τ` として capability と target を別 sort・別代入へ
   分離し，capability provenance，scheme generalization，one-way witness の伝播を
   value flow 全体で保持する方針を採用した．論文・Lean・Egison の再構成と証明は
   未実施である．R12 の成分検査へ渡される前に scheme lookup が能力を失えば

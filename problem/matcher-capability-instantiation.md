@@ -1,4 +1,4 @@
-# P2：`Matcher κ_p κ_t` による capability と target の分離
+# P2：`Matcher κ τ` による capability と target の分離
 
 ## 状態
 
@@ -13,24 +13,24 @@ Matcher τ
 を，構造的分解能力（capability）と実際の target 型を分離した
 
 ```text
-Matcher κ_p κ_t
+Matcher κ τ
 ```
 
 へ一貫して再構成する案を採用する．`MatcherSlot` も同じ二つの役割を持つ
 consumer 型として，
 
 ```text
-MatcherSlot κ_p κ_t
+MatcherSlot κ τ
 ```
 
 とする．
 
 ここで重要なのは，単に同じ型を二回持つのではなく，
 
-- `κ_p` は capability sort に属する
-- `κ_t` は通常の type sort に属する
+- `κ` は capability sort に属する
+- `τ` は通常の type sort に属する
 - capability 変数と通常型変数を別々に量化・改名・代入する
-- 通常の Hindley--Milner target 代入は `κ_p` を変更しない
+- 通常の Hindley--Milner target 代入は `κ` を変更しない
 
 という分離を，型，スキーム，Algorithm W，値型付けまで貫くことである．
 
@@ -55,10 +55,12 @@ MatcherSlot κ_p κ_t
 
 ## 二つの添字
 
-### capability `κ_p`
+### capability `κ`
 
-`κ_p` は，matcher がどの構造のパターンを安全に分解できるかを表す．
-通常型とは別 sort とし，少なくとも次を持つ．
+`κ` は，matcher がどの構造のパターンを安全に分解できるかを表す．
+役割を区別する箇所では，producer の capability を `κ_m`，pattern／slot の
+要求を `κ_p`，hole の要求を `κ_l` と書く．通常型とは別 sort とし，
+少なくとも次を持つ．
 
 ```text
 κ ::= •                         constructor 能力なし
@@ -87,11 +89,12 @@ pattern へ渡すことはできない．
 移す．`fresh_rename` も capability 構造と同一変数の共有を保ったまま，
 capability 変数だけを再帰的に改名する．
 
-### target `κ_t`
+### target `τ`
 
-`κ_t` は matcher が消費する値と，primitive-pattern-pattern の穴から
-次 matcher へ渡す値の通常型である．記号上の kind を明確にしたい箇所では
-`τ_t` とも書く．
+`τ` は matcher が消費する値と，primitive-pattern-pattern の穴から
+次 matcher へ渡す値の通常型である．役割を区別する箇所では，producer の
+target を `τ_m`，pattern／slot の target を `τ_t`，hole の target を `τ_l`
+と書く．
 
 target 側には通常の HM 一般化・インスタンス化・単一化を許す．ただし，
 その代入を capability 側へ適用しない．
@@ -279,8 +282,9 @@ outer target と各 next target を直接すべて等しくするわけではな
 である．primitive-pattern-pattern の宣言型がこの対応を決める．
 
 top-level の bare hole を持つ catch-all では，その一つの hole target が outer
-target と同じになる．したがって catch-all の decomposition body が `[κ_t]`
-であることは，一般の hole／arm 規則から導かれる．catch-all が最後で，
+target と同じになり，`τ_l = τ_t = τ` である．したがって catch-all の
+decomposition body が `[τ_l] = [τ]` であることは，一般の hole／arm 規則から
+導かれる．catch-all が最後で，
 `$ as M with $tgt -> N` という形を持つという構文条件は残すが，target 型推論だけを
 別経路にする必要はない．
 
@@ -291,16 +295,16 @@ target と同じになる．したがって catch-all の decomposition body が
 パターン型付けは，構造要求と target 型を分離する．
 
 ```text
-Γ ; Δ ⊢ p : Pattern (κ_p ▷ κ_t) ; Δ'
+Γ ; Δ ⊢ p : Pattern (κ_p ▷ τ_t) ; Δ'
 ```
 
 matcher literal 内の primitive-pattern-pattern は，各 hole について，
 
 ```text
-(κ_l ▷ κ_t,l)
+(κ_l ▷ τ_l)
 ```
 
-を返す．`κ_l` は next matcher に要求する capability，`κ_t,l` はその matcher
+を返す．`κ_l` は next matcher に要求する capability，`τ_l` はその matcher
 が消費する target 型である．
 
 `PAT-VAR`，`PAT-WILD`，constructor 分解を要求しない value pattern は，
@@ -356,7 +360,7 @@ componentwise に product へ持ち上げる．
 各 hole の next matcher は，R12 で固定した成分境界に従い，完全な
 
 ```text
-MatcherSlot κ_l κ_t,l
+MatcherSlot κ_l τ_l
 ```
 
 へ送る．0 hole または複数 hole では明示タプル，1 hole では式全体を一成分とし，
@@ -369,20 +373,21 @@ producer matcher を consumer slot へ送る規則は，概念的に次となる
 ```text
 Γ ⊢ e : Matcher κ_m τ_m
 fresh_rename(κ_m) = κ_m'
-matchCap(κ_m', κ_p) = S_p
-mgu(S_p τ_m, S_p τ_t) = S_t
+matchCap(κ_m', κ_p) = S_κ
+mgu(S_κ τ_m, S_κ τ_t) = S_τ
+S = S_τ ∘ S_κ
 --------------------------------
-S_t S_p Γ ⊢ e : MatcherSlot (S_t S_p κ_p) (S_t S_p τ_t)
+S Γ ⊢ e : MatcherSlot (S_κ κ_p) (S τ_t)
 ```
 
 構造検査は capability 成分だけ，target 検査は通常型成分だけを見る．
 `matchCap` は producer 側を rigid に扱い，consumer 側 capability 変数だけを
-束縛する witness `S_p` を返す．この witness は期待 slot だけでなく，型付き式，
+束縛する witness `S_κ` を返す．この witness は期待 slot だけでなく，型付き式，
 関数結果，環境，一般化前の型にある同じ consumer 変数の全 occurrence へ
 **必ず**伝播する．未適用の consumer 変数を generalize してはならない．
 
 例えば `list` の fresh な `p` へ `something : Matcher • a` を渡すと，
-`S_p = {p ↦ •}` を結果型にも適用し，
+`S_κ = {p ↦ •}` を結果型にも適用し，
 
 ```text
 Matcher (List •) (List a)
@@ -392,8 +397,8 @@ Matcher (List •) (List a)
 偽造できるため不健全である．
 
 target 側は独立した存在検査 `τ_m ∼ τ_t` ではなく，その occurrence の通常 HM
-制約を prevailing MGU `S_t` へ統合する．同じ単相 matcher target を異なる型へ
-別々の witness で使うことを許してはならない．`S_t` は surrounding target 型へ
+制約を prevailing MGU `S_τ` へ統合する．同じ単相 matcher target を異なる型へ
+別々の witness で使うことを許してはならない．`S_τ` は surrounding target 型へ
 伝播するが，capability へは侵入しない．
 
 既存 `MatcherSlot κ' τ'` を期待 slot へ送る場合は，両者が consumer 要求なので，
@@ -453,11 +458,11 @@ matcher の capability を作り出してはならず，capability 注釈は推�
 - occurs check
 - kind checking
 
-通常型代入 `S_t` と capability 代入 `S_p` は相互に侵入しない．
+通常型代入 `S_τ` と capability 代入 `S_κ` は相互に侵入しない．
 
 ```text
-S_t (Matcher κ τ) = Matcher κ (S_t τ)
-S_p (Matcher κ τ) = Matcher (S_p κ) τ
+S_τ (Matcher κ τ) = Matcher κ (S_τ τ)
+S_κ (Matcher κ τ) = Matcher (S_κ κ) τ
 ```
 
 ただし，型全体の入れ子にある各 `Matcher` occurrence には同じ規則を再帰的に
@@ -511,7 +516,7 @@ matcher 定義の各 hole へ送る式を指す．
 
 | 項目 | 現行論文 | Egison 通常の match | Egison next matcher | 二添字案 |
 |---|---|---|---|---|
-| 1．固有能力と target の分離 | △ 単相 dual check で一時的に分離 | △ 一添字の freeze で近似 | △ 一添字の freeze で近似 | `Matcher κ_p κ_t` で恒久的に分離 |
+| 1．固有能力と target の分離 | △ 単相 dual check で一時的に分離 | △ 一添字の freeze で近似 | △ 一添字の freeze で近似 | `Matcher κ τ` で恒久的に分離 |
 | 2．各穴に完全な slot を構成 | ✓ `T-MATCHER`／Consistency (1a) | ✓ 完全な `MatcherSlot` | ✓ R12 で実装済み | 二種の添字を持つ slot として維持 |
 | 3．producer の双対検査 | ✓ 構造と target を別判定 | ✓ 構造先行 coercion | ✓ freeze 済み能力で検査 | capability と target を別 sort で検査 |
 | 4．既存 slot の両成分検査 | ✓ Step 3a | ✓ | ✓ R12 で実装済み | capability MGU と target MGU に分離 |
@@ -542,7 +547,7 @@ capability として働いている．target 特殊化まで同時に禁止す�
 定義時骨格を hidden metadata として保存する案は実装可能だが，その情報を
 scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す必要がある．
 これは内部的には二添字と同型であり，今回は論文・実装とも明示的な
-`Matcher κ_p κ_t` とする．
+`Matcher κ τ` とする．
 
 ### matcher 多相を一般化しない案
 
@@ -554,7 +559,7 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 
 英語版と日本語版を同期して，少なくとも次を変更する必要がある．
 
-1. 型文法に capability sort と `Matcher κ_p κ_t` を導入する．
+1. 型文法に capability sort と `Matcher κ τ` を導入する．
 2. `MatcherSlot` の第1添字を capability，第2添字を target と明記する．
 3. 通常型／`Σ_P` signature から capability signature への全域的な lift を定義し，
    pattern／primitive-pattern-pattern の構造成分を capability として定義する．
@@ -663,7 +668,7 @@ applySubst s (TMatcher t) = TMatcher (applySubst s t)
 ### matcher literal
 
 - primitive-pattern-pattern の hole ごとに最初から完全な
-  `MatcherSlot κ_l κ_t,l` を構成する
+  `MatcherSlot κ_l τ_l` を構成する
 - arm body は target tuple の collection として検査する
 - next matcher は完全な期待 slot へ検査する
 - outer capability は節と Coverage から最大の certified capability として合成する
@@ -688,7 +693,7 @@ runtime の `something` が受理する一部の product pattern と，typed sem
 
 ### homogeneous target の境界
 
-この二添字案でも，`κ_t` は current target と next target／pattern binding を
+この二添字案でも，`τ` は current target と next target／pattern binding を
 同じ通常型の関係に置く．例えば `sample/nishiwaki.egi` のように Bool target から
 任意の `a` を束縛する type-transforming matcher は対象外である．その例を新しい
 homogeneous 仕様へ変更するか，将来の第三の型軸として分離する必要がある．
@@ -786,7 +791,7 @@ principal capability を変える．P2 の最小実装では 1 または 2 が�
 
 ### 固定したこと
 
-- `Matcher κ_p κ_t` を論文・Lean・Egison で明示する
+- `Matcher κ τ` を論文・Lean・Egison で明示する
 - capability と target を別 sort・別代入にする
 - catch-all-only 能力を `•` とする
 - capability は matcher literal の構造から最大の certified capability として合成する
@@ -817,7 +822,7 @@ principal capability，証明の形を変えるため，実装前に明示的に
 ## 受入条件
 
 - [ ] capability sort と target type sort が形式的に定義されている．
-- [ ] `Matcher κ_p κ_t`／`MatcherSlot κ_p κ_t` の kinding と，
+- [ ] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
       matcher 値の `CapTargetOK` 不変量が定義されている．
 - [ ] matcher literal の最大 certified capability 合成規則が定義されている．
 - [ ] 二種 Scheme／Subst／Inst，`CapGen`，witness 伝播，Algorithm W が定義されている．
