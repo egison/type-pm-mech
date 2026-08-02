@@ -1,0 +1,844 @@
+\documentclass[a4paper,10pt]{ltjsarticle}
+
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{mathpartir}
+\usepackage{array,booktabs}
+\usepackage[margin=18mm]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+\allowdisplaybreaks
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\setlength{\emergencystretch}{3em}
+
+\newcommand{\Sighat}{\widehat{\Sigma}}
+\newcommand{\CapSort}{\mathsf{Cap}}
+\newcommand{\Ty}{\mathsf{Type}}
+\newcommand{\Matcher}[2]{\mathsf{Matcher}\,#1\,#2}
+\newcommand{\MatcherSlot}[2]{\mathsf{MatcherSlot}\,#1\,#2}
+\newcommand{\Pattern}[2]{\mathsf{Pattern}(#1 \mathbin{\triangleright} #2)}
+\newcommand{\PPPattern}[1]{\mathsf{PPPattern}\,#1}
+\newcommand{\PDPattern}[1]{\mathsf{PDPattern}\,#1}
+\newcommand{\Clause}[1]{\mathsf{Clause}\,#1}
+\newcommand{\ListTy}[1]{\mathsf{List}\,#1}
+\newcommand{\mono}[1]{\mathsf{mono}\,#1}
+\newcommand{\Inst}{\mathsf{Inst}}
+\newcommand{\InstDual}{\mathsf{InstDual}}
+\newcommand{\Gen}{\mathsf{Gen}}
+\newcommand{\GenDual}{\mathsf{GenDual}}
+\newcommand{\fcv}{\mathsf{fcv}}
+\newcommand{\ftv}{\mathsf{ftv}}
+\newcommand{\dom}{\mathsf{dom}}
+\newcommand{\mguTy}{\mathsf{mguTy}}
+\newcommand{\mguCap}{\mathsf{mguCap}}
+\newcommand{\matchCap}{\mathsf{matchCap}}
+\newcommand{\CoverageOK}{\mathsf{CoverageOK}}
+\newcommand{\ShapeCap}{\mathsf{ShapeCap}}
+\newcommand{\CatchAllLast}{\mathsf{CatchAllLast}}
+\newcommand{\ArmExhaustive}{\mathsf{ArmExhaustive}}
+\newcommand{\PPBindNodup}{\mathsf{PPBindNodup}}
+\newcommand{\ArmBindNodup}{\mathsf{ArmBindNodup}}
+\newcommand{\ClausesTy}{\mathsf{ClausesTy}}
+\newcommand{\clauseEvidence}{\mathsf{clauseEvidence}}
+\newcommand{\inferShape}{\mathsf{inferShape}}
+\newcommand{\merge}{\mathsf{merge}}
+\newcommand{\mergeAll}{\mathsf{mergeAll}}
+\newcommand{\finalize}{\mathsf{finalize}}
+\newcommand{\decomposeME}{\mathsf{decomposeME}}
+\newcommand{\prodty}{\mathsf{prod}}
+\newcommand{\capof}{\mathsf{cap}}
+\newcommand{\tyof}{\mathsf{ty}}
+\newcommand{\rn}[1]{%
+  \mathord{\llap{\raisebox{-6.0ex}{\hbox{\scriptsize\textsc{[#1]}}}}%
+  \rule[-7.0ex]{0pt}{7.0ex}}}
+\newcommand{\fresh}{\mathrel{\#}}
+
+\title{Egison Core P2\\Syntax and Typing Rules}
+\author{}
+\date{Draft --- 2026-08-02}
+
+\begin{document}
+\maketitle
+
+\section{構文}
+
+\subsection{Capability，target type，scheme}
+
+\begin{figure}[htbp]
+\centering
+\small
+\[
+\begin{array}{rcll}
+\kappa &::=& \bullet \mid \chi \mid \hat{s}
+            \mid K\,\overline{\kappa}
+            \mid (\kappa_1,\ldots,\kappa_n)
+  & \kappa : \CapSort \\
+\tau &::=& \alpha \mid \hat{a} \mid \mathbf{1}
+          \mid \mathsf{Int} \mid \mathsf{Bool}
+          \mid K\,\overline{\tau}
+          \mid (\tau_1,\ldots,\tau_n)
+          \mid \tau_1 \to \tau_2 \\
+&& \mid \Matcher{\kappa}{\tau}
+   \mid \MatcherSlot{\kappa}{\tau}
+  & \tau : \Ty \\
+\sigma &::=& \forall(\overline{\chi}:\CapSort).\,
+              \forall(\overline{\alpha}:\Ty).\,\tau
+  & \text{expression scheme} \\
+\delta &::=&
+  (\kappa_1\mathbin{\triangleright}\tau_1),\ldots,
+  (\kappa_n\mathbin{\triangleright}\tau_n)
+  \Rightarrow (\kappa\mathbin{\triangleright}\tau)
+  & \text{pattern-function dual} \\
+\varsigma &::=& \forall(\overline{\chi}:\CapSort).\,
+                 \forall(\overline{\alpha}:\Ty).\,\delta
+  & \text{dual scheme} \\
+\eta &::=& \kappa\mathbin{\triangleright}\tau
+  & \text{hole descriptor.}
+\end{array}
+\]
+\caption{二 sort の型構文．$\chi$ と $\alpha$ は flexible meta-variable である．
+$\hat{s}$ と $\hat{a}$ の rigid skolem は，明示的な全称変数を型検査中だけ新鮮な固定定数として扱ったものであり，unification で別の capability／型へ置換できない．
+$\mono{\tau}$ は量化変数を一つも持たない単相 scheme を表し，環境から取り出して instantiate しても新しい変数を作らず同じ $\tau$ を返す．}
+\end{figure}
+
+\subsection{Source forms}
+
+\begin{figure}[htbp]
+\centering
+\small
+\[
+\begin{array}{rcl}
+e &::=& x \mid \lambda x.e \mid e_1\,e_2
+  \mid \mathtt{let}\ x=e_1\ \mathtt{in}\ e_2
+  \mid \mathtt{fix}\ f\ x.e \mid n \\
+&& \mid (e_1,\ldots,e_n) \mid C\,\overline e
+  \mid \mathit{op}(\overline e) \mid \mathtt{something} \\
+&& \mid \mathtt{matcher}\;\mathit{cls} \\
+&& \mid \mathtt{matchAll}\ e_t\ \mathtt{as}\ e_m\
+      \ \mathtt{with}\ p\to e \\
+&& \mid \mathtt{match}\ e_t\ \mathtt{as}\ e_m\
+      \ \mathtt{with}\ (p_i\to e_i)_i \\
+p &::=& \$x \mid \_ \mid \#e \mid \widetilde{x}
+  \mid c\,\overline p \mid p_1\mathbin{\&}p_2
+  \mid p_1\mathbin{|}p_2 \mid f\,\overline p
+  \mid (p_1,\ldots,p_n) \\
+pp &::=& \$ \mid \_ \mid \#\$x
+  \mid c\,\overline{pp} \mid (pp_1,\ldots,pp_n) \\
+dp &::=& \$x \mid \_ \mid C\,\overline{dp}
+  \mid (dp_1,\ldots,dp_n) \\
+cl &::=& pp\ \mathtt{as}\ M\ \mathtt{with}\
+          [dp_j\to N_j]_{j=1}^{r} \\
+\mathit{cls} &::=& [cl_i]_{i=1}^{m} \\
+d &::=& \mathtt{def\ pattern}\ f(x_1:\tau_1,\ldots,x_n:\tau_n)
+          :=p \\
+\ell &::=& \mathsf{none} \mid \chi \mid \hat{s} \\
+ev &::=& \mathsf{unseen} \mid \mathsf{known}\;\ell
+   \mid K\,\overline{ev} \mid (ev_1,\ldots,ev_n).
+\end{array}
+\]
+\caption{$c$ は pattern constructor，$C$ は data constructor である．
+$\mathtt{match}$ は $\mathtt{matchAll}$ と $\mathsf{head}$ への surface elaboration であり，core primitive ではない．}
+\end{figure}
+
+\subsection{Contexts and judgments}
+
+\[
+\begin{array}{c@{\qquad}l}
+\Sighat=(\Sighat_D,\Sighat_P,\Sighat_F,\Sighat_{\mathit{prim}},
+          \mathit{Obs}_{\Sighat})
+  & \text{freeze 済み canonical signature} \\
+\Gamma ::= \varnothing \mid \Gamma,x:\sigma
+  & \text{expression scheme context} \\
+\Phi ::= \varnothing \mid \Phi,x:\Pattern{\kappa}{\tau}
+  & \text{pattern-parameter dual context} \\
+\Delta ::= \varnothing \mid \Delta,x:\tau
+  & \text{monomorphic pattern-variable context.}
+\end{array}
+\]
+
+\begin{figure}[htbp]
+\centering
+\small
+\begin{tabular}{>{$}l<{$} @{$\quad$} l}
+\toprule
+\Sighat;\Gamma \vdash e:\tau
+  & expression typing \\
+\Sighat;\Gamma;\Phi;\Delta \vdash
+  p:\Pattern{\kappa}{\tau};\Delta'
+  & pattern dual typing \\
+\Sighat \vdash pp:\PPPattern{\tau}\rightsquigarrow
+  \overline\eta;\Delta_{pp}
+  & primitive-pattern hole/capture extraction \\
+\Sighat_D \vdash dp:\PDPattern{\tau}\rightsquigarrow\Gamma_{dp}
+  & data-pattern binding \\
+\Sighat;\Gamma \vdash cl:\Clause{\tau}\rightsquigarrow ev
+  & matcher-clause typing and evidence \\
+\Sighat;\Gamma \vdash d\;\mathsf{ok}\Rightarrow(f:\varsigma)
+  & pattern-function definition \\
+\bottomrule
+\end{tabular}
+\caption{Primary judgments．$\Delta$ と $\Gamma_{dp}$ を $\Gamma$ に入れるときは
+各 binding を $\mono{\tau}$ として扱う．$\uplus$ は domain-disjoint union，
+pattern の $\Delta$ は左から右へ thread する．}
+\end{figure}
+
+$\Gamma(x)$，$\Phi(x)$，$\Sighat_D(C)$ などは有限 map の lookup であり，
+key が存在しなければ失敗する．``fresh'' は現在の signature，context，型，
+capability のいずれにも出現しない同じ sort の変数を選ぶことを表す．
+
+\section{補助定義}
+
+この節の「部分関数」は成功値または失敗を返す．
+$f(x)=\mathsf{some}\;y$ と $f(x)\Downarrow y$ はともに成功値が $y$ であることを表し，
+$f(x)=\mathsf{none}$ は失敗を表す．判断規則の premise に現れる部分関数が失敗した
+場合，その規則は適用できない．
+
+\subsection{Instantiation，generalization，paired substitution}
+
+Capability substitution $C$ と target substitution $T$ は別 sort であり，
+$S=(C,T)$ の作用を次で定める．
+\[
+ S\kappa=C\kappa,
+ \qquad
+ S\tau=T(C\tau),
+ \qquad
+ S\Gamma=\{x:S\sigma\mid x:\sigma\in\Gamma\}.
+\]
+Paired substitution $S=(C,T)$ は，すべての $\alpha\in\dom(T)$ について
+$C(T\alpha)=T\alpha$ を満たすとき range-fixed である．以下で $S$ を構成する規則は
+この条件を明示的に要求する．
+
+\[
+\begin{aligned}
+\Inst\bigl(\forall\overline\chi.\forall\overline\alpha.\tau\bigr)
+  &= (C_f,T_f)\tau,
+& C_f\overline\chi,\ T_f\overline\alpha&\ \text{fresh},\\
+\Inst(\mono\tau)&=\tau,\\
+\Gen(\Gamma,\tau)
+  &=\forall(\fcv(\tau)\setminus\fcv(\Gamma):\CapSort).\,
+    \forall(\ftv(\tau)\setminus\ftv(\Gamma):\Ty).\,\tau,\\
+\GenDual(\Gamma,\delta)
+  &=\forall(\fcv(\delta)\setminus\fcv(\Gamma):\CapSort).\,
+    \forall(\ftv(\delta)\setminus\ftv(\Gamma):\Ty).\,\delta.
+\end{aligned}
+\]
+$\Inst$ と $\InstDual$ は各 sort の全 binder を互いに異なる fresh flexible
+meta-variable へ同時に置換し，$\InstDual$ は dual scheme の両 binder 列を対象にする．
+$\Gen$ と $\GenDual$ の引数には prevailing paired substitution を適用し，
+未解決の inference placeholder を含まない finalized type/capability を用いる．
+prevailing paired substitution とは，同じ導出でそれ以前に得た全 constraint を解く
+累積的な一つの $(C,T)$ である．Skolem は generalize しない．
+$\fcv(X)$ と $\ftv(X)$ はそれぞれ $X$ に自由出現する flexible capability
+meta-variable と flexible target meta-variable の集合であり，scheme の binder に
+束縛された変数を含まない．$\dom(X)$ は context または substitution $X$ の定義域である．
+
+Signature lookup は毎回 fresh instance を返すものとする．
+\[
+\begin{array}{rcl}
+\Inst(\Sighat_D(C))
+  &=& \tau_1\times\cdots\times\tau_n\to\tau,\\
+\Inst(\Sighat_P(c))
+  &=& (\tau_1,\ldots,\tau_n)\Rightarrow_{P}\tau,\\
+\InstDual(\Sighat_F(f))
+  &=& (\eta_1,\ldots,\eta_n)\Rightarrow\eta,\\
+\Inst(\Sighat_{\mathit{prim}}(op))
+  &=& \tau_1\times\cdots\times\tau_n\to\tau.
+\end{array}
+\]
+
+\subsection{Equality，capability matching，signature operations}
+
+\[
+\begin{array}{rcll}
+\mguTy(\tau,\tau')&=&T
+  & \text{target-sort MGU},\\
+\mguCap(\kappa,\kappa')&=&C
+  & \text{capability-sort MGU},\\
+\matchCap(\kappa_m,\kappa_p)&=&C
+  & \dom(C)\subseteq\fcv(\kappa_p),\quad
+    C\kappa_m=\kappa_m,\quad C\kappa_p=\kappa_m.
+\end{array}
+\]
+$\matchCap$ は producer $\kappa_m$ を rigid に読み，consumer demand
+$\kappa_p$ の変数だけを解く most-general one-way match であり，条件を満たす
+substitution がなければ失敗する．
+$\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であり，成功時は
+most-general unifier を返す．constructor／arity の不一致，occurs check の失敗，
+または rigid skolem を解く必要がある場合は失敗する．
+
+Frozen pattern signature が提供する二つの部分関数を次で表す．
+\[
+ \pi_c=\Inst(\Sighat_P(c)),\qquad
+ \capof_{\Sighat}(\pi_c;\overline\kappa)\Downarrow\kappa,
+ \qquad
+ \tyof_{\Sighat}(\pi_c;\overline\tau)\Downarrow\tau'.
+\]
+$\pi_c$ はこの二つの部分関数へ明示的に渡す同一の fresh
+pattern-constructor signature instance である．$\capof$ はその field に
+$\overline\kappa$ を対応付け，result argument slot へ capability を投影して
+constructor pattern 全体の capability を返す．$\tyof$ は
+$\overline\tau$ を field target と照合し，同じ signature instance の result target を
+返す．いずれも arity，canonical former，または rigid constraint が一致しなければ
+失敗する．$\capof$ は $\mathit{Obs}_{\Sighat}$ が公開する signature path だけをたどり，
+target substitution や expected target から capability を生成しない．
+
+\subsection{Matcher-clause metafunctions}
+
+\[
+\begin{array}{rcll}
+\prodty_0()&=&\mathbf{1},\\
+\prodty_1(\tau_1)&=&\tau_1,\\
+\prodty_k(\tau_1,\ldots,\tau_k)&=&(\tau_1,\ldots,\tau_k)
+  & (k\ge 2),\\[2pt]
+\decomposeME((),0)&=&[],\\
+\decomposeME(M,1)&=&[M],\\
+\decomposeME((M_1,\ldots,M_k),k)&=&[M_1,\ldots,M_k]
+  & (k\ge 2).
+\end{array}
+\]
+上記以外の $\decomposeME$ は失敗する．
+$()$ は unit value，その型は $\mathbf{1}$ と同一視する．したがって
+$k=0$ の matcher expression は $()$ だけである．
+
+Complete capability を partial evidence へ埋め込む canonical map は次である．
+\[
+\begin{array}{rclcrcl}
+\lceil\bullet\rceil_{ev}&=&\mathsf{known}\;\mathsf{none},
+&\qquad&\lceil\chi\rceil_{ev}&=&\mathsf{known}\;\chi,\\
+\lceil\hat{s}\rceil_{ev}&=&\mathsf{known}\;\hat{s},
+&&\lceil K\overline\kappa\rceil_{ev}&=&
+  K\,\overline{\lceil\kappa\rceil_{ev}},\\
+\lceil(\kappa_1,\ldots,\kappa_n)\rceil_{ev}&=&
+  (\lceil\kappa_1\rceil_{ev},\ldots,\lceil\kappa_n\rceil_{ev}).
+\end{array}
+\]
+
+$\clauseEvidence_{\Sighat}(pp;[\kappa_1,\ldots,\kappa_k])$ は，
+$pp$ の hole を左から右へ並べた列と，それぞれの hole に実際に渡される
+next matcher の slot capability 列から，一 clause 分の partial evidence を返す
+決定的な部分関数である．bare-hole catch-all $\$$，wildcard $\_$，value
+pattern $\#\$x$ は root evidence を生成せず $\mathsf{unseen}$ を返す一方，
+constructor または tuple の内側にある $\$$ は対応する $\kappa_i$ の canonical
+evidence を供給する．Tuple は component evidence をそのまま product node にし，
+constructor-headed $pp$ は fresh/frozen signature の field type と result argument
+slot に沿って child evidence を投影する．このとき surface constructor 名ではなく
+signature の result former を evidence の root とする．hole 数，arity，canonical
+former，または同じ result slot へ届く evidence が exact に一致しなければ
+$\mathsf{none}$ を返す．target 型，expected 型，annotation は evidence の seed にしない．
+$\mathsf{unseen}$ は assignment を作らず，opaque／function／unobservable path は
+barrier として内部を観測しない．必要な observable path に既知の異なる head が
+現れた場合は，$\mathsf{unseen}$ へ弱めず失敗する．
+
+$\ClausesTy$ は actual clause list を順に検査し，一 clause につき一つの evidence を
+同じ順序で返す output-indexed judgment である．
+\[
+\ClausesTy(\Sighat;\Gamma,[cl_i]_{i=1}^{m},\tau)
+  \Downarrow[ev_i]_{i=1}^{m}
+\quad\Longleftrightarrow\quad
+\forall i.\ \Sighat;\Gamma\vdash
+  cl_i:\Clause{\tau}\rightsquigarrow ev_i.
+\]
+いずれかの clause の PP extraction，next-matcher decomposition／slot typing，
+または一 clause 分の evidence projection が失敗すれば，この判断は成立しない．
+
+\subsection{Shape and coverage}
+
+Evidence の exact merge と shape inference は次で定める．
+\[
+\begin{array}{rclcrcl}
+\merge(\mathsf{unseen},ev)&=&ev
+&\qquad&\merge(ev,\mathsf{unseen})&=&ev,\\
+\merge(\mathsf{known}\;\ell,\mathsf{known}\;\ell)&=&
+  \mathsf{known}\;\ell,
+&&\merge(K\overline e,K\overline f)&=&
+  K\,\merge(\overline e,\overline f),\\
+\merge((\overline e),(\overline f))&=&
+  (\merge(\overline e,\overline f)).
+\end{array}
+\]
+Constructor name，node kind，arity，leaf identity が一致しない merge は失敗する．
+上の式では成功時の $\mathsf{some}$ を省略している．列上の $\merge$ は同じ長さの
+列を pointwise に merge し，長さが異なるか一成分でも失敗すれば失敗する．
+$\mergeAll$ は $\mathsf{unseen}$ を初期値として evidence list を $\merge$ で
+畳み込む決定的な部分関数であり，途中の $\merge$ が一度でも失敗すれば
+$\mathsf{none}$ を返す．
+\[
+\inferShape(\mathit{Obs},\overline{ev})=
+\begin{cases}
+\mathsf{some}\;\bullet
+  & \mergeAll(\overline{ev})=\mathsf{some}\;\mathsf{unseen},\\
+\finalize_{\mathit{Obs}}(ev)
+  & \mergeAll(\overline{ev})=\mathsf{some}\;ev,
+    \ ev\ne\mathsf{unseen},\\
+\mathsf{none}
+  & \mergeAll(\overline{ev})=\mathsf{none}.
+\end{cases}
+\]
+$\finalize_{\mathit{Obs}}$ は partial evidence を complete capability へ変換する
+決定的な部分関数である．observable な $\mathsf{unseen}$ が残れば
+$\mathsf{none}$ を返し，unobservable な constructor parameter は $\bullet$ に
+canonicalize する．$\mathsf{known}\;\mathsf{none}$，$\mathsf{known}\;\chi$，
+$\mathsf{known}\;\hat{s}$ はそれぞれ $\bullet$，$\chi$，$\hat{s}$ に戻す．
+Constructor node は root former と同じ長さの frozen observability mask を用い，
+product component はすべて observable として再帰的に finalize する．未知の mask や
+arity 不一致は失敗する．
+
+\[
+\ShapeCap_{\Sighat}(\overline{ev},\kappa)
+\quad\Longleftrightarrow\quad
+\inferShape(\mathit{Obs}_{\Sighat},\overline{ev})=\mathsf{some}\;\kappa.
+\]
+\textsc{T-MATCHER} は $\ClausesTy$ が actual clause list から返した同じ
+$\overline{ev}$ を $\ShapeCap$ へ渡すため，別の evidence list を選び直すことはできない．
+$\mathit{Obs}_{\Sighat}(K)$ は canonical former $K$ の parameter 数と同じ長さの
+Boolean mask を返し，各 parameter が pattern-constructor signature から capability
+として観測可能かを示す．この mask は freeze 前に全 signature から計算した least
+fixpoint であり，個々の matcher clause や target annotation には依存しない．
+
+\[
+\begin{aligned}
+\CoverageOK_{\Sighat}(\mathit{cls},\bullet)
+  &\quad\Longleftrightarrow\quad \mathsf{true},\\
+\CoverageOK_{\Sighat}(\mathit{cls},K\overline\kappa)
+  &\quad\Longleftrightarrow\quad
+    \forall c\in\mathsf{ctors}_{\Sighat_P}(K).\;
+    \exists cl\in\mathit{cls}.\ cl.pp=c\;\$\cdots\$,\\
+\CoverageOK_{\Sighat}(\mathit{cls},(\kappa_1,\ldots,\kappa_n))
+  &\quad\Longleftrightarrow\quad
+    \exists cl\in\mathit{cls}.\ cl.pp=(\$,\ldots,\$).
+\end{aligned}
+\]
+$\CoverageOK$ のその他の root form は成立しない．Refinement は general clause に数えず，
+coverage は child capability へ再帰しない．
+$\mathsf{ctors}_{\Sighat_P}(K)$ は，fresh instantiate した result target の canonical
+root former が $K$ である pattern constructor の有限集合であり，$cl.pp$ は clause
+$cl$ の primitive-pattern-pattern を取り出す selector である．
+Formal core では $\CoverageOK$ を matcher literal の必須条件とする．
+Egison 本体は同じ検査の失敗を warning として扱ってよいが，その診断方針は core の外側に置く．
+
+\subsection{Matcher well-formedness predicates}
+
+\[
+\begin{aligned}
+\CatchAllLast(\mathit{cls})
+\quad\Longleftrightarrow\quad
+&\exists\mathit{prefix},M,x,N.\;
+ \mathit{cls}=\mathit{prefix}\mathbin{++}
+ [\$\ \mathtt{as}\ M\ \mathtt{with}\ [\$x\to N]]\\
+&\land\ \forall cl\in\mathit{prefix}.\ cl.pp\ne\$,\\[2pt]
+\ArmExhaustive_{\Sighat_D}(\mathit{cls},\tau)
+\quad\Longleftrightarrow\quad
+&\forall cl\in\mathit{cls}.\;
+ \mathsf{Exhaustive}_{\Sighat_D}(\mathsf{arms}(cl),\tau),\\
+\PPBindNodup(\mathit{cls})
+\quad\Longleftrightarrow\quad
+&\forall cl\in\mathit{cls}.\;
+ \mathsf{NoDup}(\mathsf{bindPP}(cl.pp)),\\
+\ArmBindNodup(\mathit{cls})
+\quad\Longleftrightarrow\quad
+&\forall cl\in\mathit{cls}.\;\forall dp\in\mathsf{arms}(cl).\;
+ \bigl(\mathsf{NoDup}(\mathsf{bindDP}(dp))\\
+&\qquad\land\;
+ \mathsf{bindDP}(dp)\cap\mathsf{bindPP}(cl.pp)=\varnothing\bigr).
+\end{aligned}
+\]
+
+$\mathsf{arms}(cl)$ は clause の $[dp_j\to N_j]_j$ から data pattern 列
+$[dp_j]_j$ を順序を保って取り出す．$\mathsf{bindPP}(pp)$ と
+$\mathsf{bindDP}(dp)$ はそれぞれ $pp$ の $\#\$x$ と $dp$ の $\$x$ が導入する
+変数名を左から右へ集め，$\mathsf{NoDup}$ はその列に重複がないことを表す．
+$\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data signature
+の constructor／tuple／wildcard 規則に従って $\overline{dp}$ が $\tau$ の全値を
+被覆するかを判定する決定的な coverage checker である．未知の constructor，arity
+不一致，または未被覆の場合は成立しない．
+
+\section{Expression typing}
+
+\begin{mathpar}
+\inferrule{
+  \Gamma(x)=\sigma \\
+  \Inst(\sigma)=\tau
+}{
+  \Sighat;\Gamma\vdash x:\tau
+}\rn{T-VAR}
+
+\inferrule{
+  \Sighat;\Gamma,x:\mono{\tau_1}\vdash e:\tau_2
+}{
+  \Sighat;\Gamma\vdash \lambda x.e:\tau_1\to\tau_2
+}\rn{T-LAM}
+
+\inferrule{
+  \Sighat;\Gamma\vdash e_1:\tau_1\to\tau_2 \\
+  \Sighat;\Gamma\vdash e_2:\tau_1
+}{
+  \Sighat;\Gamma\vdash e_1\,e_2:\tau_2
+}\rn{T-APP}
+
+\inferrule{ }{
+  \Sighat;\Gamma\vdash n:\mathsf{Int}
+}\rn{T-LIT}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma\vdash e_1:\tau_1 \\
+  \sigma=\Gen(\Gamma,\tau_1) \\
+  \Sighat;\Gamma,x:\sigma\vdash e_2:\tau_2
+}{
+  \Sighat;\Gamma\vdash
+  \mathtt{let}\ x=e_1\ \mathtt{in}\ e_2:\tau_2
+}\rn{T-LET}
+
+\inferrule{
+  \Sighat;\Gamma,f:\mono{(\tau_1\to\tau_2)},
+  x:\mono{\tau_1}\vdash e:\tau_2
+}{
+  \Sighat;\Gamma\vdash \mathtt{fix}\ f\ x.e:\tau_1\to\tau_2
+}\rn{T-FIX}
+
+\inferrule{
+  \Sighat;\Gamma\vdash e_i:\tau_i\quad(1\le i\le n)
+}{
+  \Sighat;\Gamma\vdash(e_1,\ldots,e_n):(\tau_1,\ldots,\tau_n)
+}\rn{T-TUPLE}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Inst(\Sighat_D(C))=\tau_1\times\cdots\times\tau_n\to\tau \\
+  \Sighat;\Gamma\vdash e_i:\tau_i\quad(1\le i\le n)
+}{
+  \Sighat;\Gamma\vdash C\,e_1\cdots e_n:\tau
+}\rn{T-CON}
+
+\inferrule{
+  \Inst(\Sighat_{\mathit{prim}}(op))=
+    \tau_1\times\cdots\times\tau_n\to\tau \\
+  \Sighat;\Gamma\vdash e_i:\tau_i\quad(1\le i\le n)
+}{
+  \Sighat;\Gamma\vdash op(e_1,\ldots,e_n):\tau
+}\rn{T-PRIM}
+
+\inferrule{
+  \alpha\ \text{fresh in the target sort}
+}{
+  \Sighat;\Gamma\vdash\mathtt{something}:\Matcher{\bullet}{\alpha}
+}\rn{T-SOME}
+\end{mathpar}
+
+\section{Pattern typing and pattern functions}
+
+\begin{mathpar}
+\inferrule{
+  x\notin\dom(\Delta) \\
+  \chi,\alpha\ \text{fresh}
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  \$x:\Pattern{\chi}{\alpha};\Delta,x:\alpha
+}\rn{PAT-VAR}
+
+\inferrule{
+  \chi,\alpha\ \text{fresh}
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  \_:\Pattern{\chi}{\alpha};\Delta
+}\rn{PAT-WILD}
+
+\inferrule{
+  \Sighat;\Gamma,\mono\Delta\vdash e:\tau \\
+  \chi\ \text{fresh}
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  \#e:\Pattern{\chi}{\tau};\Delta
+}\rn{PAT-VALUE}
+
+\inferrule{
+  \Phi(x)=\Pattern{\kappa}{\tau}
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  \widetilde{x}:\Pattern{\kappa}{\tau};\Delta
+}\rn{PAT-EMBED}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma;\Phi;\Delta_{i-1}\vdash
+  p_i:\Pattern{\kappa_i}{\tau_i};\Delta_i
+  \quad(1\le i\le n)
+}{
+  \Sighat;\Gamma;\Phi;\Delta_0\vdash
+  (p_1,\ldots,p_n):
+  \Pattern{(\kappa_1,\ldots,\kappa_n)}{(\tau_1,\ldots,\tau_n)};
+  \Delta_n
+}\rn{PAT-TUPLE}
+
+\inferrule{
+  \pi_c=\Inst(\Sighat_P(c))=
+  (\rho_1,\ldots,\rho_n)\Rightarrow_P\rho \\
+  \Sighat;\Gamma;\Phi;\Delta_{i-1}\vdash
+  p_i:\Pattern{\kappa_i}{\tau_i};\Delta_i\quad(1\le i\le n) \\
+  \capof_{\Sighat}(\pi_c;\overline\kappa)\Downarrow\kappa \\
+  \tyof_{\Sighat}(\pi_c;\overline\tau)\Downarrow\tau
+}{
+  \Sighat;\Gamma;\Phi;\Delta_0\vdash
+  c\,p_1\cdots p_n:\Pattern{\kappa}{\tau};\Delta_n
+}\rn{PAT-CON}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  p_1:\Pattern{\kappa}{\tau};\Delta_1 \\
+  \Sighat;\Gamma;\Phi;\Delta_1\vdash
+  p_2:\Pattern{\kappa}{\tau};\Delta_2
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  p_1\mathbin{\&}p_2:\Pattern{\kappa}{\tau};\Delta_2
+}\rn{PAT-AND}
+
+\inferrule{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  p_1:\Pattern{\kappa}{\tau};\Delta' \\
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  p_2:\Pattern{\kappa}{\tau};\Delta'
+}{
+  \Sighat;\Gamma;\Phi;\Delta\vdash
+  p_1\mathbin{|}p_2:\Pattern{\kappa}{\tau};\Delta'
+}\rn{PAT-OR}
+\end{mathpar}
+
+{\small
+\begin{mathpar}
+\inferrule{
+  \InstDual(\Sighat_F(f))=
+  (\kappa_1\mathbin{\triangleright}\tau_1),\ldots,
+  (\kappa_n\mathbin{\triangleright}\tau_n)
+  \Rightarrow(\kappa\mathbin{\triangleright}\tau) \\
+  \Sighat;\Gamma;\Phi;\Delta_{i-1}\vdash
+  p_i:\Pattern{\kappa_i}{\tau_i};\Delta_i\quad(1\le i\le n)
+}{
+  \Sighat;\Gamma;\Phi;\Delta_0\vdash
+  f\,p_1\cdots p_n:\Pattern{\kappa}{\tau};\Delta_n
+}\rn{PAT-APP}
+\end{mathpar}
+}
+
+\begin{mathpar}
+\inferrule{
+  f\notin\dom(\Sighat_F) \\
+  \chi_1,\ldots,\chi_n\ \text{fresh} \\
+  \Phi'=\varnothing,x_1:\Pattern{\chi_1}{\tau_1},\ldots,
+                 x_n:\Pattern{\chi_n}{\tau_n} \\
+  \Sighat;\Gamma;\Phi';\varnothing\vdash
+    p_{\mathit{body}}:\Pattern{\kappa}{\tau};\Delta \\
+  \widetilde{x_1},\ldots,\widetilde{x_n}\ \text{occur exactly once,
+    in declaration order, outside or-alternatives} \\
+  \varsigma_f=\GenDual\!\left(
+    \Gamma,
+    (\chi_1\mathbin{\triangleright}\tau_1),\ldots,
+    (\chi_n\mathbin{\triangleright}\tau_n)
+    \Rightarrow(\kappa\mathbin{\triangleright}\tau)\right)
+}{
+  \Sighat;\Gamma\vdash
+  \mathtt{def\ pattern}\ f(x_1:\tau_1,\ldots,x_n:\tau_n)
+  :=p_{\mathit{body}}\ \mathsf{ok}\Rightarrow(f:\varsigma_f)
+}\rn{PATFUN-DEF}
+\end{mathpar}
+\textsc{PATFUN-DEF} は $f$ を追加する前の $\Sighat_F$ で本体を検査する
+非再帰規則であり，同名の既存 pattern function を shadow しない．
+
+\section{Match and \texorpdfstring{$\MatcherSlot{}{}$}{MatcherSlot}}
+
+{\small
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma\vdash e_t:\tau_t \\
+  \Sighat;\Gamma;\varnothing;\varnothing\vdash
+    p:\Pattern{\kappa_p}{\tau_t};\Delta \\
+  \Sighat;\Gamma\vdash e_m:\MatcherSlot{\kappa_p}{\tau_t} \\
+  \Sighat;\Gamma,\mono\Delta\vdash e:\tau_r
+}{
+  \Sighat;\Gamma\vdash
+  \mathtt{matchAll}\ e_t\ \mathtt{as}\ e_m\
+  \ \mathtt{with}\ p\to e:\ListTy{\tau_r}
+}\rn{T-MATCHALL}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma\vdash e_t:\tau_t \\
+  \Sighat;\Gamma;\varnothing;\varnothing\vdash
+    p_i:\Pattern{\kappa_i}{\tau_t};\Delta_i\quad(\forall i) \\
+  \Sighat;\Gamma\vdash e_m:\MatcherSlot{\kappa_i}{\tau_t}
+    \quad(\forall i) \\
+  \Sighat;\Gamma,\mono{\Delta_i}\vdash e_i:\tau_r
+    \quad(\forall i)
+}{
+  \Sighat;\Gamma\vdash
+  \mathtt{match}\ e_t\ \mathtt{as}\ e_m\
+  \ \mathtt{with}\ (p_i\to e_i)_i:\tau_r
+}\rn{T-MATCH (derived)}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma\vdash e:\Matcher{\kappa_m}{\tau_m} \\
+  \matchCap(\kappa_m,\kappa_p)=C \\
+  \mguTy(C\tau_m,C\tau_t)=T \\
+  S=(C,T) \\
+  C(T\alpha)=T\alpha\quad(\alpha\in\dom(T))
+}{
+  \Sighat;S\Gamma\vdash e:
+  \MatcherSlot{C\kappa_p}{S\tau_t}
+}\rn{COERCE-MATCHER-TO-SLOT}
+
+\inferrule{
+  \Sighat;\Gamma\vdash e:\MatcherSlot{\kappa'}{\tau'} \\
+  \mguCap(\kappa',\kappa)=C \\
+  \mguTy(C\tau',C\tau)=T \\
+  S=(C,T) \\
+  C(T\alpha)=T\alpha\quad(\alpha\in\dom(T))
+}{
+  \Sighat;S\Gamma\vdash e:\MatcherSlot{S\kappa}{S\tau}
+}\rn{CHECK-SLOT-TO-SLOT}
+\end{mathpar}
+}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat;\Gamma\vdash e_i:\Matcher{\kappa_i}{\tau_i}
+  \quad(1\le i\le n)
+}{
+  \Sighat;\Gamma\vdash(e_1,\ldots,e_n):
+  \Matcher{(\kappa_1,\ldots,\kappa_n)}{(\tau_1,\ldots,\tau_n)}
+}\rn{COERCE-TUPLE-MATCHER}
+
+\inferrule{
+  \Sighat;\Gamma\vdash e:
+  (\MatcherSlot{\kappa_1}{\tau_1},\ldots,
+   \MatcherSlot{\kappa_n}{\tau_n})
+}{
+  \Sighat;\Gamma\vdash e:
+  \MatcherSlot{(\kappa_1,\ldots,\kappa_n)}{(\tau_1,\ldots,\tau_n)}
+}\rn{COERCE-SLOT-TUPLE}
+\end{mathpar}
+
+\section{Matcher literals}
+
+\subsection{Primitive pattern patterns}
+
+\begin{mathpar}
+\inferrule{
+  \chi\ \text{fresh}
+}{
+  \Sighat\vdash \$:\PPPattern{\tau}\rightsquigarrow
+  [\chi\mathbin{\triangleright}\tau];\varnothing
+}\rn{PP-HOLE}
+
+\inferrule{ }{
+  \Sighat\vdash \_:\PPPattern{\tau}\rightsquigarrow[];\varnothing
+}\rn{PP-WILD}
+
+\inferrule{ }{
+  \Sighat\vdash \#\$x:\PPPattern{\tau}\rightsquigarrow[];x:\tau
+}\rn{PP-VAL}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \Inst(\Sighat_P(c))=
+  (\tau_1,\ldots,\tau_n)\Rightarrow_P\tau \\
+  \Sighat\vdash pp_i:\PPPattern{\tau_i}
+    \rightsquigarrow\overline\eta_i;\Delta_i
+    \quad(1\le i\le n) \\
+  \overline\eta=\overline\eta_1\mathbin{++}\cdots
+    \mathbin{++}\overline\eta_n
+}{
+  \Sighat\vdash c\,pp_1\cdots pp_n:\PPPattern{\tau}
+  \rightsquigarrow\overline\eta;
+  \Delta_1\uplus\cdots\uplus\Delta_n
+}\rn{PP-CON}
+
+\inferrule{
+  \Sighat\vdash pp_i:\PPPattern{\tau_i}
+  \rightsquigarrow\overline\eta_i;\Delta_i
+  \quad(1\le i\le n)
+}{
+  \Sighat\vdash(pp_1,\ldots,pp_n):\PPPattern{(\tau_1,\ldots,\tau_n)}
+  \rightsquigarrow
+  \overline\eta_1\mathbin{++}\cdots\mathbin{++}\overline\eta_n;
+  \Delta_1\uplus\cdots\uplus\Delta_n
+}\rn{PP-TUPLE}
+\end{mathpar}
+
+\subsection{Primitive data patterns}
+
+\begin{mathpar}
+\inferrule{ }{
+  \Sighat_D\vdash\$x:\PDPattern{\tau}\rightsquigarrow x:\tau
+}\rn{PD-VAR}
+
+\inferrule{ }{
+  \Sighat_D\vdash\_:\PDPattern{\tau}\rightsquigarrow\varnothing
+}\rn{PD-WILD}
+
+\inferrule{
+  \Inst(\Sighat_D(C))=\tau_1\times\cdots\times\tau_n\to\tau \\
+  \Sighat_D\vdash dp_i:\PDPattern{\tau_i}\rightsquigarrow\Gamma_i
+  \quad(1\le i\le n)
+}{
+  \Sighat_D\vdash C\,dp_1\cdots dp_n:\PDPattern{\tau}
+  \rightsquigarrow\Gamma_1\uplus\cdots\uplus\Gamma_n
+}\rn{PD-CON}
+
+\inferrule{
+  \Sighat_D\vdash dp_i:\PDPattern{\tau_i}\rightsquigarrow\Gamma_i
+  \quad(1\le i\le n)
+}{
+  \Sighat_D\vdash(dp_1,\ldots,dp_n):\PDPattern{(\tau_1,\ldots,\tau_n)}
+  \rightsquigarrow\Gamma_1\uplus\cdots\uplus\Gamma_n
+}\rn{PD-TUPLE}
+\end{mathpar}
+
+\subsection{Clauses and matcher construction}
+
+\begin{mathpar}
+\inferrule{
+  \Sighat\vdash pp:\PPPattern{\tau}\rightsquigarrow
+    [(\kappa_1\mathbin{\triangleright}\tau_1),\ldots,
+     (\kappa_k\mathbin{\triangleright}\tau_k)];\Delta_{pp} \\
+  \decomposeME(M,k)=[M_1,\ldots,M_k] \\
+  \Sighat;\Gamma\vdash M_l:\MatcherSlot{\kappa_l}{\tau_l}
+    \quad(1\le l\le k) \\
+  \Sighat_D\vdash dp_j:\PDPattern{\tau}\rightsquigarrow\Gamma_j
+    \quad(1\le j\le r) \\
+  \Sighat;\Gamma,\mono{\Delta_{pp}},\mono{\Gamma_j}\vdash
+    N_j:\ListTy{\prodty_k(\tau_1,\ldots,\tau_k)}
+    \quad(1\le j\le r) \\
+  \clauseEvidence_{\Sighat}
+    (pp;[\kappa_1,\ldots,\kappa_k])=\mathsf{some}\;ev
+}{
+  \Sighat;\Gamma\vdash
+  (pp\ \mathtt{as}\ M\ \mathtt{with}\ [dp_j\to N_j]_{j=1}^{r}):
+  \Clause{\tau}\rightsquigarrow ev
+}\rn{CLAUSE-TY}
+\end{mathpar}
+
+\begin{mathpar}
+\inferrule{
+  \ClausesTy(\Sighat;\Gamma,\mathit{cls},\tau)
+    \Downarrow\overline{ev} \\
+  \ShapeCap_{\Sighat}(\overline{ev},\kappa) \\
+  \CatchAllLast(\mathit{cls}) \\
+  \ArmExhaustive_{\Sighat_D}(\mathit{cls},\tau) \\
+  \PPBindNodup(\mathit{cls}) \\
+  \ArmBindNodup(\mathit{cls}) \\
+  \CoverageOK_{\Sighat}(\mathit{cls},\kappa)
+}{
+  \Sighat;\Gamma\vdash
+  \mathtt{matcher}\;\mathit{cls}:\Matcher{\kappa}{\tau}
+}\rn{T-MATCHER}
+\end{mathpar}
+
+\end{document}
