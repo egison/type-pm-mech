@@ -15,6 +15,29 @@
 - `Examples.lean` は論文 §2 と付録 A.1 の実測例の機械検証(実行 4 本 + 型付け導出、全て証明済)。定義を触ったら最優先でここが通ることを確認する。
 - 論文本文(`../type-pm-paper/main.tex`)が真実の源。定義のズレを見つけたら、勝手に合わせず報告する(既に報告済みの 2 件は README「機械化が浮かび上がらせた論文の細部」参照)。
 
+## P2 の証明スコープ
+
+- P2 の完了条件は **非 CAS formal core** に限る。二 sort、producer-stable
+  one-way match、実 clause からの evidence／`ShapeCap`、二種 W／Gen／Inst を通る
+  value-flow 非強化、`CoverageOK` 必須の source/runtime safety、singleton direct-self を含む。
+- formal core は、検証・freeze 済みの observability／constructor signature／alias
+  table を入力としてよい。公開 source bridge には `CoreSpecWF` を使い、任意の
+  `RuntimeSpec` を source calculus の代用として最終定理に残さない。
+- `CoreSpecWF` の checker は静的 `SourceCtx` を読む。checker の明示引数に target 型や
+  runtime environment がないことだけから純粋性を主張せず、concrete instantiation で
+  target-derived seed の不在、evidence coherence、captured environment の
+  `substAdmissible`、`literalSubstitute` を放電する。Ξ-closed と captured environment
+  の closedness を混同しない。
+- P2 独立層の代数定理と `CoreSpecWF` 相対 runtime invariant を、end-to-end source
+  Preservation／Progress／Type Safety と呼ばない。source `HasTy`／`ValueTy`、
+  matching state、二種 Algorithm W の移行が完了するまでは安全性は未機械化である。
+- 一般 D4 producer flow（alias・transform・相互再帰・高階 origin）、raw
+  graph/signature validator、Egison の ordinary Coverage warning／certified mode、
+  import 永続化、D5-CAS pattern view は実装拡張であり、P2 formal core の完了を
+  妨げない。これらを core 定理の仮定へ紛れ込ませない。
+- P1 の capture admissibility と埋込み計算の停止性は P2 と独立な既存前提として
+  明示する。
+
 ## Lean の罠(このリポジトリで踏んだもの)
 
 - `Π`・`Σ` は予約トークンなので識別子に使えない(`piE`・`SF`/`SD`/`SP` を使用)。

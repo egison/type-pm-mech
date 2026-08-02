@@ -2,8 +2,78 @@
 
 ## 状態
 
-中核方針・Coverage・D1--D4 設計方針決定，D5 の構文的正規化境界決定，
-CAS pattern view の詳細設計・再構成未実施．
+中核方針・Coverage・D1--D4 設計方針決定，D5 の構文的正規化境界決定．
+Lean では `TypePM/P2/` に，二 sort 構文・代入・one-way capability match，
+二種 generalization／local-meta・fresh-skolem 境界つき annotation checking，
+observability least fixpoint，field/evidence 同時置換に不変な certified
+signature-directed projection，exact `ShapeCap`，intrinsic capability が一意な
+mode-indexed matcher/slot 値不変量，context-relative `CapTargetOK` を既存一添字
+calculus から独立した層として機械化した．
+さらに `CoreSpecWF` を公開 source boundary とし，typed-hole capability を保持する
+静的 `SourceCtx` の下で実際の `Clause` ごとの決定的 evidence checker を clause list
+上で畳むこと，成功時に clause と evidence が一対一であること，そこから covered
+runtime matcher invariant を構成すること，Ξ-closed certificate の admissible target
+specialization が固有 capability を強化しないことを証明した．checker の明示引数に
+target 型や runtime environment はないが，abstract `SourceCtx` が target-derived
+seed を含まないことは concrete instantiation の証明義務である．
+再帰は singleton direct-self の standalone evidence fold だけを fail-closed に
+形式化しており，`.known` source の provenance，Egison の式分類への bridge，
+一般 producer-flow solver はまだ対象外である．
+具体的な source clause-evidence 規則，二種 Algorithm W を含む `HasTy`／
+`ValueTy`／matching state の二添字化，coverage-required calculus の型安全性は formal core の
+残件である．一般 D4，raw alias graph 検証と import 構築，D5-CAS pattern view は
+実装拡張として分離する．
+
+再構成後の定理境界と完了判定は
+[`P2-PROOF-TARGET.md`](../P2-PROOF-TARGET.md) を再構成作業の正本とする．特に，W と
+singleton direct-self については conditional reconstruction soundness までを要求し，
+completeness／principal type は要求しない．
+
+## P2 の formal core と実装拡張の境界
+
+この文書で今後「P2 の完了」と呼ぶのは，次の **非 CAS formal core** の定義と
+証明が英語版・日本語版の論文本文および Lean で揃うことだけを指す．
+
+- `Matcher κ τ`／`MatcherSlot κ τ` の二 sort，二種 substitution／scheme／
+  explicit annotation
+- producer-stable one-way match と prevailing witness の全 occurrence への伝播
+- 検証・freeze 済み signature の下で，actual clause から evidence を生成し，
+  observability／projection／exact merge／finalization により `ShapeCap` を得る規則
+- 二種 W／Gen／Inst と，lambda，application，let，tuple，data storage，
+  matcher environment を通る到達可能な matcher value の capability 非強化
+- `CoverageOK` を必須とする単一の source calculus，covered runtime invariant と
+  証明内部の erasure，Preservation／Progress／Type Safety
+- singleton direct-self の単相再帰，自己参照・annotation・consumer demand の
+  non-seeding，seedless cycle と exact mismatch の処理
+- P1 の capture admissibility と埋込み計算の停止性を独立な前提として明示すること
+
+次は **Egison integration／language extension** であり，P2 formal core の完了条件には
+含めない．
+
+- alias・transform・相互再帰・高階 producer origin を追跡する一般 D4 flow
+- raw declaration から observability graph／projection signature／alias table を
+  検証し，freeze／import／load unit 間で永続化する処理
+- Egison の ordinary Coverage warning，certified mode，module certificate，
+  diagnostic，標準ライブラリ全体の移行
+- D5-CAS の target-indexed pattern view，view-qualified constructor ID，
+  kind-aware projection，runtime extraction preservation
+
+`CoreSpecWF` は formal core の**相対的な接続 interface**であり，型安全性定理そのもの
+ではない．trusted premise として，freeze 済み observability，
+[`../tex/main.tex`](../tex/main.tex) の仕様草案に整理した source literal typing，
+静的 `SourceCtx` の下での actual clause ごとの決定的 evidence
+checker，同じ captured runtime environment を実現する context 間の evidence
+coherence，その環境を再実現できる substitution の admissibility，source typing の
+二種代入安定性，actual clause list と inferred capability に索引づく `CoverageOK`
+を受け取る．checker の明示引数に target 型や runtime environment はないが，
+`SourceCtx` の純粋性は concrete instantiation の義務である．Lean がこの interface
+から導くのは，clause list と evidence list の一対一対応，
+`Shape.inferShape` が決める固有 capability，covered runtime matcher invariant，
+Ξ-closed certificate の admissible target specialization による非強化である．
+Ξ-closed は captured environment の closedness を意味しない．source typing／
+evidence／Coverage の規則自体は論文英日版へ反映し，Lean で core
+Preservation／Progress／Type Safety まで別途証明しなければならず，任意の
+`RuntimeSpec` 相対の代数補題だけで formal core 完了とはしない．
 
 P2 の解決方針として，従来の一添字
 
@@ -36,22 +106,28 @@ MatcherSlot κ τ
 という分離を，型，スキーム，Algorithm W，値型付けまで貫くことである．
 
 この文書は採用する中核設計，partial matcher に対する capability と Coverage の
-境界，移行範囲を固定する．`ShapeCap` については，general／refinement clause から
+境界，移行範囲を固定する．partial matcher も structured `ShapeCap` の候補までは
+推論できるが，formal-core source typing は `CoverageOK` 不足を拒否し，full Egison
+だけが同じ不足を warning として扱える．`ShapeCap` については，general／refinement clause から
 partial evidence を集め，未観測を中立に exact agreement で合成する方針と，
 parameter observability を capability-visible path の依存方程式の least fixpoint
 として決める方針に加え，constructor field の evidence を fresh instantiate 後の
-result argument slot へ signature-directed に投影する規則まで決定した．D1 はこの
-calculus の形式化と証明が残る．D3 は provenance 付き `CapGen` を置かず，二種の
+result argument slot へ signature-directed に投影する規則まで決定した．D1 の
+finite observability solver，projection，exact merge，finalization は独立 Lean 層で
+形式化した．D3 は provenance 付き `CapGen` を置かず，二種の
 substitution を全体へ適用した後，capability 変数も通常の HM 規則で一般化し，
-明示量化を rigid skolem として検査する方針に決定した．D4 は，再帰 binding 自体を
+明示量化を環境所有 meta と分離した fresh rigid skolem として検査する方針に決定した．
+D4 は，再帰 binding 自体を
 通常の単相 HM 規則で推論し，matcher literal 固有の `ShapeCap` 生成制約だけを
 補助的な producer-flow summary で運び，別の least-evidence solver で解いてから
 SCC 外で一般化する方針に決定した．
 通常型付けと安全な部分集合の形式化は D2 で決定した．`CapTargetOK` の構文的な
 正規化境界も D5 で決定したが，現行 CAS matcher の pattern signature と target
 former を整列させる pattern-view signature の設計が残る．
-論文，Egison 本体，Lean の実変更と，P2 に由来する capability-admissibility 仮定の
-除去も完了していないため，P2 自体は未解決として残す．
+論文英日版への source 規則の反映，既存 Lean calculus の二添字 core への移行，二種 W と
+core type safety，P2 に由来する capability-admissibility 仮定の除去は完了して
+いないため，formal core としての P2 は未解決である．一般 D4，raw validator，
+Egison certified mode，D5-CAS はこの未解決判定から外し，別の拡張課題として追跡する．
 
 ## 一言でいうと
 
@@ -107,7 +183,21 @@ pattern へ渡すことはできない．
 - producer 側の既確定 capability を consumer 要求から具体化してはならない
 
 正確な inductive 定義では，現在の one-way 構造関係を capability sort 上へ
-移す．fresh rename は scheme instantiation で量化変数に一度だけ行い，
+移す．有限 support の全関数代入で書けば，producer-first の関係は
+
+```text
+OneWayAt(S, κ_m, κ_p)
+  := supp(S) ⊆ fcv(κ_p)
+   ∧ S κ_m = κ_m
+   ∧ S κ_p = κ_m
+```
+
+とする．二番目の producer-stability は occurs check も兼ねる．これがなければ
+`κ_m = List p`, `κ_p = p`, `S = {p ↦ List p}` が一回の構文代入では成功して
+しまい，同じ witness を全 occurrence へ伝播した時点で producer が
+`List (List p)` へ変わる．`TypePM/P2/Relation.lean` と
+`CapMatch.lean` はこの反例を拒否し，実行可能 matcher の soundness／completenessを
+上の関係に対して証明する．fresh rename は scheme instantiation で量化変数に一度だけ行い，
 capability 構造内の同一変数の共有を保つ．単相な局所変数の lookup や
 slot coercion では fresh rename せず，同じ meta-variable identity を維持する．
 
@@ -427,9 +517,11 @@ S Γ ⊢ e : MatcherSlot (S_κ κ_p) (S τ_t)
 ```
 
 構造検査は capability 成分だけ，target 検査は通常型成分だけを見る．
-`matchCap` は既知の producer head を consumer 要求で変更しないが，通常の推論で
-導入した flexible capability meta-variable はどちら側に現れても制約で解ける．
-明示量化から導入した skolem は解かない．`matchCap` が返す witness `S_κ` は局所的な
+通常の推論で導入した producer 側 flexible capability meta-variable は，scheme
+instantiation と先行する通常制約解決で決める．slot 境界の `matchCap` 自体は
+producer-stability を要求し，consumer demand から producer を解かない．
+明示量化から導入した skolem はどちらの段階でも解かない．
+`matchCap` が返す witness `S_κ` は局所的な
 成功証拠ではなく Algorithm W が返して合成する capability substitution である．
 期待 slot だけでなく，型付き式，関数結果，環境，残余制約にある同じ変数の全
 occurrence へ **必ず**適用し，その後でだけ generalization を行う．`matchCap` が
@@ -514,17 +606,30 @@ matcher の capability を作り出してはならず，capability 注釈は推�
 - occurs check
 - kind checking
 
-通常型代入 `S_τ` と capability 代入 `S_κ` は相互に侵入しない．
+通常型代入 `S_τ` は既存 capability node を書き換えず，capability 代入 `S_κ` は
+通常型変数を直接書き換えない．ただし，`S_τ` の像が入れ子の matcher と
+capability 変数を含み得るため，二つの作用の**無条件な可換性は成り立たない**．
 
 ```text
 S_τ (Matcher κ τ) = Matcher κ (S_τ τ)
 S_κ (Matcher κ τ) = Matcher (S_κ κ) (S_κ τ)
-S_τ (S_κ T) = S_κ (S_τ T)
+
+S_κ (S_τ T)
+  = (α ↦ S_κ(S_τ α)) (S_κ T)
 ```
 
-ただし，型全体の入れ子にある各 `Matcher` occurrence には同じ規則を再帰的に
-適用する．これにより matcher が関数結果，tuple，collection，ユーザー定義
-データ，alias の内側へ入っても capability を失わない．
+最後の式は target substitution の像にも capability substitution を作用させる
+正しい自然性である．従来の単純な
+`S_τ(S_κ T) = S_κ(S_τ T)` は，すべての `α` について
+`S_κ(S_τ α) = S_τ α`，すなわち target range が先行 capability substitution で
+既に正規化され固定されている場合に限る．Algorithm W の paired substitution
+composition はこの range-fixed 不変量を premise として維持する．
+`TypePM/P2/Substitution.lean` は正しい自然性，条件付き composition，および
+条件なしの式に対する具体的反例を機械化している．
+
+型全体の入れ子にある各 `Matcher` occurrence には同じ規則を再帰的に適用する．
+これにより matcher が関数結果，tuple，collection，ユーザー定義データ，alias の
+内側へ入っても capability を失わない．
 
 capability 変数の量化自体は禁止しない．例えば，
 
@@ -658,15 +763,18 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
    ではなく capability に索引付けする．
 6. catch-all の target 検査を一般 hole／arm 規則と同じ経路にする．
 7. matcher rigidity 節を，capability 保存と通常 target 多相の分離として書き直す．
-8. Scheme.Inst，二種 HM generalization，Algorithm W，主要性の instance relation を，
+8. Scheme.Inst，二種 HM generalization，Algorithm W，conditional soundness の前提を，
    二種代入，全 substitution 伝播，明示量化の skolem checking へ変更する．
-9. 再帰 binding には通常の単相 HM 規則を用い，matcher literal が別に生成する
-   `ShapeCap` obligation，producer-flow summary，binder–RHS generation knot，
-   least-evidence 解，finalization 後の SCC 外 generalization を Algorithm W の
-   補助 judgment として定義する．
+9. singleton direct-self binding には通常の単相 HM 規則を用い，matcher literal が
+   別に生成する `ShapeCap` obligation，自己参照の non-seeding，finalization 後の
+   binder 外 generalization を Algorithm W の補助 judgment として定義する．
 10. runtime matcher typing，slot invariant，canonical forms を二添字化する．
 11. `capability-admissible` を source typing から導き，P2 に由来する仮定を除く．
-12. 全標準 matcher の型，本文例，付録の導出を新しい型へ更新する．
+12. 非 CAS core の matcher 型，本文例，導出を新しい型へ更新する．
+
+一般 producer-flow summary，binder–RHS knot，相互 SCC，raw validator，Egison
+certified mode，CAS standard matcher の移行は論文の formal core 再構成範囲に
+含めない．
 
 ## Lean 機械化の再構成範囲
 
@@ -694,17 +802,14 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
 
 - `PatTy`／`PPTy` の構造成分を capability 化
 - `ClauseTy`／`ArmsTy`／`ClausesTy` の二添字化
-- `ShapeCap`，coverage 非依存の `MatcherWF`，`CoverageOK` を分離し，
-  `ordinary`／`covered` の `CoverageReq` で再結合
+- `ShapeCap`，coverage 非依存の clause 条件，`CoverageOK` を分離し，単一の
+  matcher-literal 規則で `CoverageOK` を必須 premise として再結合
 - `HasTy.matcherE`，`something`，tuple／slot coercion の二添字化
 - matcher literal の `ShapeCap` 合成と主要性境界
 - 現行の単相 `HasTy.fixE` を通常の再帰型付け規則として維持し，matcher literal の
-  `ShapeSolved` side judgment と algorithmic な生成制約解決を別に接続する
-- variable／lambda／application／let／constructor に通常型付けと同じ構文再帰を持つ
-  producer-flow summary judgment，first-order evidence への正規化，
-  binder–RHS generation knot
-- 現行構文の `Expr.fix f x e` に対する singleton 規則を先に機械化し，相互再帰版は
-  構文を拡張するときまで定理の対象にしない
+  direct-self `ShapeSolved` side judgment を別に接続する
+- 現行構文の `Expr.fix f x e` に対する singleton direct-self 規則．相互再帰，
+  alias／transform／高階 producer flow は定理の対象にしない
 
 ### `WellTyped` とメタ理論
 
@@ -719,29 +824,23 @@ scheme，関数，tuple，データ格納の各 `Matcher` occurrence に通す�
   適用される不変量
 - 二種 generalize／instantiate と明示量化の skolem checking の健全性
 - 通常 HM generalization から closed constant producer の能力非強化を導く補題
-- singleton `fix` に対する Algorithm W の健全性・完全性・主要性と，単相 lookup が
+- singleton `fix` に対する Algorithm W の conditional soundness と，単相 lookup が
   placeholder identity を保存する補題
-- 再帰 `ShapeCap` solver の停止性，健全性，完全性，最小性，決定性，seedless cycle の
-  非生成，occurs check，clause／SCC 順序独立性
+- direct-self evidence fold の停止性，決定性，seedless cycle の非生成，
+  seed propagation，exact mismatch
 - 通常の capability substitution と `ShapeCap` solution の合成保存，
-  generation node の non-escape，finalization-before-generalization
-- producer-flow summary の expression typing に対する健全性，application substitution，
-  first-order normalization の決定性・source preservation，trusted flow summary を
-  含む `EnvTyped` preservation
-- producer-flow path が指す full `Matcher κ τ` occurrence と context-relative
-  `CapTargetOK` を保つ `FlowTargetOK`
+  direct-self placeholder の non-escape，finalization-before-generalization
 - Structural-Hole Transfer の capability 版
 - pattern typing／one-way head compatibility と
   `CoverageOK + CatchAllLast` から `DispatchOK` を導く補題
-- R10 の `BaseAdm` 下での ordinary completed-evaluation partial correctness と
-  `DispatchOK` 付き局所 matching-state Preservation
-- covered mode の fundamental theorem，Preservation，constructor Progress，
-  Type Safety
+- source derivation を covered runtime invariant へ接続する fundamental theorem と，
+  covered-to-ordinary の証明内部 erasure
+- coverage-required core の Preservation，constructor Progress，Type Safety
 - `hgen` を二種一般化補題で放電する証明
 - P2 に由来する capability-admissibility を安全性定理から除く証明
-- Algorithm W の健全性・完全性・最汎二種代入
+- Algorithm W の conditional reconstruction soundness
 
-P1 の capture-admissibility，`StepTotal`，一般の停止性は P2 と独立なので，
+P1 の capture-admissibility，`StepReady`，一般の停止性は P2 と独立なので，
 二添字化だけでは除去されない．
 
 ## Egison 実装の再構成範囲
@@ -847,9 +946,10 @@ Coverage を structured capability の生成条件から分離する．ある型
 `ShapeCap` が証拠として認める general または constructor／tuple-headed refinement
 clause が少なくとも一つ観測され，observable な capability parameter が確定すれば，その
 matcher は `K`-headed な shape capability を持つ．すべての constructor を扱わない
-partial matcher も
-`Matcher (K κ₁ ... κₙ) (K τ₁ ... τₙ)` として型付けでき，target 型を後から
-特殊化してもこの capability は変化しない．
+partial matcher も `Matcher (K κ₁ ... κₙ) (K τ₁ ... τₙ)` の shape candidate を持ち，
+target 型を後から特殊化してもこの候補 capability は変化しない．ただし formal-core
+source typing は独立な `CoverageOK` premise で不足を拒否する．full Egison が同じ
+定義を warning 付きで受理する場合，その値は core の source derivation を持たない．
 
 一方，`CoverageOK cls (K κ₁ ... κₙ)` は，matcher literal の root capability head
 が `K` であるとき，結果型の head が `K` である全 pattern constructor に general
@@ -899,7 +999,7 @@ matcher に限定する．warning が出なかったこと自体を定理の前�
 `CoverageOK` を直接要求する．
 
 P2 が取り除くのは scheme instantiation による capability-admissibility 仮定であり，
-Coverage，P1 の capture-admissibility，`StepTotal` まで同時に取り除くものではない．
+Coverage，P1 の capture-admissibility，`StepReady` まで同時に取り除くものではない．
 
 ## 残る設計課題と形式化課題
 
@@ -1166,22 +1266,47 @@ calculus に相対的な一意性／主要性として述べる．
 欠くため Coverage warning の対象であり，no-stuck を主張する安全な部分集合には
 入らない．
 
-**形式化・証明として残ること．**
+**独立 Lean core で形式化・証明済みのこと．**
 
-- 上記 projection judgment と exact merge の Lean／論文上の帰納的定義
-- projection と merge の決定性，clause／field 順序独立性，健全性
+- partial evidence，`unseen` を中立元とする exact merge，finalization
+- merge の結合性・可換性，clause evidence の任意 `List.Perm` 不変性
+- supplied finite dependency graph に対する observability の least fixpoint，
+  seedless recursive-only parameter と seed propagation
+- normalized / fresh / zonked signature を入力境界とする projection，重複 occurrence
+  の exact agreement，target substitution の非 seed 性
+- field 型と child evidence のペアを同時に置換したときの，成功・失敗を含む
+  certified projection の任意 `List.Perm` 不変性
+- projection の全 stage の特徴付けと，成功結果の root が result signature と一致する
+  soundness
+
+**引き続き残ること．**
+
+- raw datatype／constructor 宣言から observability graph と frozen
+  `ProjectionSignature` を構築し，fresh instantiate／zonk を保証する前段
+- clause 構文から projection 入力 evidence を生成する既存 calculus との接続
 - exact-evidence calculus に相対的な一意性／主要性の定理
-- D5 で決める signature normalization 境界を projection の head equality へ接続する
+- D5 の canonical former ID／arity 検証を projection の head equality へ接続する証明
 
 **完了条件．** signature-directed な投影を含む合成が決定的で，annotation や target
 型から capability を作らず，catch-all-only が必ず `•` になり，observable position
 の未確定と exact mismatch を拒否し，unobservable position を canonical `•` とし，
 採用する相対的主要性命題を明示して示せること．
 
-### D2：型付けと `CoverageOK` を運ぶ二層の形式化（設計方針決定済み）
+### D2：`CoverageOK` 必須の source typing と runtime invariant（設計方針決定済み）
 
-**決定．** coverage だけを切り替える mode を置き，式，値，環境，matching state の
-全判断へ同じ mode を通す．
+**現在の決定．** formal-core source typing に coverage mode は置かず，matcher
+literal の規則は actual clause list に対する `CoverageOK` を常に要求する．partial
+matcher も structured `ShapeCap` の候補までは推論できるが，必要な general clause が
+一つでも欠ければ source typing と W は失敗する．full Egison は同じ不足を warning
+として受理してよいが，その warning-only language は core safety の対象外である．
+
+runtime 証明内部には既存の `ordinary`／`covered` index を残してよい．ただし source
+から新規構成する certificate は covered に限り，ordinary は coverage proof を忘れる
+erasure／weakening の結論にだけ使う．`CoreSpecWF.certify`／`literalValueTy` も
+covered-only とし，裸の `RuntimeSpec` は source acceptance の根拠にしない．
+
+**旧二-mode source 案（撤回）．** 以前は coverage だけを切り替える mode を置き，
+式，値，環境，matching state の全判断へ同じ mode を通す案を採っていた．
 
 ```text
 q ::= ordinary | covered
@@ -1209,12 +1334,11 @@ MatcherWF_q Γ cls κ τ :=
   ∧ ArmBindNodup cls
 ```
 
-したがって `ordinary` は partial matcher を structured capability のまま受理し，
-`covered` は同じ導出の全 matcher literal に `CoverageOK` を追加要求する．warning
-の有効・無効はどちらの導出，capability，`CoverageOK` 証拠にも影響しない．
-`covered` は，partial matcher を作るが実行しない branch も拒否する保守的な
-syntactic subset とする．安全性定理へ高階の使用点解析を持ち込まないための
-意図的な境界である．
+この旧案では `ordinary` が partial matcher を structured capability のまま受理し，
+`covered` だけが全 matcher literal に `CoverageOK` を追加要求していた．これは現在の
+formal-core source には採用しない．以下の mode-indexed 記述は，runtime の covered
+certificate とその ordinary erasure の関係，および coverage 不足を受理すると安全性が
+失われる反例を記録するものとしてだけ読む．
 
 **coverage 非依存の最終 catch-all．** 現行 Lean の `holeAfterGenerals` は
 Coverage が要求する全 general clause を各 bare-hole より前に要求するため，mandatory
@@ -1257,7 +1381,8 @@ capability の子へ再帰しない．分解後に得る next matcher 自身の 
 `List` の未被覆 constructor を引き続き報告できる．
 
 **runtime への再帰的な輸送．** root matcher 値へ `CoverageOK` を一枚足すだけでは
-不十分である．次の判断も mode-indexed にする．
+不十分である．次の判断は実装上 mode-indexed にしてよいが，source から構成するのは
+常に `covered` 側である．
 
 ```text
 ValueTy_q
@@ -1269,6 +1394,8 @@ WTStack_q
 WTState_q
 ```
 
+`ordinary` は covered derivation から coverage proof を忘れる一方向の内部 erasure に
+限り，ordinary から covered へ値を注入する規則や，ordinary source typing は置かない．
 `covered` では，data／tuple 内の全成分，product matcher の全成分，slot の元 matcher，
 closure の body と captured environment，matcher literal の定義環境を再帰的に
 covered とする．`something` は capability `•` なので covered である．
@@ -1281,8 +1408,8 @@ covered とする．`something` は capability `•` なので covered である
 へ届いて stuck する．したがって `MatcherOK` だけを強め，通常の `EnvTyped` や
 slot-value invariant を再利用する案は採らない．
 
-**通常層では matching-state Preservation も一般には成り立たない．** 二つの
-nullary constructor `A`，`B` を持つ `T` に対し，
+**ordinary acceptance を採らない理由．** 二つの nullary constructor `A`，`B` を
+持つ `T` に対し，
 
 ```text
 partialT =
@@ -1293,8 +1420,9 @@ partialT =
         | $tgt -> [tgt]
 ```
 
-は `A` により `T`-headed `ShapeCap` を持つが，`B` の general clause を欠く．
-`ordinary` では受理される．`B` pattern へ適用すると，`A` 節の失敗後に final
+は `A` により `T`-headed `ShapeCap` の候補を持つが，`B` の general clause を欠く．
+formal-core source typing はこれを拒否する．旧 ordinary または full Egison の
+warning-only 経路で受理して `B` pattern へ適用すると，`A` 節の失敗後に final
 catch-all が成功し，
 
 ```text
@@ -1303,10 +1431,12 @@ catch-all が成功し，
 ```
 
 という一歩は存在する．しかし後続 atom では `something` の `•` が `T` constructor
-要求を満たさず，well-typed state でなく，次の step もない．したがって通常層には
-Progress だけでなく，無条件の matching-state Preservation も主張しない．
+要求を満たさず，well-typed state でなく，次の step もない．したがって ordinary
+erasure を source acceptance へ逆向きに使ってはならず，`partialT` は source typing と
+W の負の回帰にする．
 
-通常層に残す定理は，完了した big-step evaluation に対する partial correctness と，
+以下は旧二-mode案で ordinary 層に残そうとしていた，完了した big-step evaluation に
+対する partial correctness と，
 既存 Lean の `ExclInv` に相当する局所条件を明示した次の保存である．以下の表示では
 coverage だけの差を見せるため，R10 の非 Coverage 前提，すなわち P1 の
 `CaptureAdm(D)`／型付き evaluation oracle，signature well-formedness，fresh-leaf
@@ -1334,12 +1464,12 @@ BaseAdm(Step derivation)
 clause が現在の接尾辞で bare-hole より前に残ることを要求する．state-level では
 step derivation を再帰して MNode 内部の現在の atom にも同じ局所条件を要求する．
 これは既存 Lean の atom-level `ExclInv` を MNode step まで持ち上げる定義である．
-普通の partial matcher でも，実際に covered な shape だけを通る局所 step には
-この定理を使える．現在の
+warning-only language の partial matcher でも，実際に covered な shape だけを通る
+局所 step にはこの補助定理を使えるが，formal core の完了条件には含めない．現在の
 「全 step の型付き state 保存」を経由する big-step proof は通常層には使えないため，
 完了した `Search` 導出へ直接帰納する partial-correctness proof に組み替える．
 
-**安全層の定理．** pattern typing／one-way compatibility により現在の pattern head
+**formal-core の定理．** pattern typing／one-way compatibility により現在の pattern head
 が matcher capability から到達することを示した上で，
 `CoverageOK + CatchAllLast` から `DispatchOK` を導く．runtime の covered invariant
 から各 successor matcher の covered 性を得る．したがって，R10 の同じ
@@ -1355,15 +1485,15 @@ BaseAdm(Step derivation)
 WTState_covered s
 s is nonterminal
 CaptureAdm s
-StepTotal s
+StepReady s
 BaseAdm(progress interfaces)
 ────────────────────
 ∃ ss, Step s ss
 ```
 
-reachable-state safety，terminal substitution typing，Type Safety も covered
-subset に限定する．P2 実装後は capability-admissibility を前提から除くが，P1 の
-capture-admissibility と `StepTotal` は残る．branch list が空であることは従来どおり
+reachable-state safety，terminal substitution typing，Type Safety も source typing
+から構成した covered invariant 上で示す．P2 実装後は capability-admissibility を前提から除くが，P1 の
+capture-admissibility と `StepReady` は残る．branch list が空であることは従来どおり
 正当な match failure である．
 
 **実装・証明として残ること．**
@@ -1373,13 +1503,14 @@ capture-admissibility と `StepTotal` は残る．branch list が空であるこ
   capability substitution での保存
 - pattern typing／one-way head compatibility と `CoverageOK + CatchAllLast` から
   `DispatchOK` を導く補題
-- mode-indexed fundamental theorem と全到達 matcher の covered 性
-- ordinary completed-evaluation partial correctness と `DispatchOK` 付き局所保存
+- mode-indexed runtime fundamental theorem と，全 source derivation が covered 側へ
+  入ること
 - covered state Preservation，Progress，Type Safety
-- 上の `partialT` と，covered outer／partial child の Lean 回帰
-- Egison の strict covered checker／certificate の soundness
+- 上の `partialT` と，covered outer／partial child を source typing／W が拒否する
+  Lean 回帰
+- full Egison の warning-only 経路を formal-core certificate と混同しない境界
 
-現行 Egison は default ordinary checker として，Coverage を opt-in warning，
+現行 Egison は Coverage 不足を warning とし，
 catch-all 後の clause と top-level arm 非網羅を hard error にしている．ただし
 `inferInMatcherBody` 中では Coverage warning だけでなく arm exhaustiveness まで
 抑制しているため，nested／generated matcher でも後者を通常 error に直す必要がある．
@@ -1390,10 +1521,10 @@ covered certificate として使わず，capability finalization 後の semantic
 引数，imported value，trusted primitive は literal 走査だけでは足りないので，
 mode-indexed scheme／`EnvTyped_covered` certificate を module boundary で要求する．
 
-**完了条件．** 上記二 mode，coverage 非依存の `MatcherWF`，再帰的 runtime
-invariant，通常層の partial correctness／条件付き局所保存，covered 層の
-Preservation／Progress／Type Safety が定義されていること．設計判断はここまでで
-固定し，残りは形式化・実装課題とする．
+**完了条件．** `CoverageOK` 必須の単一 source typing，coverage 非依存の
+`CatchAllLast`，再帰的な covered runtime invariant，証明内部の ordinary erasure，
+Preservation／Progress／Type Safety が定義されていること．設計判断はここまでで固定し，
+残りは形式化・実装課題とする．
 
 ### D3：二種 HM generalization と substitution threading（設計方針決定済み）
 
@@ -1427,11 +1558,20 @@ bad = something
 `∀p a. MatcherSlot p a -> Matcher (List p) (List a)` は，通常の parametric な
 二種 HM scheme として一般化できる．
 
-**Lean で検証すること．** 二種 substitution の kind preservation・合成・相互非干渉，
-W が返す substitution の全 occurrence への伝播，二種 `Gen`／`Inst` の健全性，
-annotation skolem の non-escape，`EnvTyped` が scheme の全 instance を満たすこと，
-Algorithm W の健全性・完全性・最汎性を示す．そこから `mPoly`，`f`，
-`list something`，let，高階関数，tuple，データ格納を通した到達可能な matcher value の
+**独立 Lean core で検証済みのこと．** capability／target の別 sort・別 binder，
+二種 substitution の作用と正しい cross-sort 自然性，target range-fixed 条件つき
+composition，無条件可換性の反例，二種 `Gen`／`Inst` の support 境界，
+producer-stable one-way match の実行可能手続きと健全性／完全性を証明した．
+annotation は local meta と environment-owned meta の非共有，生成 skolem と ambient／
+推論型中 skolem の freshness を高水準 API の premise とし，ID collision を拒否する
+回帰まで証明した．runtime core では intrinsic capability の一意性と，prevailing
+substitution を積全体で共有して解決後の値型付けへ運ぶ slot 不変量を証明した．
+
+**引き続き Lean で検証すること．** W が返す substitution の全 occurrence への伝播，
+既存 calculus 上の二種 `Gen`／`Inst` の健全性，`EnvTyped` が scheme の全 instance を
+満たすこと，Algorithm W の conditional reconstruction soundness を示す．そこから
+`mPoly`，`f`，`list something`，let，高階関数，tuple，データ格納を通した
+到達可能な matcher value の
 能力非強化と，P2 に由来する `capability-admissible` 仮定の除去を導く．
 
 一般再帰による発散項が任意型を持ち得ても，matcher value を生成せず到達しない限り
@@ -1444,7 +1584,13 @@ Algorithm W の健全性・完全性・最汎性を示す．そこから `mPoly`
 多相を保ったまま全 value-flow 経路で到達可能な matcher value の能力強化を拒否し，
 `capability-admissible` 仮定を除去できること．
 
-### D4：再帰 matcher の capability 推論（設計方針決定済み）
+### D4：再帰 matcher の capability 推論（core は direct-self）
+
+この節は general producer flow の設計履歴も保存するが，formal core に含めるのは
+既存の `Expr.fix` で表せる singleton direct-self だけである．alias，transform，
+相互 SCC，高階 application を通る origin reconstruction は Egison integration／
+language extension へ移した．以下の一般 graph／summary 設計を実装・証明しなくても
+P2 formal core は完了できる．
 
 **決定．** 再帰 binding 自体には，通常の HM の単相再帰規則をそのまま使う．
 capability 注釈を必須にせず，多相再帰も導入しない．各 recursive binder は SCC 内で
@@ -1756,25 +1902,26 @@ RHS 間へ substitution を thread する joint SCC inference に置き換える
 generalization を使う．固定回数で代入を適用する `applySubstRecursively ... 5` は，
 occurs check 済みの acyclic substitution を完全に zonk する処理へ置き換える．
 
-**形式化・証明として残ること．**
+**Formal core で形式化・証明として残ること．**
 
-- singleton `fix` に対する二種 W の健全性，完全性，主要性と mono lookup identity
-- Shape solver の停止性，健全性，完全性，最小性，決定性，順序独立性
-- seedless cycle の非生成，seed propagation，exact mismatch，structural occurs check
+- singleton `fix` に対する二種 W の conditional soundness と mono lookup identity
+- direct-self evidence fold の停止性，決定性，seedless cycle の非生成，
+  seed propagation，exact mismatch
 - target substitution に対する generation obligations の不変性，通常 capability
   substitution と Shape solution の合成保存
-- protected node／`Rec` の non-escape，finalization-before-generalization，
+- direct-self placeholder の non-escape，finalization-before-generalization，
   annotation／consumer demand の non-seeding
-- well-formed／`FlowOK` な入力に対する producer-flow normalization
-  `R ; Δ ⊢ Φ ⇓ d` の全域性，決定性，port substitution preservation，
-  `Rec`／`Literal` から `Ref` への source preservation
 - 再帰を含む到達可能な matcher value の capability 非強化
 
-**完了条件．** 標準再帰 matcher の capability が D1 の exact-evidence calculus に
-相対的に principal かつ annotation なしで一意に推論され，自己参照，結果注釈，
-consumer demand から能力を循環的に捏造できず，annotation あり／なしの推論結果が
-整合すること．Lean core の singleton 規則について上記性質を証明し，Egison の
-相互再帰 SCC について同じ solver と回帰を実装すること．
+一般 Shape graph の最小解，producer-flow normalization，port substitution，
+binder–RHS knot，相互 SCC，structural-growth cycle は拡張側の義務である．
+
+**Formal core の完了条件．** singleton direct-self matcher について二種 W の成功から
+宣言的導出を再構成でき，D1 の exact-evidence calculus が同じ genuine evidence から
+決定的な結果を返し，自己参照，結果注釈，consumer demand から能力を循環的に
+捏造できず，annotation あり／なしの成功結果が整合すること．W の completeness や
+principal type は主張しない．Egison の相互再帰 SCC と一般 producer flow はこの
+完了条件に含めないが，`list`／`multiset` の core-facing direct-self 回帰は含める．
 
 ### D5：`CapTargetOK` の正規化境界
 
@@ -1836,9 +1983,9 @@ alias SCC 検査で自己 cycle とみなさず，展開もしない．検証後
 
 **open な `CapTargetOK`．** `CapTargetOK` はすべての型構文の formation condition
 ではなく，到達可能な matcher／slot 値の不変量であるという既決定を維持する．
-`list` のような open combinator を検査するため，入力の同じ mode で well-typed な
-matcher／slot 値（`ordinary` でも `covered` でもよい）から得た対応を仮定集合 `Ξ`
-に置く context-relative relation として定義する．
+`list` のような open combinator を検査するため，入力の covered runtime typing を持つ
+matcher／slot 値から得た対応を仮定集合 `Ξ` に置く context-relative relation として
+定義する．ordinary typing はその covered derivation の内部 erasure としてだけ得る．
 
 ```text
 (κ, τ) ∈ Ξ
@@ -1871,9 +2018,9 @@ variable を無条件に対応させる規則は置かない．`MatcherSlot p a`
 得られ，全 component が空 context で整合する closed tuple／product も空 context で
 合成できる．一方，`list` 本体の literal や slot 由来 component を含む
 tuple／product は ambient `Ξ` を `ValueTy` の構成規則へ保存・合成する．
-trusted primitive／foreign value は，`ordinary`／`covered` の双方で
-`CapTargetOK` certificate を要求し，`covered` environment へ登録するときだけ
-追加で D2 の Coverage certificate を要求する．
+trusted primitive／foreign value は `CapTargetOK` certificate を要求し，formal-core
+environment へ登録するときは D2 の Coverage certificate も要求する．ordinary runtime
+typing は登録入口ではなく，covered certificate の内部 erasure に限る．
 
 任意の独立な capability substitution `S_κ` と target substitution `S_τ` に対する
 保存は偽である．例えば対応を仮定した `χ` と `α` を異なる structured head へ独立に
@@ -1897,14 +2044,25 @@ target MGU が作る整列済み substitution，同 mode の input 仮定を使�
 通常 target substitution や consumer demand から capability を逆算する規則は
 置かない．
 
-**D5-core の実装・証明として残ること．**
+**独立 Lean core で実装・証明済みのこと．**
 
-- alias graph 検証と `reprNF_A` の停止性，冪等性，kind／arity 保存，可換性
-- canonical signature environment の freeze と import 境界
-- context-relative `CapTargetOK` の決定的な closed fragment
-- coupled-substitution lemma と matcher／slot `ValueTy` からの証拠回収
-- semantic normalization が canonical head equality へ混入しない回帰
-- trusted environment certificate の検査
+- 検証・freeze 済みの nullary transparent alias table を入力とする構造的 `reprNF` と
+  冪等性，matcher／slot capability の非変更
+- Tensor flattening と CAS ground equivalence が `reprNF` に混入しない回帰
+- context-relative な syntactic `CapTargetOK`，仮定 context を一緒に運ぶ
+  coupled substitution，closed target specialization
+- runtime matcher／slot 値からの `CapTargetOK` 回収
+
+**実装拡張として残ること．**
+
+- raw alias graph の cycle／unknown head／collision／kind／arity validator と，
+  canonical signature environment の freeze／import 構築
+- canonical range 条件を伴う `reprNF` と coupled substitution の統合補題
+- closed fragment の実行可能な決定手続きと trusted environment certificate の検査
+
+Formal core は検証・freeze 済みで canonical な `Σ̂` と alias table を入力に取り，
+その入力上の `reprNF`，`CapTargetOK`，coupled substitution だけを証明する．したがって
+raw validator，import 構築，trusted environment の実装は P2 の完了条件ではない．
 
 #### D5-CAS：target-indexed pattern-view signature（設計 blocker）
 
@@ -1965,9 +2123,9 @@ Coverage，target-index projection は target-indexed signature table が決め�
 - `groundEquiv` または単純な `ViewHead` で穴を埋めない
 - D5-core の canonical equality は strict なまま保つ
 - `factor`／`term` など view mismatch を持つ CAS matcher は，証明付き
-  target-indexed pattern signature が導入されるまで
-  P2 の certified `ValueTy`／`EnvTyped`（ordinary／covered の双方）と
-  trusted environment の外に置く．legacy runtime で動くことを型定理の証拠にしない
+  target-indexed pattern signature が導入されるまで P2 の covered
+  `ValueTy`／`EnvTyped` と trusted environment の外に置く．legacy runtime で動くことを
+  型定理の証拠にしない
 - 将来拡張は D1 の projection，D2 の Coverage，`CapTargetOK` の三者へ同じ
   canonical view signature を渡す
 
@@ -1977,12 +2135,11 @@ SymbolSet など異 kind の target indices から capability-visible indices �
 である．view-qualified ID という初期 resolution 境界は固定するが，この三点を決めずに
 standard matcher 全体の `CapTargetOK` を主張することはできない．
 
-**完了条件．** D5-core について上の normalization と coupled-substitution 性質を
-形式化すること．D5-CAS について target-indexed signature interface，view-qualified
-resolution，kind-aware index projection，`Factor`／`Term`／`Frac`／`Poly` の
-signature instances と runtime preservation を定義し，standard matcher の全型が
-strict canonical environment で
-`CapTargetOK` と必要な `CoverageOK` を満たすこと．
+**Formal core の完了条件．** freeze 済み非 CAS 入力について，構文的
+canonicalization，context-relative `CapTargetOK`，coupled-substitution preservation
+を形式化すること．D5-CAS の target-indexed signature interface，view-qualified
+resolution，kind-aware projection，具体的 CAS signatures，runtime preservation，
+standard matcher 移行は独立した language extension の完了条件である．
 
 ### 実装時に選べる表現上の詳細
 
@@ -1998,7 +2155,10 @@ strict canonical environment で
   origin tag，union-find のどれで保持するか
 - finalized typed AST の再検査を debug assertion として実行するか
 
-## 実装順
+## Egison integration／extension の実装順
+
+以下は実装履歴と将来の拡張順序を記録するもので，すべてを formal core 完了前に
+終える必要はない．
 
 1. capability syntax／kind と二添字 `Matcher`／`MatcherSlot` を追加する．
 2. free variables，二種 substitution，全代入適用後の generalize，scheme instantiate，
@@ -2015,8 +2175,8 @@ strict canonical environment で
    `ShapeCap` を合成する．
 9. 形式用の `CoverageOK` を `ShapeCap` から独立に定義し，Egison では既存の
    target-based Coverage warning を維持する．
-10. `CatchAllLast` と `ordinary`／`covered` の mode-indexed source／value／
-    environment／state judgments，strict covered certificate checker を実装する．
+10. `CatchAllLast` と `CoverageOK` 必須の単一 source judgment を実装し，runtime の
+    value／environment／state には covered invariant と内部 erasure を実装する．
 11. 再帰 binding を通常の単相 HM SCC 推論へ統一し，RHS 間へ二種 substitution を
    thread する．producer-flow summary，first-order evidence への正規化，
    binder–RHS generation knot，matcher literal の protected generation node，
@@ -2054,12 +2214,11 @@ strict canonical environment で
 - canonical range を持つ aligned substitution は context-relative `CapTargetOK` を
   保存し，異なる head を入れる独立 substitution を拒否する
 - `list` 本体の parameterized matcher literal は空 `Ξ` でなく，slot argument の
-  `ValueTy` が与える `(p,a)` を使い，ordinary／covered の同じ mode で証拠を合成する
-- mismatched structured matcher を返す foreign／trusted value は ordinary
-  `CapTargetOK` certificate を得られず，covered 登録にはさらに Coverage certificate
-  が必要になる
+  covered `ValueTy` が与える `(p,a)` を使って証拠を合成する
+- mismatched structured matcher を返す foreign／trusted value は `CapTargetOK`
+  certificate を得られず，formal-core 登録にはさらに Coverage certificate が必要になる
 - `mathValue` のように strict signature と target が整列する matcher は受理し，
-  `factor`／`term` は view signature がない段階では ordinary／covered の双方で拒否する
+  `factor`／`term` は view signature がない段階では formal core で拒否する
 - `Factor.symbol`／`Term.term` の view-qualified ID は clause 自体から capability
   evidence を与え，expected target／result annotation だけでは view を選ばない
 - `Term.term` view は coefficient capability を `TermCap p` へ投影し，
@@ -2074,16 +2233,16 @@ strict canonical environment で
 - Coverage warning の有効・無効で推論 capability が変わらない
 - catch-all-only literal は Coverage の診断設定にかかわらず `•` のまま
 - catch-all-only の structured target に対する既存の target-based warning を維持する
-- full Coverage を持つ matcher が `CoverageOK` の安全な部分集合に入る
+- full Coverage を持つ matcher だけが formal-core source typing の `CoverageOK` を満たす
 - partial matcher の未被覆 constructor 利用を，定義済みの空結果と誤認しない
-- D2 の `partialT` は ordinary で受理し，`B` への一歩が
-  `B-pattern × something` という ordinary 非整型 state を作る反例を固定する
-- 同じ `partialT` を covered では拒否し，covered derivation erasure は ordinary
-  derivation を返す
+- D2 の `partialT` は source typing と W で拒否し，warning-only に受理すると
+  `B-pattern × something` という非整型 state を作り得る反例を固定する
+- covered runtime derivation の ordinary erasure は得られるが，その逆向きや ordinary
+  certificate からの source acceptance は存在しない
 - root が covered な outer matcher でも partial child を slot／captured environment
-  から返す定義を covered では拒否する
+  から返す定義を formal-core source typing で拒否する
 - nested／generated matcher の arm 非網羅は Coverage warning 設定にかかわらず
-  ordinary error にする
+  error にする
 - constructor／tuple-headed refinement-only clause からも partial `ShapeCap`
   evidence を得られる
 - refinement の `_`／`#$x` は `•` でなく `unseen` を与え，他の証拠を弱めない
@@ -2174,47 +2333,53 @@ strict canonical environment で
 
 ## 証明義務
 
-- capability／target の二種代入の反射性，合成，改名不変性，相互非干渉
-- capability one-way の健全性，完全性，一意性
+### 非 CAS formal core
+
+- capability／target の二種代入の反射性，合成，改名不変性と，target 代入が既存
+  capability を強化しないこと
+- producer-stable capability one-way の健全性，完全性，witness の一意性
+- actual clause からの evidence generation，signature-directed projection，
+  exact merge，finalization の健全性・決定性・順序独立性と，D1 calculus に相対的な
+  `ShapeCap` の主要性
+- target substitution 下で clause evidence／`ShapeCap`／`CoverageOK` が不変であること
 - Algorithm W が返す `S_κ`／`S_τ` を結果型，環境，残余制約，後続推論へ適用する
   substitution-threading invariant
-- 全 substitution 適用後の二種 `Gen`／`Inst` の健全性，instance relation の
-  反射性・推移性，annotation skolem の non-escape
-- signature-directed projection と exact merge の健全性，決定性，field／clause
-  順序独立性，D1 の exact-evidence calculus に相対的な主要性
-- 通常の単相再帰 W の健全性，完全性，主要性，SCC 内 mono lookup identity，
-  SCC 外 generalization
-- Shape generation solver の停止性，健全性，完全性，最小性，決定性，
-  clause／SCC 順序独立性
-- seedless recursive cycle の非生成，seed propagation，exact mismatch，
-  structural-growth cycle の occurs-check rejection
-- 通常 substitution と Shape solution の合成保存，protected generation node の
-  non-escape，finalization-before-generalization，annotation／consumer demand の
-  non-seeding
-- producer-flow summary の expression typing に対する健全性，lambda／application の
-  summary substitution，well-formed 入力上の `R ; Δ ⊢ Φ ⇓ d` の
-  全域性・決定性・source preservation，binder–RHS knot の方向保存，
-  trusted summary を持つ `EnvTyped` の健全性
-- summary path が full `Matcher κ τ` occurrence を指し，port／`K` transform 後も
-  context-relative `CapTargetOK` を保つ `FlowTargetOK`
-- matcher 値についての context-relative `CapTargetOK`，allowlist `reprNF`，
-  整列済み coupled substitution に対する preservation
-- target substitution 下での `ShapeCap` と `CoverageOK` の不変性
-- capability substitution 下での parameterized `ShapeCap`／`CoverageOK` の保存
-- slot-value invariant と canonical forms
-- Structural-Hole Transfer の capability 版
-- `EnvTyped` が全二種 instance を満たす一般化補題
-- Algorithm W の健全性，完全性，最汎性
-- `mPoly`，`f`，`list something`，let，高階関数，tuple，データ格納を通した
-  到達可能な matcher value の能力非強化
-- covered-to-ordinary erasure と mode-indexed fundamental theorem
-- pattern typing／one-way head compatibility と
+- 全 substitution 適用後の二種 `Gen`／`Inst`，annotation skolem non-escape，
+  `EnvTyped` が scheme の全二種 instance を満たす一般化補題
+- 二種 Algorithm W の conditional reconstruction soundness
+- `mPoly`，`f`，`list something`，lambda，application，let，高階関数，tuple，
+  データ格納を通した到達可能な matcher value の能力非強化
+- singleton direct-self の単相 W／mono lookup identity，自己参照の non-seeding，
+  seedless cycle，seed propagation，exact mismatch，finalization-before-generalization
+- matcher／slot 値の context-relative `CapTargetOK`，coupled substitution 保存，
+  intrinsic capability，slot-value invariant，canonical forms
+- covered-to-ordinary erasure，Structural-Hole Transfer の capability 版，
   `CoverageOK + CatchAllLast` からの `DispatchOK`
-- R10 の `BaseAdm` 下での ordinary completed-evaluation partial correctness，
-  `DispatchOK` 付き局所保存，covered Preservation／Progress／Type Safety
-- CAS target-indexed pattern-view signature の field typing，Coverage，
-  runtime extraction preservation
-- P2 に由来する `capability-admissible` 仮定の除去
+- P1 の capture admissibility と `StepReady` を明示した coverage-required core の
+  Preservation／Progress／Type Safety
+- 上記から P2 に由来する `capability-admissible` 仮定を除去すること
+
+`CoreSpecWF` では，静的 `SourceCtx` 下の checker で actual clause list から evidence
+を一対一に集め，`Shape.inferShape` の結果を runtime invariant へ接続するところまで
+証明済みである．checker の明示引数には target 型や runtime environment はないが，
+`SourceCtx` の target/runtime 純粋性は concrete instantiation の義務である．
+`literalTyped`，clause ごとの evidence checker，`CoverageOK`，捕獲環境を再実現する
+`substAdmissible`，および静的環境・捕獲環境を運ぶ `literalSubstitute` は
+[`../tex/main.tex`](../tex/main.tex) の仕様草案を論文英日版と concrete Lean source
+rules へ反映して実装・放電する premise であり，この相対定理だけでは上の core Type Safety を
+満たさない．
+
+### Egison integration／language extension
+
+次は formal core の証明義務ではない．
+
+- alias・transform・相互再帰・高階 application を通る producer-flow summary，
+  binder–RHS knot，first-order normalization，`FlowTargetOK`
+- raw declaration からの graph／signature／alias validator と freeze／import
+- ordinary Coverage warning，certified mode，module certificate，load-unit persistence
+- D5-CAS target-indexed pattern-view signature の field typing，Coverage，
+  kind-aware projection，runtime extraction preservation
+- CAS standard matcher と全既存ライブラリの移行
 
 ## 今回固定したことと残る詳細
 
@@ -2241,15 +2406,14 @@ strict canonical environment で
 - partial matcher も structured `ShapeCap` を持ち，Coverage warning の有効・無効は
   capability を変更しない
 - `CoverageOK` は `ShapeCap` と独立な安全性条件として capability 側で検査する
-- `ordinary`／`covered` の mode-indexed typing を置き，`CoverageOK` は後者の
-  全 matcher literal にだけ要求する
+- formal-core source typing は単一とし，`CoverageOK` を全 matcher literal に要求する
 - coverage 非依存の clause 条件には，唯一の canonical bare-hole catch-all が最終に
   ある `CatchAllLast` を用い，Coverage 依存の `holeAfterGenerals` は削除する
-- `ValueTy`，`EnvTyped`，slot，closure，data／tuple，matching state へ mode を
-  再帰的に通し，covered な outer matcher が partial child を隠せないようにする
-- 通常層には無条件の matching-state Preservation／Progress を主張せず，
-  `DispatchOK` 付き局所保存と完了評価の partial correctness だけを置く
-- Preservation，Progress，Type Safety は covered subset に限定する
+- runtime の `ValueTy`，`EnvTyped`，slot，closure，data／tuple，matching state には
+  mode を再帰的に通してよいが，source からは covered 側だけを構成し，ordinary は
+  内部 erasure に限る
+- Preservation，Progress，Type Safety は coverage-required source calculus から
+  構成した covered invariant 上で示す
 - next matcher の構造検査は capability 側で行う
 - data pattern，arm，next target の整合は target 側で行う
 - `f [1,2]` 自体は許可し，constructor use site で拒否する
@@ -2283,48 +2447,72 @@ strict canonical environment で
 - open combinator の `CapTargetOK` は実 slot 値由来の仮定 context で導き，
   任意の独立代入でなく仮定を保つ coupled substitution に対して保存する
 
-### 残る設計判断
+### Formal core 外に分離した設計判断
 
 - D5-CAS：`Factor`／`Term` などへ target-indexed pattern-view signature を与える
   view-qualified constructor ID，kind-aware index projection，constructor／field
   signature，runtime preservation
+- 一般 D4：alias／transform／相互再帰／高階 application を通る producer origin と
+  binder–RHS generation knot
+- raw declaration validator，frozen signature の import／永続化，Egison certified
+  mode と module certificate
 
-D1 の projection／tuple／merge／observability，D3 の二種 HM generalization／
-substitution threading／skolem checking，D4 の通常単相再帰／Shape generation
-solver，D2 の二層判断，D5-core の strict normalization／coupled substitution の
-設計判断は固定したが，形式化と証明は未実施である．D5-CAS は単純な head view や
-`groundEquiv` では child capability を保存できず，pattern signature 自体の再設計が
-必要な blocker として残る．各課題の現状，採用方針，完了条件は上の
-「残る設計課題と形式化課題」に記録した．専用 ADT か kind 付き変数か，表面表示，
-診断，型消去などは，これらを変えない表現上の詳細である．
+D1 の exact merge／finalization／observability least fixpoint／certified projection，
+D3 の二 sort 構文・代入・scheme・fresh-skolem annotation kernel，
+D2 の covered runtime matcher／slot fragment と内部 erasure，D5-core の frozen-input
+`reprNF` と syntactic `CapTargetOK`／coupled substitution は `TypePM/P2/` の独立層で形式化・
+証明済みである．`CoreSpecWF` により actual clause evidence と covered runtime
+invariant の最小接続も追加した．具体的な source rules は
+[`../tex/main.tex`](../tex/main.tex) の仕様草案に整理した段階であり，論文英日版への
+反映，その Lean judgment への実装，既存
+`HasTy`／`ValueTy`／matching state／Algorithm W への二添字 core 移行と core type
+safety は formal core の未実施部分である．raw validator，一般 D4，
+Egison certified mode，D5-CAS は実装拡張として分離した．D5-CAS は単純な head view
+や `groundEquiv` では child capability を保存できず，pattern signature 自体の再設計が
+必要である．
+各課題の現状，採用方針，完了条件は上の各節に記録した．専用 ADT か kind 付き変数か，
+表面表示，診断，型消去などは，これらを変えない表現上の詳細である．
 
 ## 受入条件
 
-- [ ] capability sort と target type sort が形式的に定義されている．
-- [ ] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
+### 非 CAS formal core
+
+`[x]` は独立した代数層または `CoreSpecWF` 相対で満たした項目を表す．
+`[ ]` は論文へ反映する source calculus と core safety を含む formal core の残件である．
+
+- [x] capability sort と target type sort が形式的に定義されている．
+- [x] `Matcher κ τ`／`MatcherSlot κ τ` の kinding と，
       matcher 値の `CapTargetOK` 不変量が定義されている．
-- [ ] matcher literal の `ShapeCap` 合成規則と主要性の主張範囲が定義されている．
-- [ ] fresh instantiate 後の result argument slot への projection が direct
+- [x] actual clause ごとの決定的 evidence checker を受ける `CoreSpecWF`，
+      clause/evidence の一対一対応，`Shape.inferShape` から covered runtime
+      matcher invariant への接続，Ξ-closed certificate の admissible target
+      specialization による非強化が定義・証明されている．
+- [ ] [`../tex/main.tex`](../tex/main.tex) の仕様草案に整理した actual
+      clause-evidence 規則を論文英日版へ反映し，Lean judgment として実装し，
+      `CoreSpecWF` の `clauseEvidence`，`substAdmissible`，
+      `literalSubstitute` をその規則から放電し，`SourceCtx` が target-derived seed
+      を含まないことを示す．
+- [x] matcher literal の `ShapeCap` 合成規則と exact-evidence calculus の
+      順序独立性・成功 capability の一意性，および主要型を主張しない境界が
+      [`../tex/main.tex`](../tex/main.tex) の仕様草案と独立 Lean 代数層で固定されている．
+- [x] fresh instantiate 後の result argument slot への projection が direct
       occurrence，product，capability-visible former，opaque／function barrier，
       ground branch，重複 occurrence について定義され，`unseen` と既知 head
       mismatch を区別している．
-- [ ] capability-visible path による parameter observability の least-fixpoint 規則，
+- [x] capability-visible path による parameter observability の least-fixpoint 規則，
       opaque／function barrier，recursive-only parameter と canonical `•` が
       signature-directed lift と `ShapeCap` finalization に反映されている．
-- [ ] `CoverageOK` が `ShapeCap` と独立に定義され，partial matcher の受理，
-      target-based warning，`ordinary`／`covered` の再帰的 runtime invariant，
-      安全な部分集合の定理境界が固定されている．
-- [ ] alias-free canonical signature environment，allowlist `reprNF`，
+- [ ] [`../tex/main.tex`](../tex/main.tex) の仕様草案で `ShapeCap` と独立に整理した
+      `CoverageOK` 必須の単一 source typing を論文英日版と Lean source judgment へ実装し，機械化済みの
+      mode-indexed runtime invariant の covered 側に接続して core safety を証明する．
+- [x] alias-free canonical signature environment，allowlist `reprNF`，
       context-relative `CapTargetOK`，coupled substitution preservation が
-      定義されている．
-- [ ] CAS target-indexed pattern-view signature と runtime extraction preservation
-      が定義され，`Factor`／`Term` などの標準 matcher が strict D5-core と整合する．
+      検証済み入力を受ける core として定義されている．
 - [ ] 二種 Scheme／Subst／Inst，全 substitution 適用後の通常 HM generalization，
       flexible meta／rigid skolem，witness 伝播を持つ Algorithm W が定義されている．
-- [ ] 通常の単相再帰 W，別系統の Shape generation obligation／least-evidence solver，
-      producer-flow summary とその first-order evidence への正規化，
-      binder–RHS knot，finalization 後の
-      demand／annotation checking，SCC 外 generalization が定義されている．
+- [ ] singleton direct-self の単相 W，Shape generation obligation，自己参照の
+      non-seeding，finalization 後の demand／annotation checking，binder 外
+      generalization が定義・証明されている．
 - [ ] `mPoly` と `f` の能力強化が全 value-flow 経路で拒否される．
 - [ ] `f [1,2]` と `mPoly` の安全な変数パターン利用が受理される．
 - [ ] `∀p a. MatcherSlot p a -> Matcher (List p) (List a)` が推論・利用できる．
@@ -2332,11 +2520,25 @@ solver，D2 の二層判断，D5-core の strict normalization／coupled substit
 - [ ] tuple，高階関数，`let`，トップレベル定義，データ格納の正負回帰がある．
 - [ ] 二種代入と scheme instance の代数的性質が Lean で証明される．
 - [ ] runtime matcher capability と利用時型の対応が `ValueTy`／`EnvTyped` 上で証明される．
-- [ ] Algorithm W の健全性・完全性・主要性の主張範囲が確定する．
+- [x] Algorithm W は conditional reconstruction soundness までを要求し，
+      completeness／principal type は要求しない．詳細は `P2-PROOF-TARGET.md`．
 - [ ] P2 に由来する capability-admissibility の仮定を安全性定理から除ける．
-- [ ] `CoverageOK` を持つ部分集合について Progress／Preservation／Type Safety の
+- [ ] `CoverageOK` 必須の core について Progress／Preservation／Type Safety の
       正確な定理境界が固定されている．
-- [ ] 論文の英語版・日本語版，Egison 実装，Lean，回帰テストが同期している．
+- [ ] 論文の英語版・日本語版の本文規則と Lean formal core が同期している．
+
+### Egison integration／language extension
+
+次は P2 の受入条件ではなく，独立した拡張チェックリストである．
+
+- [ ] 一般 D4 producer-flow summary，first-order normalization，binder–RHS knot，
+      相互再帰 SCC，alias／transform／高階 origin が実装・検証されている．
+- [ ] raw graph／signature／alias validator と freeze／import が実装されている．
+- [ ] Egison の ordinary warning／certified mode／module certificate と load-unit
+      persistence が実装されている．
+- [ ] CAS target-indexed pattern-view signature と runtime extraction preservation
+      が定義され，`Factor`／`Term` などの標準 matcher が strict D5-core と整合する．
+- [ ] Egison 実装と非 CAS／CAS の回帰 corpus が各保証範囲と同期している．
 
 ## 参照ポインタ
 

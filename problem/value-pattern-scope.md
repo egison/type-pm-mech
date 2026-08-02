@@ -2,338 +2,349 @@
 
 ## 状態
 
-設計判断待ち．
+中核設計解決済み（2026-08-02）．論文・Lean・Egison への反映待ち．
 
-論文は実行中の各 `PPP-VAL` 捕捉が「捕捉許容的」であることを仮定しているが，
-不透明な matcher 引数，次 matcher，パターン関数などを通る値の流れから，
-この性質を決定可能なソース型付けで導く方法はまだ固定されていない．
+primitive-pattern pattern（以下 pp）の各 `#$x` より前に pattern hole `$` を
+置かないという，matcher 定義時の局所的な整形式条件を採用する．この条件により，
+pp・利用者パターン・matcher 値の整形式性から，`PPP-VAL` が捕捉する値パターン式を
+原子入力文脈で型付けられる設計になる．不透明な matcher 引数，次 matcher，
+高階受け渡し，パターン関数を通る節形状のフローを追跡する必要はない．この橋渡し
+補題のLean証明は未完了である．
 
-## 一言でいうと
+この文書では設計判断を固定した．Lean でソース型付けから捕捉許容性を導く補題を
+証明し，論文の条件付き保存性・型安全性から capture-admissibility の仮定を除く
+作業は未完了である．したがって現時点の定理を無条件と読み替えてはならない．
 
-matcher 節の primitive-pattern pattern にある `#$z` は，利用者パターンの
-値パターン `#e` を捕捉する．`e` は，その原子を処理し始めた時点の環境では
-評価できなければならない．ところが，どの `#e` がどの `#$z` に捕捉されるかは，
-利用者パターンだけでなく，実行時に到達する matcher の節形状にも依存する．
+## 問題の要点
 
-matcher の形がソース上で見える場合は局所検査できるが，matcher が高階関数の
-引数や `MatcherSlot` を通って来る場合，現在の型は必要な節形状・捕捉情報を
-保持していない．
-
-## 固定済みの意味論
-
-次の点は設計候補ではなく，現在の論文と Egison の実行時意味論で固定されている．
+matcher 節の pp にある `#$z` は，利用者パターンの値パターン `#e` を捕捉する．
+`e` は，その原子を処理し始めた時点の環境で評価できなければならない．現行の
+操作的意味論は次を固定している．
 
 1. `PPP-VAL` が捕捉した値パターン式は，節選択時に先に評価される．
-2. 評価環境は，`MS-REDUCE` が当該原子へ渡した「原子入力環境」である．
-3. したがって，それ以前の原子が作った束縛は参照できる．
-4. 同じ原子の左側の穴がこれから作る束縛は，まだ参照できない．
-5. この性質は matcher 定義単独でも，利用者パターン単独でも決まらず，
-   パターンと実際に供給される matcher の組合せに依存する．
+2. 評価環境は，`MS-REDUCE` が当該原子へ渡した原子入力環境である．
+3. それ以前の原子が作った束縛は参照できる．
+4. 同じ原子の hole がこれから作る束縛は，まだ参照できない．
 
-論文でいう捕捉許容性は，捕捉式 `e` が期待型 `τ` を持つとき，概ね次を要求する．
+捕捉式 `e` の期待型を `τ` とすると，論文の捕捉許容性は概ね次を要求する．
 
 ```text
 原子入力文脈 Γatom ⊢ e : τ
 実行時の原子入力環境 ρatom が Γatom を実現する
 ```
 
-この条件を満たすことが分かれば，`PPP-VAL` で得られる値を後続の分解式の
-型安全性証明に利用できる．未解決なのは，この条件を実行時の出来事に対する
-仮定として置くのではなく，ソース型付けからどう導くかである．
+従来は，どの `#e` がどの `#$z` に捕捉されるかが実行時 matcher の節形状に
+依存するため，この性質を matcher 型の効果，別のインターフェース，制約，または
+全プログラムの matcher フロー解析で運ぶ案を検討していた．採用案は，危険な順序を
+pp 自体から除くことで，このフロー問題を発生させない．
 
-## 具体例
+## 採用する整形式条件
 
-### 許容すべき例：先行する原子の束縛
+### 左から右の leaf 順序
 
-```egison
-matchAll ([2], [1, 2, 3])
-  as (list integer, sortedList integer)
-  with ($p :: _, $ls ++ #p :: $rs) -> (ls, rs)
+pp の leaf を，constructor と tuple の引数順に，深さ優先・左から右へ並べる．
+
+```text
+leaves($)                  = [hole]
+leaves(_)                  = [wild]
+leaves(#$x)                = [pval]
+leaves(c pp₁ ... ppₙ)      = leaves(pp₁) ++ ... ++ leaves(ppₙ)
+leaves((pp₁, ..., ppₙ))    = leaves(pp₁) ++ ... ++ leaves(ppₙ)
 ```
 
-第1タプル成分の原子が `p` を束縛した後，第2成分の原子が処理される．
-`sortedList` の節 `$ ++ #$px :: $` が `#p` を捕捉する時点では，`p` は
-原子より前の束縛なので利用できる．このイディオムを禁止してはならない．
+整形式条件を次で定める．Lean での述語名は `NoHoleBeforePVal` を予定する．
 
-### 拒否すべき例：同じ原子の穴が作る束縛
-
-次のような節形状を持つ matcher を考える．
-
-```egison
-| $ ++ #$z as ... with ...
+```text
+NoHoleBeforePVal(pp)
+  iff  there are no i < j such that
+       leaves(pp)[i] = hole and leaves(pp)[j] = pval
 ```
 
-その matcher を次のパターンに使う．
+すなわち，どの `#$x` より前にも `$` が現れてはならない．`_` と先行する別の
+`#$y` は利用者パターンの束縛を作らないため，`#$x` より前にあってよい．
 
-```egison
-matchAll xs as weird integer with $ys ++ #ys -> ys
+例：
+
+```text
+許可    #$x
+許可    #$x ++ $
+許可    (#$x, $) :: $
+許可    _ ++ #$x :: $
+拒否    $ ++ #$x :: $
+拒否    ($, #$n) :: $
+拒否    ($, (#$x, $))
 ```
 
-`#$z` が `#ys` を捕捉する時点では，同じ節の先行する `$` が取り出した
-`$ys` はまだ束縛されていない．`ys` を原子入力文脈の変数とみなすのは誤りである．
-matcher 形状が静的に既知なら，現行 Egison はこの利用を型エラーにする．
+各 matcher 節の pp に `NoHoleBeforePVal` を要求する．組み込み matcher と trusted
+primitive が導入する matcher 値にも同じ条件を要求する．積 matcher は成分ごとに
+別の原子を作るので，各成分 matcher を個別に検査する．
 
-### 現在すり抜ける例：不透明な matcher 引数
+この条件で，従来の反例は利用箇所ではなく matcher 定義時に排除される．
 
 ```egison
+def weird {a} (m : MatcherSlot p a) : Matcher [p] [a] :=
+  matcher
+    | $ ++ #$z as ... with ...   -- NoHoleBeforePVal 違反
+
 def viaParam {a}
-  (m : MatcherSlot [a] [a])
+  (m : MatcherSlot [p] [a])
   (xs : [a]) : [[a]] :=
   matchAll xs as m with $ys ++ #ys -> ys
 ```
 
-`m` の節形状が仮引数型からは分からないため，現行の局所検査は何もしない．
-`weird integer` を渡すと，同じ捕捉違反が実行時に現れる．現行処理系では
-未束縛参照が記号として残り，比較が静かに失敗して結果が `[]` になる例がある．
+従来は `m` が不透明なので `viaParam` の局所検査をすり抜けた．採用後の formal
+core では `weird` 自体が整形式でなく，この値を `m` へ渡す導出が存在しない．
+Egison が warning-only で `weird` を受理する場合，その実行は formal core の
+型安全性定理の対象外である．
 
-この例は「matcher の型自体は利用箇所に適合している」ことと
-「捕捉順序が安全である」ことが別の性質であると示す．
+### 条件を構文だけに課す理由
 
-## なぜ型安全性に必要か
+この条件は利用者側の特定の `#e` が閉じているかどうかにかかわらず，pp の順序だけで
+判定する．したがって，たまたま安全な利用箇所も含め，hole-before-`#$` の節を
+formal core から一律に除く保守的な設計である．その代わり，
 
-`PPP-VAL` の保存性では，捕捉式の評価結果が `PP-Val` の宣言型を持つことを
-示さなければならない．式評価の帰納法の仮定を使うには，式が実際の
-原子入力文脈で型付いており，実行時環境がその文脈を実現する必要がある．
+- matcher 型へ capture effect を追加しない，
+- `MatcherSlot` を通る高階コードに節要約を運ばない，
+- 別コンパイルや再帰 matcher の到達元解析を行わない，
+- 利用箇所で実行時 matcher の内部を反射しない，
 
-同じ原子内で後から作られる束縛を先に使えると仮定すると，存在しない環境束縛を
-証明に差し込むことになる．その結果は次のいずれかである．
+という単純な局所型付けを保てる．
 
-- 実行時の未束縛変数エラー
-- 現行 Egison のような記号化による静かな不一致
-- 捕捉結果の宣言型を導けず，`PPP-VAL` の保存性証明が閉じないこと
-  （根拠のない環境束縛を許す形式化では，保存性を破る可能性もある）
+## この条件でP1を閉じられる理由
 
-したがって，これは単なる診断品質ではなく，条件付き型安全性から
-捕捉許容性の仮定を外すための本質的な義務である．
+利用者パターンの型付けは左から右へ束縛文脈 `Δ` を拡張する．pp と利用者
+パターンを `PPM` で対応付けたとき，同じ原子内で利用者パターンの新しい束縛を
+後続位置へ持ち込み得る pp leaf は hole `$` だけである．
 
-## 設計に必要な要件
+`#$x` より前に hole がなければ，対応する利用者値パターン `#e` の型付け位置まで
+`Δ` は原子入力文脈 `Δatom` から増えていない．pp の `_` は利用者側の wildcard
+だけに一致し，pp の `#$y` は利用者側の値パターンに一致するが，どちらも利用者の
+pattern variable を束縛しない．したがって，次を導ける．
 
-採用する定式化は，少なくとも次を満たす必要がある．
+```text
+pp と p が整型で PPM により対応する
+NoHoleBeforePVal(pp)
+pp の #$x が p の #e を捕捉する
+------------------------------------------------
+Γatom ⊢ e : τ
+```
 
-### 健全性
+実行時には `PPP-VAL` が同じ原子入力環境 `ρatom` で `e` を評価する．
+`ρatom ⊨ Γatom` と式評価の型保存から，捕捉結果が `PP-Val` の宣言型 `τ` を持つ．
+後続の hole はその後に successor atom を作るので，この導出を壊さない．
 
-- ソース型付けが受理したプログラムの全到達 `PPP-VAL` 捕捉について，
-  捕捉式が原子入力文脈で型付くことを導ける．
-- 次 matcher，積 matcher，パターン関数，連言・選言，入れ子の MNode を
-  通っても性質を保存できる．
-- matcher の再帰や高階受け渡しで，実行時の節形状を先読みしたことにしない．
+この議論は実際に選ばれる matcher の由来に依存しない．すべての matcher literal，
+組み込み matcher，実行時 matcher 値が整形式条件を保存することを値型付け不変量に
+含めれば，不透明な `MatcherSlot` 引数，高階返却，次 matcher，再帰，積，MNode を
+通っても，利用箇所で節形状を復元せずに捕捉許容性を得られる．
 
-### 表現力
+別の原子で既に作られた束縛は `Γatom`／`ρatom` に含まれるため，引き続き参照できる．
+formal core では，同じ tuple の前成分や連言によって先に完了した原子の束縛を
+禁止する条件ではない．full Egison の sequential pattern でも，先に完了した段の
+束縛は後段の原子入力環境に入るという同じ区別を使うが，これは core 外の拡張である．
+右側の hole が将来作る変数への前方参照は，通常の左から右のパターン型付けが拒否する．
 
-- `sortedList` や `assocMultiset` のように，先行する別原子の束縛を使う
-  現行ライブラリの正当な用法を受理する．
-- 閉じた値パターン式は，捕捉位置にかかわらず受理できる．
-- matcher コンビネータを不必要に単相化せず，`MatcherSlot` 仮引数を使う
-  高階コードを記述できる．
+## 表現力の扱い
 
-### 決定可能性と実装可能性
+### `assoc`／`rvAssoc` pattern view
 
-- ソース型付けまたは独立した静的検査として有限に判定できる．
-- 実行時 matcher 値の内部を反射的に調べることを前提にしない．
-- エラーを，危険な値パターン，その捕捉元の節形状，利用できない変数の組として
-  利用者へ説明できる．
+従来，次のような pp は，値パターンより左の要素パターンを取り出しながら，個数を
+値パターンで指定する `assocMultiset` のために必要と考えていた．
 
-### 合成可能性
+```egison
+| ($, #$n) :: $ as ... with ...
+```
 
-- matcher の型または別のインターフェースに載せる要約は，関数境界を越えて
-  合成できる．
-- 積 matcher では成分ごとの原子順序を表せる．前の成分の束縛は後の成分には
-  利用可能だが，同じ成分内の穴束縛は利用不可能である．
-- パターン関数の仮引数展開によって生じる原子境界を表現できる．
+formal core ではこの一つの pattern constructor に両方の観測順序を担わせない．
+full language の表現力回復案として，同じ target representation に対し，引数順の
+異なる二つの pattern constructor／pattern view を用意する．次の等式は一般の
+definitional equality ではなく，`assocMultiset` に対して意図する view law を表す
+メタ記法である．
 
-## 設計候補と主なトレードオフ
+```text
+<assoc   p1 p2 p3> = (p1, p2) :: p3
+<rvAssoc p1 p2 p3> = (p2, p1) :: p3
+```
 
-以下は比較対象であり，採用案ではない．複数案の組合せもあり得る．
+例えば，従来の利用者パターン
 
-### A．matcher 型へ捕捉効果・要求を持たせる
+```text
+($x, #n) :: $rs
+```
 
-`Matcher` または `MatcherSlot` に，節が値パターンを捕捉する位置と，
-その位置より前に利用できてはならない穴束縛の要約を持たせる．
+は，提案する表層メタ記法では，値パターンを先に置いて次のように表せる．これは
+現行Egisonに既に存在する構文を主張するものではない．
 
-長所：
+```text
+<rvAssoc #n $x $rs>
+```
 
-- 高階引数を通して契約を運べる．
-- 利用箇所で型主導に検査できる．
-- ソース型付けから `Adm` への橋を直接構成しやすい．
+`rvAssoc` の matcher 節は，例えば `rvAssoc #$n $ $` のように capture-before-hole
+の順序を持てる．`assoc`／`rvAssoc` は検査前に tuple-cons パターンへ展開する単なる
+構文マクロではなく，この引数順を matcher dispatch まで保持する独立した pattern
+constructor／pattern view とする．検査前に `(p2, p1) :: p3` へ展開すると，再び
+hole-before-`#$` が現れ，採用条件を満たさない．
 
-課題：
+上の等式は target に対する意味上の view を表す表層設計である．`assoc`／
+`rvAssoc` の view signature，型付け，ShapeCap，Coverage を `type-pm-mech` の
+formal core に追加して証明することはP1の完了条件に含めない．P1に必要なのは，
+hole-before-`#$` を除いても full language で別の安全な表現を選べるという設計判断
+だけである．この表現力回復案を実際に導入する場合の source typing，matcher
+dispatch，signature，ShapeCap，Coverage への接続は，P1 safety core とは別の
+full-language 設計・実装課題として残る．
 
-- 現在の2添字 `MatcherSlot τp τt` をどこまで拡張するか決める必要がある．
-- 節ごとのパターン形状をそのまま型へ載せると型が大きくなり，主要型にも影響する．
-- パターン関数・積 matcher・再帰 matcher の効果合成を定義する必要がある．
+### join／cons の refinement
 
-### B．節形状の要約を持つ別の matcher インターフェース
+`$ ++ #$px :: $` のように，join の分解結果を取り出す前に pivot を捕捉したい場合も，
+formal core がこの pp 形を直接備える必要はない．full language では pivot，prefix，
+suffix を capture-before-hole の引数順で公開する専用の pattern constructor／
+pattern view として表せる．`_ ++ #$px :: $` のように値パターンより前が wildcard
+だけなら，元の pp のまま整形式である．この join view 自体の形式化もP1の完了条件
+には含めない．
 
-通常の対象型とは別に，捕捉契約や primitive-pattern pattern の抽象形状を
-matcher 値へ付随させる．存在型，証明オブジェクト，モジュール署名に近い案である．
+この設計判断により，`sortedList` や `assocMultiset` の現在の表層構文をそのまま
+formal core の必須機能として証明することはP1の完了条件に含めない．必要な探索や
+分解の意味は，安全な引数順を持つ別の pattern view で表現する．
 
-長所：
+### sequential pattern の位置付け
 
-- 対象型と捕捉情報を概念的に分離できる．
-- 現在の `MatcherSlot` の構造検査を大きく変えずに済む可能性がある．
+full Egison では，hole 位置を later pattern variable で受け，値パターンを先に
+処理してから抽出結果を後続段で照合する sequential pattern を使って，類似の
+評価順を表現できる．ただし sequential pattern は表層拡張であり，今回の formal
+core の捕捉安全性は自動書換えや sequential pattern の意味論に依存させない．
+必要なら Egison 側の elaboration またはライブラリ実装の選択肢として扱う．
 
-課題：
+## 以前の案からの変更
 
-- matcher を返す高階関数について，要約をどう抽象化・適用するかが必要である．
-- 型消去後の実行値と静的な要約の対応を証明しなければならない．
+以前も「`#$x` より前の hole を禁止する」という接頭条件を検討したが，
+`sortedList` の `$ ++ #$px :: $` と `assocMultiset` の `($, #$n) :: $` を
+そのまま受理できないため撤回していた．当時は，これらの既存構文を formal core の
+必須表現力とみなしていた．
 
-### C．限定型・制約として未解決の捕捉義務を運ぶ
+今回，観測順序の異なる `assoc`／`rvAssoc` や join 用 pattern view によって同じ
+target representation を扱えるため，hole-before-`#$` 自体を core に残す必要は
+ないと判断した．表現力は pattern view の選択で回復し，core のP1証明は局所的な
+整形式条件へ単純化する．
 
-型に節形状を直接埋め込まず，「この matcher はこのパターンに対して
-capture-safe」という制約を生成し，定義が見える場所で解消する．
+以下の案は採用しない．
 
-長所：
+- `Matcher`／`MatcherSlot` 型への capture effect の追加
+- 節形状要約を持つ別インターフェース
+- capture-safe 制約を運ぶ限定型
+- 全プログラムの matcher フロー解析または特殊化
+- 不透明 matcher の利用箇所だけを保守的に拒否する方式
+- 捕捉直前の実行時自由変数検査を formal core の安全性根拠にする方式
 
-- 既存の型クラス・限定型に近い推論枠組みを再利用できる可能性がある．
-- 不透明な引数の要件を関数の型に残せる．
+既知 matcher に対する利用箇所の精密な診断や実行時ガードは，full Egison の補助的な
+診断として残してよいが，formal core の証明はそれらに依存しない．
 
-課題：
+## 論文への反映
 
-- 制約の同値性・包含・主要性が必要になる．
-- 実行時の節選択と静的な制約解消が対応することを証明する必要がある．
-- 解消不能な制約をどこでエラーにするかを決めなければならない．
+英語版・日本語版とも，少なくとも次を同期して更新する．
 
-### D．全プログラムの matcher フロー解析または特殊化
+- 「Matcher definitions and consistency」で `NoHoleBeforePVal` を matcher 節の
+  整形式条件として本文に定義する．
+- pp 型付けと利用者パターン型付けから，捕捉式が原子入力文脈で型付く補題を
+  追加する．
+- PPP 型保存の `PPP-VAL` ケースで，この補題と式評価の型保存を使う．
+- matching-state preservation，初期状態，型安全性へ matcher 整形式不変量を通す．
+- `capture-admissible` を外部 oracle とする記述を，ソース整形式性から導く記述へ
+  置き換える．
+- 実装付録では，formal core の拒否と Egison の warning-only 境界を区別する．
+- 現行 `sortedList`／`assocMultiset` の hole-before-`#$` 形を formal core の
+  必須例として使わず，pattern view による安全な代替または full-language extension
+  であることを明記する．
 
-関数境界を越えて matcher 値の到達元を解析し，各 match site で候補節形状を
-列挙する．別案として，matcher 引数ごとにコードを特殊化する．
-
-長所：
-
-- 型表現を増やさず，現在の `checkVpScope` に近い検査を拡張できる．
-- 閉じたプログラムでは精密な結果を得やすい．
-
-課題：
-
-- 別コンパイル，再帰，高階関数，動的に構成される matcher で解析が難しい．
-- 解析の有限性・保守性・エラー位置が型システム本体とは別の問題になる．
-- 論文の局所的・合成的な型付けとして説明しにくい．
-
-### E．不透明 matcher の利用を保守的に制限する
-
-節形状を証明できない matcher 引数に対し，捕捉の可能性がある値パターン，
-あるいは同一原子の左束縛を参照する値パターンを禁止する．
-
-長所：
-
-- 単純で健全な近似を作りやすい．
-- 実装の早期段階で明確な安全境界を置ける．
-
-課題：
-
-- 正当な matcher コンビネータを過度に却下する可能性が高い．
-- 「不透明なら安全な閉じた `#e` は許す」など，拒否範囲の精密化が必要である．
-- 最終的な主要型・表現力の目標に十分かは別途判断が要る．
-
-### F．実行時検査へ落とす
-
-捕捉式の自由変数が原子入力環境に存在するかを `PPP-VAL` の直前に検査し，
-存在しなければ定義された match failure または実行時型エラーにする．
-
-長所：
-
-- 不透明な値の流れを直接扱える．
-- 現在の意味論へ小さなガードとして追加しやすい．
-
-課題：
-
-- 「静的型安全性」を達成せず，論文の未解決義務をそのまま放電しない．
-- 失敗をバックトラック可能な match failure とするか，プログラムエラーとするかで
-  言語意味論が変わる．
-- 静的保証と併用する補助策なのか，言語仕様上の解決なのかを区別する必要がある．
-
-## 論文との対応
-
-英語版・日本語版とも，主な参照箇所は次である．
-
-- 「Matcher definitions and consistency」の値パターンパターン捕捉
-  （`sec:matchers`）
-- 「Proof status and open obligations」
-  （`sec:metatheory`）
-- `capture-admissible`／捕捉許容性と `Adm(s)`／`Adm(D)` の定義
-- PPP 型保存補題と，条件付き型安全性の `PPP-VAL` ケース
-- 実装付録の「Value-pattern-pattern capture in the implementation」
-
-設計が決まったら，単に赤い TODO 記述を削るだけでは足りない．
-ソース型付け判断から捕捉許容性を導く補題，状態不変量への伝播，初期状態での
-成立を英日両版へ追加する必要がある．
+本文が形式仕様の正本であるため，整形式条件と健全性補題を付録だけに置かない．
 
 ## Egison 実装との対応
 
-現行実装には，既知の matcher 形状に対する局所近似がある．
+### 定義時 warning
 
-- [`Infer.hs`](../../egison/hs-src/Language/Egison/Type/Infer.hs)
-  - `inferMatcherShapes`：トップレベル matcher 定義の節 pp を記録する．
-  - `resolveVpShape`：matcher リテラル，積，トップレベル定義の適用を解決する．
-  - `vpAlign`／`vpAlignList`：pp と利用者パターンを対応付け，同一原子内で
-    左にある穴の束縛を集める．
-  - `checkVpScope`：捕捉式がその禁止変数を参照すれば型エラーにする．
-  - `VpUnknown`：不透明な matcher は現在検査しない．
-- [`minitest/008-ppval-atom-env.egi`](../../egison/minitest/008-ppval-atom-env.egi)
-  - 先行原子の束縛を許す正例
-  - コメントに記録された，既知 matcher で同一原子の束縛を拒否する診断例
-  - 不透明引数で検査されない既知の限界
+Egison では後方の実用コードを直ちに拒否せず，matcher literal の各 pp に対して
+`NoHoleBeforePVal` を左から右へ検査し，違反を warning として報告する方針を採る．
+AST は `PPPatVar` と `PPValuePat` を区別しているので，状態 `seenHole : Bool` を
+thread する一回の構文走査で判定できる．
 
-設計候補を評価するときは，この局所検査を置換するのか，健全な一般検査の
-最適化として残すのかを決める必要がある．
+warning-only の matcher は実行可能なため，Egison が受理する全プログラムへ formal
+core の無条件型安全性を主張してはならない．定理の対象は，診断の表示有無ではなく，
+`NoHoleBeforePVal` を構文的に検証済みで，かつP2の `CoverageOK` など covered
+calculus の条件を満たす certified subset とする．違反 matcher は full-language
+legacy extension として扱う．将来の certified mode では同じ診断をエラーへ
+昇格できる．
 
-## Lean 機械化との対応
+### 既存の利用箇所検査
 
-現在の Lean には，実行時のパターン・matcher 値の対に対する候補述語がある．
+現行実装には，静的に形状が見える matcher に対する局所検査がある．
 
-- [`Syntax.lean`](../TypePM/Syntax.lean) の `capturedExprs`／`capturedExprsList`
-  は，pp とパターンを構造的に対応付けて，`#$y` に捕捉される式を集める．
-- [`WellTyped.lean`](../TypePM/WellTyped.lean) の `VPScoped`／`VPScopedList`
-  は，実行時 matcher 値 `matcherV` の全節について，捕捉式が原子入力文脈で
-  型付くことを要求する．
+- `inferMatcherShapes`：トップレベル matcher 定義の節 pp を記録する．
+- `resolveVpShape`：matcher リテラル，積，トップレベル定義の適用を解決する．
+- `vpAlign`／`vpAlignList`：pp と利用者パターンを対応付け，同じ原子内で左にある
+  hole の束縛を集める．
+- `checkVpScope`：捕捉式がその禁止変数を参照すれば型エラーにする．
+- `VpUnknown`：不透明な matcher は現在検査しない．
 
-ただし，`VPScoped` はソース上の不透明な matcher フローを判定するアルゴリズム
-ではない．さらに現在の `WTTree.atom` コンストラクタは `VPScoped` を前提として
-受け取っておらず，コメント上は別の並行不変量として運ぶ方針になっている．
-したがって，現在の定義の存在をもって本問題が解決したとはみなせない．
+この検査は，warning-only で残した legacy matcher の危険な利用を具体的な変数名と
+ともに診断できるため，補助的な精密検査として残してよい．formal core の
+安全性は `resolveVpShape` の成功や `VpUnknown` の解析には依存しない．
 
-設計確定後に Lean で必要になるものは，少なくとも次である．
+既知の移行対象には，標準ライブラリの `sortedList` と `assocMultiset`，意図的な
+反例を持つ `minitest/008-ppval-atom-env.egi`，一部 database sample がある．
+標準ライブラリは安全な pattern view へ移行するか，warning 付き extension として
+境界を明記する．
 
-1. ソースレベルの判断または効果・制約の定義
-2. その判断が `VPScoped` 相当の実行時性質を導く健全性補題
-3. 初期 match site，後続原子，積，MNode，パターン関数を通る保存補題
-4. PPP 型保存の `PPP-VAL` ケースで評価型付けを無条件に供給する補題
-5. 条件付き定理から捕捉許容性の仮定を除く最終結合
+## Lean 機械化への反映
 
-## 決定すべき質問
+現在の Lean には次の候補部品がある．
 
-1. 捕捉情報は `Matcher`／`MatcherSlot` の型の一部か，別の効果・制約か，
-   全プログラム解析の結果か．
-2. matcher インターフェースが公開すべき最小情報は何か．節 pp の完全な形か，
-   「何番目の穴より前の束縛を捕捉式が要求しない」という抽象要約か．
-3. 不透明 matcher へ渡すパターンに対して，どこまで保守的な制限を許容するか．
-4. 積 matcher の前成分で作られた束縛が後成分に使えるという順序を，
-   型・効果の中でどう表すか．
-5. パターン関数の展開前後で捕捉契約をどう移送するか．
-6. 再帰 matcher の契約を帰納的に検査するか，宣言された要約を仮定して
-   本体を検査するか．
-7. 捕捉式内の局所束縛・シャドーイングを，自由変数の保守的近似ではなく
-   どの名前解決段階で扱うか．
-8. 静的に解消できない場合を型エラーにするか，明示的な実行時検査付き型へ
-   落とす選択肢を用意するか．
-9. P2 の能力保存スキームと同じ限定型・効果基盤を共有すべきか，
-   独立した仕組みにすべきか．
+- `Syntax.lean` の `capturedExprs`／`capturedExprsList` は，pp とパターンを対応付けて
+  `#$y` に捕捉される式を集める．
+- `WellTyped.lean` の `VPScoped`／`VPScopedList` は，実行時 matcher 値の全節に
+  ついて捕捉式が原子入力文脈で型付くことを要求する．
 
-## 受入条件
+必要な機械化は次である．
 
-設計を「解決済み」とするには，少なくとも次を満たすこと．
+1. `PPat` に `NoHoleBeforePVal` の実行可能な判定と命題的仕様を定義する．
+2. `ConsistentClauses` または matcher literal の source well-formedness に，全節の
+   `NoHoleBeforePVal` を追加する．
+3. pp 型付け，利用者パターン型付け，pp/pattern 対応から，捕捉位置の入力文脈が
+   `Γatom` のままであることを示す．
+4. 3から `VPScoped` 相当を導く健全性補題を証明する．
+5. matcher value，環境，slot，積 matcher，matching state，MNode を通して
+   整形式性を保存する．
+6. PPP 保存の `PPP-VAL` ケースで捕捉結果の型を無条件に供給する．
+7. matching-state preservation と型安全性から capture-admissibility oracle を除く．
 
-- [ ] 捕捉許容性を導く，決定可能なソース判断が形式的に定義されている．
-- [ ] 正例 `sortedList`／`assocMultiset` と，閉じた捕捉式を受理する．
-- [ ] 既知 matcher と不透明 matcher の双方で `$ys ++ #ys` 型の反例を拒否する，
-      または仕様上明示した安全な別結果へ導く．
-- [ ] 次 matcher，積 matcher，パターン関数，連言・選言，入れ子 MNode，
-      再帰 matcher のテストがある．
-- [ ] Egison の `VpUnknown` が安全性上の抜け道でなくなる．
-- [ ] Lean で「ソース判断 ⇒ 全到達捕捉の `VPScoped` 相当」が証明される．
-- [ ] PPP 型保存と matching-state preservation から捕捉許容性 oracle を除ける．
-- [ ] 論文の英語版・日本語版で定義，アルゴリズム，定理，実装範囲が同期している．
-- [ ] 主要型やエラー診断に与える影響が明記されている．
+`VPScoped` と `capturedExprs` は，実行時の到達事象を記述する述語／抽出関数として
+再利用できる．高階 matcher flow を解析するソースアルゴリズムとして使う必要はない．
+
+P2 の capability／target 分離とは独立であり，P2 の二 sort 型や producer-flow
+summary に capture effect を追加しない．P2 の covered safety へ接続するときだけ，
+source matcher well-formedness の一成分として本条件を要求する．
+
+## 完了条件
+
+### 固定済みの設計判断
+
+- [x] 決定可能な局所判断 `NoHoleBeforePVal` を定義した．
+- [x] 不透明・高階な matcher flow を追跡せず，すべての matcher 定義の
+      整形式性で安全性を運ぶ方針を固定した．
+- [x] hole-before-`#$` を formal core の必須表現力から外した．
+- [x] `assoc`／`rvAssoc` など，引数順の異なる full-language pattern view で
+      表現力を回復する案を採用し，その view 機構と formal core との接続自体は
+      P1の証明対象に含めない方針を固定した．
+- [x] formal core の拒否と Egison の warning-only extension の境界を固定した．
+- [x] P2 の capability 基盤とは独立にする方針を固定した．
+
+### 残る反映・証明作業
+
+- [ ] Lean に `NoHoleBeforePVal` と matcher well-formedness を実装する．
+- [ ] ソース整形式性から全到達捕捉の `VPScoped` 相当を導く．
+- [ ] PPP 保存と matching-state preservation から捕捉許容性 oracle を除く．
+- [ ] 次 matcher，積 matcher，パターン関数，連言・選言，MNode，再帰 matcher の
+      保存補題と回帰例を追加する．
+- [ ] Egison に定義時 warning と回帰テストを追加する．
+- [ ] 英語論文と日本語論文で定義，補題，定理境界，実装範囲を同期する．
 
 ## 参照ポインタ
 
@@ -345,8 +356,11 @@ capture-safe」という制約を生成し，定義が見える場所で解消�
   [`ja/main.tex`](../../type-pm-paper/ja/main.tex) の同じラベル
 - 操作的意味論：
   [`TypePM/Semantics.lean`](../TypePM/Semantics.lean) の `PPM`／`MAtom`
-- 捕捉式抽出：
-  [`TypePM/Syntax.lean`](../TypePM/Syntax.lean) の `capturedExprs`
+- pp とパターンの構文：
+  [`TypePM/Syntax.lean`](../TypePM/Syntax.lean) の `PPat`／`capturedExprs`
+- pp／パターン型付け：
+  [`TypePM/Typing.lean`](../TypePM/Typing.lean) の `PPTy`／`PatTy`／
+  `ConsistentClauses`
 - 候補不変量：
   [`TypePM/WellTyped.lean`](../TypePM/WellTyped.lean) の `VPScoped`
 - PPP 保存：

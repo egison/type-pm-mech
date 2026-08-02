@@ -13,3 +13,17 @@ import TypePM.Metatheory.TypeSafety
 import TypePM.Metatheory.Principal
 import TypePM.Metatheory.Adequacy
 import TypePM.Examples
+import TypePM.P2.Syntax
+import TypePM.P2.Substitution
+import TypePM.P2.Relation
+import TypePM.P2.Annotation
+import TypePM.P2.CapMatch
+import TypePM.P2.Observability
+import TypePM.P2.Shape
+import TypePM.P2.Projection
+import TypePM.P2.Canonical
+import TypePM.P2.CapTarget
+import TypePM.P2.Recursion
+import TypePM.P2.Runtime
+import TypePM.P2.CoreSpec
+import TypePM.P2.Correctness

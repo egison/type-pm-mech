@@ -1,6 +1,12 @@
 # type-pm-mech — type-pm-paper の機械化証明
 
-[`../type-pm-paper/`](../type-pm-paper/)(λ_PM:非自由データ型上のアドホック多相・非線形・バックトラック付きパターンマッチの計算体系と型システム)のメタ理論を Lean 4 で機械化するプロジェクト。定義(構文・操作的意味論・型システム・整型マッチング状態)は完成してビルドが通り、論文 §2/付録 A.1 の実測例は fuel 付きインタプリタ上で `rfl` により機械検証済み(適切性定理を経て関係的意味論 ⇓ の導出の存在まで保証)。メタ理論は論文の補題・定理と 1 対 1 対応で配置し、**Thm 5.1(マッチャー多相性)・Lem 5.2(one-way 一意性+アルゴリズムの健全性/完全性)・Lem 5.4(PPP 型保存)・Lem C.2(スロット不変量)・Lem 5.5(Matching State Progress)・Thm 5.6(a)(式評価の型付け;oracle 分解)・Thm 5.7(マッチャー整合性定理、(b) を仮定した合成)・インタプリタ適切性・Search↔Reaches 対応は証明済み**。残る `sorry` は **1**(Thm 5.6(b))。
+[`../type-pm-paper/`](../type-pm-paper/)(λ_PM:非自由データ型上のアドホック多相・非線形・バックトラック付きパターンマッチの計算体系と型システム)のメタ理論を Lean 4 で機械化するプロジェクト。既存の一添字 calculus は構文・操作的意味論・型システム・整型マッチング状態と主要メタ定理を実装し、論文 §2/付録 A.1 の実測例も fuel 付きインタプリタから関係的意味論まで検証済みである。`sorry` / `axiom` は **0**。最終 `type_safety` は証明済みだが、論文の証明規約に対応する oracle 前提 5 個を明示的に残す。
+
+2026-07-31 に P2 (`Matcher κ τ`) の非 CAS core を `TypePM/P2/` の独立層として追加した。これは既存一添字 calculus を黙って置換せず、二 sort 代入・producer-stable one-way match・`ShapeCap` 合成・coverage certificate・runtime slot 不変量の核を先に機械化するものである。既存 `HasTy` / `ValueTy` / 型安全性全体の二添字移行は未完了であり、保証範囲は下記「P2 独立層」に明記する。
+
+P2 の再構成後に要求する定理，singleton direct-self を含む完成境界，明示的に残す
+前提，対象外，受入条件については
+[`P2-PROOF-TARGET.md`](P2-PROOF-TARGET.md) を再構成作業の正本とする。
 
 - 証明支援系: **Lean 4**(`lean-toolchain` 固定、v4.31.0 = type-tensor-mech と同一)。外部依存なし(Mathlib 不使用)。
 - ビルド: `lake build`(`~/.elan/bin` に elan/lake がある前提)。
@@ -18,13 +24,106 @@
 | `TypePM/WellTyped.lean` | 値の型付け v : τ・型付き代入・WT-ATOM/WT-MNODE/WT-STACK/WT-STATE | §5.3, 付録 C Fig 6 |
 | `TypePM/Metatheory/Polymorphism.lean` | **マッチャー多相性(証明済:構成子合成そのもの)** | **Thm 5.1** |
 | `TypePM/Metatheory/Preservation.lean` | **PPP 型保存(証明済:pp 構造帰納+リスト版相互、(a)-oracle 仮定つき)・matcher-value slot invariant(証明済:oracle 不要の核 `slot_value_inv`+wrapper)** | **Lem 5.4, Lem C.2**, 付録 C |
-| `TypePM/Metatheory/TypeSafety.lean` | **Thm 5.6(a)(証明済:`Eval.rec` 5 motive、oracle = (b)・HM 一般化・初期状態整型)**:環境拡張補題群・値レベル強制追随(`valueTy_coerce2/3`)・`mkListV_typed`/`primEval_typed_*`・ctor 強制不可能性+Thm 5.6(b)(sorry) | **Thm 5.6**, §5.4, 付録 C |
+| `TypePM/Metatheory/TypeSafety.lean` | **Thm 5.6(a)(証明済:`Eval.rec` 5 motive)・Thm 5.6(b)(全分岐証明済)・最終 `type_safety`**。最終定理は HM 一般化等の oracle 前提 5 個を明示 | **Thm 5.6**, §5.4, 付録 C |
 | `TypePM/Metatheory/Canonical.lean` | **正準形補題層(証明済)**:VShape⊇ValueTy・積型正準形・改名/one-way の形状保存・「構造前提が something/積マッチャーを構成子パターンで却下」 | 付録 C.2 の核 |
 | `TypePM/Metatheory/Progress.lean` | **Lem 5.5(Matching State Progress)証明済**:前提層(`ListSigOK`/`canonical_list`・`pdMatch_typed`・member 補題・環境型付けグルー)+代入合成 `applyTS_comp_pointwise`/`instSig_applyTS`・**VShape 代入安定性 `vshape_applyTS`**・PPM 全域性 `ppm_total`/抽出長 `ppm_length`・改名反転・節/アーム歩き(`clause_walk`/`arms_walk`)・`WTTree.rec` 結合再帰子による本体 | Lem 5.5, 付録 C.2 |
 | `TypePM/Metatheory/Safety.lean` | Reaches((b) の反復装置)・**到達保存・終端代入型付け・マッチャー整合性定理(いずれも (b) を仮定して証明済)・Search↔Reaches 対応(結合再帰子 `Search.rec` で証明済)** | **Thm 5.7**, 付録 C.4 |
 | `TypePM/Metatheory/Principal.lean` | **matchOneWay の健全性/完全性(証明済:Lem 5.2 の計算可能性部分が完結)**+主型性スタブ(Algorithm W は Stage 2) | Thm 5.3, Lem D.1–D.3, 付録 B/D |
 | `TypePM/Metatheory/Adequacy.lean` | **インタプリタの健全性(証明済:fuel の相互帰納 11 定理)** | — |
 | `TypePM/Examples.lean` | §2 の実測例(list 決定的/multiset 非決定的/pair パターン関数/unorderedPair)+ 双対判定・双対検査・T-MATCHALL の導出例。**全て証明済(rfl / 明示導出)** | §2.1, §2.4, 付録 A.1, §4.2/4.4 |
+| `TypePM/P2/{Syntax,Substitution,Relation,Annotation,CapMatch}.lean` | capability / target の別 sort・別 skolem・別 binder、正しい cross-sort 自然性、二種一般化、local-meta / fresh-skolem 境界つき annotation、producer-stable one-way matcher の健全性・完全性 | P2 D3 |
+| `TypePM/P2/{Observability,Shape,Projection}.lean` | parameter observability の有限 least fixpoint、partial evidence の exact merge / 完全な順序独立性 / finalization、正規化済み signature-directed projection と field/evidence 同時置換不変性 | P2 D1 |
+| `TypePM/P2/{Canonical,CapTarget}.lean` | frozen nullary alias の非 CAS `reprNF` と冪等性、normalized-input `CapTargetOK`、coupled substitution | P2 D5-core の核 |
+| `TypePM/P2/{Recursion,Runtime,CoreSpec,Correctness}.lean` | standalone direct-self evidence fold、covered runtime certificate と内部 erasure、静的 source context 付き実 clause bridge `CoreSpecWF`、捕獲環境の substitution admissibility、witness 適用済み slot 不変量、`something` / `list` 回帰 | P2 D2/D4 の核 |
+
+## P2 独立層の保証範囲
+
+機械化済みの性質は次である。
+
+- `Matcher κ τ` / `MatcherSlot κ τ` で capability 変数と通常型変数を Lean の型レベルでも分離し、target 代入が既存 capability を強化しない。target 代入の像に capability 変数が入る場合、二代入は無条件には可換でないことを反例で示し、正しい自然性と range-fixed 条件付き composition を証明した。
+- one-way capability match は producer-first かつ producer-stable である。実行可能 `matchCap` は宣言的関係に対して健全・完全で、`producer = List p, consumer = p` の循環を拒否する。
+- `Shape.merge` は unseen を中立元とする exact merge で、結合的・可換的であり、`mergeAll` は任意の `List.Perm` に不変である。観測可能性 solver は有限 Boolean 依存グラフの least fixpoint と一致し、seedless recursive-only parameter を false にする。
+- projection は frozen observability と fresh / zonked constructor signature を明示的な入力境界とし、opaque / function / matcher / slot barrier、重複 occurrence の exact agreement、unseen の非 seed 性を実装する。certified 経路は field 型と evidence のペアを同時に任意置換しても、成功・失敗を含め同じ結果となり、成功結果の root が result signature と一致することを証明した。
+- explicit `forall` は capability / target の別 skolemで検査する。高水準 API は局所 meta と環境所有 meta の非共有、および生成 skolem と周囲・推論型中の skolem の freshness を明示的に要求するため、`something` は `∀p a. Matcher p a` を満たせず、skolem ID 衝突も拒否する。`∀p a. Slot p a → Matcher (List p) (List a)` は `p = none, a = int` へ二種同時に正しく特殊化できる。
+- runtime slot 規則は `matchCap` / target alignment の witness を捨てず、積の全成分で一つの prevailing substitution を共有し、対応文脈・両 index・後続 target に適用した実在値の型付けだけを作る。同一 spec / mode / 対応文脈における runtime matcher 値の intrinsic capability の一意性と、covered から ordinary への内部 erasure も証明した。公開 source bridge `CoreSpecWF` が新規構成する literal certificate は covered に限り、ordinary は source の追加受理経路にしない。
+- `CoreSpecWF` は target 型や runtime environment を直接の checker 引数にせず、
+  typed-hole capability を保持できる静的 `SourceCtx` の下で actual `Clause` ごとの
+  決定的 evidence checker を clause list 上で構造的に畳み、
+  成功時に evidence 数と clause 数が一致することを証明する。
+  同じ captured runtime environment を実現する静的 context 間の evidence coherence
+  と、同じ環境を再実現できる substitution の明示的な admissibility を要求する。
+  source typing、actual-clause evidence、`Shape.inferShape`、`CapTargetOK`、
+  `CoverageOK` から covered runtime matcher invariant を構成し、Ξ-closed certificate
+  の admissible target specialization が intrinsic capability を強化しないことも
+  証明する。abstract な `SourceCtx` が target-derived seed を含まないこと自体は、
+  concrete source calculus 側で放電する義務である。
+
+意図的に未完了の境界もある。
+
+- `RuntimeSpec` は再利用可能な内部 proof kernel であり、formal core の公開境界は
+  `CoreSpecWF` である。具体的な source clause-evidence 規則は
+  [`tex/main.tex`](tex/main.tex) の仕様草案に整理した段階で、論文英日版への反映と
+  Lean judgment への実装、二種代入補題による
+  `literalSubstitute` の放電、既存 `HasTy` / `ValueTy` / matching state の二添字化は
+  未実施である。したがって現時点では P2 の end-to-end type safety を証明済みとは
+  呼ばない。
+- `Observability.Graph` と `ProjectionSignature` は、raw datatype / constructor 宣言から検証・freeze 済みの入力を受ける。宣言からの graph / signature 構築、fresh instantiate / zonk の証明は前段の責務である。順序独立性を保証する公開経路は `projectSignature` であり、旧低水準 `project` との任意入力上の一般同値性は主張しない。
+- D4 は singleton direct-self の standalone evidence fold だけを形式化し、
+  `.known` source の provenance と Egison の式分類への bridge はまだ証明しない。
+  alias・相互再帰・transform・高階 application の一般 producer-flow solver は
+  fail-closed である。
+- `Canonical.FrozenAliases` は検証済み frozen table を受け取る。raw alias graph の cycle / unknown head / collision validator と import freeze 構築はまだ外部前提である。
+- D5-CAS の target-indexed pattern-view signature、kind-aware index projection、runtime extraction preservation は対象外である。
+
+## P2 formal core の完了境界
+
+P2 の論文・機械化上の完了条件は、次の非 CAS core に限定する。
+
+- 二 sort の型・scheme・代入・明示量化と producer-stable one-way match
+- 検証・freeze 済み signature を仮定した actual clause からの evidence、
+  observability、projection、exact merge、`ShapeCap`
+- 二種 Algorithm W／Gen／Inst と、lambda・application・let・tuple・data storage・
+  matcher environment を通る到達可能な matcher value の capability 非強化
+- `CoverageOK` 必須の source calculus と covered runtime invariant／内部 erasure の
+  Preservation／Progress／Type Safety
+- 再帰については singleton direct-self の単相規則、non-seeding、exact mismatch
+- P1 の capture admissibility と埋込み計算の停止性を明示した条件付き定理
+
+一般 D4 producer flow、raw declaration validator、Egison の warning／module
+certificate／load-unit integration、標準ライブラリ移行、D5-CAS は実装拡張として
+別管理する。これらは formal core の定理や P2 の完了条件には含めない。
+
+### `CoreSpecWF` 相対性の読み方
+
+`CoreSpecWF` に trusted premise として残すのは、freeze 済み observability、
+[`tex/main.tex`](tex/main.tex) の仕様草案が定める source literal typing、静的
+`SourceCtx` の下で actual `Clause` 一個だけを
+evidence にする決定的 checker、同じ captured runtime environment を実現する context
+間の evidence coherence、その環境を再実現できる substitution の admissibility、
+source typing の二種代入安定性、actual clause list と inferred capability に
+索引づく `CoverageOK` である。checker の明示引数に target 型や runtime environment
+はないが、abstract な `SourceCtx` が target-derived seed を含まないことは interface
+の型だけでは保証されず、concrete source instantiation 側の義務である。
+特に二種代入安定性は、捕獲環境と静的環境を運ぶ source calculus 側の補題として
+なお放電が必要であり、現行 interface だけから open-term substitution を得たとは
+読まない。そこから Lean が導くのは次である。
+
+- actual clause list を順に走査し、一 clause につき一 evidence だけを生成すること
+- 成功した evidence list の長さが actual clause list の長さに一致すること
+- evidence だけから `Shape.inferShape` が決めた capability を runtime matcher の
+  intrinsic capability として保持すること
+- covered certificate が actual clause list の `CoverageOK` を保持すること
+- Ξ-closed certificate に対する admissible target specialization が同じ matcher
+  value の capability を強化しないこと（Ξ-closed は captured environment の
+  closedness を意味しない）
+
+従って `CoreSpecWF` は代数 core と source/runtime の間の最小接続である。source
+typing／clause-evidence／Coverage の規則は [`tex/main.tex`](tex/main.tex) の仕様草案に
+整理済みだが、論文英日版への反映、P2 の Lean source judgment としての実装、
+二種 Algorithm W、source
+Preservation／Progress、matching-state Type Safety はまだ証明していない。これらを
+Lean で具体化・放電した coverage-required core safety が formal core の最終定理であり、
+`RuntimeSpec` または `CoreSpecWF` 相対の runtime invariant だけを型安全性と呼ばない。
 
 ## 機械化上の設計判断(論文からの意図的な差分はここに集約)
 
