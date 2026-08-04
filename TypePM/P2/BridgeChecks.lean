@@ -3,10 +3,10 @@ import TypePM.P2.Reconstruction
 /-!
 # Executable audits for reconstruction bridge conditions
 
-The public reconstruction theorem intentionally accepts an algorithmic
-`WBridgeWF` certificate.  This module turns the finite, recorded terminal
-trace into the non-local alignment and finalization fields of that
-certificate.  It never stores or consumes a source typing derivation.
+The raw reconstruction theorem accepts an algebraic `WBridgeWF` certificate;
+the public executable inference entry point runs this module's finite
+validator and constructs that certificate internally.  The checks never
+store or consume a source typing derivation.
 -/
 
 namespace TypePM.P2
@@ -43,9 +43,19 @@ private theorem replayFrom_targetSupport
   | [] => by simpa [replayFrom] using support
   | step :: steps => by
       have composed :
-          (Subst.comp step.delta prevailing).target.SupportWithin
+          (Subst.seq step.delta prevailing).target.SupportWithin
             (initialDomain ++ step.targetDomain) :=
-        support.comp step.targetSupport
+        by
+          intro varId outside
+          have outsideInitial : varId ∉ initialDomain := by
+            intro membership
+            exact outside (List.mem_append_left _ membership)
+          have outsideStep : varId ∉ step.targetDomain := by
+            intro membership
+            exact outside (List.mem_append_right _ membership)
+          simp only [Subst.seq]
+          rw [support varId outsideInitial]
+          exact step.targetSupport varId outsideStep
       have remainder := replayFrom_targetSupport composed steps
       simpa only [replayFrom, List.flatMap_cons, List.append_assoc] using
         remainder
@@ -103,72 +113,94 @@ private theorem targetOnlyReplay_chain
   · intros; contradiction
   · intros; contradiction
 
-/-! ## Fresh-instance suffix composition -/
+/-! ## Terminal fresh-instance reconstruction -/
 
-private theorem schemeComposition_of_noBinders
-    {external : Subst} {scheme : Scheme} {fresh : Ty}
-    {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
-    {C : CapSubst} {T : TySubst} {capImages : List CapVar}
-    {tyImages : List TypePM.TyVar}
-    (capBinders : scheme.capBinders = [])
-    (tyBinders : scheme.tyBinders = [])
-    (original : scheme.FreshInstAt reservedCaps reservedTys C T
-      capImages tyImages fresh) :
-    SchemeValueFlowCompositionAt external original := by
-  have capId : C = CapSubst.id := by
-    funext varId
-    exact original.capSupport varId (by simp [capBinders])
-  have targetId : T = TySubst.id := by
-    funext varId
-    exact original.tySupport varId (by simp [tyBinders])
-  have freshEq : scheme.body = fresh := by
-    have pairIdentity : Subst.mk CapSubst.id TySubst.id = Subst.id := rfl
-    simpa [capId, targetId, pairIdentity, Subst.apply_id] using original.result
-  refine ⟨CapSubst.id, TySubst.id, ?_⟩
-  refine
-    { capSupport := ?_
-      tySupport := ?_
-      capBinderVariable := ?_
-      result := ?_ }
-  · simpa [Scheme.applySubst, capBinders] using
-      (CapSubst.id_supportWithin [])
-  · simpa [Scheme.applySubst, tyBinders] using
-      (TySubst.id_supportWithin [])
-  · intro varId membership
-    simp [Scheme.applySubst, capBinders] at membership
-  · have schemeBodyEq :
-        (scheme.applySubst external).body = external.apply fresh := by
-      simp [Scheme.applySubst, capBinders, tyBinders, freshEq]
-    rw [schemeBodyEq]
-    have pairIdentity : Subst.mk CapSubst.id TySubst.id = Subst.id := rfl
-    rw [pairIdentity, Subst.apply_id]
+/-- Binder-local capability candidate obtained by replaying the fresh image
+allocated from an event's incoming supply. -/
+private def terminalCapCandidate
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (binders : List CapVar) : CapSubst :=
+  fun varId =>
+    if varId ∈ binders then
+      state.prevailing.cap ⟨supply.nextCap + varId.id⟩
+    else
+      .var varId
+
+/-- Binder-local target candidate obtained from the corresponding fresh
+ordinary image. -/
+private def terminalTyCandidate
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (binders : List TypePM.TyVar) : TySubst :=
+  fun varId =>
+    if varId ∈ binders then
+      state.prevailing.apply (.var (supply.nextTy + varId))
+    else
+      .var varId
+
+private theorem terminalCapCandidate_support
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (binders : List CapVar) :
+    (terminalCapCandidate state supply binders).SupportWithin binders := by
+  intro varId outside
+  simp [terminalCapCandidate, outside]
+
+private theorem terminalTyCandidate_support
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (binders : List TypePM.TyVar) :
+    (terminalTyCandidate state supply binders).SupportWithin binders := by
+  intro varId outside
+  simp [terminalTyCandidate, outside]
+
+private def capBinderImagesVariableCheck
+    (binders : List CapVar) (substitution : CapSubst) : Bool :=
+  binders.all fun varId =>
+    match substitution varId with
+    | .var _ => true
+    | _ => false
+
+private theorem capBinderImagesVariableCheck_sound
+    {binders : List CapVar} {substitution : CapSubst}
+    (checked : capBinderImagesVariableCheck binders substitution = true) :
+    ∀ varId, varId ∈ binders →
+      ∃ image, substitution varId = .var image := by
+  intro varId membership
+  have accepted := List.all_eq_true.mp checked varId membership
+  cases equation : substitution varId with
+  | var image => exact ⟨image, rfl⟩
+  | _ => simp [equation] at accepted
 
 private def instanceSuffixEventCheck
     (state : InferState) : TraceEvent -> Bool
-  | .schemeInstantiation solveCount _ scheme name rawContext context
+  | .schemeInstantiation solveCount supply _scheme name rawContext _context
       _fixedCaps _fixedTys _reservedCaps _reservedTys fresh _capImages
       _tyImages =>
-      decide (scheme.capBinders = []) &&
-      decide (scheme.tyBinders = []) &&
-      decide (context = rawContext.applySubst
-        (replay (state.trace.solves.take solveCount))) &&
       decide (solveCount ≤ state.trace.solves.length) &&
-      boundedSuffixCheck solveCount state.trace.solves.length fun stop =>
-        let suffix := replay ((state.trace.solves.take stop).drop solveCount)
-        let terminalPrevailing := replay (state.trace.solves.take stop)
-        decide ((rawContext.applySubst terminalPrevailing).find? name =
-          some (scheme.applySubst suffix)) &&
-        decide (terminalPrevailing.apply fresh = suffix.apply fresh)
-  | .ctorInstantiation solveCount _ scheme args result _capImages =>
-      decide (scheme.fcv = []) &&
-      decide (scheme.ftv = []) &&
+      match (rawContext.applySubst state.prevailing).find? name with
+      | none => false
+      | some terminalScheme =>
+          let C := terminalCapCandidate state supply terminalScheme.capBinders
+          let T := terminalTyCandidate state supply terminalScheme.tyBinders
+          capBinderImagesVariableCheck terminalScheme.capBinders C &&
+          decide ((Subst.mk C T).apply terminalScheme.body =
+            state.prevailing.apply fresh)
+  | .ctorInstantiation solveCount supply scheme args result _capImages =>
+      let C := terminalCapCandidate state supply scheme.capBinders
+      let T := terminalTyCandidate state supply scheme.tyBinders
       decide (solveCount ≤ state.trace.solves.length) &&
-      boundedSuffixCheck solveCount state.trace.solves.length fun stop =>
-        let suffix := replay ((state.trace.solves.take stop).drop solveCount)
-        let terminalPrevailing := replay (state.trace.solves.take stop)
-        decide (args.map terminalPrevailing.apply = args.map suffix.apply) &&
-        decide (terminalPrevailing.apply result = suffix.apply result)
-  | .dualInstantiation .. => false
+      decide (scheme.args.map (Subst.mk C T).apply =
+        args.map state.prevailing.apply) &&
+      decide ((Subst.mk C T).apply scheme.result =
+        state.prevailing.apply result)
+  | .dualInstantiation solveCount supply scheme _rawContext _rawParameters
+      _rawBindings _context _parameters _bindings _fixedCaps _fixedTys
+      _reservedCaps _reservedTys args result _capImages _tyImages =>
+      let C := terminalCapCandidate state supply scheme.capBinders
+      let T := terminalTyCandidate state supply scheme.tyBinders
+      decide (solveCount ≤ state.trace.solves.length) &&
+      capBinderImagesVariableCheck scheme.capBinders C &&
+      decide (scheme.args.map (Dual.apply C T) =
+        args.map (Dual.applySubst state.prevailing)) &&
+      decide (scheme.result.apply C T = result.applySubst state.prevailing)
   | _ => true
 
 def traceInstanceSuffixCheck (state : InferState) : Bool :=
@@ -176,46 +208,55 @@ def traceInstanceSuffixCheck (state : InferState) : Bool :=
 
 theorem traceInstanceSuffixCheck_sound
     {signature : FrozenSig} {state : InferState}
-    (instantiations : TraceInstantiationConditions state.trace)
     (checked : traceInstanceSuffixCheck state = true) :
     TraceInstanceSuffixConditions signature state := by
   intro event membership
   have eventChecked := List.all_eq_true.mp checked event membership
-  have instantiation := instantiations event membership
   cases event with
   | schemeInstantiation solveCount supply scheme name rawContext context
       fixedCaps fixedTys reservedCaps reservedTys fresh capImages tyImages =>
-      simp only [instanceSuffixEventCheck,
-        Bool.and_eq_true, decide_eq_true_eq] at eventChecked
-      rcases eventChecked with
-        ⟨⟨⟨⟨capBinders, tyBinders⟩, contextEq⟩, solveBound⟩,
-          suffixChecked⟩
-      refine ⟨contextEq, solveBound, ?_⟩
-      intro stop lower upper
-      have accepted := boundedSuffixCheck_sound suffixChecked lower upper
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at accepted
-      rcases instantiation with ⟨C, T, original⟩
-      exact ⟨C, T, original, accepted.1, accepted.2,
-        schemeComposition_of_noBinders capBinders tyBinders original⟩
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq] at eventChecked
+      rcases eventChecked with ⟨solveBound, terminalChecked⟩
+      cases lookup : (rawContext.applySubst state.prevailing).find? name with
+      | none => simp [lookup] at terminalChecked
+      | some terminalScheme =>
+          simp only [lookup, Bool.and_eq_true, decide_eq_true_eq] at terminalChecked
+          let C := terminalCapCandidate state supply terminalScheme.capBinders
+          let T := terminalTyCandidate state supply terminalScheme.tyBinders
+          refine ⟨solveBound, terminalScheme, lookup, C, T, ?_⟩
+          exact
+            { capSupport := terminalCapCandidate_support state supply _
+              tySupport := terminalTyCandidate_support state supply _
+              capBinderVariable :=
+                capBinderImagesVariableCheck_sound terminalChecked.1
+              result := terminalChecked.2 }
   | ctorInstantiation solveCount supply scheme args result capImages =>
-      simp only [instanceSuffixEventCheck,
-        Bool.and_eq_true, decide_eq_true_eq] at eventChecked
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq] at eventChecked
+      rcases eventChecked with ⟨⟨solveBound, argsEq⟩, resultEq⟩
+      let C := terminalCapCandidate state supply scheme.capBinders
+      let T := terminalTyCandidate state supply scheme.tyBinders
+      exact ⟨solveBound, C, T,
+        terminalCapCandidate_support state supply _,
+        terminalTyCandidate_support state supply _, argsEq, resultEq⟩
+  | dualInstantiation solveCount supply scheme rawContext rawParameters
+      rawBindings context parameters bindings fixedCaps fixedTys reservedCaps
+      reservedTys args result capImages tyImages =>
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq] at eventChecked
       rcases eventChecked with
-        ⟨⟨⟨capFree, targetFree⟩, solveBound⟩, suffixChecked⟩
-      refine ⟨solveBound, ?_⟩
-      intro stop lower upper
-      have accepted := boundedSuffixCheck_sound suffixChecked lower upper
-      simp only [Bool.and_eq_true, decide_eq_true_eq] at accepted
-      have original : scheme.Inst args result :=
-        instantiation
-      have admissible : scheme.InstCompositionAdm
-          (replay ((state.trace.solves.take stop).drop solveCount)) :=
-        CtorScheme.instCompositionAdm_of_free_fixed
-          (by simp [capFree]) (by simp [targetFree])
-      exact ⟨accepted.1, accepted.2,
-        CtorScheme.Inst.transport original admissible⟩
-  | dualInstantiation => simp_all [traceInstanceSuffixCheck,
-      instanceSuffixEventCheck]
+        ⟨⟨⟨solveBound, capVariables⟩, argsEq⟩, resultEq⟩
+      let C := terminalCapCandidate state supply scheme.capBinders
+      let T := terminalTyCandidate state supply scheme.tyBinders
+      refine ⟨solveBound, C, T, ?_⟩
+      exact
+        { capSupport := terminalCapCandidate_support state supply _
+          tySupport := terminalTyCandidate_support state supply _
+          capBinderVariable :=
+            capBinderImagesVariableCheck_sound capVariables
+          argsResult := argsEq
+          resultResult := resultEq }
   | _ => trivial
 
 /-! ## Ordinary and dual terminal equalities -/
@@ -474,9 +515,8 @@ private def finalizationSuffixEventCheck
         (replay (state.trace.solves.take solveCount)).apply rawTarget) &&
       decide (localHoleLists = resolvedHoleCaps
         (replay (state.trace.solves.take solveCount)) rawHoleLists) &&
-      boundedSuffixCheck solveCount state.trace.solves.length fun stop =>
-        finalizationAtCheck signature state clauses rawTarget rawHoleLists
-          localCapability stop
+      finalizationAtCheck signature state clauses rawTarget rawHoleLists
+        localCapability state.trace.solves.length
   | _ => true
 
 def traceFinalizationSuffixCheck
@@ -495,20 +535,17 @@ theorem traceFinalizationSuffixCheck_sound
       simp only [finalizationSuffixEventCheck,
         Bool.and_eq_true, decide_eq_true_eq] at eventChecked
       rcases eventChecked with
-        ⟨⟨⟨solveBound, localTargetEq⟩, localHolesEq⟩, suffixChecked⟩
+        ⟨⟨⟨solveBound, localTargetEq⟩, localHolesEq⟩, terminalChecked⟩
       refine ⟨solveBound, localTargetEq, localHolesEq, ?_⟩
-      intro stop lower upper
-      have accepted := boundedSuffixCheck_sound suffixChecked lower upper
-      simp only [finalizationAtCheck] at accepted
+      simp only [finalizationAtCheck, List.take_length] at terminalChecked
       cases collected : collectClauseEvidence signature.toMatcherSig clauses
-          (resolvedHoleCaps (replay (state.trace.solves.take stop))
-            rawHoleLists) with
-      | none => simp [collected] at accepted
+          (resolvedHoleCaps (replay state.trace.solves) rawHoleLists) with
+      | none => simp [collected] at terminalChecked
       | some evidence =>
           refine ⟨evidence, collected, ?_⟩
           simp only [collected, Bool.and_eq_true,
-            decide_eq_true_eq] at accepted
-          rcases accepted with ⟨prior, coverage⟩
+            decide_eq_true_eq] at terminalChecked
+          rcases terminalChecked with ⟨prior, coverage⟩
           rcases prior with ⟨prior, exhaustive⟩
           rcases prior with ⟨prior, binders⟩
           rcases prior with ⟨prior, catchAll⟩
@@ -516,22 +553,89 @@ theorem traceFinalizationSuffixCheck_sound
           exact ⟨shape, caps, catchAll, binders, exhaustive, coverage⟩
   | _ => trivial
 
-/-! ## Traces without let generalization -/
+/-! ## Terminal let generalization -/
 
-private def noLetEventCheck : TraceEvent -> Bool
-  | .letGeneralization .. => false
+private def generalizationEventCheck
+    (signature : FrozenSig) (state : InferState) : TraceEvent -> Bool
+  | .letGeneralization solveCount _name rawContext rawTarget context target
+      scheme =>
+      decide (solveCount ≤ state.trace.solves.length) &&
+      decide (context = rawContext.applySubst
+        (replay (state.trace.solves.take solveCount))) &&
+      decide (target =
+        (replay (state.trace.solves.take solveCount)).apply rawTarget) &&
+      decide (scheme = signature.generalize context target) &&
+      decide (scheme.applySubst state.prevailing =
+        signature.generalize (rawContext.applySubst state.prevailing)
+          (state.prevailing.apply rawTarget))
   | _ => true
 
-def traceNoLetCheck (state : InferState) : Bool :=
-  state.trace.events.all noLetEventCheck
+/-- Executable terminal-cut audit for every recorded T-LET generalization. -/
+def traceGeneralizationCheck
+    (signature : FrozenSig) (state : InferState) : Bool :=
+  state.trace.events.all (generalizationEventCheck signature state)
 
-theorem traceNoLetCheck_sound
+theorem traceGeneralizationCheck_sound
     {signature : FrozenSig} {state : InferState}
-    (checked : traceNoLetCheck state = true) :
+    (checked : traceGeneralizationCheck signature state = true) :
     TraceGeneralizationConditions signature state := by
   intro event membership
   have accepted := List.all_eq_true.mp checked event membership
-  cases event <;> simp_all [traceNoLetCheck, noLetEventCheck]
+  cases event with
+  | letGeneralization solveCount name rawContext rawTarget context target
+      scheme =>
+      simp only [generalizationEventCheck,
+        Bool.and_eq_true, decide_eq_true_eq] at accepted
+      rcases accepted with
+        ⟨⟨⟨⟨solveBound, contextEq⟩, targetEq⟩, schemeEq⟩, terminalEq⟩
+      exact ⟨solveBound, contextEq, targetEq, schemeEq, terminalEq⟩
+  | _ => trivial
+
+/-! ## Complete public terminal audit -/
+
+/-- Finite algebraic validator consumed by the public executable inference
+entry point.  It checks no source typing judgment and stores no derivation. -/
+def wBridgeCheck
+    (signature : FrozenSig) (result : ExprResult) : Bool :=
+  tracePrimitiveHoleCheck signature result.state.trace &&
+  tracePatternLeafCheck signature result.state.trace &&
+  tracePatternCtorCheck signature result.state &&
+  traceInstanceSuffixCheck result.state &&
+  traceSlotAlignmentCheck result.state &&
+  traceTypeAlignmentCheck result.state &&
+  traceDualAlignmentCheck result.state &&
+  traceFinalizationSuffixCheck signature result.state &&
+  traceGeneralizationCheck signature result.state
+
+/-- A successful finite audit constructs the complete bridge certificate. -/
+theorem wBridgeCheck_sound
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (checked : wBridgeCheck signature result = true) :
+    WBridgeWF signature context expression result := by
+  simp only [wBridgeCheck, Bool.and_eq_true] at checked
+  rcases checked with ⟨prior, generalizationChecked⟩
+  rcases prior with ⟨prior, finalizationSuffixChecked⟩
+  rcases prior with ⟨prior, dualAlignmentChecked⟩
+  rcases prior with ⟨prior, typeAlignmentChecked⟩
+  rcases prior with ⟨prior, slotAlignmentChecked⟩
+  rcases prior with ⟨prior, instanceSuffixChecked⟩
+  rcases prior with ⟨prior, patternCtorChecked⟩
+  rcases prior with ⟨primitiveHoleChecked, patternLeafChecked⟩
+  exact
+    { replay := traceReplayConditions result.state.trace.solves
+      primitiveHoles := primitiveHoleChecked
+      patternLeaves := patternLeafChecked
+      patternCtors := patternCtorChecked
+      instanceSuffixes :=
+        traceInstanceSuffixCheck_sound instanceSuffixChecked
+      slotAlignments := traceSlotAlignmentCheck_sound slotAlignmentChecked
+      typeAlignments := traceTypeAlignmentCheck_sound typeAlignmentChecked
+      dualAlignments := traceDualAlignmentCheck_sound dualAlignmentChecked
+      finalizationSuffixes :=
+        traceFinalizationSuffixCheck_sound finalizationSuffixChecked
+      generalization :=
+        traceGeneralizationCheck_sound generalizationChecked }
 
 end Reconstruction
 end Inference

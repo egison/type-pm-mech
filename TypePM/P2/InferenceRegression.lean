@@ -1,4 +1,4 @@
-import TypePM.P2.Inference
+import TypePM.P2.CertifiedInference
 
 /-!
 # Algorithm W state-threading regressions

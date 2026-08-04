@@ -6,10 +6,12 @@
 
 > The soundness of executable type inference for the Egison core is mechanized in Lean 4.
 
-具体的には，整形式な frozen signature と入力 context の下で executable `infer` が
-成功したならば，その結果に対応する宣言的な `HasTy` 導出が必ず得られることを証明する．
-利用者が成功 trace に対する `WBridgeWF` を別途仮定する conditional reconstruction は
-中間定理とし，`WBridgeWF` 自体を `infer` の各再帰ケースが保存する不変量から導出する．
+具体的には，executable `infer` が成功したならば，その結果に対応する宣言的な
+`HasTy` 導出が必ず得られることを証明する．
+公開 `infer` は raw な停止 W 走査 `inferRaw` と有限な terminal validator を合成し，
+`infer_success_sound` は成功等式だけから `HasTy` を返す．これは意図する
+`InferenceInputWF` 入力に限定した主張より強い．
+`WBridgeWF` は validator が内部で構成する証明書であり，呼び出し側の仮定ではない．
 completeness と full principality，および Egison コンパイラ全体の検証はこの目標に
 含めない．
 
@@ -88,14 +90,23 @@ evidence と `PPatCapsAt` check を最終 capability に対して再計算する
 terminal derivation を分ける．nested child の raw index と親の raw field index が
 構文的に同一であることは仮定しない．
 
-W について主張するのは停止する checker と conditional reconstruction soundness で
-あり，completeness や full principal-type theorem ではない．成功 trace の supply，
-binder，solver replay，cross-sort-aware な逐次 post 合成，terminal context までの
-instance 合成，generalization，coverage checker に関する名前付きの algorithmic 条件から，
-concrete declarative `HasTy` を再構成する．後段 post の target component は前段 target
-range に後段 capability action も適用するため，二 sort の componentwise 合成や誤った
-可換性は仮定しない．
-これらの条件に `HasTy` 自体や同型の導出を oracle として含めない．
+公開 entry point `infer` は，停止する二 sort W 走査 `inferRaw` の結果に
+有限な terminal validator を適用する．validator は成功 trace の supply に基づく
+binder-local instance，alignment と restricted post，terminal context までの instance 合成，
+generalization，coverage evidence を検査し，再構成に必要な `WBridgeWF` を構成する．
+solver replay 自体は cross-sort-aware な `Subst.seq` の逐次合成から無条件に導く．
+公開 soundness の経路では，生成時の `FreshInstAt` を後続 solver cut ごとに輸送せず，
+終端の binder-local `ValueFlowInst`／`Inst` を有限 checker で直接構成する．
+その条件に `HasTy` 自体や同型の導出を oracle として含めない．
+`infer signature context expression = some result` ならば，`infer_success_sound` が
+prevailing substitution で解決した context と結果型に対する concrete declarative
+`HasTy` を与える．`InferenceInputWF` は意図する frozen Egison core 入力の静的境界を
+別途記述するが，fail-closed な validator により soundness 定理の追加前提にはならない．
+呼び出し側が bridge 証明書を渡す必要もない．
+後段 post の target component は前段 target range に後段 capability action も適用するため，
+二 sort の componentwise 合成や誤った可換性は仮定しない．
+terminal validator が raw 成功を棄却する場合はあるため，completeness や full
+principal-type theorem は主張しない．
 
 ### Runtime safety
 
@@ -159,8 +170,8 @@ progress にだけ必要であり，一般の program termination は仮定し�
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety` | 評価・matching semantics，state invariant，preservation/progress/safety |
-| W | `InferenceBase`, `Inference`, `InferenceRegression`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `Soundness` | executable inference，state-threading 回帰，append-only history，producer audit，bridge audit，declarative reconstruction，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `RecursiveExamples` | evidence，binder collision，recursive list/multiset の正負例 |
+| W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples` | evidence，source-level binder collision，公開 inference soundness の代表ケース，recursive list/multiset の正負例 |
 
 各ファイルは `TypePM/P2/` 以下にある．
 
@@ -180,4 +191,5 @@ cd tex
 make
 ```
 
-出力は `tex/type-pm-mech.pdf` である．`sorry`，`admit`，`axiom` は使用しない．
+出力は `tex/type-pm-mech.pdf` である．`sorry`，`admit`，project-defined `axiom` は
+使用しない．

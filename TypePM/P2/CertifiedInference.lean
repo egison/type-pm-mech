@@ -1,0 +1,131 @@
+import TypePM.P2.BridgeChecks
+import TypePM.P2.InferenceInput
+
+/-!
+# Certified executable inference
+
+The public entry point combines the raw terminating W traversal with the
+finite terminal trace validator.  The validator checks only recorded
+terminal instances, alignments, generalization, and matcher evidence;
+cross-sort-aware solver replay follows from sequential composition itself.  It
+does not invoke or store a source typing judgment.  Consequently successful
+public inference carries enough algebraic evidence for reconstruction while
+remaining executable.
+
+No completeness or principality claim is made for the terminal validator.
+-/
+
+namespace TypePM.P2
+namespace Inference
+
+/-- Retain exactly the raw results whose finite trace reconstructs. -/
+def enforceWBridgeResult
+    (signature : FrozenSig) (result : ExprResult) : Option ExprResult :=
+  if Reconstruction.wBridgeCheck signature result then
+    some result
+  else
+    none
+
+/-- Public executable two-sorted Algorithm W with terminal certification. -/
+def infer
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    Option ExprResult :=
+  (inferRaw signature context expression).bind
+    (enforceWBridgeResult signature)
+
+/-- Eliminating the terminal filter exposes its exact finite audit. -/
+theorem enforceWBridgeResult_sound
+    {signature : FrozenSig} {input output : ExprResult}
+    (success : enforceWBridgeResult signature input = some output) :
+    input = output ∧
+      Reconstruction.wBridgeCheck signature output = true := by
+  unfold enforceWBridgeResult at success
+  split at success
+  · rename_i checked
+    have equality := Option.some.inj success
+    subst output
+    exact ⟨rfl, checked⟩
+  · contradiction
+
+/-- Public success contains both the raw W result and its successful audit. -/
+theorem infer_success_raw_and_checked
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    inferRaw signature context expression = some result ∧
+      Reconstruction.wBridgeCheck signature result = true := by
+  unfold infer at success
+  cases rawEq : inferRaw signature context expression with
+  | none => simp [rawEq] at success
+  | some raw =>
+      have guarded : enforceWBridgeResult signature raw =
+          some result := by
+        simpa [rawEq] using success
+      rcases enforceWBridgeResult_sound guarded with ⟨equality, checked⟩
+      subst raw
+      exact ⟨rfl, checked⟩
+
+/-- Every successful public run preserves all protected producer variables. -/
+theorem infer_protected
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    ProtectedProducerTrace result.state :=
+  inferRaw_protected (infer_success_raw_and_checked success).1
+
+/-- A successful public run constructs the complete algebraic bridge checked by
+the terminal validator. -/
+theorem infer_success_bridge
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    Reconstruction.WBridgeWF signature context expression result :=
+  Reconstruction.wBridgeCheck_sound
+    (infer_success_raw_and_checked success).2
+
+/-- Successful executable inference reconstructs proof-relevant source typing. -/
+theorem infer_success_reconstruct
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    Reconstruction.ExprDeriv signature
+      (ResolvedContext result.state.prevailing context)
+      expression result.resolvedTarget :=
+  inferRaw_success_reconstruct
+    (infer_success_raw_and_checked success).1
+    (infer_success_bridge success)
+
+/-- Soundness of executable type inference for the Egison core.
+
+The theorem is stronger than the intended well-formed-input interface: the
+public terminal validator fails closed, so no separate caller premise is
+needed to eliminate a successful result. -/
+theorem infer_success_sound
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    HasTy signature (ResolvedContext result.state.prevailing context)
+      expression result.resolvedTarget :=
+  (infer_success_reconstruct success).toHasTy
+
+/-- Public result type after certified replay. -/
+def inferType
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    Option Ty := do
+  let result <- infer signature context expression
+  pure result.resolvedTarget
+
+/-- Executable success/failure of certified inference. -/
+def inferenceSucceeds
+    (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
+  (infer signature context expression).isSome
+
+/-- Decidability of the actual public inference entry point. -/
+theorem inference_decides
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    inferenceSucceeds signature context expression = true ∨
+      inferenceSucceeds signature context expression = false := by
+  cases inferenceSucceeds signature context expression <;> simp
+
+end Inference
+end TypePM.P2

@@ -28,11 +28,14 @@ import TypePM.P2.Reachability
 import TypePM.P2.Safety
 import TypePM.P2.InferenceBase
 import TypePM.P2.Inference
-import TypePM.P2.InferenceRegression
+import TypePM.P2.InferenceInput
 import TypePM.P2.InferenceHistory
 import TypePM.P2.Reconstruction
-import TypePM.P2.Soundness
 import TypePM.P2.BridgeChecks
+import TypePM.P2.CertifiedInference
+import TypePM.P2.CertifiedInferenceRegression
+import TypePM.P2.InferenceRegression
+import TypePM.P2.Soundness
 import TypePM.P2.RecursiveExamples
 
 /-!

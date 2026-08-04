@@ -27,9 +27,13 @@ commit／push はその都度の明示指示がある場合に限るという規
   binder を target ambient の外へ局所的に freshen し，数値 identifier の捕捉を避ける．
 - recursion は singleton direct-self の単相 `fix` だけを core に含める．alias，mutual
   recursion，高階 origin は fail closed とする．
-- Algorithm W については停止する executable checker，protected-producer audit，
-  conditional reconstruction soundness を証明対象とする．full principality や
-  completeness は主張しない．
+- Algorithm W の公開 entry point `infer` は，停止する raw 走査 `inferRaw` と
+  有限な terminal validator を合成する．公開 `infer` が成功したとき，成功等式だけから
+  `infer_success_sound` が concrete `HasTy` を与える状態を維持する．`InferenceInputWF` は
+  意図する入力境界を記述するが，fail-closed な validator の soundness 前提には戻さない．
+  `WBridgeWF` は validator が内部で構成する証明書であり，呼び出し側の追加前提に
+  戻さない．terminal validator の completeness，full principality，principal-type theorem は
+  主張しない．
 - 動的安全性は concrete `HasTy`／`ValueTy`／matching-state judgments 上で述べる．
   値パターン capture admissibility と局所的な埋込み評価の `StepReady` だけは，
   それぞれ該当する preservation／progress 定理の明示前提としてよい．

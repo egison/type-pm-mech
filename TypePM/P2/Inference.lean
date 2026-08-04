@@ -259,7 +259,7 @@ def solveResolved
 def replayFrom : Subst -> List SolveStep -> Subst
   | prevailing, [] => prevailing
   | prevailing, step :: steps =>
-      replayFrom (Subst.comp step.delta prevailing) steps
+      replayFrom (Subst.seq step.delta prevailing) steps
 
 /-- Replay a whole trace from the identity substitution. -/
 def replay (steps : List SolveStep) : Subst :=
@@ -271,22 +271,17 @@ def applyDeltas : List SolveStep -> Ty -> Ty
   | step :: steps, target => applyDeltas steps (step.delta.apply target)
 
 /--
-Named side conditions for range-fixed chronological composition.
+Semantic replay certificate retained by the reconstruction API.
 
-`laterFixesEarlierTarget` is exactly the hypothesis needed by
-`Subst.apply_comp`.  The reverse cross condition is retained because it is
-also required to prove that the composed pair remains range-fixed.
+Replay uses the cross-sort-aware `Subst.seq`, so chronological application is
+unconditional: a later capability action is applied inside every earlier
+target image while the new target component is built.  No range-fixedness or
+cross-range commutation premise is required.
 -/
-inductive ReplayConditions : Subst -> List SolveStep -> Prop where
-  | nil {prevailing} :
-      prevailing.RangeFixed -> ReplayConditions prevailing []
-  | cons {prevailing step steps} :
-      prevailing.RangeFixed ->
-      step.delta.RangeFixed ->
-      (Subst.mk step.delta.cap prevailing.target).RangeFixed ->
-      (Subst.mk prevailing.cap step.delta.target).RangeFixed ->
-      ReplayConditions (Subst.comp step.delta prevailing) steps ->
-      ReplayConditions prevailing (step :: steps)
+def ReplayConditions (prevailing : Subst) (steps : List SolveStep) : Prop :=
+  ∀ target,
+    (replayFrom prevailing steps).apply target =
+      applyDeltas steps (prevailing.apply target)
 
 /-- Conditions for replaying a complete trace from identity. -/
 def TraceReplayConditions (steps : List SolveStep) : Prop :=
@@ -314,60 +309,27 @@ theorem rangeFixedOnCheck_sound
   · rw [support varId member]
     rfl
 
-/-- Chronological executable audit, including both cross-range directions at
-every componentwise composition. -/
-def replayConditionsCheckFrom
-    (prevailing : Subst) (targetDomain : List TypePM.TyVar) :
-    List SolveStep -> Bool
-  | [] => rangeFixedOnCheck prevailing targetDomain
-  | step :: steps =>
-      rangeFixedOnCheck prevailing targetDomain &&
-      rangeFixedOnCheck step.delta step.targetDomain &&
-      rangeFixedOnCheck ⟨step.delta.cap, prevailing.target⟩ targetDomain &&
-      rangeFixedOnCheck ⟨prevailing.cap, step.delta.target⟩
-        step.targetDomain &&
-      replayConditionsCheckFrom (Subst.comp step.delta prevailing)
-        (targetDomain ++ step.targetDomain) steps
-
-/-- Executable complete-trace audit from identity. -/
-def traceReplayConditionsCheck (steps : List SolveStep) : Bool :=
-  replayConditionsCheckFrom Subst.id [] steps
-
-/-- The executable audit constructs the exact inductive replay certificate;
-no semantic composition equation is weakened or assumed. -/
-theorem replayConditionsCheckFrom_sound
-    {prevailing : Subst} {targetDomain : List TypePM.TyVar}
-    {steps : List SolveStep}
-    (support : prevailing.target.SupportWithin targetDomain)
-    (checked :
-      replayConditionsCheckFrom prevailing targetDomain steps = true) :
-    ReplayConditions prevailing steps := by
-  induction steps generalizing prevailing targetDomain with
-  | nil =>
-      exact .nil (rangeFixedOnCheck_sound support checked)
+/-- Sequential replay agrees with chronological application unconditionally. -/
+theorem replayFrom_apply
+    (prevailing : Subst) (steps : List SolveStep) (target : Ty) :
+    (replayFrom prevailing steps).apply target =
+      applyDeltas steps (prevailing.apply target) := by
+  induction steps generalizing prevailing target with
+  | nil => rfl
   | cons step steps induction =>
-      simp only [replayConditionsCheckFrom] at checked
-      rw [Bool.and_eq_true] at checked
-      rcases checked with ⟨prefixChecked, restChecked⟩
-      rw [Bool.and_eq_true] at prefixChecked
-      rcases prefixChecked with ⟨prefixChecked, earlierLaterChecked⟩
-      rw [Bool.and_eq_true] at prefixChecked
-      rcases prefixChecked with ⟨prefixChecked, laterEarlierChecked⟩
-      rw [Bool.and_eq_true] at prefixChecked
-      rcases prefixChecked with ⟨prevailingChecked, stepChecked⟩
-      refine .cons
-        (rangeFixedOnCheck_sound support prevailingChecked)
-        (rangeFixedOnCheck_sound step.targetSupport stepChecked)
-        (rangeFixedOnCheck_sound support laterEarlierChecked)
-        (rangeFixedOnCheck_sound step.targetSupport earlierLaterChecked) ?_
-      exact induction (support.comp step.targetSupport) restChecked
+      simp only [replayFrom, applyDeltas]
+      rw [induction, Subst.seq_apply]
 
-theorem traceReplayConditionsCheck_sound
-    {steps : List SolveStep}
-    (checked : traceReplayConditionsCheck steps = true) :
+/-- Every chronological trace has a semantic replay certificate. -/
+theorem replayConditions
+    (prevailing : Subst) (steps : List SolveStep) :
+    ReplayConditions prevailing steps := by
+  exact replayFrom_apply prevailing steps
+
+/-- Every complete trace has a replay certificate without an external audit. -/
+theorem traceReplayConditions (steps : List SolveStep) :
     TraceReplayConditions steps := by
-  exact replayConditionsCheckFrom_sound
-    (TySubst.id_supportWithin []) checked
+  exact replayConditions Subst.id steps
 
 theorem replayFrom_append
     (prevailing : Subst) (front suffix : List SolveStep) :
@@ -377,38 +339,21 @@ theorem replayFrom_append
   | nil => rfl
   | cons step rest ih =>
       simp only [List.cons_append, replayFrom]
-      exact ih (Subst.comp step.delta prevailing)
+      exact ih (Subst.seq step.delta prevailing)
 
 theorem replay_snoc (steps : List SolveStep) (step : SolveStep) :
-    replay (steps ++ [step]) = Subst.comp step.delta (replay steps) := by
+    replay (steps ++ [step]) = Subst.seq step.delta (replay steps) := by
   rw [replay, replayFrom_append]
   rfl
-
-/-- A condition-certified replay ends in a range-fixed substitution. -/
-theorem ReplayConditions.result_rangeFixed :
-    forall {prevailing steps},
-      ReplayConditions prevailing steps ->
-      (replayFrom prevailing steps).RangeFixed := by
-  intro prevailing steps conditions
-  induction conditions with
-  | nil hfixed => exact hfixed
-  | cons _ _ _ _ hrest ih =>
-      simpa only [replayFrom] using ih
 
 /-- A certified replay remains certified after dropping a chronological
 prefix.  This is the suffix certificate used when a recursive W call is
 reconstructed directly at the terminal prevailing substitution. -/
 theorem ReplayConditions.afterPrefix
     {prevailing : Subst} {front suffix : List SolveStep}
-    (conditions : ReplayConditions prevailing (front ++ suffix)) :
+    (_conditions : ReplayConditions prevailing (front ++ suffix)) :
     ReplayConditions (replayFrom prevailing front) suffix := by
-  induction front generalizing prevailing with
-  | nil => simpa only [List.nil_append, replayFrom] using conditions
-  | cons step front induction =>
-      cases conditions with
-      | cons _ _ _ _ rest =>
-          simpa only [replayFrom] using
-            induction (prevailing := Subst.comp step.delta prevailing) rest
+  exact replayConditions (replayFrom prevailing front) suffix
 
 /-- In particular, a full trace certificate supplies the certified suffix
 after any concrete list prefix. -/
@@ -418,22 +363,13 @@ theorem TraceReplayConditions.afterPrefix
     ReplayConditions (replay front) suffix := by
   exact ReplayConditions.afterPrefix conditions
 
-/--
-Componentwise replay agrees with sequential paired application whenever the
-named cross-range conditions hold.
--/
+/-- Eliminate a semantic replay certificate. -/
 theorem ReplayConditions.apply_eq_sequential
     {prevailing : Subst} {steps : List SolveStep}
     (conditions : ReplayConditions prevailing steps) (target : Ty) :
     (replayFrom prevailing steps).apply target =
       applyDeltas steps (prevailing.apply target) := by
-  induction conditions generalizing target with
-  | nil hfixed => rfl
-  | @cons prevailing step steps hprevailing hstep hlaterEarlier
-      hearlierLater hrest ih =>
-      simp only [replayFrom, applyDeltas]
-      rw [ih]
-      rw [Subst.apply_comp step.delta prevailing hlaterEarlier]
+  exact conditions target
 
 /-! ## Inference trace and state -/
 
@@ -511,6 +447,22 @@ structure InferTrace where
   solves : List SolveStep
   events : List TraceEvent
 
+/-- Capability identifiers allocated either singly or by a quantified-binder
+batch.  Keeping ownership in the executable trace lets finalization distinguish
+inference-owned producer variables from free variables inherited from source
+inputs. -/
+def TraceEvent.allocatedCapVars : TraceEvent -> List CapVar
+  | .freshCap _ varId => [varId]
+  | .schemeInstantiation _ _ _ _ _ _ _ _ _ _ _ capImages _ => capImages
+  | .ctorInstantiation _ _ _ _ _ capImages => capImages
+  | .dualInstantiation _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ capImages _ =>
+      capImages
+  | _ => []
+
+/-- Every capability identifier allocated in a chronological trace. -/
+def InferTrace.allocatedCapVars (trace : InferTrace) : List CapVar :=
+  trace.events.flatMap TraceEvent.allocatedCapVars
+
 /--
 The only three origins allowed to seed known direct-self evidence.
 
@@ -537,7 +489,8 @@ structure InferState where
   supply : InferenceBase.FreshSupply
   trace : InferTrace
   sources : List ProducerSource
-  /-- Fresh capability images introduced by value-producing instantiations. -/
+  /-- Inference-owned capability variables exported by value-producing
+  instantiations or finalized matcher producers. -/
   protectedCaps : List CapVar
 
 /-- Empty state at caller-supplied fresh lower bounds. -/
@@ -545,6 +498,60 @@ def InferState.empty
     (supply : InferenceBase.FreshSupply :=
       InferenceBase.FreshSupply.empty) : InferState :=
   ⟨supply, ⟨[], []⟩, [], []⟩
+
+/--
+The inference-owned variables that remain visible in a finalized matcher
+capability.  Intersecting trace ownership with the final capability excludes
+free source variables as well as temporary consumer and pattern metas that do
+not belong to the matcher producer returned to the caller.
+-/
+def matcherProducerVars
+    (state : InferState) (capability : Cap) : List CapVar :=
+  capability.fcv.filter fun varId =>
+    varId ∈ state.trace.allocatedCapVars
+
+@[simp] theorem mem_matcherProducerVars
+    (state : InferState) (capability : Cap) (varId : CapVar) :
+    varId ∈ matcherProducerVars state capability ↔
+      varId ∈ capability.fcv ∧
+        varId ∈ state.trace.allocatedCapVars := by
+  simp [matcherProducerVars]
+
+/-- Protect exactly the inference-owned variables visible in a finalized matcher
+producer.  This is a ledger-only update: supply, provenance, and chronological
+history remain unchanged. -/
+def InferState.protectMatcherCapability
+    (state : InferState) (capability : Cap) : InferState :=
+  { state with
+    protectedCaps :=
+      state.protectedCaps ++ matcherProducerVars state capability }
+
+@[simp] theorem InferState.protectMatcherCapability_trace
+    (state : InferState) (capability : Cap) :
+    (state.protectMatcherCapability capability).trace =
+      state.trace :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapability_supply
+    (state : InferState) (capability : Cap) :
+    (state.protectMatcherCapability capability).supply =
+      state.supply :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapability_protectedCaps
+    (state : InferState) (capability : Cap) :
+    (state.protectMatcherCapability capability).protectedCaps =
+      state.protectedCaps ++
+        matcherProducerVars state capability :=
+  rfl
+
+@[simp] theorem InferState.mem_protectMatcherCapability_protectedCaps
+    (state : InferState) (capability : Cap) (varId : CapVar) :
+    varId ∈ (state.protectMatcherCapability capability).protectedCaps ↔
+      varId ∈ state.protectedCaps ∨
+        (varId ∈ capability.fcv ∧
+          varId ∈ state.trace.allocatedCapVars) := by
+  simp
 
 /-! ### Producer non-strengthening -/
 
@@ -723,6 +730,13 @@ theorem InferState.HistoryPrefix.of_same_trace
   · simpa using congrArg InferTrace.solves same
   · simpa using congrArg InferTrace.events same
 
+/-- Final matcher-producer protection changes only the producer ledger. -/
+theorem InferState.historyPrefix_protectMatcherCapability
+    (state : InferState) (capability : Cap) :
+    state.HistoryPrefix
+      (state.protectMatcherCapability capability) := by
+  exact InferState.HistoryPrefix.of_same_trace rfl
+
 /-- Eliminate the state component of a successful pair-returning helper. -/
 theorem InferState.HistoryPrefix.snd_of_eq
     {α : Type} {initial final : InferState} {pair : α × InferState}
@@ -780,7 +794,7 @@ theorem InferState.historyPrefix_recordSource
 theorem InferState.prevailing_recordSolve
     (state : InferState) (step : SolveStep) :
     (state.recordSolve step).prevailing =
-      Subst.comp step.delta state.prevailing := by
+      Subst.seq step.delta state.prevailing := by
   exact replay_snoc state.trace.solves step
 
 /-- Resolve and solve one constraint against all preceding solutions. -/
@@ -2968,6 +2982,7 @@ def inferMatcherFuel :
                       (.matcherFinalization state.trace.solves.length clauses
                         target clausesResult.rawHoleLists finalTarget
                         finalHoleLists evidence capability)
+                    let state := state.protectMatcherCapability capability
                     some ⟨Ty.matcher capability target, state⟩
                   else none
 
@@ -3006,14 +3021,15 @@ def inferenceFuel (expression : Expr) : Nat :=
 def enforceProtectedResult (result : ExprResult) : Option ExprResult :=
   if protectedProducerTraceCheck result.state then some result else none
 
-/-- Executable two-sorted Algorithm W. -/
-def infer
+/-- Raw two-sorted Algorithm W traversal with producer protection, before the
+terminal reconstruction audit used by the public entry point. -/
+def inferRaw
     (signature : FrozenSig) (context : Context) (expression : Expr) :
     Option ExprResult :=
   (inferExprFuel (inferenceFuel expression) signature context [] [] expression
     (initialState signature context)).bind enforceProtectedResult
 
-/-- Public W success includes producer non-strengthening for every fresh use. -/
+/-- Passing the raw producer-protection filter certifies non-strengthening. -/
 theorem enforceProtectedResult_sound
     {input output : ExprResult}
     (success : enforceProtectedResult input = some output) :
@@ -3027,12 +3043,12 @@ theorem enforceProtectedResult_sound
   · contradiction
 
 /-- Every successful complete inference trace preserves protected producers. -/
-theorem infer_protected
+theorem inferRaw_protected
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
-    (success : infer signature context expression = some result) :
+    (success : inferRaw signature context expression = some result) :
     ProtectedProducerTrace result.state := by
-  unfold infer at success
+  unfold inferRaw at success
   cases core : inferExprFuel (inferenceFuel expression) signature context [] []
       expression (initialState signature context) with
   | none => simp [core] at success
@@ -3041,24 +3057,24 @@ theorem infer_protected
         simpa [core] using success
       exact (enforceProtectedResult_sound guarded).2
 
-/-- Public result type after replaying the one prevailing substitution. -/
-def inferType
+/-- Raw result type after replaying the one prevailing substitution. -/
+def inferRawType
     (signature : FrozenSig) (context : Context) (expression : Expr) :
     Option Ty := do
-  let result <- infer signature context expression
+  let result <- inferRaw signature context expression
   pure result.resolvedTarget
 
 /-- Executable success/failure of W. -/
-def inferenceSucceeds
+def rawInferenceSucceeds
     (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
-  (infer signature context expression).isSome
+  (inferRaw signature context expression).isSome
 
-/-- Public decidability theorem for the actual Algorithm W entry point. -/
-theorem inference_decides
+/-- Decidability of the raw protected traversal. -/
+theorem rawInference_decides
     (signature : FrozenSig) (context : Context) (expression : Expr) :
-    inferenceSucceeds signature context expression = true ∨
-      inferenceSucceeds signature context expression = false := by
-  cases inferenceSucceeds signature context expression <;> simp
+    rawInferenceSucceeds signature context expression = true ∨
+      rawInferenceSucceeds signature context expression = false := by
+  cases rawInferenceSucceeds signature context expression <;> simp
 
 /-! ## Append-only history of executable W -/
 
@@ -3788,6 +3804,7 @@ theorem inferExprFuel_historyPrefix
         instantiateDualInState_historyPrefix,
         InferState.historyPrefix_freshTy,
         InferState.historyPrefix_freshCap,
+        InferState.historyPrefix_protectMatcherCapability,
         InferState.historyPrefix_recordEvent,
         InferState.historyPrefix_recordSource,
         alignTypes_historyPrefix,
@@ -3819,10 +3836,10 @@ theorem inferPatternsFuel_empty_preserves_nonempty_bindings
         result.bindings = bindings := by
   exact ⟨⟨[], bindings, state⟩, by simp [inferPatternsFuel], rfl⟩
 
-/-- Same-named fix and argument binders are rejected by the public W entry. -/
+/-- Same-named fix and argument binders are rejected by the raw traversal. -/
 theorem same_named_fix_argument_rejected (signature : FrozenSig) :
-    inferenceSucceeds signature [] (.fix "f" "f" (.lit 0)) = false := by
-  simp [inferenceSucceeds, infer, inferenceFuel, exprTraversalFuel,
+    rawInferenceSucceeds signature [] (.fix "f" "f" (.lit 0)) = false := by
+  simp [rawInferenceSucceeds, inferRaw, inferenceFuel, exprTraversalFuel,
     inferExprFuel]
 
 /-! ## Producer non-strengthening regression -/
@@ -3848,7 +3865,7 @@ An instantiated producer capability cannot be strengthened from a fresh leaf
 to `List none` merely because a consumer constructor requests that shape.
 -/
 theorem polymorphicProducer_strengthening_rejected :
-    inferenceSucceeds protectionSignature
+    rawInferenceSucceeds protectionSignature
       [("producer", polymorphicProducer)]
       (.ctor "consumeProducer" [.var "producer"]) = false := by
   native_decide

@@ -1,23 +1,21 @@
-import TypePM.P2.Reconstruction
+import TypePM.P2.CertifiedInference
 import TypePM.P2.Safety
 
 /-!
-# End-to-end conditional soundness
+# End-to-end soundness
 
 This module is the public composition point between executable inference and
-the concrete dynamic metatheory.  A successful Algorithm W run is useful only
-with its finite `WBridgeWF` audit; together they reconstruct source typing.
-`FrozenSigWF` and the local value-pattern capture condition independently
-supply the reusable runtime safety package.  `WBridgeWF` stores no source
-typing derivation, while `OperationalCaptureAdm` contains only the local
-value-pattern expression typings consumed by preservation; neither stores an
-operational result.
+the concrete dynamic metatheory.  The public Algorithm W entry point performs
+its finite reconstruction audit itself, so successful inference reconstructs
+source typing without a caller-supplied bridge.  `FrozenSigWF` and the local
+value-pattern capture condition independently supply the reusable runtime
+safety package.
 -/
 
 namespace TypePM.P2
 namespace Inference
 
-/-- The two concrete conclusions exposed by one audited inference run. -/
+/-- The two concrete conclusions exposed by one certified inference run. -/
 structure SafeResult
     (signature : FrozenSig) (context : Context) (expression : Expr)
     (result : ExprResult) (SF : RuntimeSigF) : Prop where
@@ -29,18 +27,17 @@ structure SafeResult
   core : CoreSafety signature SF
 
 /--
-An audited successful W run and the concrete static runtime conditions jointly
-yield source typing and the full dynamic safety interface.
+A successful certified W run and the concrete static runtime conditions
+jointly yield source typing and the full dynamic safety interface.
 -/
 theorem infer_safe
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult} {SF : RuntimeSigF}
     (success : infer signature context expression = some result)
-    (bridge : Reconstruction.WBridgeWF signature context expression result)
     (signatureWF : FrozenSigWF signature)
     (captureAdm : OperationalCaptureAdm signature SF) :
     SafeResult signature context expression result SF where
-  typing := infer_success_sound success bridge
+  typing := infer_success_sound success
   core := core_safety signatureWF captureAdm
 
 end Inference

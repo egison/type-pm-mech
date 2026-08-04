@@ -1,4 +1,4 @@
-import TypePM.P2.BridgeChecks
+import TypePM.P2.CertifiedInference
 
 /-!
 # End-to-end recursive matcher regressions
@@ -190,79 +190,14 @@ theorem paperCompleteMultisetInferenceResult_success :
       some paperCompleteMultisetInferenceResult := by
   exact option_eq_some_get_of_isSome _ (by native_decide)
 
-/-! ## Executable bridge certificates and reconstructed typing -/
+/-- Matcher finalization exports the structural producer variable into the
+protected ledger in both recursive end-to-end examples. -/
+theorem recursiveMatcher_final_producers_protected :
+    ⟨1⟩ ∈ listMatcherInferenceResult.state.protectedCaps ∧
+      ⟨1⟩ ∈ paperCompleteMultisetInferenceResult.state.protectedCaps := by
+  native_decide
 
-theorem listMatcher_wBridge :
-    Inference.Reconstruction.WBridgeWF listSignature [] listMatcher
-      listMatcherInferenceResult where
-  replay := Inference.traceReplayConditionsCheck_sound (by native_decide)
-  checkerStable := rfl
-  bindersNodup :=
-    Inference.Reconstruction.traceBindersNodupCheck_sound (by native_decide)
-  freshAllocation :=
-    Inference.Reconstruction.traceFreshAllocationCheck_sound (by native_decide)
-  primitiveHoles := by native_decide
-  patternLeaves := by native_decide
-  patternCtors := by native_decide
-  instantiations :=
-    Inference.Reconstruction.traceInstantiationCheck_sound (by native_decide)
-  instanceSuffixes := by
-    apply Inference.Reconstruction.traceInstanceSuffixCheck_sound
-    · exact Inference.Reconstruction.traceInstantiationCheck_sound
-        (by native_decide)
-    · native_decide
-  solver :=
-    Inference.Reconstruction.traceSolverConditionsCheck_sound
-      (by native_decide)
-  slotAlignments :=
-    Inference.Reconstruction.traceSlotAlignmentCheck_sound (by native_decide)
-  typeAlignments :=
-    Inference.Reconstruction.traceTypeAlignmentCheck_sound (by native_decide)
-  dualAlignments :=
-    Inference.Reconstruction.traceDualAlignmentCheck_sound (by native_decide)
-  finalization :=
-    Inference.Reconstruction.traceFinalizationCheck_sound (by native_decide)
-  finalizationSuffixes :=
-    Inference.Reconstruction.traceFinalizationSuffixCheck_sound
-      (by native_decide)
-  generalization :=
-    Inference.Reconstruction.traceNoLetCheck_sound (by native_decide)
-
-theorem paperCompleteMultisetMatcher_wBridge :
-    Inference.Reconstruction.WBridgeWF multisetSignature []
-      paperCompleteMultisetMatcher paperCompleteMultisetInferenceResult where
-  replay := Inference.traceReplayConditionsCheck_sound (by native_decide)
-  checkerStable := rfl
-  bindersNodup :=
-    Inference.Reconstruction.traceBindersNodupCheck_sound (by native_decide)
-  freshAllocation :=
-    Inference.Reconstruction.traceFreshAllocationCheck_sound (by native_decide)
-  primitiveHoles := by native_decide
-  patternLeaves := by native_decide
-  patternCtors := by native_decide
-  instantiations :=
-    Inference.Reconstruction.traceInstantiationCheck_sound (by native_decide)
-  instanceSuffixes := by
-    apply Inference.Reconstruction.traceInstanceSuffixCheck_sound
-    · exact Inference.Reconstruction.traceInstantiationCheck_sound
-        (by native_decide)
-    · native_decide
-  solver :=
-    Inference.Reconstruction.traceSolverConditionsCheck_sound
-      (by native_decide)
-  slotAlignments :=
-    Inference.Reconstruction.traceSlotAlignmentCheck_sound (by native_decide)
-  typeAlignments :=
-    Inference.Reconstruction.traceTypeAlignmentCheck_sound (by native_decide)
-  dualAlignments :=
-    Inference.Reconstruction.traceDualAlignmentCheck_sound (by native_decide)
-  finalization :=
-    Inference.Reconstruction.traceFinalizationCheck_sound (by native_decide)
-  finalizationSuffixes :=
-    Inference.Reconstruction.traceFinalizationSuffixCheck_sound
-      (by native_decide)
-  generalization :=
-    Inference.Reconstruction.traceNoLetCheck_sound (by native_decide)
+/-! ## Reconstructed typing from public inference success -/
 
 theorem listMatcherInferenceResult_target :
     listMatcherInferenceResult.resolvedTarget = matcherTy := by
@@ -276,7 +211,7 @@ theorem listMatcher_reconstructed :
     Inference.Reconstruction.ExprDeriv listSignature [] listMatcher
       matcherTy := by
   have derivation := Inference.infer_success_reconstruct
-    listMatcherInferenceResult_success listMatcher_wBridge
+    listMatcherInferenceResult_success
   rw [listMatcherInferenceResult_target] at derivation
   simpa [Inference.ResolvedContext, Context.applySubst] using derivation
 
@@ -285,7 +220,6 @@ theorem paperCompleteMultisetMatcher_reconstructed :
       paperCompleteMultisetMatcher matcherTy := by
   have derivation := Inference.infer_success_reconstruct
     paperCompleteMultisetInferenceResult_success
-    paperCompleteMultisetMatcher_wBridge
   rw [paperCompleteMultisetInferenceResult_target] at derivation
   simpa [Inference.ResolvedContext, Context.applySubst] using derivation
 

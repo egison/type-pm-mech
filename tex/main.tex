@@ -62,6 +62,18 @@
 \begin{document}
 \maketitle
 
+本仕様の機械化目標は，次を正確に主張できることにある．
+
+\begin{quote}
+The soundness of executable type inference for the Egison core is mechanized
+in Lean~4.
+\end{quote}
+
+ここで soundness は，公開 executable inference が成功すれば，返した型に対する
+declarative expression typing が必ず構成できることを意味する．機械化した定理は
+後述する静的入力整形式性を追加前提にせず，completeness と full principality は
+含まない．
+
 \section{構文}
 
 \subsection{Capability，target type，scheme}
@@ -920,11 +932,12 @@ chain は有限 support と fresh allocation を記録するより強い witness
 前の局所 binder と後から挿入された自由変数を混同しない．
 
 これに対して，raw な $\matchCap$／$\mguTy$ certificate は生成時の正規化済み index
-に固定して保持する．その後の suffix $Q=(R,V)$ では，capability component $R$ の像を
-capability variable のみに限定し，target component $V$ の support も生成時に保護された
-変数へ限定する．suffix の合成では，後段の capability action を前段の target range
-内部にも適用する cross-sort-aware な逐次作用を用いる．従って誤った可換性条件を
-仮定せず，solver を別の入力で再実行せず suffix だけを延長できる．
+と局所 cut とともに保持する．成功 run の終端までに得た solver delta は，後段の
+capability action を前段の target range 内部にも適用する cross-sort-aware な逐次作用で
+replay する．終端 validator は，記録した局所 cut と唯一の終端 cut の間で必要な
+alignment と restricted post を検査する．従って誤った componentwise 可換性を仮定せず，
+solver を別の入力で再実行する必要もない．中間の各 stop を追加の公開前提として
+量化しない．
 したがって次が成り立つ．
 
 \begin{quote}
@@ -938,23 +951,28 @@ consumer placeholder である．これらは matcher literal 全体で一つの
 substitution により解決し，actual clause evidence と $\CoverageOK$ がその構造を
 根拠づける．両者を同じ instantiation 経路で扱わない．
 
-Let specialization では $\Gen(\Sighat,\Gamma,\tau)$ の safe instance から
-元の bound expression をその instance 型で再構成する．一般には
-$Q(\Gen(\Sighat,\Gamma,\tau))=
-\Gen(\Sighat,Q\Gamma,Q\tau)$ ではないので，この誤った scheme 等式を仮定しない．
-外側の instance が導入した自由変数と内側の量化 binder の数値 identifier が一致する
-場合には，内側の binder を target ambient の外へ局所的に freshen してから輸送する．
-context と signature の自由変数上で作用が一致することを追跡する parametric な
-binder-local substitution algebra と，構文に対する同時帰納でこの admissibility を
-導出する．型付け導出そのものを premise とする oracle は置かない．
+Let specialization では，bound expression の検査直後に得た context $\Gamma_0$，
+型 $\tau_0$，scheme $\sigma_0=\Gen(\Sighat,\Gamma_0,\tau_0)$ を trace に記録する．
+body の constraint をすべて反映した終端 substitution $S_r$ に対して validator が
+検査するのは，次の終端可換式である．
+\[
+  S_r\sigma_0=
+  \Gen(\Sighat,S_r\Gamma_{\mathrm{raw}},S_r\tau_{\mathrm{raw}}).
+\]
+従って，body の検査後も $\Gamma_0$，$\tau_0$，$\sigma_0$ が構文的に不変であるとは
+仮定しない．外側の instance が導入した自由変数と内側の量化 binder の数値 identifier
+が一致する場合には，内側の binder を target ambient の外へ局所的に freshen してから
+輸送する．この freshening は source-level の導出輸送補題である．公開 inference の
+T-LET bridge は上の終端可換式を validator で直接検査して再構成し，型付け導出そのものを
+premise とする oracle は置かない．
 
-\subsection{Algorithm W と再構成}
+\subsection{検証付き Algorithm W と再構成}
 
-二種 Algorithm W は expression，pattern，primitive pattern，data pattern，clause，
-slot check を有限な fuel 再帰で実行し，成功時には全 solver step と source event を
-trace に保持する．fresh value instance の capability variable は protected producer
-として記録し，全 solver delta がそれらを固定することを executable checker で
-再検査する．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
+raw traversal $\mathsf{inferRaw}$ は expression，pattern，primitive pattern，data
+pattern，clause，slot check を有限な fuel 再帰で実行し，成功時には全 solver step と
+source event を trace に保持する．fresh value instance の capability variable は
+protected producer として記録し，全 solver delta がそれらを固定することを実行時にも
+監査する．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
 binder 線形性の各 checker の成功を要求する．
 
 Pattern constructor の capability inference は projection の
@@ -972,25 +990,59 @@ raw provenance と，実際の終端 index で構造を追う terminal derivatio
 保証しない条件は要求しない．source typing と runtime proof は terminal derivation の
 射影だけを利用する．
 
-完全性や full principality は主張しない．conditional reconstruction theorem は
-概念的に次の形である．
+公開する $\mathsf{infer}$ は raw traversal の成功をそのまま公開せず，有限の終端
+代数 validator $\mathsf{wBridgeCheck}$ を通した結果だけを返す．概念的な定義は次である．
+
+\[
+\begin{aligned}
+\mathsf{infer}(\Sighat,\Gamma,e)
+  ={}&\mathsf{bind}\bigl(\mathsf{inferRaw}(\Sighat,\Gamma,e),
+    \lambda r.\\[-0.2em]
+  &\qquad\mathsf{if}\;
+      \mathsf{wBridgeCheck}(\Sighat,r)\;
+    \mathsf{then}\;\mathsf{some}\;r\;
+    \mathsf{else}\;\mathsf{none}\bigr).
+\end{aligned}
+\]
+
+$\mathsf{wBridgeCheck}$ は signature と有限な result／trace だけを
+走査し，記録した supply に基づく binder-local instance，slot／type／dual alignment，lookup 時の
+fresh instance と終端 instance の対応，matcher finalization，終端 let-generalization，
+および concrete coverage/exhaustiveness check を検査する．source typing judgment や
+その導出を検査対象・保存データとして持たない．validator の成功から
+$\mathsf{WBridgeWF}$ を Lean 内で構成し，raw traversal に対する再構成補題へ渡す．
+solver replay 自体は cross-sort-aware な逐次合成から無条件に導かれる．
+元の context／expression と result／trace の対応は raw traversal の成功等式が与える．
+また公開 soundness の経路では，生成時の $\mathsf{FreshInstAt}$ を後続 solver cut ごとに
+輸送せず，終端の binder-local $\mathsf{ValueFlowInst}$／$\mathsf{Inst}$ を有限 checker で
+直接構成する．
+従って $\mathsf{WBridgeWF}$ は実装内部の中間証明であり，公開 soundness theorem の
+caller が与える premise ではない．raw traversal が成功したが終端 validator が失敗した
+場合，公開 $\mathsf{infer}$ は失敗を返す．この filter が全 typable term または全 raw
+成功を受理するという completeness は主張しない．
+
+意図する frozen Egison core 入力の静的境界
+$\mathsf{InferenceInputWF}(\Sighat,\Gamma)$ は，
+$\Sighat$ の arm-exhaustiveness 関数が concrete
+$\mathsf{basicArmExhaustive}$ checker であること，および signature と context の lookup
+から選択可能な各 scheme の capability binder 列と target binder 列がそれぞれ重複を
+持たないことを要求する．これは runtime safety 用の $\mathsf{FrozenSigWF}$ とは別の
+静的境界である．ただし fail-closed な validator が成功結果に必要な代数条件をすべて
+検査するため，この境界は公開 soundness 定理の前提ではない．
+$S_r=r.\mathsf{state.prevailing}$ とおくと，機械化した公開 soundness は次の，より強い形である．
 
 \[
 \frac{
   \mathsf{infer}(\Sighat,\Gamma,e)=\mathsf{some}\;r
-  \qquad
-  \mathsf{WBridgeWF}(\Sighat,\Gamma,e,r)
 }{
-  \Sighat;r.S\Gamma\vdash e:r.S\tau
+  \Sighat;S_r\Gamma\vdash e:r.\mathsf{resolvedTarget}
 }
 \]
 
-$\mathsf{WBridgeWF}$ が含めるのは fresh supply，binder の相異性，solver replay，
-cross-sort-aware な逐次 post 合成，terminal context までの instance 合成，
-generalization，および concrete coverage/exhaustiveness checker の soundness に限る．
-instance 合成は lookup 時の concrete fresh W instance を index とし，その宣言的な忘却と
-terminal target specialization に対する代数的 witness を保持する．結論の source typing judgment 自体や，それと
-同型の導出を premise として含めない．
+ここで $r.\mathsf{resolvedTarget}$ は $S_r$ を raw result target に適用した型である．
+raw traversal と validator はともに停止する executable function であり，定理の premise
+には caller-supplied bridge，型付け oracle，completeness，full principal-type theorem を
+含めない．
 
 singleton direct-self の $\mathtt{fix}$ では，再帰 binder は RHS 内で一つの monotype
 placeholder を共有する．binder の自由出現は application head に直接現れるものだけを
