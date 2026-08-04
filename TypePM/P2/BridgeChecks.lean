@@ -13,105 +13,16 @@ namespace TypePM.P2
 namespace Inference
 namespace Reconstruction
 
-private def boundedSuffixCheck
-    (lower upper : Nat) (predicate : Nat -> Bool) : Bool :=
-  (List.range (upper + 1)).all fun index =>
-    if lower ≤ index then predicate index else true
-
-private theorem boundedSuffixCheck_sound
-    {lower upper : Nat} {predicate : Nat -> Bool}
-    (checked : boundedSuffixCheck lower upper predicate = true)
-    {index : Nat} (lowerBound : lower ≤ index)
-    (upperBound : index ≤ upper) :
-    predicate index = true := by
-  have membership : index ∈ List.range (upper + 1) := by
-    exact List.mem_range.mpr (Nat.lt_succ_iff.mpr upperBound)
-  have accepted := List.all_eq_true.mp checked index membership
-  simpa [boundedSuffixCheck, lowerBound] using accepted
-
-/-! ## A target-only restricted view of a solver suffix -/
-
-private def replayTargetDomain (steps : List SolveStep) : List TypePM.TyVar :=
-  steps.flatMap fun step => step.targetDomain
-
-private theorem replayFrom_targetSupport
-    {prevailing : Subst} {initialDomain : List TypePM.TyVar}
-    (support : prevailing.target.SupportWithin initialDomain) :
-    ∀ steps,
-      (replayFrom prevailing steps).target.SupportWithin
-        (initialDomain ++ steps.flatMap fun step => step.targetDomain)
-  | [] => by simpa [replayFrom] using support
-  | step :: steps => by
-      have composed :
-          (Subst.seq step.delta prevailing).target.SupportWithin
-            (initialDomain ++ step.targetDomain) :=
-        by
-          intro varId outside
-          have outsideInitial : varId ∉ initialDomain := by
-            intro membership
-            exact outside (List.mem_append_left _ membership)
-          have outsideStep : varId ∉ step.targetDomain := by
-            intro membership
-            exact outside (List.mem_append_right _ membership)
-          simp only [Subst.seq]
-          rw [support varId outsideInitial]
-          exact step.targetSupport varId outsideStep
-      have remainder := replayFrom_targetSupport composed steps
-      simpa only [replayFrom, List.flatMap_cons, List.append_assoc] using
-        remainder
-
-private theorem replay_targetSupport (steps : List SolveStep) :
-    (replay steps).target.SupportWithin (replayTargetDomain steps) := by
-  have raw := replayFrom_targetSupport
-    (prevailing := Subst.id) (initialDomain := [])
-    (TySubst.id_supportWithin []) steps
-  intro varId outside
-  apply raw varId
-  simp only [List.nil_append]
-  intro membership
-  apply outside
-  simpa [replayTargetDomain] using membership
-
-private def targetDomainsBelowCheck
-    (bound : Nat) (steps : List SolveStep) : Bool :=
-  steps.all fun step => step.targetDomain.all fun varId => varId < bound
-
-private theorem targetDomainsBelowCheck_sound
-    {bound : Nat} {steps : List SolveStep}
-    (checked : targetDomainsBelowCheck bound steps = true) :
-    ∀ varId, varId ∈ replayTargetDomain steps -> varId < bound := by
-  intro varId membership
-  simp only [replayTargetDomain, List.mem_flatMap] at membership
-  rcases membership with ⟨step, stepMembership, variableMembership⟩
-  have stepAccepted := List.all_eq_true.mp checked step stepMembership
-  have variableAccepted :=
-    List.all_eq_true.mp stepAccepted varId variableMembership
-  exact of_decide_eq_true variableAccepted
+/-! ## A target-only declarative view of a solver suffix -/
 
 private def targetOnlyReplay (steps : List SolveStep) : Subst :=
   Subst.mk CapSubst.id (replay steps).target
 
-private theorem targetOnlyReplay_chain
-    (steps : List SolveStep) (bound : Nat)
-    (below : ∀ varId, varId ∈ replayTargetDomain steps -> varId < bound) :
-    RestrictedPost.Chain [] [] [] [] (targetOnlyReplay steps) := by
-  apply RestrictedPost.Chain.one
-  apply RestrictedPost.ofVariableSubstitution
-    (capDomain := []) (tyDomain := List.range bound)
-    (capImages := []) CapSubst.id (replay steps).target
-  · exact CapSubst.id_supportWithin []
-  · intro varId outside
-    apply replay_targetSupport steps varId
-    intro membership
-    exact outside (List.mem_range.mpr (below varId membership))
-  · exact List.nodup_nil
-  · exact List.nodup_range
-  · rfl
-  · exact List.nodup_nil
-  · intros; contradiction
-  · simp
-  · intros; contradiction
-  · intros; contradiction
+private theorem targetOnlyReplay_variable (steps : List SolveStep) :
+    VariablePost (targetOnlyReplay steps) := by
+  constructor
+  intro varId
+  exact ⟨varId, rfl⟩
 
 /-! ## Terminal fresh-instance reconstruction -/
 
@@ -270,13 +181,8 @@ private def typeAlignmentEventCheck
         (replay (state.trace.solves.take start)).apply rawLeft) &&
       decide (localRight =
         (replay (state.trace.solves.take start)).apply rawRight) &&
-      boundedSuffixCheck stop state.trace.solves.length fun terminal =>
-        decide
-          (applyDeltas (solveSlice state.trace start terminal) localLeft =
-            applyDeltas (solveSlice state.trace start terminal) localRight) &&
-        decide
-          ((replay (state.trace.solves.take terminal)).apply rawLeft =
-            (replay (state.trace.solves.take terminal)).apply rawRight)
+      decide (state.prevailing.apply rawLeft =
+        state.prevailing.apply rawRight)
   | _ => true
 
 def traceTypeAlignmentCheck (state : InferState) : Bool :=
@@ -292,12 +198,8 @@ theorem traceTypeAlignmentCheck_sound
       simp only [typeAlignmentEventCheck,
         Bool.and_eq_true, decide_eq_true_eq] at eventChecked
       rcases eventChecked with
-        ⟨⟨⟨⟨startStop, stopBound⟩, localLeftEq⟩, localRightEq⟩,
-          suffixChecked⟩
-      refine ⟨startStop, stopBound, localLeftEq, localRightEq, ?_⟩
-      intro terminal lower upper
-      have accepted := boundedSuffixCheck_sound suffixChecked lower upper
-      simpa only [Bool.and_eq_true, decide_eq_true_eq] using accepted
+        ⟨⟨⟨⟨startStop, stopBound⟩, localLeftEq⟩, localRightEq⟩, finalEq⟩
+      exact ⟨startStop, stopBound, localLeftEq, localRightEq, finalEq⟩
   | _ => trivial
 
 private def dualAlignmentEventCheck
@@ -309,13 +211,8 @@ private def dualAlignmentEventCheck
         (replay (state.trace.solves.take start))) &&
       decide (localRight = rawRight.applySubst
         (replay (state.trace.solves.take start))) &&
-      boundedSuffixCheck stop state.trace.solves.length fun terminal =>
-        decide
-          (applyDualDeltas (solveSlice state.trace start terminal) localLeft =
-            applyDualDeltas (solveSlice state.trace start terminal) localRight) &&
-        decide
-          (rawLeft.applySubst (replay (state.trace.solves.take terminal)) =
-            rawRight.applySubst (replay (state.trace.solves.take terminal)))
+      decide (rawLeft.applySubst state.prevailing =
+        rawRight.applySubst state.prevailing)
   | _ => true
 
 def traceDualAlignmentCheck (state : InferState) : Bool :=
@@ -331,18 +228,14 @@ theorem traceDualAlignmentCheck_sound
       simp only [dualAlignmentEventCheck,
         Bool.and_eq_true, decide_eq_true_eq] at eventChecked
       rcases eventChecked with
-        ⟨⟨⟨⟨startStop, stopBound⟩, localLeftEq⟩, localRightEq⟩,
-          suffixChecked⟩
-      refine ⟨startStop, stopBound, localLeftEq, localRightEq, ?_⟩
-      intro terminal lower upper
-      have accepted := boundedSuffixCheck_sound suffixChecked lower upper
-      simpa only [Bool.and_eq_true, decide_eq_true_eq] using accepted
+        ⟨⟨⟨⟨startStop, stopBound⟩, localLeftEq⟩, localRightEq⟩, finalEq⟩
+      exact ⟨startStop, stopBound, localLeftEq, localRightEq, finalEq⟩
   | _ => trivial
 
 /-! ## Expected-type slot alignments -/
 
 private def slotAlignmentAtTerminalCheck
-    (targetBound : Nat) (localSteps terminalSteps : List SolveStep)
+    (localSteps terminalSteps : List SolveStep)
     (inferred requested : Ty) : Bool :=
   if decide
       (applyDeltas terminalSteps inferred =
@@ -361,7 +254,6 @@ private def slotAlignmentAtTerminalCheck
             decide (rawProducerTarget = producerTarget) &&
             decide (rawConsumerCap = consumerCap) &&
             decide (rawConsumerTarget = consumerTarget) &&
-            targetDomainsBelowCheck targetBound suffix &&
             rangeFixedOnCheck step.delta step.targetDomain &&
             decide
               (applyDeltas terminalSteps
@@ -396,9 +288,9 @@ private theorem solveStep_producerToSlot_raw
       exact ⟨_, matched, rfl, unified, rangeFixed⟩
 
 private theorem slotAlignmentAtTerminalCheck_sound
-    {targetBound : Nat} {localSteps terminalSteps : List SolveStep}
+    {localSteps terminalSteps : List SolveStep}
     {inferred requested : Ty}
-    (checked : slotAlignmentAtTerminalCheck targetBound localSteps
+    (checked : slotAlignmentAtTerminalCheck localSteps
       terminalSteps inferred requested = true) :
     SlotAlignmentAtTerminal localSteps terminalSteps inferred requested := by
   by_cases aligned :
@@ -430,35 +322,33 @@ private theorem slotAlignmentAtTerminalCheck_sound
                     simp [slotAlignmentAtTerminalCheck, aligned,
                       constraintForm] at checked
                     rcases checked with
-                      ⟨⟨⟨⟨⟨⟨⟨producerCapEq, producerTargetEq⟩,
-                        consumerCapEq⟩, consumerTargetEq⟩, domainsChecked⟩,
-                        rangeChecked⟩, producerResult⟩, consumerResult⟩
+                      ⟨⟨⟨⟨⟨⟨producerCapEq, producerTargetEq⟩,
+                        consumerCapEq⟩, consumerTargetEq⟩, rangeChecked⟩,
+                        producerResult⟩, consumerResult⟩
                     subst rawProducerCap
                     subst rawProducerTarget
                     subst rawConsumerCap
                     subst rawConsumerTarget
                     let suffix := terminalSteps.tail
                     let post := targetOnlyReplay suffix
-                    have postChain :
-                        RestrictedPost.Chain [] [] [] [] post :=
-                      targetOnlyReplay_chain suffix targetBound
-                        (targetDomainsBelowCheck_sound domainsChecked)
+                    have postVariable : VariablePost post :=
+                      targetOnlyReplay_variable suffix
                     have rangeFixed : step.delta.RangeFixed :=
                       rangeFixedOnCheck_sound step.targetSupport rangeChecked
                     rcases solveStep_producerToSlot_raw constraintForm
                         rangeFixed with ⟨bindings, raw⟩
                     exact .matcherToSlot rfl rfl rfl constraintForm rfl raw
-                      postChain producerResult consumerResult
+                      postVariable producerResult consumerResult
 
 private def slotAlignmentEventCheck
     (state : InferState) : TraceEvent -> Bool
   | .slotAlignment start stop inferred requested =>
       decide (start ≤ stop) &&
       decide (stop ≤ state.trace.solves.length) &&
-      boundedSuffixCheck stop state.trace.solves.length fun terminal =>
-        slotAlignmentAtTerminalCheck state.supply.nextTy
-          (solveSlice state.trace start stop)
-          (solveSlice state.trace start terminal) inferred requested
+      slotAlignmentAtTerminalCheck
+        (solveSlice state.trace start stop)
+        (solveSlice state.trace start state.trace.solves.length)
+        inferred requested
   | _ => true
 
 def traceSlotAlignmentCheck (state : InferState) : Bool :=
@@ -473,14 +363,12 @@ theorem traceSlotAlignmentCheck_sound
   | slotAlignment start stop inferred requested =>
       simp only [slotAlignmentEventCheck,
         Bool.and_eq_true, decide_eq_true_eq] at eventChecked
-      rcases eventChecked with ⟨⟨startStop, stopBound⟩, suffixChecked⟩
+      rcases eventChecked with ⟨⟨startStop, stopBound⟩, finalChecked⟩
       refine ⟨startStop, stopBound, ?_⟩
-      intro terminal lower upper
-      have present := boundedSuffixCheck_sound suffixChecked lower upper
-      exact slotAlignmentAtTerminalCheck_sound (targetBound := state.supply.nextTy)
+      exact slotAlignmentAtTerminalCheck_sound
         (localSteps := solveSlice state.trace start stop)
-        (terminalSteps := solveSlice state.trace start terminal)
-        (inferred := inferred) (requested := requested) present
+        (terminalSteps := solveSlice state.trace start state.trace.solves.length)
+        (inferred := inferred) (requested := requested) finalChecked
   | _ => trivial
 
 /-! ## Matcher-finalization suffixes -/
@@ -609,10 +497,9 @@ def wBridgeCheck
 
 /-- A successful finite audit constructs the complete bridge certificate. -/
 theorem wBridgeCheck_sound
-    {signature : FrozenSig} {context : Context} {expression : Expr}
-    {result : ExprResult}
+    {signature : FrozenSig} {result : ExprResult}
     (checked : wBridgeCheck signature result = true) :
-    WBridgeWF signature context expression result := by
+    WBridgeWF signature result.state := by
   simp only [wBridgeCheck, Bool.and_eq_true] at checked
   rcases checked with ⟨prior, generalizationChecked⟩
   rcases prior with ⟨prior, finalizationSuffixChecked⟩
@@ -623,8 +510,7 @@ theorem wBridgeCheck_sound
   rcases prior with ⟨prior, patternCtorChecked⟩
   rcases prior with ⟨primitiveHoleChecked, patternLeafChecked⟩
   exact
-    { replay := traceReplayConditions result.state.trace.solves
-      primitiveHoles := primitiveHoleChecked
+    { primitiveHoles := primitiveHoleChecked
       patternLeaves := patternLeafChecked
       patternCtors := patternCtorChecked
       instanceSuffixes :=

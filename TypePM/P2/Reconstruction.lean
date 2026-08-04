@@ -1032,17 +1032,7 @@ def TraceInstanceSuffixConditions
 def solveSlice (trace : InferTrace) (start stop : Nat) : List SolveStep :=
   (trace.solves.take stop).drop start
 
-/-- Apply chronological solver deltas to an already-resolved capability/type
-pair.  This is the dual counterpart of `applyDeltas`; keeping the fold
-explicit avoids assuming a global substitution-composition law. -/
-def applyDualDeltas : List SolveStep -> Dual -> Dual
-  | [], dual => dual
-  | step :: steps, dual =>
-      applyDualDeltas steps (dual.applySubst step.delta)
-
-/-- Ordinary equality alignments remain equal at every later recursive cut
-that contains their complete local solver interval.  The event payloads are
-the inputs already resolved at `start`, so the slice is applied exactly once. -/
+/-- Ordinary alignment provenance and equality at the complete public cut. -/
 def TraceTypeAlignmentConditions (state : InferState) : Prop :=
   ∀ event, event ∈ state.trace.events ->
     match event with
@@ -1052,17 +1042,11 @@ def TraceTypeAlignmentConditions (state : InferState) : Prop :=
           (replay (state.trace.solves.take start)).apply rawLeft ∧
         localRight =
           (replay (state.trace.solves.take start)).apply rawRight ∧
-        ∀ terminal, stop ≤ terminal ->
-          terminal ≤ state.trace.solves.length ->
-          let terminalPrevailing := replay (state.trace.solves.take terminal)
-          applyDeltas (solveSlice state.trace start terminal) localLeft =
-              applyDeltas (solveSlice state.trace start terminal) localRight ∧
-            terminalPrevailing.apply rawLeft =
-              terminalPrevailing.apply rawRight
+        state.prevailing.apply rawLeft = state.prevailing.apply rawRight
     | _ => True
 
-/-- Capability/target dual alignments remain equal componentwise at every
-later recursive cut. -/
+/-- Dual alignment provenance and componentwise equality at the complete
+public cut. -/
 def TraceDualAlignmentConditions (state : InferState) : Prop :=
   ∀ event, event ∈ state.trace.events ->
     match event with
@@ -1072,13 +1056,8 @@ def TraceDualAlignmentConditions (state : InferState) : Prop :=
           (replay (state.trace.solves.take start)) ∧
         localRight = rawRight.applySubst
           (replay (state.trace.solves.take start)) ∧
-        ∀ terminal, stop ≤ terminal ->
-          terminal ≤ state.trace.solves.length ->
-          let terminalPrevailing := replay (state.trace.solves.take terminal)
-          applyDualDeltas (solveSlice state.trace start terminal) localLeft =
-              applyDualDeltas (solveSlice state.trace start terminal) localRight ∧
-            rawLeft.applySubst terminalPrevailing =
-              rawRight.applySubst terminalPrevailing
+        rawLeft.applySubst state.prevailing =
+          rawRight.applySubst state.prevailing
     | _ => True
 
 /-- Eliminate a recorded ordinary alignment at the complete public cut. -/
@@ -1089,9 +1068,8 @@ theorem TraceTypeAlignmentConditions.final_eq
       localRight ∈ state.trace.events) :
     state.prevailing.apply rawLeft = state.prevailing.apply rawRight := by
   rcases conditions _ membership with
-    ⟨_startStop, stopBound, _localLeft, _localRight, terminals⟩
-  have terminal := terminals state.trace.solves.length stopBound (Nat.le_refl _)
-  simpa only [InferState.prevailing, List.take_length] using terminal.2
+    ⟨_startStop, _stopBound, _localLeft, _localRight, finalEq⟩
+  exact finalEq
 
 /-- Eliminate a recorded dual alignment at the complete public cut. -/
 theorem TraceDualAlignmentConditions.final_eq
@@ -1102,9 +1080,8 @@ theorem TraceDualAlignmentConditions.final_eq
     rawLeft.applySubst state.prevailing =
       rawRight.applySubst state.prevailing := by
   rcases conditions _ membership with
-    ⟨_startStop, stopBound, _localLeft, _localRight, terminals⟩
-  have terminal := terminals state.trace.solves.length stopBound (Nat.le_refl _)
-  simpa only [InferState.prevailing, List.take_length] using terminal.2
+    ⟨_startStop, _stopBound, _localLeft, _localRight, finalEq⟩
+  exact finalEq
 
 /-- A recorded constructor instance is valid at the complete public cut. -/
 theorem TraceInstanceSuffixConditions.ctor_final
@@ -1161,9 +1138,9 @@ theorem TraceInstanceSuffixConditions.dual_final
       (result.applySubst state.prevailing) := by
   exact (conditions _ membership).2
 
-/-- Algebraic outcome of one recorded expected-type alignment at a chosen
-terminal cut.  The coercion branches retain the exact raw solver interval and
-its raw certificate; `post` is only a restricted variable-only,
+/-- Algebraic outcome of one recorded expected-type alignment at the complete
+public cut.  The coercion branch retains the exact raw solver interval and its
+raw certificate; `post` is only a capability-variable,
 payload-equivalent suffix.
 No matcher or unifier is rerun on suffix-transformed inputs. -/
 inductive SlotAlignmentAtTerminal
@@ -1186,7 +1163,7 @@ inductive SlotAlignmentAtTerminal
       (deltaEq : step.delta = Subst.mk C T)
       (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T)
-      (postChain : RestrictedPost.Chain [] [] [] [] post)
+      (postVariable : VariablePost post)
       (producerResult :
         applyDeltas terminalSteps inferred =
           post.apply (.matcher (producerCap.apply C)
@@ -1197,20 +1174,29 @@ inductive SlotAlignmentAtTerminal
             ((Subst.mk C T).apply consumerTarget))) :
       SlotAlignmentAtTerminal localSteps terminalSteps inferred requested
 
-/-- Every expected-type event is valid not just at the complete trace but at
-each recursive terminal cut that contains its local solver interval. -/
+/-- Every expected-type event has a certificate at the complete public cut. -/
 def TraceSlotAlignmentConditions (state : InferState) : Prop :=
   ∀ event, event ∈ state.trace.events ->
     match event with
     | .slotAlignment start stop inferred requested =>
         start ≤ stop ∧ stop ≤ state.trace.solves.length ∧
-        ∀ terminal, stop ≤ terminal ->
-          terminal ≤ state.trace.solves.length ->
-          SlotAlignmentAtTerminal
-            (solveSlice state.trace start stop)
-            (solveSlice state.trace start terminal)
-            inferred requested
+        SlotAlignmentAtTerminal
+          (solveSlice state.trace start stop)
+          (solveSlice state.trace start state.trace.solves.length)
+          inferred requested
     | _ => True
+
+/-- Eliminate a recorded expected-type alignment at the complete public cut. -/
+theorem TraceSlotAlignmentConditions.final
+    {state : InferState} (conditions : TraceSlotAlignmentConditions state)
+    {start stop : Nat} {inferred requested : Ty}
+    (membership : .slotAlignment start stop inferred requested ∈
+      state.trace.events) :
+    SlotAlignmentAtTerminal
+      (solveSlice state.trace start stop)
+      (solveSlice state.trace start state.trace.solves.length)
+      inferred requested := by
+  exact (conditions _ membership).2.2
 
 /-- Resolve the raw hole ledger at one chronological solver cut. -/
 def resolvedHoleCaps
@@ -1280,28 +1266,9 @@ def TraceGeneralizationConditions
 /-- Internal, purely algebraic side conditions for reconstruction.  No field
 contains a source or reconstruction judgment. -/
 structure WBridgeWF
-    (signature : FrozenSig) (_context : Context)
-    (_expression : Expr) (result : ExprResult) : Prop where
-  replay : TraceReplayConditions result.state.trace.solves
-  primitiveHoles :
-    tracePrimitiveHoleCheck signature result.state.trace = true
-  patternLeaves : tracePatternLeafCheck signature result.state.trace = true
-  patternCtors : tracePatternCtorCheck signature result.state = true
-  instanceSuffixes : TraceInstanceSuffixConditions signature result.state
-  slotAlignments : TraceSlotAlignmentConditions result.state
-  typeAlignments : TraceTypeAlignmentConditions result.state
-  dualAlignments : TraceDualAlignmentConditions result.state
-  finalizationSuffixes :
-    TraceFinalizationSuffixConditions signature result.state
-  generalization : TraceGeneralizationConditions signature result.state
-
-/-- The terminal trace facts shared by every recursive reconstruction call.
-This is a projection of `WBridgeWF`; it contains only executable replay and
-algebraic certificates, never a typing derivation. -/
-structure TerminalReconstructionWF
     (signature : FrozenSig) (state : InferState) : Prop where
-  replay : TraceReplayConditions state.trace.solves
-  primitiveHoles : tracePrimitiveHoleCheck signature state.trace = true
+  primitiveHoles :
+    tracePrimitiveHoleCheck signature state.trace = true
   patternLeaves : tracePatternLeafCheck signature state.trace = true
   patternCtors : tracePatternCtorCheck signature state = true
   instanceSuffixes : TraceInstanceSuffixConditions signature state
@@ -1311,35 +1278,19 @@ structure TerminalReconstructionWF
   finalizationSuffixes : TraceFinalizationSuffixConditions signature state
   generalization : TraceGeneralizationConditions signature state
 
-def WBridgeWF.terminal
-    {signature : FrozenSig} {context : Context} {expression : Expr}
-    {result : ExprResult}
-    (wf : Reconstruction.WBridgeWF signature context expression result) :
-    TerminalReconstructionWF signature result.state where
-  replay := wf.replay
-  primitiveHoles := wf.primitiveHoles
-  patternLeaves := wf.patternLeaves
-  patternCtors := wf.patternCtors
-  instanceSuffixes := wf.instanceSuffixes
-  slotAlignments := wf.slotAlignments
-  typeAlignments := wf.typeAlignments
-  dualAlignments := wf.dualAlignments
-  finalizationSuffixes := wf.finalizationSuffixes
-  generalization := wf.generalization
-
 /-! ## Terminal reconstruction of the syntax-directed traversals -/
 
 /-- Replaying the suffix after a recursive call is exactly terminal paired
 application to every raw target owned by that call. -/
 theorem history_terminal_apply_eq
     {earlier terminal : InferState}
-    (replayConditions : TraceReplayConditions terminal.trace.solves)
     (history : earlier.HistoryPrefix terminal) (target : Ty) :
     terminal.prevailing.apply target =
       applyDeltas
         (solveSlice terminal.trace earlier.trace.solves.length
           terminal.trace.solves.length)
         (earlier.prevailing.apply target) := by
+  have replayConditions := traceReplayConditions terminal.trace.solves
   rcases history with ⟨suffix, _eventSuffix, solves, _events⟩
   have suffixConditions :
       ReplayConditions (replay earlier.trace.solves) suffix := by
@@ -1685,7 +1636,7 @@ set_option maxHeartbeats 4000000 in
 source derivation at any enclosing terminal trace cut. -/
 theorem inferExprFuel_reconstructAt
     {terminal : InferState}
-    (bridge : TerminalReconstructionWF signature terminal)
+    (bridge : WBridgeWF signature terminal)
     {fuel context selfEnv path expression state result}
     (success : inferExprFuel fuel signature context selfEnv path expression
       state = some result)
@@ -1699,7 +1650,7 @@ theorem inferExprFuel_reconstructAt
         inferExprFuel fuel signature context selfEnv path expression state =
             some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           ExprDeriv signature (context.applySubst terminal.prevailing)
             expression (terminal.prevailing.apply result.target))
@@ -1709,7 +1660,7 @@ theorem inferExprFuel_reconstructAt
         checkExprFuel fuel signature context selfEnv path expression expected
             state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.HistoryPrefix terminal ->
           ExprDeriv signature (context.applySubst terminal.prevailing)
             expression (terminal.prevailing.apply expected))
@@ -1719,7 +1670,7 @@ theorem inferExprFuel_reconstructAt
         inferPatternFuel fuel signature context parameters bindings selfEnv path
             pattern state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           PatternResolutionDeriv signature terminal.prevailing
             (context.applySubst terminal.prevailing)
@@ -1734,7 +1685,7 @@ theorem inferExprFuel_reconstructAt
         inferPatternsFuel fuel signature context parameters bindings selfEnv
             path index patterns state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           PatternResolutionsDeriv signature terminal.prevailing
             (context.applySubst terminal.prevailing)
@@ -1747,7 +1698,7 @@ theorem inferExprFuel_reconstructAt
         inferMatcherFuel fuel signature context selfEnv path clauses state =
             some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           ExprDeriv signature (context.applySubst terminal.prevailing)
             (.matcher clauses) (terminal.prevailing.apply result.target))
@@ -1757,7 +1708,7 @@ theorem inferExprFuel_reconstructAt
         inferClausesFuel fuel signature context selfEnv path index clauses target
             state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           ∀ capability evidences,
             ClauseCapsList signature clauses
@@ -1774,7 +1725,7 @@ theorem inferExprFuel_reconstructAt
         inferClauseFuel fuel signature context selfEnv path clause target state =
             some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           ∀ capability evidence,
             PPatCapsAt signature true clause.pp
@@ -1794,7 +1745,7 @@ theorem inferExprFuel_reconstructAt
         checkArmsFuel fuel signature context selfEnv bindings path index arms
             target bodyTarget state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.HistoryPrefix terminal ->
           ArmsDeriv signature (context.applySubst terminal.prevailing)
             (terminal.prevailing.apply target)
@@ -1806,7 +1757,7 @@ theorem inferExprFuel_reconstructAt
         checkExprsFuel fuel signature context selfEnv path index expressions
             expecteds state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.HistoryPrefix terminal ->
           ExprsDeriv signature (context.applySubst terminal.prevailing)
             expressions (expecteds.map terminal.prevailing.apply))
@@ -1816,7 +1767,7 @@ theorem inferExprFuel_reconstructAt
         inferExprsFuel fuel signature context selfEnv path index expressions
             state = some result ->
         ∀ terminal,
-          TerminalReconstructionWF signature terminal ->
+          WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           ExprsDeriv signature (context.applySubst terminal.prevailing)
             expressions (result.targets.map terminal.prevailing.apply))
@@ -2091,15 +2042,10 @@ theorem inferExprFuel_reconstructAt
         (alignedState.recordEvent slotEvent).trace.events := by
       simp [slotEvent, InferState.recordEvent]
     have finalMembership := terminalHistory.event_mem localMembership
-    have slotConditions := bridge'.slotAlignments slotEvent finalMembership
-    dsimp only [slotEvent] at slotConditions
-    rcases slotConditions with ⟨startStop, stopBound, terminals⟩
-    have slotCertificate := terminals terminal.trace.solves.length stopBound
-      (Nat.le_refl _)
-    have inferredTerminal := history_terminal_apply_eq bridge'.replay
-      bodyHistory bodyResult.target
-    have requestedTerminal := history_terminal_apply_eq bridge'.replay
-      bodyHistory expected
+    have slotCertificate := bridge'.slotAlignments.final finalMembership
+    have inferredTerminal := history_terminal_apply_eq bodyHistory
+      bodyResult.target
+    have requestedTerminal := history_terminal_apply_eq bodyHistory expected
     cases slotCertificate with
     | equal aligned =>
         have finalEq : terminal.prevailing.apply bodyResult.target =
@@ -2109,11 +2055,11 @@ theorem inferExprFuel_reconstructAt
         rw [← finalEq]
         exact inferredDeriv
     | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
-        postChain producerResult consumerResult =>
+        postVariable producerResult consumerResult =>
         rw [inferredTerminal, producerResult] at inferredDeriv
         have coerced := ExprDeriv.coerceMatcherToSlot
           (by simpa only [Subst.apply_matcher] using inferredDeriv)
-          raw postChain.toVariablePost
+          raw postVariable
         rw [requestedTerminal, consumerResult]
         simpa only [Subst.apply_slot] using coerced
   case case42 =>
@@ -2510,7 +2456,7 @@ constructs this bridge internally. -/
 theorem inferRaw_success_reconstruct
     {signature context expression result}
     (success : inferRaw signature context expression = some result)
-    (wf : Reconstruction.WBridgeWF signature context expression result) :
+    (wf : Reconstruction.WBridgeWF signature result.state) :
     Reconstruction.ExprDeriv signature
       (ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget := by
@@ -2523,7 +2469,7 @@ theorem inferRaw_success_reconstruct
         simpa [core] using success
       have rawEq := (enforceProtectedResult_sound guarded).1
       subst raw
-      exact Reconstruction.inferExprFuel_reconstructAt wf.terminal core
+      exact Reconstruction.inferExprFuel_reconstructAt wf core
         (InferState.HistoryPrefix.refl result.state)
 
 end Inference

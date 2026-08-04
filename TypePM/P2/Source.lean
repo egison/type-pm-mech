@@ -702,8 +702,9 @@ theorem Subst.seq_apply (later earlier : Subst) (target : Ty) :
 
 /--
 The declarative suffix condition: capability variables remain capability
-variables.  Freshness, distinct images, and finite allocation domains belong
-to Algorithm W's stronger `RestrictedPost` witness, not to source typing.
+variables.  `RestrictedPost` can additionally record freshness, distinct
+images, and finite allocation domains, but terminal certified inference may
+construct this declarative condition directly when those facts are unused.
 -/
 structure VariablePost (post : Subst) : Prop where
   capVariable : ∀ varId, ∃ image, post.cap varId = .var image

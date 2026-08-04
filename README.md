@@ -70,8 +70,10 @@ variable mapping の後へ target specialization を順に適用する．従っ�
 自由 capability と同じ
 番号の量化 binder があっても捕捉しない．型付け導出の後続輸送も，producer の
 capability に対する variable-only mapping と target-only specialization に制限する．
-この宣言的 post は単射性，像の相異性，ambient freshness を要求せず，W の強い
-finite-support chain から忘却して得る．
+この宣言的 post は単射性，像の相異性，ambient freshness を要求しない．一般の
+`RestrictedPost.Chain` から忘却して得ることもできるが，公開再構成が使う target-only
+suffix の capability 成分は恒等写像なので，terminal validator は `VariablePost` を
+直接構成する．
 `let` の輸送では，内側の generalization binder を target ambient の外へ局所的に
 freshen してから導出を再構成する．これにより，外側の instance が導入した自由変数と
 数値 identifier が一致しても捕捉されない．この freshening は導出される補題であり，
@@ -92,7 +94,8 @@ terminal derivation を分ける．nested child の raw index と親の raw fiel
 
 公開 entry point `infer` は，停止する二 sort W 走査 `inferRaw` の結果に
 有限な terminal validator を適用する．validator は成功 trace の supply に基づく
-binder-local instance，alignment と restricted post，terminal context までの instance 合成，
+binder-local instance，complete public cut での alignment と capability-variable post，
+terminal context までの instance 合成，
 generalization，coverage evidence を検査し，再構成に必要な `WBridgeWF` を構成する．
 solver replay 自体は cross-sort-aware な `Subst.seq` の逐次合成から無条件に導く．
 公開 soundness の経路では，生成時の `FreshInstAt` を後続 solver cut ごとに輸送せず，

@@ -1,5 +1,4 @@
 import TypePM.P2.BridgeChecks
-import TypePM.P2.InferenceInput
 
 /-!
 # Certified executable inference
@@ -19,7 +18,7 @@ namespace TypePM.P2
 namespace Inference
 
 /-- Retain exactly the raw results whose finite trace reconstructs. -/
-def enforceWBridgeResult
+private def enforceWBridgeResult
     (signature : FrozenSig) (result : ExprResult) : Option ExprResult :=
   if Reconstruction.wBridgeCheck signature result then
     some result
@@ -34,7 +33,7 @@ def infer
     (enforceWBridgeResult signature)
 
 /-- Eliminating the terminal filter exposes its exact finite audit. -/
-theorem enforceWBridgeResult_sound
+private theorem enforceWBridgeResult_sound
     {signature : FrozenSig} {input output : ExprResult}
     (success : enforceWBridgeResult signature input = some output) :
     input = output ∧
@@ -48,7 +47,7 @@ theorem enforceWBridgeResult_sound
   · contradiction
 
 /-- Public success contains both the raw W result and its successful audit. -/
-theorem infer_success_raw_and_checked
+private theorem infer_success_raw_and_checked
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
@@ -75,11 +74,11 @@ theorem infer_protected
 
 /-- A successful public run constructs the complete algebraic bridge checked by
 the terminal validator. -/
-theorem infer_success_bridge
+private theorem infer_success_bridge
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
-    Reconstruction.WBridgeWF signature context expression result :=
+    Reconstruction.WBridgeWF signature result.state :=
   Reconstruction.wBridgeCheck_sound
     (infer_success_raw_and_checked success).2
 
@@ -119,13 +118,6 @@ def inferType
 def inferenceSucceeds
     (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
   (infer signature context expression).isSome
-
-/-- Decidability of the actual public inference entry point. -/
-theorem inference_decides
-    (signature : FrozenSig) (context : Context) (expression : Expr) :
-    inferenceSucceeds signature context expression = true ∨
-      inferenceSucceeds signature context expression = false := by
-  cases inferenceSucceeds signature context expression <;> simp
 
 end Inference
 end TypePM.P2

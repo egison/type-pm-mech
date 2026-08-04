@@ -926,16 +926,17 @@ signature と context の自由変数からなり，別の scheme が局所的�
 Target specialization $T_s$ は capability instance に対して後から作用し，その像に
 $C_v$ を再適用する global 作用にはまとめない．証明中で shape evidence を
 輸送する宣言的な後続 post も capability variable を capability variable にだけ写す．
-その層では単射性，像の相異性，ambient freshness を要求しない．Algorithm W の後続
-chain は有限 support と fresh allocation を記録するより強い witness であり，それを忘却して
-宣言的 post を得る．各 post は現在の導出へ順に作用するため，
+その層では単射性，像の相異性，ambient freshness を要求しない．有限 support と fresh
+allocation を記録する強い restricted chain から忘却することもできるが，公開再構成が
+使う target-only suffix の capability 成分は恒等写像なので，終端 validator は宣言的な
+variable post を直接構成する．各 post は現在の導出へ順に作用するため，
 前の局所 binder と後から挿入された自由変数を混同しない．
 
 これに対して，raw な $\matchCap$／$\mguTy$ certificate は生成時の正規化済み index
 と局所 cut とともに保持する．成功 run の終端までに得た solver delta は，後段の
 capability action を前段の target range 内部にも適用する cross-sort-aware な逐次作用で
 replay する．終端 validator は，記録した局所 cut と唯一の終端 cut の間で必要な
-alignment と restricted post を検査する．従って誤った componentwise 可換性を仮定せず，
+alignment と capability-variable post を検査する．従って誤った componentwise 可換性を仮定せず，
 solver を別の入力で再実行する必要もない．中間の各 stop を追加の公開前提として
 量化しない．
 したがって次が成り立つ．
