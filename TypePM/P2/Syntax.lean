@@ -1,5 +1,4 @@
 import Std
-import TypePM.Syntax
 
 /-!
 # P2 capability and target syntax
@@ -9,7 +8,12 @@ foundation.  Structural capabilities and ordinary target types have distinct
 variables and binders.
 -/
 
-namespace TypePM.P2
+namespace TypePM
+
+/-- Ordinary target-type variables are natural-number names. -/
+abbrev TyVar := Nat
+
+namespace P2
 
 /--
 Capability variables are nominally distinct from ordinary type variables.
@@ -98,6 +102,7 @@ instance : DecidableEq Cap :=
 inductive Ty where
   | var     : TypePM.TyVar → Ty
   | skolem  : Nat → Ty
+  | unit
   | int
   | bool
   | data    : String → List Ty → Ty
@@ -113,6 +118,7 @@ mutual
 def Ty.eqb : Ty → Ty → Bool
   | .var a,         .var b          => a == b
   | .skolem a,      .skolem b       => a == b
+  | .unit,          .unit           => true
   | .int,           .int            => true
   | .bool,          .bool           => true
   | .data n tys,    .data m tys'    => n == m && Ty.eqbList tys tys'
@@ -136,6 +142,8 @@ theorem Ty.eqb_eq_true : ∀ τ τ', Ty.eqb τ τ' = true ↔ τ = τ'
   | .var a, τ' => by
       cases τ' <;> simp [Ty.eqb]
   | .skolem a, τ' => by
+      cases τ' <;> simp [Ty.eqb]
+  | .unit, τ' => by
       cases τ' <;> simp [Ty.eqb]
   | .int, τ' => by
       cases τ' <;> simp [Ty.eqb]
@@ -172,6 +180,10 @@ instance : LawfulBEq Ty where
 instance : DecidableEq Ty :=
   instDecidableEqOfLawfulBEq
 
+/-- The ordinary list type used by matcher decomposition results. -/
+def Ty.listT (τ : Ty) : Ty :=
+  .data "List" [τ]
+
 /-- Type schemes quantify capability and ordinary type variables separately. -/
 structure Scheme where
   capBinders : List CapVar
@@ -183,4 +195,5 @@ deriving Repr, DecidableEq, BEq
 def Scheme.mono (τ : Ty) : Scheme :=
   ⟨[], [], τ⟩
 
-end TypePM.P2
+end P2
+end TypePM

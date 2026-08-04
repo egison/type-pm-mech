@@ -1,7 +1,7 @@
 import TypePM.P2.Syntax
 
 /-!
-# D5-core normalized-input boundary
+# Normalized-input canonicalization boundary
 
 This module models the small, syntactic canonicalization allowlist used by the
 non-CAS P2 core.  Its input is an already validated and frozen table of
@@ -68,6 +68,7 @@ mutual
 def Ty.Closed : Ty → Prop
   | .var _        => False
   | .skolem _     => False
+  | .unit         => True
   | .int          => True
   | .bool         => True
   | .data _ tys   => Ty.ClosedList tys
@@ -120,6 +121,7 @@ unexpanded nullary heads.
 def Ty.AliasFree (aliases : AliasEnv) : Ty → Prop
   | .var _        => True
   | .skolem _     => True
+  | .unit         => True
   | .int          => True
   | .bool         => True
   | .data name tys =>
@@ -152,6 +154,7 @@ the `FrozenAliases` certificate supplies the missing canonical-range fact.
 def reprNF (aliases : AliasEnv) : Ty → Ty
   | .var a        => .var a
   | .skolem a     => .skolem a
+  | .unit         => .unit
   | .int          => .int
   | .bool         => .bool
   | .data name [] =>
@@ -196,6 +199,7 @@ theorem reprNF_eq_of_aliasFree (aliases : AliasEnv) :
     ∀ τ : Ty, Ty.AliasFree aliases τ → reprNF aliases τ = τ
   | .var _, _ => rfl
   | .skolem _, _ => rfl
+  | .unit, _ => rfl
   | .int, _ => rfl
   | .bool, _ => rfl
   | .data name [], hfree => by
@@ -242,6 +246,7 @@ theorem reprNF_idempotent {aliases : AliasEnv}
     ∀ τ : Ty, reprNF aliases (reprNF aliases τ) = reprNF aliases τ
   | .var _ => rfl
   | .skolem _ => rfl
+  | .unit => rfl
   | .int => rfl
   | .bool => rfl
   | .data name [] => by

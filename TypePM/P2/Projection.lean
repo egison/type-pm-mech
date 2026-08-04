@@ -2,9 +2,9 @@ import TypePM.P2.Shape
 import TypePM.P2.Substitution
 
 /-!
-# P2 signature-directed evidence projection
+# Signature-directed evidence projection
 
-This module implements the non-CAS, normalized-input core of D1 constructor
+This module implements non-CAS, normalized-input constructor
 projection.  Child evidence is collected along paths exposed by a frozen
 observability mask, then rebuilt in the result signature's argument order.
 The field/result types must be a freshly instantiated and zonked constructor
@@ -26,6 +26,7 @@ mutual
 def targetVars : Ty → List TypePM.TyVar
   | .var a       => [a]
   | .skolem _    => []
+  | .unit        => []
   | .int         => []
   | .bool        => []
   | .data _ tys  => targetVarsList tys
@@ -56,6 +57,8 @@ def relevantVars
   | .var a =>
       if a ∈ candidates then some [a] else some []
   | .skolem _ =>
+      some []
+  | .unit =>
       some []
   | .int =>
       some []
@@ -275,6 +278,8 @@ def buildResultTemplate
   | .int =>
       some (.known .none)
   | .skolem _ =>
+      some (.known .none)
+  | .unit =>
       some (.known .none)
   | .bool =>
       some (.known .none)
@@ -852,6 +857,8 @@ theorem buildResultRoot_sound
       simp [buildResultRoot] at hbuild
   | skolem skolemId =>
       simp [buildResultRoot] at hbuild
+  | unit =>
+      simp [buildResultRoot] at hbuild
   | int =>
       simp [buildResultRoot] at hbuild
   | bool =>
@@ -996,15 +1003,14 @@ example :
       some
         (.con "Repeated"
           [.known (.var 10), .known (.var 10)]) := by
-  simp [projectSignature, repeatedSignature, projectPaired, project,
-    pairFields, relevantVars, relevantVarsList, relevantVarsMasked,
-    targetVars, targetVarsList, collectAssignmentsList,
-    collectAssignments, mergeAssignments, insertAssignment,
+  simp [projectSignature, repeatedSignature, projectPaired,
+    pairFields, relevantVars, relevantVarsMasked,
+    targetVars, targetVarsList,
+    collectAssignments,
     collectFieldAssignments, canonicalAssignments,
     evidenceContributions, Shape.mergeAll,
-    buildResultRoot, buildResultSlot, buildResultSlots,
+    buildResultRoot, buildResultSlot,
     buildResultSlotsMasked, buildResultTemplate,
-    buildResultTemplateList, buildResultTemplateMasked,
     hasAssignment, lookupAssignment, repeatedObservability]
 
 example :

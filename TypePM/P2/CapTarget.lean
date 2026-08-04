@@ -17,7 +17,7 @@ namespace TypePM.P2
 
 /-- Apply both sorts to a target type, in the same order as `Subst.apply`. -/
 def applyBoth (C : CapSubst) (T : TySubst) (τ : Ty) : Ty :=
-  (τ.applyTarget T).applyCapability C
+  (τ.applyCapability C).applyTarget T
 
 mutual
 
@@ -84,7 +84,7 @@ theorem coupledSubstOK_applyContext
 mutual
 
 /--
-The normalized-input coupled-substitution lemma used by D5-core.
+The normalized-input coupled-substitution lemma.
 
 Independent substitutions are intentionally not sufficient: correspondence
 assumptions must be transported together.
@@ -116,7 +116,7 @@ theorem CapTargetOKList.subst
     {caps : List Cap} {targets : List Ty}
     (h : CapTargetOKList Ξ caps targets) :
     CapTargetOKList Ξ' (Cap.applyList C caps)
-      (Ty.applyCapabilityList C (Ty.applyTargetList T targets)) := by
+      (Ty.applyTargetList T (Ty.applyCapabilityList C targets)) := by
   cases h with
   | nil =>
       exact CapTargetOKList.nil (Ξ := Ξ')

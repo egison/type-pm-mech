@@ -1,4 +1,4 @@
-import TypePM.P2.Syntax
+import TypePM.P2.Relation
 
 /-!
 # P2 ShapeCap evidence
@@ -43,6 +43,31 @@ inductive Evidence where
   | prod  : List Evidence → Evidence
 deriving Repr
 
+/-- Rename the flexible capability variables in a complete evidence leaf. -/
+def Leaf.applyRen (r : CapVar → CapVar) : Leaf → Leaf
+  | .none => .none
+  | .var varId => .var (r varId)
+  | .skolem name => .skolem name
+
+mutual
+
+/-- Rename every flexible capability variable in partial evidence. -/
+def Evidence.applyRen
+    (r : CapVar → CapVar) : Evidence → Evidence
+  | .unseen => .unseen
+  | .known leaf => .known (leaf.applyRen r)
+  | .con name children => .con name (applyRenList r children)
+  | .prod components => .prod (applyRenList r components)
+
+/-- List form of `Evidence.applyRen`. -/
+def Evidence.applyRenList
+    (r : CapVar → CapVar) : List Evidence → List Evidence
+  | [] => []
+  | evidence :: rest =>
+      evidence.applyRen r :: applyRenList r rest
+
+end
+
 /-- Canonical embedding of a complete capability into evidence. -/
 def ofCap : Cap → Evidence
   | .none       => .known .none
@@ -50,6 +75,31 @@ def ofCap : Cap → Evidence
   | .skolem x   => .known (.skolem x)
   | .con k cs   => .con k (cs.map ofCap)
   | .prod cs    => .prod (cs.map ofCap)
+
+/-- Embedding a capability commutes with a capability alpha-renaming. -/
+theorem ofCap_applyRen (r : CapVar → CapVar) :
+    ∀ capability,
+      ofCap (capability.applyRen r) =
+        (ofCap capability).applyRen r := by
+  intro capability
+  induction capability using Cap.rec
+      (motive_2 := fun capabilities =>
+        (Cap.applyRenList r capabilities).map ofCap =
+          Evidence.applyRenList r (capabilities.map ofCap)) with
+  | none => simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
+  | var varId => simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
+  | skolem name =>
+      simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
+  | con name children childrenInduction =>
+      simp only [Cap.applyRen, ofCap, Evidence.applyRen,
+        childrenInduction]
+  | prod components componentsInduction =>
+      simp only [Cap.applyRen, ofCap, Evidence.applyRen,
+        componentsInduction]
+  | nil => rfl
+  | cons capability capabilities capabilityInduction capabilitiesInduction =>
+      simp only [Cap.applyRenList, List.map_cons, Evidence.applyRenList,
+        capabilityInduction, capabilitiesInduction]
 
 mutual
   /--
@@ -171,6 +221,62 @@ def inferShape
 @[simp] theorem merge_unseen_right (evidence : Evidence) :
     merge evidence .unseen = some evidence := by
   cases evidence <;> rfl
+
+/-- An injective capability renaming is injective on complete leaves. -/
+theorem Leaf.applyRen_injective
+    {r : CapVar → CapVar}
+    (injective : ∀ left right, r left = r right → left = right) :
+    Function.Injective (Leaf.applyRen r) := by
+  intro left right equality
+  cases left <;> cases right <;> simp_all [Leaf.applyRen]
+  exact injective _ _ equality
+
+mutual
+
+/-- Exact merge commutes with every injective capability renaming. -/
+theorem merge_applyRen
+    {r : CapVar → CapVar}
+    (injective : ∀ left right, r left = r right → left = right)
+    (left right : Evidence) :
+    merge (left.applyRen r) (right.applyRen r) =
+      (merge left right).map (Evidence.applyRen r) := by
+  cases left <;> cases right <;>
+    simp [merge, Evidence.applyRen, mergeList_applyRen injective,
+      (Leaf.applyRen_injective injective).eq_iff]
+  case con.con =>
+    rename_i leftName leftChildren rightName rightChildren
+    by_cases namesEqual : leftName = rightName
+    · subst rightName
+      cases merged : mergeList leftChildren rightChildren <;>
+        simp [merge, merged, mergeList_applyRen injective,
+          Evidence.applyRen]
+    · simp [merge, namesEqual]
+  case prod.prod =>
+    rename_i leftComponents rightComponents
+    cases merged : mergeList leftComponents rightComponents <;>
+      simp [merge, merged, mergeList_applyRen injective,
+        Evidence.applyRen]
+
+/-- List form of `merge_applyRen`. -/
+theorem mergeList_applyRen
+    {r : CapVar → CapVar}
+    (injective : ∀ left right, r left = r right → left = right)
+    (left right : List Evidence) :
+    mergeList (Evidence.applyRenList r left)
+        (Evidence.applyRenList r right) =
+      (mergeList left right).map (Evidence.applyRenList r) := by
+  cases left <;> cases right <;>
+    simp [mergeList, Evidence.applyRenList, merge_applyRen injective,
+      mergeList_applyRen injective]
+  case cons.cons =>
+    rename_i leftHead leftTail rightHead rightTail
+    cases headMerged : merge leftHead rightHead <;>
+      cases tailMerged : mergeList leftTail rightTail <;>
+        simp [mergeList, headMerged, tailMerged,
+          merge_applyRen injective, mergeList_applyRen injective,
+          Evidence.applyRenList]
+
+end
 
 /-- Exact merge is symmetric, including its failure cases. -/
 theorem merge_comm (left right : Evidence) :
@@ -713,6 +819,77 @@ theorem merge_ofCap_exact (left right : Cap) :
             simp [mergeList, head_ih, tail_ih]
           · simp [mergeList, head_ih, tail_ih, tail_eq]
         · simp [mergeList, head_ih, tail_ih, head_eq]
+
+/-! ## Capability alpha-transport -/
+
+mutual
+
+/-- Finalization commutes with capability alpha-renaming. -/
+theorem finalize_applyRen
+    (observable : Observability) (r : CapVar → CapVar)
+    (evidence : Evidence) :
+    finalize observable (evidence.applyRen r) =
+      (finalize observable evidence).map (Cap.applyRen r) := by
+  cases evidence with
+  | unseen => simp [Evidence.applyRen, finalize]
+  | known leaf =>
+      cases leaf <;>
+        simp [Evidence.applyRen, Leaf.applyRen, finalize, Leaf.toCap,
+          Cap.applyRen]
+  | con name children =>
+      simp only [Evidence.applyRen, finalize]
+      cases observableAtName : observable name with
+      | none => simp [observableAtName]
+      | some mask =>
+          simp only
+          rw [finalizeMasked_applyRen]
+          cases finalized : finalizeMasked observable mask children <;>
+            simp [finalized, Cap.applyRen]
+  | prod components =>
+      simp only [Evidence.applyRen, finalize]
+      rw [finalizeList_applyRen]
+      cases finalized : finalizeList observable components <;>
+        simp [finalized, Cap.applyRen]
+
+/-- List form of `finalize_applyRen`. -/
+theorem finalizeList_applyRen
+    (observable : Observability) (r : CapVar → CapVar)
+    (evidence : List Evidence) :
+    finalizeList observable (Evidence.applyRenList r evidence) =
+      (finalizeList observable evidence).map (Cap.applyRenList r) := by
+  cases evidence with
+  | nil => rfl
+  | cons head tail =>
+      simp only [Evidence.applyRenList, finalizeList]
+      rw [finalize_applyRen, finalizeList_applyRen]
+      cases headFinalized : finalize observable head <;>
+        cases tailFinalized : finalizeList observable tail <;>
+          simp [headFinalized, tailFinalized, Cap.applyRenList]
+
+/-- Masked form of `finalize_applyRen`. -/
+theorem finalizeMasked_applyRen
+    (observable : Observability) (r : CapVar → CapVar)
+    (mask : List Bool) (evidence : List Evidence) :
+    finalizeMasked observable mask (Evidence.applyRenList r evidence) =
+      (finalizeMasked observable mask evidence).map (Cap.applyRenList r) := by
+  cases mask with
+  | nil =>
+      cases evidence <;> rfl
+  | cons isObservable mask =>
+      cases evidence with
+      | nil => rfl
+      | cons head tail =>
+          cases isObservable <;>
+            simp only [Evidence.applyRenList, finalizeMasked]
+          · rw [finalizeMasked_applyRen]
+            cases tailFinalized : finalizeMasked observable mask tail <;>
+              simp [tailFinalized, Cap.applyRenList, Cap.applyRen]
+          · rw [finalize_applyRen, finalizeMasked_applyRen]
+            cases headFinalized : finalize observable head <;>
+              cases tailFinalized : finalizeMasked observable mask tail <;>
+                simp [headFinalized, tailFinalized, Cap.applyRenList]
+
+end
 
 end Shape
 end TypePM.P2

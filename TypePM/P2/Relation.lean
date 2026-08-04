@@ -36,6 +36,7 @@ mutual
 def Ty.fcv : Ty → List CapVar
   | .var _         => []
   | .skolem _      => []
+  | .unit          => []
   | .int           => []
   | .bool          => []
   | .data _ tys    => Ty.fcvList tys
@@ -57,6 +58,7 @@ mutual
 def Ty.ftv : Ty → List TypePM.TyVar
   | .var a         => [a]
   | .skolem _      => []
+  | .unit          => []
   | .int           => []
   | .bool          => []
   | .data _ tys    => Ty.ftvList tys
@@ -79,6 +81,14 @@ def Scheme.fcv (σ : Scheme) : List CapVar :=
 /-- Free ordinary type variables of a scheme, excluding its type binders. -/
 def Scheme.ftv (σ : Scheme) : List TypePM.TyVar :=
   σ.body.ftv.filter fun a => a ∉ σ.tyBinders
+
+/-- Every capability-variable name occurring in a scheme, including binders. -/
+def Scheme.allCapVars (σ : Scheme) : List CapVar :=
+  σ.capBinders ++ σ.body.fcv
+
+/-- Every ordinary-variable name occurring in a scheme, including binders. -/
+def Scheme.allTyVars (σ : Scheme) : List TypePM.TyVar :=
+  σ.tyBinders ++ σ.body.ftv
 
 /-! ## Capability renaming -/
 
@@ -161,6 +171,20 @@ theorem TySubst.id_supportWithin (vars : List TypePM.TyVar) :
     TySubst.id.SupportWithin vars := by
   intro a _
   rfl
+
+/-- Finite support is closed under target-substitution composition. -/
+theorem TySubst.SupportWithin.comp
+    {later earlier : TySubst}
+    {earlierVars laterVars : List TypePM.TyVar}
+    (earlierSupport : earlier.SupportWithin earlierVars)
+    (laterSupport : later.SupportWithin laterVars) :
+    (TySubst.comp later earlier).SupportWithin
+      (earlierVars ++ laterVars) := by
+  intro varId outside
+  simp only [List.mem_append, not_or] at outside
+  simp only [TySubst.comp, earlierSupport varId outside.1,
+    Ty.applyTarget]
+  exact laterSupport varId outside.2
 
 /-! ## One-way capability matching -/
 
@@ -291,12 +315,14 @@ theorem oneWay_con_head_eq {producerCaps consumerCaps : List Cap}
 
 /--
 An explicit instantiation witness.  Capability and target substitutions have
-separate support conditions and separate binder lists.
+separate support conditions and separate binder lists.  The paired witness
+also satisfies the paper's range-fixed condition.
 -/
 def Scheme.InstAt (C : CapSubst) (T : TySubst)
     (σ : Scheme) (τ : Ty) : Prop :=
   C.SupportWithin σ.capBinders ∧
   T.SupportWithin σ.tyBinders ∧
+  (Subst.mk C T).RangeFixed ∧
   (Subst.mk C T).apply σ.body = τ
 
 /-- Two-sorted scheme instantiation. -/
@@ -307,7 +333,8 @@ def Scheme.Inst (σ : Scheme) (τ : Ty) : Prop :=
 theorem Scheme.inst_refl (σ : Scheme) : σ.Inst σ.body := by
   refine ⟨CapSubst.id, TySubst.id,
     CapSubst.id_supportWithin σ.capBinders,
-    TySubst.id_supportWithin σ.tyBinders, ?_⟩
+    TySubst.id_supportWithin σ.tyBinders,
+    Subst.id_rangeFixed, ?_⟩
   exact Subst.apply_id σ.body
 
 /-- An instantiation cannot substitute an unbound capability variable. -/
@@ -323,6 +350,12 @@ theorem Scheme.InstAt.target_fixed {C : CapSubst} {T : TySubst}
     {a : TypePM.TyVar} (ha : a ∉ σ.tyBinders) :
     T a = .var a :=
   h.2.1 a ha
+
+/-- Every explicit instantiation witness is range-fixed. -/
+theorem Scheme.InstAt.range_fixed {C : CapSubst} {T : TySubst}
+    {σ : Scheme} {τ : Ty} (h : σ.InstAt C T τ) :
+    (Subst.mk C T).RangeFixed :=
+  h.2.2.1
 
 /--
 The two support facts exposed together make the sort separation of
@@ -354,10 +387,10 @@ ordinary target instance.
 theorem somethingScheme_instance_retains_none {τ : Ty}
     (h : somethingScheme.Inst τ) :
     ∃ target, τ = .matcher .none target := by
-  rcases h with ⟨C, T, _, _, hbody⟩
-  refine ⟨(T 0).applyCapability C, ?_⟩
+  rcases h with ⟨C, T, _, _, _, hbody⟩
+  refine ⟨T 0, ?_⟩
   have hshape :
-      Ty.matcher .none ((T 0).applyCapability C) = τ := by
+      Ty.matcher .none (T 0) = τ := by
     simpa [somethingScheme, Subst.apply, Ty.applyTarget,
       Ty.applyCapability, Cap.apply] using hbody
   exact hshape.symm
@@ -373,11 +406,10 @@ ordinary target equal while retaining the `none` capability.
 theorem sharedSomethingFunctionScheme_instance_retains_none {τ : Ty}
     (h : sharedSomethingFunctionScheme.Inst τ) :
     ∃ target, τ = .fn target (.matcher .none target) := by
-  rcases h with ⟨C, T, _, _, hbody⟩
-  refine ⟨(T 0).applyCapability C, ?_⟩
+  rcases h with ⟨C, T, _, _, _, hbody⟩
+  refine ⟨T 0, ?_⟩
   have hshape :
-      Ty.fn ((T 0).applyCapability C)
-        (.matcher .none ((T 0).applyCapability C)) = τ := by
+      Ty.fn (T 0) (.matcher .none (T 0)) = τ := by
     simpa [sharedSomethingFunctionScheme, Subst.apply, Ty.applyTarget,
       Ty.applyCapability, Cap.apply] using hbody
   exact hshape.symm
@@ -393,7 +425,7 @@ the same numeric name.
 theorem capOnlyExampleScheme_preserves_target_var {τ : Ty}
     (h : capOnlyExampleScheme.Inst τ) :
     ∃ cap, τ = .matcher cap (.var 0) := by
-  rcases h with ⟨C, T, hC, hT, hbody⟩
+  rcases h with ⟨C, T, hC, hT, _, hbody⟩
   have hTid : T = TySubst.id := by
     funext a
     exact hT a (by simp [capOnlyExampleScheme])
@@ -415,7 +447,7 @@ the same numeric name.
 theorem targetOnlyExampleScheme_preserves_cap_var {τ : Ty}
     (h : targetOnlyExampleScheme.Inst τ) :
     ∃ target, τ = .matcher (.var 0) target := by
-  rcases h with ⟨C, T, hC, hT, hbody⟩
+  rcases h with ⟨C, T, hC, hT, _, hbody⟩
   have hCid : C = CapSubst.id := by
     funext a
     exact hC a (by simp [targetOnlyExampleScheme])
@@ -529,17 +561,13 @@ theorem generalize_all_free_is_mono (τ : Ty) :
     apply List.eq_nil_iff_forall_not_mem.mpr
     intro a ha
     have hfiltered := mem_uniqueVars.mp ha
-    have contradiction : a ∈ τ.fcv ∧ a ∉ τ.fcv := by
-      simpa using hfiltered
-    exact contradiction.2 contradiction.1
+    simp at hfiltered
   have hty :
       uniqueVars (τ.ftv.filter (fun a => a ∉ τ.ftv)) = [] := by
     apply List.eq_nil_iff_forall_not_mem.mpr
     intro a ha
     have hfiltered := mem_uniqueVars.mp ha
-    have contradiction : a ∈ τ.ftv ∧ a ∉ τ.ftv := by
-      simpa using hfiltered
-    exact contradiction.2 contradiction.1
+    simp at hfiltered
   simp only [generalize, Scheme.mono]
   rw [hcap, hty]
 

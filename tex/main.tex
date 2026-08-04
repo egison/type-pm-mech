@@ -19,7 +19,7 @@
 \newcommand{\Pattern}[2]{\mathsf{Pattern}(#1 \mathbin{\triangleright} #2)}
 \newcommand{\PPPattern}[1]{\mathsf{PPPattern}\,#1}
 \newcommand{\PDPattern}[1]{\mathsf{PDPattern}\,#1}
-\newcommand{\Clause}[1]{\mathsf{Clause}\,#1}
+\newcommand{\Clause}[2]{\mathsf{Clause}\,#1\,#2}
 \newcommand{\ListTy}[1]{\mathsf{List}\,#1}
 \newcommand{\mono}[1]{\mathsf{mono}\,#1}
 \newcommand{\Inst}{\mathsf{Inst}}
@@ -29,6 +29,7 @@
 \newcommand{\fcv}{\mathsf{fcv}}
 \newcommand{\ftv}{\mathsf{ftv}}
 \newcommand{\dom}{\mathsf{dom}}
+\newcommand{\pcalls}{\mathsf{pcalls}}
 \newcommand{\mguTy}{\mathsf{mguTy}}
 \newcommand{\mguCap}{\mathsf{mguCap}}
 \newcommand{\matchCap}{\mathsf{matchCap}}
@@ -46,7 +47,8 @@
 \newcommand{\finalize}{\mathsf{finalize}}
 \newcommand{\decomposeME}{\mathsf{decomposeME}}
 \newcommand{\prodty}{\mathsf{prod}}
-\newcommand{\capof}{\mathsf{cap}}
+\newcommand{\capcompat}{\mathsf{CapCompatible}}
+\newcommand{\PPatCaps}{\mathsf{PPatCapsAt}}
 \newcommand{\tyof}{\mathsf{ty}}
 \newcommand{\rn}[1]{%
   \mathord{\llap{\raisebox{-6.0ex}{\hbox{\scriptsize\textsc{[#1]}}}}%
@@ -171,7 +173,7 @@ $\mathtt{match}$ は $\mathtt{matchAll}$ と $\mathsf{head}$ への surface elab
   & primitive-pattern hole/capture extraction \\
 \Sighat_D \vdash dp:\PDPattern{\tau}\rightsquigarrow\Gamma_{dp}
   & data-pattern binding \\
-\Sighat;\Gamma \vdash cl:\Clause{\tau}\rightsquigarrow ev
+\Sighat;\Gamma \vdash cl:\Clause{\kappa}{\tau}\rightsquigarrow ev
   & matcher-clause typing and evidence \\
 \Sighat;\Gamma \vdash d\;\mathsf{ok}\Rightarrow(f:\varsigma)
   & pattern-function definition \\
@@ -182,9 +184,11 @@ $\mathtt{match}$ は $\mathtt{matchAll}$ と $\mathsf{head}$ への surface elab
 pattern の $\Delta$ は左から右へ thread する．}
 \end{figure}
 
-$\Gamma(x)$，$\Phi(x)$，$\Sighat_D(C)$ などは有限 map の lookup であり，
-key が存在しなければ失敗する．``fresh'' は現在の signature，context，型，
-capability のいずれにも出現しない同じ sort の変数を選ぶことを表す．
+$\Gamma(x)$，$\Phi(x)$，$\Sighat_D(C)$ などは key が重複しない有限 map の lookup であり，
+key が存在しなければ失敗する．特に $\Sighat_F$ の pattern-function 名は相異なる．
+``fresh'' は現在の signature，context，型，
+capability に自由出現しない同じ sort の変数を選ぶことを表す．scheme 内の量化
+binder は局所的であり，無関係な fresh 選択の ambient scope には含めない．
 
 \section{補助定義}
 
@@ -205,26 +209,49 @@ $S=(C,T)$ の作用を次で定める．
  S\Gamma=\{x:S\sigma\mid x:\sigma\in\Gamma\}.
 \]
 Paired substitution $S=(C,T)$ は，すべての $\alpha\in\dom(T)$ について
-$C(T\alpha)=T\alpha$ を満たすとき range-fixed である．以下で $S$ を構成する規則は
-この条件を明示的に要求する．
+$C(T\alpha)=T\alpha$ を満たすとき range-fixed である．この条件は raw な
+$\matchCap$／$\mguTy$ certificate と，Algorithm W が保持する最初の fresh allocation
+に対して用いる．一方，
+scheme binder の局所 mapping と，その結果に対する target specialization は，名前の数値が
+偶然一致しても局所 binder が後段の型に入り込んだ capability を捕捉しないよう，
+一つの global pair に潰さず順に適用する．
 
 \[
 \begin{aligned}
 \Inst\bigl(\forall\overline\chi.\forall\overline\alpha.\tau\bigr)
-  &= (C_f,T_f)\tau,
-& C_f\overline\chi,\ T_f\overline\alpha&\ \text{fresh},\\
+  &= T_s\bigl(C_v\tau\bigr),\\[-0.2em]
+  &\quad \dom(C_v)\subseteq\overline\chi,
+  \quad C_v\overline\chi\ \text{capability variables},\\[-0.2em]
+  &\quad \dom(T_s)\subseteq\overline\alpha,\\
 \Inst(\mono\tau)&=\tau,\\
-\Gen(\Gamma,\tau)
-  &=\forall(\fcv(\tau)\setminus\fcv(\Gamma):\CapSort).\,
-    \forall(\ftv(\tau)\setminus\ftv(\Gamma):\Ty).\,\tau,\\
-\GenDual(\Gamma,\delta)
-  &=\forall(\fcv(\delta)\setminus\fcv(\Gamma):\CapSort).\,
-    \forall(\ftv(\delta)\setminus\ftv(\Gamma):\Ty).\,\delta.
+\Gen(\Sighat,\Gamma,\tau)
+  &=\forall(\fcv(\tau)\setminus
+      (\fcv(\Sighat)\cup\fcv(\Gamma)): \CapSort).\,\\[-0.2em]
+  &\quad \forall(\ftv(\tau)\setminus
+      (\ftv(\Sighat)\cup\ftv(\Gamma)): \Ty).\,\tau,\\
+\GenDual(\Sighat,\Gamma,\delta)
+  &=\forall(\fcv(\delta)\setminus
+      (\fcv(\Sighat)\cup\fcv(\Gamma)): \CapSort).\,\\[-0.2em]
+  &\quad \forall(\ftv(\delta)\setminus
+      (\ftv(\Sighat)\cup\ftv(\Gamma)): \Ty).\,\delta.
 \end{aligned}
 \]
-$\Inst$ と $\InstDual$ は各 sort の全 binder を互いに異なる fresh flexible
-meta-variable へ同時に置換し，$\InstDual$ は dual scheme の両 binder 列を対象にする．
-$\Gen$ と $\GenDual$ の引数には prevailing paired substitution を適用し，
+$\Inst$ と $\InstDual$ の宣言的 relation は，capability binder を flexible capability
+variable へ置換し，その結果に target binder だけを support とする $T_s$ を適用する．
+$C_v\chi$ は常に capability variable であり，$K\,\overline\kappa$ や capability product
+へ置換してはならない．$T_s$ は capability variable を変更しない．この制限により，
+value producer の capability は利用側の consumer demand によって強化されない．
+$T_s$ は capability 置換の後にだけ作用する．従って，$T_s$ が挿入した型の中に
+binder と同じ番号の自由 capability variable があっても，それを $C_v$ で
+再び置換しない．この ordered binder-local semantics により，量化 capability
+binder の variable-only instantiation と利用側から来る自由 capability を区別する．
+宣言的 relation では binder の像の相異性や ambient freshness を要求しない．
+Algorithm W はより強い allocation witness として，全 binder へ互いに異なる fresh
+variable を割り当て，solver が後続の target specialization を記録する．その allocation
+証拠を忘却して target substitution を合成すれば，上の宣言的 instance が得られる．
+$\InstDual$ は dual scheme の両 binder 列を対象にする．
+$\Gen$ と $\GenDual$ は signature と context の自由変数を量化しない．その型引数には
+prevailing paired substitution を適用し，
 未解決の inference placeholder を含まない finalized type/capability を用いる．
 prevailing paired substitution とは，同じ導出でそれ以前に得た全 constraint を解く
 累積的な一つの $(C,T)$ である．Skolem は generalize しない．
@@ -232,7 +259,8 @@ $\fcv(X)$ と $\ftv(X)$ はそれぞれ $X$ に自由出現する flexible capab
 meta-variable と flexible target meta-variable の集合であり，scheme の binder に
 束縛された変数を含まない．$\dom(X)$ は context または substitution $X$ の定義域である．
 
-Signature lookup は毎回 fresh instance を返すものとする．
+Signature lookup の宣言的型付けは毎回上の ordered instance を使い，Algorithm W は
+それを実装するとき fresh allocation witness を記録する．
 \[
 \begin{array}{rcl}
 \Inst(\Sighat_D(C))
@@ -266,27 +294,37 @@ $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であ
 most-general unifier を返す．constructor／arity の不一致，occurs check の失敗，
 または rigid skolem を解く必要がある場合は失敗する．
 
-Frozen pattern signature が提供する二つの部分関数を次で表す．
+Frozen pattern signature が提供する target instance と，capability projection の
+整合判断を次で表す．
 \[
  \pi_c=\Inst(\Sighat_P(c)),\qquad
- \capof_{\Sighat}(\pi_c;\overline\kappa)\Downarrow\kappa,
+ \capcompat_{\Sighat}(\pi_c;\overline\kappa,\kappa),
  \qquad
  \tyof_{\Sighat}(\pi_c;\overline\tau)\Downarrow\tau'.
 \]
-$\pi_c$ はこの二つの部分関数へ明示的に渡す同一の fresh
-pattern-constructor signature instance である．$\capof$ はその field に
-$\overline\kappa$ を対応付け，result argument slot へ capability を投影して
-constructor pattern 全体の capability を返す．$\tyof$ は
+$\pi_c$ はこの二つの判断へ明示的に渡す同一の fresh
+pattern-constructor signature instance である．$\capcompat$ はその field に
+$\overline\kappa$ の canonical evidence を対応付け，result argument slot へ
+部分 evidence $ev_p$ を投影した上で，
+\[
+  \merge(ev_p,\lceil\kappa\rceil_{ev})
+    =\mathsf{some}\;\lceil\kappa\rceil_{ev}
+\]
+となるときに限り成立する．projection 自体が完全 capability を返すとは限らない．
+たとえば nullary $\mathtt{nil}$ は observable な list element parameter を
+$\mathsf{unseen}$ のまま残し，周囲の最終 matcher capability がその位置を埋める．
+$\tyof$ は
 $\overline\tau$ を field target と照合し，同じ signature instance の result target を
 返す．いずれも arity，canonical former，または rigid constraint が一致しなければ
-失敗する．$\capof$ は $\mathit{Obs}_{\Sighat}$ が公開する signature path だけをたどり，
+失敗する．$\capcompat$ の projection は $\mathit{Obs}_{\Sighat}$ が公開する
+signature path だけをたどり，
 target substitution や expected target から capability を生成しない．
 
 \subsection{Matcher-clause metafunctions}
 
 \[
 \begin{array}{rcll}
-\prodty_0()&=&\mathbf{1},\\
+\prodty_0()&=&(),\\
 \prodty_1(\tau_1)&=&\tau_1,\\
 \prodty_k(\tau_1,\ldots,\tau_k)&=&(\tau_1,\ldots,\tau_k)
   & (k\ge 2),\\[2pt]
@@ -297,8 +335,9 @@ target substitution や expected target から capability を生成しない．
 \end{array}
 \]
 上記以外の $\decomposeME$ は失敗する．
-$()$ は unit value，その型は $\mathbf{1}$ と同一視する．したがって
-$k=0$ の matcher expression は $()$ だけである．
+$()$ は nullary tuple value であり，その型も nullary product $()$ である．
+$\mathbf{1}$ とは同一視しない（この core では $\mathbf{1}$ の runtime constructor を
+持たない）．したがって $k=0$ の matcher expression は $()$ だけである．
 
 Complete capability を partial evidence へ埋め込む canonical map は次である．
 \[
@@ -329,14 +368,22 @@ $\mathsf{unseen}$ は assignment を作らず，opaque／function／unobservable
 barrier として内部を観測しない．必要な observable path に既知の異なる head が
 現れた場合は，$\mathsf{unseen}$ へ弱めず失敗する．
 
+$\PPatCaps_{\Sighat}(b,pp,\overline\kappa,\kappa)$ は，$pp$ の hole 列を
+$\overline\kappa$ と左から右へ対応させ，その構造が最終 matcher capability
+$\kappa$ と整合することを表す．nested hole はその位置の capability と同じでなければ
+ならない．constructor node は $\capcompat$，tuple node は capability product を使う．
+root hole だけは catch-all として任意の一 hole capability を消費でき，wildcard と
+value pattern は hole を消費しない．
+
 $\ClausesTy$ は actual clause list を順に検査し，一 clause につき一つの evidence を
-同じ順序で返す output-indexed judgment である．
+同じ順序で返す output-indexed judgment である．全 clause は同じ最終 capability と
+target を共有する．
 \[
-\ClausesTy(\Sighat;\Gamma,[cl_i]_{i=1}^{m},\tau)
+\ClausesTy(\Sighat;\Gamma,[cl_i]_{i=1}^{m},\kappa,\tau)
   \Downarrow[ev_i]_{i=1}^{m}
 \quad\Longleftrightarrow\quad
 \forall i.\ \Sighat;\Gamma\vdash
-  cl_i:\Clause{\tau}\rightsquigarrow ev_i.
+  cl_i:\Clause{\kappa}{\tau}\rightsquigarrow ev_i.
 \]
 いずれかの clause の PP extraction，next-matcher decomposition／slot typing，
 または一 clause 分の evidence projection が失敗すれば，この判断は成立しない．
@@ -447,10 +494,11 @@ $\mathsf{arms}(cl)$ は clause の $[dp_j\to N_j]_j$ から data pattern 列
 $[dp_j]_j$ を順序を保って取り出す．$\mathsf{bindPP}(pp)$ と
 $\mathsf{bindDP}(dp)$ はそれぞれ $pp$ の $\#\$x$ と $dp$ の $\$x$ が導入する
 変数名を左から右へ集め，$\mathsf{NoDup}$ はその列に重複がないことを表す．
-$\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data signature
-の constructor／tuple／wildcard 規則に従って $\overline{dp}$ が $\tau$ の全値を
-被覆するかを判定する決定的な coverage checker である．未知の constructor，arity
-不一致，または未被覆の場合は成立しない．
+$\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は保守的で実行可能な
+checker である．core では $\overline{dp}$ に変数 pattern または wildcard が一つでも
+あれば成功し，それ以外は失敗する．したがって成功時には任意の runtime value を
+受理する具体的な arm が存在する．constructor の網羅性を推測する外部 oracle は
+用いない．
 
 \section{Expression typing}
 
@@ -483,7 +531,7 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
 \begin{mathpar}
 \inferrule{
   \Sighat;\Gamma\vdash e_1:\tau_1 \\
-  \sigma=\Gen(\Gamma,\tau_1) \\
+  \sigma=\Gen(\Sighat,\Gamma,\tau_1) \\
   \Sighat;\Gamma,x:\sigma\vdash e_2:\tau_2
 }{
   \Sighat;\Gamma\vdash
@@ -578,7 +626,7 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
   (\rho_1,\ldots,\rho_n)\Rightarrow_P\rho \\
   \Sighat;\Gamma;\Phi;\Delta_{i-1}\vdash
   p_i:\Pattern{\kappa_i}{\tau_i};\Delta_i\quad(1\le i\le n) \\
-  \capof_{\Sighat}(\pi_c;\overline\kappa)\Downarrow\kappa \\
+  \capcompat_{\Sighat}(\pi_c;\overline\kappa,\kappa) \\
   \tyof_{\Sighat}(\pi_c;\overline\tau)\Downarrow\tau
 }{
   \Sighat;\Gamma;\Phi;\Delta_0\vdash
@@ -626,7 +674,8 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
 
 \begin{mathpar}
 \inferrule{
-  f\notin\dom(\Sighat_F) \\
+  \Sighat_F(f)=\varsigma_f \\
+  f\notin\pcalls(p_{\mathit{body}}) \\
   \chi_1,\ldots,\chi_n\ \text{fresh} \\
   \Phi'=\varnothing,x_1:\Pattern{\chi_1}{\tau_1},\ldots,
                  x_n:\Pattern{\chi_n}{\tau_n} \\
@@ -635,7 +684,7 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
   \widetilde{x_1},\ldots,\widetilde{x_n}\ \text{occur exactly once,
     in declaration order, outside or-alternatives} \\
   \varsigma_f=\GenDual\!\left(
-    \Gamma,
+    \Sighat\setminus f,\Gamma,
     (\chi_1\mathbin{\triangleright}\tau_1),\ldots,
     (\chi_n\mathbin{\triangleright}\tau_n)
     \Rightarrow(\kappa\mathbin{\triangleright}\tau)\right)
@@ -645,8 +694,13 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
   :=p_{\mathit{body}}\ \mathsf{ok}\Rightarrow(f:\varsigma_f)
 }\rn{PATFUN-DEF}
 \end{mathpar}
-\textsc{PATFUN-DEF} は $f$ を追加する前の $\Sighat_F$ で本体を検査する
-非再帰規則であり，同名の既存 pattern function を shadow しない．
+ここで $\Sighat\setminus f$ は，有限 map $\Sighat_F$ から一意な $f$ の entry
+だけを除いた signature である．本体は freeze 済みの完全な $\Sighat$ で検査し，
+自身の scheme だけを generalization の ambient free-variable 集合から除外する．
+$\pcalls$ は pattern の全子孫を走査し，value pattern 内の式，その
+\texttt{matchAll} pattern，matcher clause の next と各 arm body も含めて
+自己 \texttt{papp} を拒否する．従って他の pattern function への参照は許すが，
+直接自己再帰は許さない．
 
 \section{Match and \texorpdfstring{$\MatcherSlot{}{}$}{MatcherSlot}}
 
@@ -808,6 +862,8 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
   \Sighat\vdash pp:\PPPattern{\tau}\rightsquigarrow
     [(\kappa_1\mathbin{\triangleright}\tau_1),\ldots,
      (\kappa_k\mathbin{\triangleright}\tau_k)];\Delta_{pp} \\
+  \PPatCaps_{\Sighat}
+    (\mathsf{root},pp,[\kappa_1,\ldots,\kappa_k],\kappa) \\
   \decomposeME(M,k)=[M_1,\ldots,M_k] \\
   \Sighat;\Gamma\vdash M_l:\MatcherSlot{\kappa_l}{\tau_l}
     \quad(1\le l\le k) \\
@@ -821,13 +877,13 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
 }{
   \Sighat;\Gamma\vdash
   (pp\ \mathtt{as}\ M\ \mathtt{with}\ [dp_j\to N_j]_{j=1}^{r}):
-  \Clause{\tau}\rightsquigarrow ev
+  \Clause{\kappa}{\tau}\rightsquigarrow ev
 }\rn{CLAUSE-TY}
 \end{mathpar}
 
 \begin{mathpar}
 \inferrule{
-  \ClausesTy(\Sighat;\Gamma,\mathit{cls},\tau)
+  \ClausesTy(\Sighat;\Gamma,\mathit{cls},\kappa,\tau)
     \Downarrow\overline{ev} \\
   \ShapeCap_{\Sighat}(\overline{ev},\kappa) \\
   \CatchAllLast(\mathit{cls}) \\
@@ -840,5 +896,151 @@ $\mathsf{Exhaustive}_{\Sighat_D}(\overline{dp},\tau)$ は，freeze 済み data s
   \mathtt{matcher}\;\mathit{cls}:\Matcher{\kappa}{\tau}
 }\rn{T-MATCHER}
 \end{mathpar}
+
+\section{機械化する定理の境界}
+
+\subsection{安全な instance と後続輸送}
+
+$\Inst$ が使う宣言的 instance と，Algorithm W の allocation witness を区別する．
+宣言的な $C_v$ と $T_s$ はそれぞれの scheme binder 上だけに support を持ち，
+$C_v$ は各 binder を capability variable へ写す．この層では像の相異性，ambient
+freshness，range-fixedness を使わない．これに対し W の $(C_f,T_f)$ は，像が互いに
+異なり ambient scope に
+対して fresh であることと range-fixedness を記録する．ここで ambient scope は
+signature と context の自由変数からなり，別の scheme が局所的に束縛する同名の
+数値 identifier は含めない．W の witness からこれらの allocation 証拠を忘却すると
+宣言的 instance が得られる．
+
+Target specialization $T_s$ は capability instance に対して後から作用し，その像に
+$C_v$ を再適用する global 作用にはまとめない．証明中で shape evidence を
+輸送する宣言的な後続 post も capability variable を capability variable にだけ写す．
+その層では単射性，像の相異性，ambient freshness を要求しない．Algorithm W の後続
+chain は有限 support と fresh allocation を記録するより強い witness であり，それを忘却して
+宣言的 post を得る．各 post は現在の導出へ順に作用するため，
+前の局所 binder と後から挿入された自由変数を混同しない．
+
+これに対して，raw な $\matchCap$／$\mguTy$ certificate は生成時の正規化済み index
+に固定して保持する．その後の suffix $Q=(R,V)$ では，capability component $R$ の像を
+capability variable のみに限定し，target component $V$ の support も生成時に保護された
+変数へ限定する．suffix の合成では，後段の capability action を前段の target range
+内部にも適用する cross-sort-aware な逐次作用を用いる．従って誤った可換性条件を
+仮定せず，solver を別の入力で再実行せず suffix だけを延長できる．
+したがって次が成り立つ．
+
+\begin{quote}
+整型な value producer を scheme から取り出した後，consumer demand，expected target，
+annotation，または再帰 self-reference を根拠として，その intrinsic capability を
+構造的に強化することはできない．
+\end{quote}
+
+primitive-pattern の hole capability は value producer ではなく clause evidence の
+consumer placeholder である．これらは matcher literal 全体で一つの prevailing
+substitution により解決し，actual clause evidence と $\CoverageOK$ がその構造を
+根拠づける．両者を同じ instantiation 経路で扱わない．
+
+Let specialization では $\Gen(\Sighat,\Gamma,\tau)$ の safe instance から
+元の bound expression をその instance 型で再構成する．一般には
+$Q(\Gen(\Sighat,\Gamma,\tau))=
+\Gen(\Sighat,Q\Gamma,Q\tau)$ ではないので，この誤った scheme 等式を仮定しない．
+外側の instance が導入した自由変数と内側の量化 binder の数値 identifier が一致する
+場合には，内側の binder を target ambient の外へ局所的に freshen してから輸送する．
+context と signature の自由変数上で作用が一致することを追跡する parametric な
+binder-local substitution algebra と，構文に対する同時帰納でこの admissibility を
+導出する．型付け導出そのものを premise とする oracle は置かない．
+
+\subsection{Algorithm W と再構成}
+
+二種 Algorithm W は expression，pattern，primitive pattern，data pattern，clause，
+slot check を有限な fuel 再帰で実行し，成功時には全 solver step と source event を
+trace に保持する．fresh value instance の capability variable は protected producer
+として記録し，全 solver delta がそれらを固定することを executable checker で
+再検査する．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
+binder 線形性の各 checker の成功を要求する．
+
+Pattern constructor の capability inference は projection の
+$\mathsf{unseen}$ 位置を fresh capability variable で埋めた候補を作り，後続 constraint
+で最終 matcher capability と照合する．各 clause が保持する raw hole dual は，literal
+全体の prevailing substitution が確定した後に一度だけ zonk する．その時点で全
+clause evidence を再計算し，$\PPatCaps$ の executable checker も最終 capability に
+対して実行する．途中の clause で計算した古い evidence を finalization に再利用しない．
+これらは target や expected type を evidence の seed にしない．
+
+各 nested pattern はそれ自身の fresh raw index を持ち，solver は親が要求する index と
+終端 substitution 適用後に一致させる．従って再構成では，生成時 certificate を残す
+raw provenance と，実際の終端 index で構造を追う terminal derivation を分ける．
+子の raw index と親の raw field index が構文的に同一であるという，Algorithm W が
+保証しない条件は要求しない．source typing と runtime proof は terminal derivation の
+射影だけを利用する．
+
+完全性や full principality は主張しない．conditional reconstruction theorem は
+概念的に次の形である．
+
+\[
+\frac{
+  \mathsf{infer}(\Sighat,\Gamma,e)=\mathsf{some}\;r
+  \qquad
+  \mathsf{WBridgeWF}(\Sighat,\Gamma,e,r)
+}{
+  \Sighat;r.S\Gamma\vdash e:r.S\tau
+}
+\]
+
+$\mathsf{WBridgeWF}$ が含めるのは fresh supply，binder の相異性，solver replay，
+cross-sort-aware な逐次 post 合成，terminal context までの instance 合成，
+generalization，および concrete coverage/exhaustiveness checker の soundness に限る．
+instance 合成は lookup 時の concrete fresh W instance を index とし，その宣言的な忘却と
+terminal target specialization に対する代数的 witness を保持する．結論の source typing judgment 自体や，それと
+同型の導出を premise として含めない．
+
+singleton direct-self の $\mathtt{fix}$ では，再帰 binder は RHS 内で一つの monotype
+placeholder を共有する．binder の自由出現は application head に直接現れるものだけを
+認め，alias，引数としての受渡し，相互再帰，高階 origin は fail closed とする．actual
+clause evidence 以外の self-reference や demand は $\ShapeCap$ の seed にしない．
+
+\subsection{Concrete runtime safety}
+
+runtime matcher value は source の全 clause 列と，実行中の current clause/arm cursor
+を別々に保持する．ただし公開 matching-state 境界では，値・tuple／constructor の
+内部・closure の captured environment・matcher captured environment・内部 node と
+stack のすべてについて cursor が original clause 列にあることを
+$\mathsf{Pristine}$ 不変条件として要求する．suffix cursor は一つの $\mathsf{MAtom}$
+導出の内部だけで使い，successor state へは流出させない．整型 matcher valueからは
+元の actual clause typing，evidence，$\CoverageOK$ を復元できる．matching state typing は atom ごとの prevailing
+substitution，pattern-function node の固定 parameter context，残余 actual argument，
+内部 stack，および terminal substitution の binding 順序を追跡する．
+
+Ordered clause dispatch の内部では，original clause 列から現在位置までの失敗 prefix
+を $\mathsf{DispatchTrace}$ が保持する．freeze 済み signature は，同じ outer
+capability と pattern-constructor entry に compatible な child capability 列が一意で
+あること，および各 named pattern constructor が coverage index の canonical former
+と arity に登録されていることを要求する．これにより最後の bare-hole catch-all まで
+到達した structured pattern は，先行する対応 constructor clause の失敗事実と矛盾し，
+stuck にならない．
+
+値パターン式 $\#e$ は同じ原子の先行 hole binding ではなく，原子へ入る時点の
+context で型付くことを $\mathsf{CaptureAdm}$ とする．また，一段の clause dispatch が
+実際に必要とする body／next-matcher の局所評価結果だけを $\mathsf{StepReady}$ とする．
+後者は一般の program termination や既成の $\mathsf{Step}$ 導出を仮定しない．
+
+freeze 済み signature の整形式性と source/runtime pattern-function signature の一致の
+下で，Lean の concrete judgments 上に次を証明する．
+
+\begin{enumerate}
+  \item pristine な typed environment $\rho$ での $\mathsf{Eval}\;\rho\;e\;v$ は
+        $\mathsf{HasTy}$ を $\mathsf{ValueTy}$ へ保存する．
+  \item 整型 matching state の一段 $\mathsf{Step}$ の全 successor は整型である．
+  \item 非終端の整型 state は，局所証拠 $\mathsf{StepReady}$ の下で一段進む．
+        空 successor 列は正当な match failure
+        であり stuck ではない．
+  \item 一段保存の反復により，到達可能な全 state は整型である．
+  \item 空 stack へ到達した成功 branch の substitution は，source pattern が生成した
+        binding context で型付く．
+  \item matcher consistency は前項を初期 atom からの到達へ適用した系として得る．
+\end{enumerate}
+
+最後に W の再構成定理をこの declarative safety package へ接続する．
+$\mathsf{CaptureAdm}$ と局所 $\mathsf{StepReady}$ 以外に，任意の capability 輸送，
+抽象 runtime oracle，または型付け済み外部 list／multiset matcher を前提として
+残さない．
 
 \end{document}

@@ -52,6 +52,7 @@ The capability argument of an existing matcher or slot is copied verbatim.
 def Ty.applyTarget (S : TySubst) : Ty → Ty
   | .var a        => S a
   | .skolem a     => .skolem a
+  | .unit         => .unit
   | .int          => .int
   | .bool         => .bool
   | .data n tys   => .data n (Ty.applyTargetList S tys)
@@ -73,6 +74,7 @@ mutual
 def Ty.applyCapability (S : CapSubst) : Ty → Ty
   | .var a        => .var a
   | .skolem a     => .skolem a
+  | .unit         => .unit
   | .int          => .int
   | .bool         => .bool
   | .data n tys   => .data n (Ty.applyCapabilityList S tys)
@@ -97,6 +99,7 @@ skeleton.
 def Ty.eraseCap : Ty → Ty
   | .var a        => .var a
   | .skolem a     => .skolem a
+  | .unit         => .unit
   | .int          => .int
   | .bool         => .bool
   | .data n tys   => .data n (Ty.eraseCapList tys)
@@ -130,19 +133,28 @@ def Subst.id : Subst :=
   ⟨CapSubst.id, TySubst.id⟩
 
 /--
-Apply a combined substitution in target-then-capability order.
+The target range of a paired substitution is fixed by its capability part.
 
-This order ensures that capability variables contained in the range of the
-target substitution are reached by the capability substitution.
+This is the paper's explicit side condition `C (T α) = T α`.  It prevents a
+target binding from smuggling in capability variables that the paired
+capability substitution would still rewrite.
 -/
-def Subst.apply (S : Subst) (τ : Ty) : Ty :=
-  (τ.applyTarget S.target).applyCapability S.cap
+def Subst.RangeFixed (S : Subst) : Prop :=
+  ∀ a, (S.target a).applyCapability S.cap = S.target a
 
 /--
-Syntactic composition of the two components.
+Apply a combined substitution in capability-then-target order.
 
-Its semantic composition law requires the later target range to be fixed by
-the earlier capability substitution; see `Subst.apply_comp`.
+This is exactly the paper definition `S τ = T (C τ)`.
+-/
+def Subst.apply (S : Subst) (τ : Ty) : Ty :=
+  (τ.applyCapability S.cap).applyTarget S.target
+
+/--
+Pointwise composition of the two sorted components.
+
+Its semantic composition law requires the earlier target range to be fixed by
+the later capability substitution; see `Subst.apply_comp`.
 -/
 def Subst.comp (S₂ S₁ : Subst) : Subst :=
   ⟨CapSubst.comp S₂.cap S₁.cap, TySubst.comp S₂.target S₁.target⟩
@@ -205,6 +217,7 @@ mutual
 theorem Ty.applyTarget_id : ∀ (τ : Ty), τ.applyTarget TySubst.id = τ
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -240,6 +253,7 @@ theorem Ty.applyCapability_id :
     ∀ (τ : Ty), τ.applyCapability CapSubst.id = τ
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -277,6 +291,7 @@ theorem Ty.applyTarget_comp (S₂ S₁ : TySubst) :
         (τ.applyTarget S₁).applyTarget S₂
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -317,6 +332,7 @@ theorem Ty.applyCapability_comp (S₂ S₁ : CapSubst) :
         (τ.applyCapability S₁).applyCapability S₂
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -365,6 +381,7 @@ theorem Ty.applyCapability_applyTarget (C : CapSubst) (T : TySubst) :
           (fun a => (T a).applyCapability C)
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -405,6 +422,7 @@ theorem Ty.eraseCap_applyCapability (C : CapSubst) :
     ∀ (τ : Ty), (τ.applyCapability C).eraseCap = τ.eraseCap
   | .var _        => rfl
   | .skolem _     => rfl
+  | .unit         => rfl
   | .int          => rfl
   | .bool         => rfl
   | .data n tys   => by
@@ -459,6 +477,21 @@ theorem Ty.applyTarget_applyCapability_of_range_fixed
     exact hfixed a
   rw [Ty.applyCapability_applyTarget C T τ, hT]
 
+/-- The identity paired substitution satisfies the paper's range condition. -/
+theorem Subst.id_rangeFixed : Subst.id.RangeFixed := by
+  intro a
+  rfl
+
+/--
+Under the range condition, the two cross-sort application orders coincide.
+-/
+theorem Subst.RangeFixed.apply_eq_target_then_capability
+    {S : Subst} (hfixed : S.RangeFixed) (τ : Ty) :
+    S.apply τ = (τ.applyTarget S.target).applyCapability S.cap := by
+  unfold Subst.apply
+  exact Ty.applyTarget_applyCapability_of_range_fixed
+    S.cap S.target hfixed τ
+
 /-!
 The range condition above is substantive.  A target substitution may insert a
 nested matcher containing a capability variable; a capability substitution
@@ -485,21 +518,60 @@ theorem target_capability_naive_commutation_counterexample :
 /-- Applying the identity combined substitution changes no type. -/
 theorem Subst.apply_id (τ : Ty) :
     Subst.id.apply τ = τ := by
-  rw [Subst.apply, Subst.id, Ty.applyTarget_id, Ty.applyCapability_id]
+  rw [Subst.apply, Subst.id, Ty.applyCapability_id, Ty.applyTarget_id]
 
 /--
 Semantic composition for combined substitutions.
 
-The explicit hypothesis is necessary: the earlier capability substitution
-must not rewrite capabilities inside types inserted later by `S₂.target`.
+The explicit hypothesis is necessary: the later capability substitution must
+not rewrite capabilities inside types inserted earlier by `S₁.target`.
 -/
 theorem Subst.apply_comp (S₂ S₁ : Subst)
-    (hfixed : ∀ a, (S₂.target a).applyCapability S₁.cap = S₂.target a)
+    (hfixed : (Subst.mk S₂.cap S₁.target).RangeFixed)
     (τ : Ty) :
     (Subst.comp S₂ S₁).apply τ = S₂.apply (S₁.apply τ) := by
   simp only [Subst.apply, Subst.comp]
-  rw [Ty.applyTarget_comp, Ty.applyCapability_comp]
+  rw [Ty.applyCapability_comp, Ty.applyTarget_comp]
   rw [Ty.applyTarget_applyCapability_of_range_fixed
-    S₁.cap S₂.target hfixed (τ.applyTarget S₁.target)]
+    S₂.cap S₁.target hfixed (τ.applyCapability S₁.cap)]
+
+/--
+Range-fixed pairs remain range-fixed under componentwise composition when
+each capability component also fixes the other pair's target range.
+-/
+theorem Subst.RangeFixed.comp
+    {S₂ S₁ : Subst}
+    (h₂ : S₂.RangeFixed) (h₁ : S₁.RangeFixed)
+    (h₂₁ : (Subst.mk S₂.cap S₁.target).RangeFixed)
+    (h₁₂ : (Subst.mk S₁.cap S₂.target).RangeFixed) :
+    (Subst.comp S₂ S₁).RangeFixed := by
+  intro a
+  have hC₁ :
+      ((S₁.target a).applyTarget S₂.target).applyCapability S₁.cap =
+        (S₁.target a).applyTarget S₂.target := by
+    calc
+      ((S₁.target a).applyTarget S₂.target).applyCapability S₁.cap =
+          ((S₁.target a).applyCapability S₁.cap).applyTarget
+            S₂.target :=
+        (Ty.applyTarget_applyCapability_of_range_fixed
+          S₁.cap S₂.target h₁₂ (S₁.target a)).symm
+      _ = (S₁.target a).applyTarget S₂.target := by
+        rw [h₁ a]
+  have hC₂ :
+      ((S₁.target a).applyTarget S₂.target).applyCapability S₂.cap =
+        (S₁.target a).applyTarget S₂.target := by
+    calc
+      ((S₁.target a).applyTarget S₂.target).applyCapability S₂.cap =
+          ((S₁.target a).applyCapability S₂.cap).applyTarget
+            S₂.target :=
+        (Ty.applyTarget_applyCapability_of_range_fixed
+          S₂.cap S₂.target h₂ (S₁.target a)).symm
+      _ = (S₁.target a).applyTarget S₂.target := by
+        rw [h₂₁ a]
+  change
+    ((S₁.target a).applyTarget S₂.target).applyCapability
+        (CapSubst.comp S₂.cap S₁.cap) =
+      (S₁.target a).applyTarget S₂.target
+  rw [Ty.applyCapability_comp, hC₁, hC₂]
 
 end TypePM.P2

@@ -1,19 +1,5 @@
-import TypePM.Syntax
-import TypePM.TypeRel
-import TypePM.Semantics
-import TypePM.Exec
-import TypePM.Typing
-import TypePM.WellTyped
-import TypePM.Metatheory.Polymorphism
-import TypePM.Metatheory.Preservation
-import TypePM.Metatheory.Canonical
-import TypePM.Metatheory.Progress
-import TypePM.Metatheory.Safety
-import TypePM.Metatheory.TypeSafety
-import TypePM.Metatheory.Principal
-import TypePM.Metatheory.Adequacy
-import TypePM.Examples
 import TypePM.P2.Syntax
+import TypePM.P2.Term
 import TypePM.P2.Substitution
 import TypePM.P2.Relation
 import TypePM.P2.Annotation
@@ -24,6 +10,35 @@ import TypePM.P2.Projection
 import TypePM.P2.Canonical
 import TypePM.P2.CapTarget
 import TypePM.P2.Recursion
-import TypePM.P2.Runtime
-import TypePM.P2.CoreSpec
-import TypePM.P2.Correctness
+import TypePM.P2.ClauseEvidence
+import TypePM.P2.ClauseEvidenceExamples
+import TypePM.P2.DirectSelf
+import TypePM.P2.Unification
+import TypePM.P2.Source
+import TypePM.P2.SourceSubstitution
+import TypePM.P2.SourceMetatheory
+import TypePM.P2.Semantics
+import TypePM.P2.PatternFunction
+import TypePM.P2.SourceGeneralization
+import TypePM.P2.GeneralizationRegression
+import TypePM.P2.Dynamic
+import TypePM.P2.Preservation
+import TypePM.P2.DynamicMetatheory
+import TypePM.P2.Reachability
+import TypePM.P2.Safety
+import TypePM.P2.InferenceBase
+import TypePM.P2.Inference
+import TypePM.P2.InferenceRegression
+import TypePM.P2.InferenceHistory
+import TypePM.P2.Reconstruction
+import TypePM.P2.Soundness
+import TypePM.P2.BridgeChecks
+import TypePM.P2.RecursiveExamples
+
+/-!
+# Egison core with two-index matcher types
+
+This is the public import surface of the current formalization.  Every dynamic
+theorem is stated over the concrete source and runtime judgments in
+`TypePM.P2`.
+-/

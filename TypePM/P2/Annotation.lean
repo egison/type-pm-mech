@@ -37,6 +37,7 @@ mutual
 def typeCapSkolemIds : Ty → List Nat
   | .var _         => []
   | .skolem _      => []
+  | .unit          => []
   | .int           => []
   | .bool          => []
   | .data _ tys    => typeCapSkolemIdsList tys
@@ -58,6 +59,7 @@ mutual
 def targetSkolemIds : Ty → List Nat
   | .var _        => []
   | .skolem id    => [id]
+  | .unit         => []
   | .int          => []
   | .bool         => []
   | .data _ tys   => targetSkolemIdsList tys
@@ -139,7 +141,9 @@ constructors.
 At this low level the caller must omit variables owned by the surrounding
 environment from `localCaps` and `localTargets`.  The public high-level
 `ChecksScheme` relation below records that locality and skolem freshness as
-formal premises.
+formal premises.  The solving pair is range-fixed, so its action is the
+paper's `T (C τ)` action without a latent capability rewrite in the target
+range.
 -/
 def ChecksRigid
     (localCaps : List CapVar)
@@ -148,6 +152,7 @@ def ChecksRigid
   ∃ C T,
     C.SupportWithin localCaps ∧
     T.SupportWithin localTargets ∧
+    (Subst.mk C T).RangeFixed ∧
     (Subst.mk C T).apply inferred = expectedRigid
 
 /--
@@ -224,7 +229,7 @@ theorem none_producer_rejects_capability_skolem
     ¬ ChecksRigid localCaps localTargets
       (.matcher .none inferredTarget)
       (.matcher (.skolem skolemId) expectedTarget) := by
-  rintro ⟨C, T, _, _, equality⟩
+  rintro ⟨C, T, _, _, _, equality⟩
   simp [Subst.apply, Ty.applyTarget, Ty.applyCapability, Cap.apply] at equality
 
 /--
@@ -242,7 +247,7 @@ theorem ChecksRigid.environment_target_preserved
     (checks :
       ChecksRigid localCaps localTargets (.var varId) expectedRigid) :
     expectedRigid = .var varId := by
-  rcases checks with ⟨C, T, _, targetSupport, equality⟩
+  rcases checks with ⟨C, T, _, targetSupport, _, equality⟩
   have fixed : T varId = .var varId :=
     targetSupport varId notLocal
   simpa [Subst.apply, Ty.applyTarget, fixed, Ty.applyCapability] using
@@ -263,11 +268,11 @@ theorem ChecksRigid.environment_capability_preserved
         (.matcher (.var varId) inferredTarget) expectedRigid) :
     ∃ expectedTarget,
       expectedRigid = .matcher (.var varId) expectedTarget := by
-  rcases checks with ⟨C, T, capabilitySupport, _, equality⟩
+  rcases checks with ⟨C, T, capabilitySupport, _, _, equality⟩
   have fixed : C varId = .var varId :=
     capabilitySupport varId notLocal
   refine
-    ⟨(inferredTarget.applyTarget T).applyCapability C, ?_⟩
+    ⟨(inferredTarget.applyCapability C).applyTarget T, ?_⟩
   simpa [Subst.apply, Ty.applyTarget, Ty.applyCapability, Cap.apply, fixed]
     using equality.symm
 
@@ -364,7 +369,7 @@ theorem producerIdentity_checks_rigid_annotation :
     fun candidate => if candidate = 0 then .skolem 0 else .var candidate
   let T : TySubst :=
     fun candidate => if candidate = 0 then .skolem 0 else .var candidate
-  refine ⟨C, T, ?_, ?_, ?_⟩
+  refine ⟨C, T, ?_, ?_, ?_, ?_⟩
   · intro candidate hfree
     have hne : candidate ≠ 0 := by
       simpa using hfree
@@ -373,6 +378,9 @@ theorem producerIdentity_checks_rigid_annotation :
     have hne : candidate ≠ 0 := by
       simpa using hfree
     simp [T, hne]
+  · intro candidate
+    by_cases heq : candidate = 0 <;>
+      simp [C, T, heq, Ty.applyCapability]
   · simp [producerIdentityTy, producerIdentityScheme, skolemizeScheme,
       capSkolemSubst, targetSkolemSubst, Subst.apply, C, T,
       Ty.applyTarget, Ty.applyCapability, Cap.apply]
@@ -412,7 +420,7 @@ theorem colliding_skolem_passes_lowLevel_kernel :
       (skolemizeScheme collidingCapabilityScheme 0 0) := by
   refine ⟨CapSubst.id, TySubst.id,
     CapSubst.id_supportWithin [],
-    TySubst.id_supportWithin [], ?_⟩
+    TySubst.id_supportWithin [], Subst.id_rangeFixed, ?_⟩
   simp [collidingCapabilityScheme_skolemize, Subst.apply,
     Ty.applyTarget, Ty.applyCapability, Cap.apply]
 

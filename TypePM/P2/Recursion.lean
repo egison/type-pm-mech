@@ -48,7 +48,7 @@ deriving Repr
 /--
 Fold direct-self sources into an evidence accumulator.
 
-Known evidence is combined by D1 exact merge.  A direct self-reference leaves
+Known evidence is combined by exact merge.  A direct self-reference leaves
 the current least approximation unchanged.  Every other reference fails
 closed.  Recursion is structural on the finite source list, so termination is
 checked by Lean's definition elaborator.
@@ -71,9 +71,9 @@ Solve a direct-self local equation from the distinguished bottom marker
 `unseen`.
 
 The result remains partial evidence; observability-aware finalization is a
-separate D1 phase.  This executable fold is deterministic; a full D4 evidence
-order and least-solution theorem belongs to the not-yet-integrated general
-producer-flow solver.
+separate operation.  This executable fold is deterministic.  A general
+producer-flow solver and its evidence order are outside the singleton
+direct-self core formalized here.
 -/
 def solve (equation : LocalEquation) : Option Evidence :=
   solveSources equation.binder .unseen equation.sources

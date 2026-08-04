@@ -1,7 +1,7 @@
 import TypePM.P2.Syntax
 
 /-!
-# D1 parameter observability
+# Parameter observability
 
 Parameter observability is a declaration-level property.  A direct occurrence
 of a result parameter contributes a seed.  A recursive occurrence contributes

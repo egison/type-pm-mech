@@ -1,48 +1,46 @@
 # type-pm-mech 固有ルール
 
-`../type-pm-paper/`(λ_PM:非自由データ型上のアドホック多相パターンマッチの計算体系と型システム)のメタ理論を Lean 4 で機械化するプロジェクト。親ディレクトリ `../CLAUDE.md` の Git 規約(commit/push は明示指示時のみ)に従う。
+`type-pm-mech` は，`Matcher κ τ` と `MatcherSlot κ τ` を持つ非 CAS Egison core を
+Lean 4 で機械化するプロジェクトである．親ディレクトリ `../CLAUDE.md` の規則，特に
+commit／push はその都度の明示指示がある場合に限るという規則にも従う．
 
 ## ビルド
 
-- **`lake build` を使う**(elan/lake は `~/.elan/bin`。PATH に無ければ `export PATH="$HOME/.elan/bin:$PATH"`)。
-- ツールチェーンは `lean-toolchain` で固定(type-tensor-mech と同じ v4.31.0)。勝手に上げない(上げるときは全ビルド+Examples の通過を確認)。
-- 生成物は `.lake/` のみ(gitignore 済)。外部依存なし(Mathlib 不使用)。
+- Lean toolchain は `lean-toolchain` で固定する．外部依存はなく Mathlib も使わない．
+- 全体検証はリポジトリ直下で `lake build` を実行する．
+- 形式仕様 `tex/main.tex` は `tex/` で `make` を実行して検証し，
+  `tex/type-pm-mech.pdf` を生成する．`main.pdf` は作らない．
 
-## 証明の方針
+## 現行の証明境界
 
-- `sorry` = 「論文に証明があり、未機械化」の印。**新しい `sorry` を増やす変更は原則しない**(定義変更でやむを得ず増える場合は README の現状セクションを更新)。`axiom` は使わない。
-- 補題・定理・規則の名前と doc コメントは論文の番号(Fig 1–6 / Def 4.1–4.2 / Lem 5.2, 5.4, 5.5, C.2 / Thm 5.1, 5.3, 5.6, 5.7)と対応させる。対応表と設計判断(名前ベース環境意味論、宣言的インスタンス化読み、fuel 付きインタプリタなど)は README.md にあり、**論文との意図的な差分は必ず README の「設計判断」に追記する**。
-- `Examples.lean` は論文 §2 と付録 A.1 の実測例の機械検証(実行 4 本 + 型付け導出、全て証明済)。定義を触ったら最優先でここが通ることを確認する。
-- 論文本文(`../type-pm-paper/main.tex`)が真実の源。定義のズレを見つけたら、勝手に合わせず報告する(既に報告済みの 2 件は README「機械化が浮かび上がらせた論文の細部」参照)。
+- 現行 calculus は `TypePM/P2/` の二 sort・二 index 版だけである．旧一添字 calculus，
+  抽象 `RuntimeSpec`／`CoreSpecWF`，それらに相対的な旧安全性証明を復活させない．
+- source matcher literal は actual clause evidence，`ShapeCap`，`CatchAllLast`，
+  data-arm exhaustiveness，binder 線形性，`CoverageOK` をすべて要求する．
+- scheme の宣言的 instance では capability binder を capability variable へだけ写し，
+  producer capability を consumer demand に合わせて構造化する経路を追加しない．
+  binder image の相異性と ambient freshness は Algorithm W の強い allocation witness にだけ
+  要求する．capability binder の variable-only mapping と構造的な target specialization は
+  一つの global pair へ潰さず，binder-local に順序付けて適用する．利用後の輸送も
+  producer capability の variable-only mapping と target specialization に限定する．
+  `let` の輸送では内側の generalization
+  binder を target ambient の外へ局所的に freshen し，数値 identifier の捕捉を避ける．
+- recursion は singleton direct-self の単相 `fix` だけを core に含める．alias，mutual
+  recursion，高階 origin は fail closed とする．
+- Algorithm W については停止する executable checker，protected-producer audit，
+  conditional reconstruction soundness を証明対象とする．full principality や
+  completeness は主張しない．
+- 動的安全性は concrete `HasTy`／`ValueTy`／matching-state judgments 上で述べる．
+  値パターン capture admissibility と局所的な埋込み評価の `StepReady` だけは，
+  それぞれ該当する preservation／progress 定理の明示前提としてよい．
 
-## P2 の証明スコープ
+## 証明と文書の品質
 
-- P2 の完了条件は **非 CAS formal core** に限る。二 sort、producer-stable
-  one-way match、実 clause からの evidence／`ShapeCap`、二種 W／Gen／Inst を通る
-  value-flow 非強化、`CoverageOK` 必須の source/runtime safety、singleton direct-self を含む。
-- formal core は、検証・freeze 済みの observability／constructor signature／alias
-  table を入力としてよい。公開 source bridge には `CoreSpecWF` を使い、任意の
-  `RuntimeSpec` を source calculus の代用として最終定理に残さない。
-- `CoreSpecWF` の checker は静的 `SourceCtx` を読む。checker の明示引数に target 型や
-  runtime environment がないことだけから純粋性を主張せず、concrete instantiation で
-  target-derived seed の不在、evidence coherence、captured environment の
-  `substAdmissible`、`literalSubstitute` を放電する。Ξ-closed と captured environment
-  の closedness を混同しない。
-- P2 独立層の代数定理と `CoreSpecWF` 相対 runtime invariant を、end-to-end source
-  Preservation／Progress／Type Safety と呼ばない。source `HasTy`／`ValueTy`、
-  matching state、二種 Algorithm W の移行が完了するまでは安全性は未機械化である。
-- 一般 D4 producer flow（alias・transform・相互再帰・高階 origin）、raw
-  graph/signature validator、Egison の ordinary Coverage warning／certified mode、
-  import 永続化、D5-CAS pattern view は実装拡張であり、P2 formal core の完了を
-  妨げない。これらを core 定理の仮定へ紛れ込ませない。
-- P1 の capture admissibility と埋込み計算の停止性は P2 と独立な既存前提として
-  明示する。
-
-## Lean の罠(このリポジトリで踏んだもの)
-
-- `Π`・`Σ` は予約トークンなので識別子に使えない(`piE`・`SF`/`SD`/`SP` を使用)。
-- 構成子の premise で `∃ x, … ∧ (帰納型自身)` は kernel の nested inductive 制限で弾かれる。スコーレム化して補助判断(`ClauseTy`/`ArmsTy`/`ClausesTy`)か ∀ 形にする。
-- doc コメント `/-- -/` は `mutual` ブロックに付けられない(`/-!` を使う)。
-- 相互帰納族に `induction` タクティクは使えない(`cases` は可)。帰納には結合再帰子(`Search.rec` など、全 motive を明示して不要側を `fun … => True`)を使う(`search_mem_reaches` が実例)。相互族の premise には対応する(自明でも)IH 引数が挿入されるので intro の数に注意。
-- `try exact nomatch h` / `try exact absurd h (by simp)` は内側エラーが `try` を突き抜けることがある。行き詰まり等式は `try cases h` で閉じるのが安全。
-- 関数の結果で分岐する証明は、深いパターンの joint match より「意味的ガード関数(`piHit`/`pappHit`/`ppShapeOK` ガード)+反転補題」の形が `split at h` と相性がよい。定義側をその形に書く。
+- `sorry`，`admit`，`axiom` を使わない．型付け導出そのものを field に持つ oracle や，
+  任意の capability 輸送を許す blanket premise で穴を隠さない．
+- `TypePM.lean` は現行 public surface の全モジュールを import する．変更後は個別 target
+  だけでなく必ず `lake build` を通す．
+- `TypePM/P2/RecursiveExamples.lean` の list／multiset direct-self 正例，coverage 不足
+  multiset と producer-strengthening の負例を回帰として維持する．
+- Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
+  旧 calculus の説明は現行 README へ残さない．
