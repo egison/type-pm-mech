@@ -13,7 +13,7 @@ commit／push はその都度の明示指示がある場合に限るという規
 
 ## 現行の証明境界
 
-- 現行 calculus は `TypePM/P2/` の二 sort・二 index 版だけである．旧一添字 calculus，
+- 現行 calculus は `TypePM/` の二 sort・二 index 版だけである．旧一添字 calculus，
   抽象 `RuntimeSpec`／`CoreSpecWF`，それらに相対的な旧安全性証明を復活させない．
 - source matcher literal は actual clause evidence，`ShapeCap`，`CatchAllLast`，
   data-arm exhaustiveness，binder 線形性，`CoverageOK` をすべて要求する．
@@ -44,7 +44,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   任意の capability 輸送を許す blanket premise で穴を隠さない．
 - `TypePM.lean` は現行 public surface の全モジュールを import する．変更後は個別 target
   だけでなく必ず `lake build` を通す．
-- `TypePM/P2/RecursiveExamples.lean` の list／multiset direct-self 正例，coverage 不足
+- `TypePM/RecursiveExamples.lean` の list／multiset direct-self 正例，coverage 不足
   multiset と producer-strengthening の負例を回帰として維持する．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．

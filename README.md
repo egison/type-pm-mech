@@ -143,7 +143,7 @@ progress にだけ必要であり，一般の program termination は仮定し�
 
 ### Recursive matcher regressions
 
-[`TypePM/P2/RecursiveExamples.lean`](TypePM/P2/RecursiveExamples.lean) は，外部の
+[`TypePM/RecursiveExamples.lean`](TypePM/RecursiveExamples.lean) は，外部の
 型付け済み matcher 定数ではなく，実際の `fix self m. matcher ...` 本体を検査する．
 
 - list: direct-self source typing と W の成功
@@ -176,7 +176,7 @@ progress にだけ必要であり，一般の program termination は仮定し�
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
 | 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples` | evidence，source-level binder collision，公開 inference soundness の代表ケース，recursive list/multiset の正負例 |
 
-各ファイルは `TypePM/P2/` 以下にある．
+各ファイルは `TypePM/` 以下にある．
 
 ## 検証
 

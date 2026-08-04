@@ -1,0 +1,271 @@
+import TypePM.Source
+import TypePM.Semantics
+
+/-!
+# Pattern-function definitions and frozen runtime agreement
+
+Pattern functions cannot call themselves directly, including below embedded
+expressions.  Their embedded parameters must occur exactly once, in
+declaration order, and never under an or-alternative.  The source judgment
+records the generalized two-sorted dual scheme; the runtime agreement
+predicate ensures that `Step.patfunEnter` expands the same checked parameter
+list and body.
+-/
+
+namespace TypePM
+
+/-! ## Linear embedded-parameter traversal -/
+
+mutual
+
+/-- Return embedded parameters in order, rejecting every embed below `or`. -/
+def Pattern.linearEmbeds : Pattern → Option (List String)
+  | .pvar _ => some []
+  | .wild => some []
+  | .pval _ => some []
+  | .embed name => some [name]
+  | .pctor _ patterns => Pattern.linearEmbedsList patterns
+  | .pand left right => do
+      let leftNames ← left.linearEmbeds
+      let rightNames ← right.linearEmbeds
+      pure (leftNames ++ rightNames)
+  | .por _ _ => none
+  | .papp _ patterns => Pattern.linearEmbedsList patterns
+  | .ptuple patterns => Pattern.linearEmbedsList patterns
+
+/-- List traversal for `Pattern.linearEmbeds`. -/
+def Pattern.linearEmbedsList : List Pattern → Option (List String)
+  | [] => some []
+  | pattern :: patterns => do
+      let head ← pattern.linearEmbeds
+      let tail ← Pattern.linearEmbedsList patterns
+      pure (head ++ tail)
+
+end
+
+/-- The formal core's linear, ordered parameter-use condition. -/
+def LinearPatternParameters
+    (parameters : List String) (body : Pattern) : Prop :=
+  body.linearEmbeds = some parameters
+
+instance (parameters : List String) (body : Pattern) :
+    Decidable (LinearPatternParameters parameters body) :=
+  inferInstanceAs (Decidable (body.linearEmbeds = some parameters))
+
+/-! ## Non-recursive call traversal -/
+
+mutual
+
+/-- Pattern-function calls occurring anywhere below an expression. -/
+def Expr.patternFunCalls : Expr → List String
+  | .var _ => []
+  | .lam _ body => body.patternFunCalls
+  | .fix _ _ body => body.patternFunCalls
+  | .app function argument =>
+      function.patternFunCalls ++ argument.patternFunCalls
+  | .lit _ => []
+  | .tuple expressions => Expr.patternFunCallsList expressions
+  | .ctor _ expressions => Expr.patternFunCallsList expressions
+  | .prim _ expressions => Expr.patternFunCallsList expressions
+  | .letE _ value body => value.patternFunCalls ++ body.patternFunCalls
+  | .something => []
+  | .matcher clauses => Clause.patternFunCallsList clauses
+  | .matchAll target matcher pattern body =>
+      target.patternFunCalls ++ matcher.patternFunCalls ++
+        pattern.patternFunCalls ++ body.patternFunCalls
+
+/-- Pattern-function calls occurring in an expression list. -/
+def Expr.patternFunCallsList : List Expr → List String
+  | [] => []
+  | expression :: expressions =>
+      expression.patternFunCalls ++ Expr.patternFunCallsList expressions
+
+/-- Pattern-function calls occurring anywhere below a user pattern. -/
+def Pattern.patternFunCalls : Pattern → List String
+  | .pvar _ => []
+  | .wild => []
+  | .pval expression => expression.patternFunCalls
+  | .embed _ => []
+  | .pctor _ patterns => Pattern.patternFunCallsList patterns
+  | .pand left right => left.patternFunCalls ++ right.patternFunCalls
+  | .por left right => left.patternFunCalls ++ right.patternFunCalls
+  | .papp name patterns => name :: Pattern.patternFunCallsList patterns
+  | .ptuple patterns => Pattern.patternFunCallsList patterns
+
+/-- Pattern-function calls occurring in a user-pattern list. -/
+def Pattern.patternFunCallsList : List Pattern → List String
+  | [] => []
+  | pattern :: patterns =>
+      pattern.patternFunCalls ++ Pattern.patternFunCallsList patterns
+
+/-- Pattern-function calls occurring in one matcher arm. -/
+def Arm.patternFunCalls : Arm → List String
+  | .mk _ body => body.patternFunCalls
+
+/-- Pattern-function calls occurring in an arm list. -/
+def Arm.patternFunCallsList : List Arm → List String
+  | [] => []
+  | arm :: arms => arm.patternFunCalls ++ Arm.patternFunCallsList arms
+
+/-- Pattern-function calls occurring in one matcher clause. -/
+def Clause.patternFunCalls : Clause → List String
+  | .mk _ next arms =>
+      next.patternFunCalls ++ Arm.patternFunCallsList arms
+
+/-- Pattern-function calls occurring in a clause list. -/
+def Clause.patternFunCallsList : List Clause → List String
+  | [] => []
+  | clause :: clauses =>
+      clause.patternFunCalls ++ Clause.patternFunCallsList clauses
+
+end
+
+/-! ## Source definition judgment -/
+
+/-- One source pattern-function definition. -/
+structure PatternDef where
+  name : String
+  parameters : List (String × Ty)
+  body : Pattern
+deriving Repr
+
+/-- Parameter names in declaration order. -/
+def PatternDef.parameterNames (definition : PatternDef) : List String :=
+  definition.parameters.map Prod.fst
+
+/-- Parameter target types in declaration order. -/
+def PatternDef.parameterTargets (definition : PatternDef) : List Ty :=
+  definition.parameters.map Prod.snd
+
+/-- A pattern-function body contains no direct or nested call to itself. -/
+def NonrecursivePatternDef (definition : PatternDef) : Prop :=
+  definition.name ∉ definition.body.patternFunCalls
+
+instance (definition : PatternDef) :
+    Decidable (NonrecursivePatternDef definition) :=
+  inferInstanceAs
+    (Decidable (definition.name ∉ definition.body.patternFunCalls))
+
+/-- Build the fresh dual context used while checking a definition body. -/
+def patternParameterContext
+    (parameters : List (String × Ty)) (capabilities : List Cap) : PatternCtx :=
+  (parameters.zip capabilities).map fun entry =>
+    (entry.1.1, ⟨entry.2, entry.1.2⟩)
+
+/-- The dual list corresponding to definition parameters. -/
+def patternParameterDuals
+    (parameters : List (String × Ty)) (capabilities : List Cap) : List Dual :=
+  (parameters.zip capabilities).map fun entry =>
+    ⟨entry.2, entry.1.2⟩
+
+/-- PATFUN-DEF for the concrete two-sorted source calculus. -/
+inductive PatternDefTy (signature : FrozenSig) (context : Context) :
+    PatternDef → DualScheme → Prop where
+  | mk
+      {definition capabilities result resultBindings scheme} :
+      signature.findPatternFun definition.name = some scheme →
+      NonrecursivePatternDef definition →
+      definition.parameters.length = capabilities.length →
+      definition.parameterNames.Nodup →
+      (∀ capability ∈ capabilities,
+        ∃ varId, capability = .var varId ∧
+          FreshCap signature context [] [] varId) →
+      capabilities.Nodup →
+      PatternTy signature context
+        (patternParameterContext definition.parameters capabilities)
+        [] definition.body result.cap result.target resultBindings →
+      LinearPatternParameters definition.parameterNames definition.body →
+      scheme =
+        ({ signature with
+          patternFuns := signature.patternFuns.filter
+            fun named => named.1 != definition.name }).generalizeDual context
+          (patternParameterDuals definition.parameters capabilities) result →
+      PatternDefTy signature context definition scheme
+
+/-- Runtime erasure of a checked pattern-function definition. -/
+def PatternDef.runtime (definition : PatternDef) : PatFunRuntimeSig :=
+  ⟨definition.parameterNames, definition.body⟩
+
+/-- A runtime signature entry is the erasure of a checked source definition. -/
+def RuntimeEntryTyped
+    (signature : FrozenSig) (context : Context)
+    (entry : String × PatFunRuntimeSig) : Prop :=
+  ∃ definition scheme,
+    entry = (definition.name, definition.runtime) ∧
+    PatternDefTy signature context definition scheme
+
+/-- Every runtime pattern function is backed by a checked source definition. -/
+def RuntimeSigTyped
+    (signature : FrozenSig) (context : Context)
+    (runtime : RuntimeSigF) : Prop :=
+  ∀ entry ∈ runtime, RuntimeEntryTyped signature context entry
+
+/-! ## Executable regressions for the definition boundaries -/
+
+example :
+    ¬ NonrecursivePatternDef
+      { name := "self"
+        parameters := []
+        body :=
+          .pval
+            (.matchAll .something .something
+              (.papp "self" []) .something) } := by
+  decide
+
+example :
+    ¬ NonrecursivePatternDef
+      { name := "self"
+        parameters := []
+        body :=
+          .pval
+            (.matcher
+              [.mk .hole
+                (.matchAll .something .something
+                  (.papp "self" []) .something)
+                []]) } := by
+  decide
+
+example :
+    ¬ NonrecursivePatternDef
+      { name := "self"
+        parameters := []
+        body :=
+          .pval
+            (.matcher
+              [.mk .hole .something
+                [.mk .wild
+                  (.matchAll .something .something
+                    (.papp "self" []) .something)]]) } := by
+  decide
+
+example :
+    NonrecursivePatternDef
+      { name := "self"
+        parameters := []
+        body :=
+          .pval
+            (.matchAll .something .something
+              (.papp "other" [.pval (.matcher
+                [.mk .hole .something
+                  [.mk .wild
+                    (.matchAll .something .something
+                      (.papp "helper" []) .something)]])])
+              .something) } := by
+  decide
+
+example :
+    LinearPatternParameters ["x", "y"]
+      (.pand (.embed "x") (.pctor "cons" [.embed "y", .wild])) := by
+  decide
+
+example :
+    ¬ LinearPatternParameters ["x"]
+      (.por (.embed "x") .wild) := by
+  decide
+
+example :
+    ¬ LinearPatternParameters ["x"]
+      (.pand (.embed "x") (.embed "x")) := by
+  decide
+
+end TypePM
