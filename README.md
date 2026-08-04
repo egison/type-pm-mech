@@ -1,5 +1,18 @@
 # type-pm-mech — Egison core の機械化
 
+## 最上位目標
+
+本リポジトリの完成目標は，次を正確に主張できる機械化を与えることである．
+
+> The soundness of executable type inference for the Egison core is mechanized in Lean 4.
+
+具体的には，整形式な frozen signature と入力 context の下で executable `infer` が
+成功したならば，その結果に対応する宣言的な `HasTy` 導出が必ず得られることを証明する．
+利用者が成功 trace に対する `WBridgeWF` を別途仮定する conditional reconstruction は
+中間定理とし，`WBridgeWF` 自体を `infer` の各再帰ケースが保存する不変量から導出する．
+completeness と full principality，および Egison コンパイラ全体の検証はこの目標に
+含めない．
+
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．形式仕様は
 [`tex/main.tex`](tex/main.tex)，Lean の public import surface は
 [`TypePM.lean`](TypePM.lean) である．
