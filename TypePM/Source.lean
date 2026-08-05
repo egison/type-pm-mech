@@ -1405,7 +1405,7 @@ theorem Projection.pairFields_rename
       simp only [Shape.Evidence.applyRenList, Projection.pairFields]
       rw [Projection.pairFields_rename r fieldTypes childEvidence]
       cases paired : Projection.pairFields fieldTypes childEvidence <;>
-        simp [paired, Projection.renameFields]
+        simp [Projection.renameFields]
 
 mutual
 
@@ -1423,8 +1423,7 @@ theorem Projection.collectAssignments_rename_of_success
   | fieldType, .unseen, assignments, success => by
       simp only [Projection.collectAssignments, Option.some.injEq] at success
       subst assignments
-      simp [Shape.Evidence.applyRen, Projection.collectAssignments,
-        Projection.renameAssignments]
+      simp [Shape.Evidence.applyRen, Projection.renameAssignments]
   | fieldType, .known leaf, assignments, success => by
       cases fieldType with
       | var varId =>
@@ -1516,7 +1515,7 @@ theorem Projection.collectAssignments_rename_of_success
                     cases maskResult : observable typeName with
                     | none => simp [maskResult] at success
                     | some mask =>
-                        simp only [if_pos rfl, maskResult] at success ⊢
+                        simp only [maskResult] at success ⊢
                         exact Projection.collectAssignmentsMasked_rename_of_success
                           r observable resultVariables success
                   · simp [namesEqual] at success
@@ -1776,7 +1775,7 @@ theorem Projection.collectFieldAssignments_rename_of_success
               have renamedTail :=
                 Projection.collectFieldAssignments_rename_of_success
                   r observable resultVariables tailResult
-              simpa only [Projection.renameFields, Projection.renameChunks,
+              simp only [Projection.renameFields, Projection.renameChunks,
                 Projection.collectFieldAssignments, renamedHead, renamedTail]
 
 /-- Contributions for one target variable are renamed pointwise. -/
@@ -1799,7 +1798,7 @@ theorem Projection.evidenceContributions_rename
       simp only [Projection.renameChunks, Projection.evidenceContributions,
         List.filterMap_cons, Projection.lookupAssignment_rename, induction]
       cases lookup : Projection.lookupAssignment varId assignments <;>
-        simp [lookup, Shape.Evidence.applyRenList]
+        simp [Shape.Evidence.applyRenList]
 
 /-- Canonical assignment aggregation preserves every successful result. -/
 theorem Projection.canonicalAssignments_rename_of_success
@@ -1837,28 +1836,28 @@ theorem Projection.canonicalAssignments_rename_of_success
                   have assignmentsEq : assignments = tail := by
                     simpa [evidenceResult, tailResult] using success.symm
                   subst assignments
-                  simpa only [contributions, renamedEvidence, renamedTail,
-                    Projection.renameAssignments, Shape.Evidence.applyRen]
+                  simp only [contributions, renamedEvidence, renamedTail,
+                    Shape.Evidence.applyRen]
               | known leaf =>
                   have assignmentsEq :
                       assignments = (varId, .known leaf) :: tail := by
                     simpa [evidenceResult, tailResult] using success.symm
                   subst assignments
-                  simpa only [contributions, renamedEvidence, renamedTail,
+                  simp only [contributions, renamedEvidence, renamedTail,
                     Projection.renameAssignments, Shape.Evidence.applyRen]
               | con name children =>
                   have assignmentsEq :
                       assignments = (varId, .con name children) :: tail := by
                     simpa [evidenceResult, tailResult] using success.symm
                   subst assignments
-                  simpa only [contributions, renamedEvidence, renamedTail,
+                  simp only [contributions, renamedEvidence, renamedTail,
                     Projection.renameAssignments, Shape.Evidence.applyRen]
               | prod components =>
                   have assignmentsEq :
                       assignments = (varId, .prod components) :: tail := by
                     simpa [evidenceResult, tailResult] using success.symm
                   subst assignments
-                  simpa only [contributions, renamedEvidence, renamedTail,
+                  simp only [contributions, renamedEvidence, renamedTail,
                     Projection.renameAssignments, Shape.Evidence.applyRen]
 
 /-- Renaming assignment evidence does not change which variables are assigned. -/
@@ -1873,7 +1872,7 @@ theorem Projection.hasAssignment_rename
       simp only [Projection.hasAssignment,
         Projection.lookupAssignment_rename]
       cases lookup : Projection.lookupAssignment varId assignments <;>
-        simp [lookup, Projection.hasAssignment_rename r variables assignments]
+        simp [Projection.hasAssignment_rename r variables assignments]
 
 mutual
 
@@ -1893,7 +1892,7 @@ theorem Projection.buildResultTemplate_rename
       · simp only [Projection.buildResultTemplate, membership, if_pos,
           Projection.lookupAssignment_rename]
         cases lookup : Projection.lookupAssignment varId assignments <;>
-          simp [lookup, Shape.Evidence.applyRen]
+          simp [Shape.Evidence.applyRen]
       · simp [Projection.buildResultTemplate, membership,
           Shape.Evidence.applyRen, Shape.Leaf.applyRen]
   | .skolem name => by
@@ -1933,7 +1932,7 @@ theorem Projection.buildResultTemplate_rename
                   resultVariables assignments componentTypes]
               cases built : Projection.buildResultTemplateList observable
                   resultVariables assignments componentTypes <;>
-                simp [built, Shape.Evidence.applyRen]
+                simp [Shape.Evidence.applyRen]
   | .data name arguments => by
       cases variablesResult : Projection.relevantVars observable
           resultVariables (.data name arguments) with
@@ -1956,7 +1955,7 @@ theorem Projection.buildResultTemplate_rename
                       resultVariables assignments mask arguments]
                   cases built : Projection.buildResultTemplateMasked observable
                       resultVariables assignments mask arguments <;>
-                    simp [built, Shape.Evidence.applyRen]
+                    simp [Shape.Evidence.applyRen]
 
 /-- List form of result-template covariance. -/
 theorem Projection.buildResultTemplateList_rename
@@ -1980,7 +1979,7 @@ theorem Projection.buildResultTemplateList_rename
           resultVariables assignments target <;>
         cases tailResult : Projection.buildResultTemplateList observable
           resultVariables assignments targets <;>
-        simp [headResult, tailResult, Shape.Evidence.applyRenList]
+        simp [Shape.Evidence.applyRenList]
 
 /-- Masked form of result-template covariance. -/
 theorem Projection.buildResultTemplateMasked_rename
@@ -2003,8 +2002,8 @@ theorem Projection.buildResultTemplateMasked_rename
               resultVariables assignments mask targets]
           cases tailResult : Projection.buildResultTemplateMasked observable
               resultVariables assignments mask targets <;>
-            simp [tailResult, Shape.Evidence.applyRen,
-              Shape.Evidence.applyRenList, Shape.Leaf.applyRen]
+            simp [Shape.Evidence.applyRen, Shape.Evidence.applyRenList,
+              Shape.Leaf.applyRen]
       | true =>
           simp only [Projection.buildResultTemplateMasked, if_true,
             Projection.buildResultTemplate_rename r observable resultVariables
@@ -2015,7 +2014,7 @@ theorem Projection.buildResultTemplateMasked_rename
               resultVariables assignments target <;>
             cases tailResult : Projection.buildResultTemplateMasked observable
               resultVariables assignments mask targets <;>
-            simp [headResult, tailResult, Shape.Evidence.applyRenList]
+            simp [Shape.Evidence.applyRenList]
   | [], _ :: _ => rfl
   | _ :: _, [] => rfl
 
@@ -2035,21 +2034,21 @@ theorem Projection.buildResultSlot_rename
   unfold Projection.buildResultSlot
   cases variablesResult :
       Projection.relevantVars observable resultVariables slotType with
-  | none => simp [variablesResult]
+  | none => simp
   | some variables =>
       cases variables with
       | nil =>
-          simp [variablesResult, Shape.Evidence.applyRen,
+          simp [Shape.Evidence.applyRen,
             Shape.Leaf.applyRen]
       | cons head tail =>
-          simp only [variablesResult]
+          simp only
           rw [Projection.hasAssignment_rename r (head :: tail) assignments]
           by_cases assigned :
               Projection.hasAssignment (head :: tail) assignments
-          · simp [variablesResult, assigned,
+          · simp [assigned,
               Projection.buildResultTemplate_rename r observable
                 resultVariables assignments slotType]
-          · simp [variablesResult, assigned, Shape.Evidence.applyRen]
+          · simp [assigned, Shape.Evidence.applyRen]
 
 mutual
 
@@ -2075,7 +2074,7 @@ theorem Projection.buildResultSlots_rename
           resultVariables assignments slotType <;>
         cases tailResult : Projection.buildResultSlots observable
           resultVariables assignments slotTypes <;>
-        simp [headResult, tailResult, Shape.Evidence.applyRenList]
+        simp [Shape.Evidence.applyRenList]
 
 /-- Masked form of result-slot covariance. -/
 theorem Projection.buildResultSlotsMasked_rename
@@ -2098,7 +2097,7 @@ theorem Projection.buildResultSlotsMasked_rename
               resultVariables assignments mask slotTypes]
           cases tailResult : Projection.buildResultSlotsMasked observable
               resultVariables assignments mask slotTypes <;>
-            simp [tailResult, Shape.Evidence.applyRen,
+            simp [Shape.Evidence.applyRen,
               Shape.Evidence.applyRenList, Shape.Leaf.applyRen]
       | true =>
           simp only [Projection.buildResultSlotsMasked, if_true,
@@ -2110,7 +2109,7 @@ theorem Projection.buildResultSlotsMasked_rename
               resultVariables assignments slotType <;>
             cases tailResult : Projection.buildResultSlotsMasked observable
               resultVariables assignments mask slotTypes <;>
-            simp [headResult, tailResult, Shape.Evidence.applyRenList]
+            simp [Shape.Evidence.applyRenList]
   | [], _ :: _ => rfl
   | _ :: _, [] => rfl
 
@@ -2134,7 +2133,7 @@ theorem Projection.buildResultRoot_rename
           assignments componentTypes]
       cases built : Projection.buildResultSlots observable resultVariables
           assignments componentTypes <;>
-        simp [built, Shape.Evidence.applyRen]
+        simp [Shape.Evidence.applyRen]
   | data name arguments =>
       cases maskResult : observable name with
       | none => simp [Projection.buildResultRoot, maskResult]
@@ -2144,7 +2143,7 @@ theorem Projection.buildResultRoot_rename
               resultVariables assignments mask arguments]
           cases built : Projection.buildResultSlotsMasked observable
               resultVariables assignments mask arguments <;>
-            simp [built, Shape.Evidence.applyRen]
+            simp [Shape.Evidence.applyRen]
   | var varId
   | skolem name
   | unit

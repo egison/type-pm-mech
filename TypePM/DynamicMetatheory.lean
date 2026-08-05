@@ -2713,14 +2713,14 @@ theorem PatternResolution.ptuple_actual_inversion
     cases typing with
     | tuple children =>
         exact ⟨_, .identity rfl children,
-          by simp [Subst.apply_id],
+          by simp,
           by simp [Subst.apply_id]⟩
   · subst rawCapability
     subst rawTarget
     exact ⟨rawDuals, children,
-      by simp [Cap.apply_prod_map, List.map_map, Dual.applySubst,
+      by simp [List.map_map, Dual.applySubst,
         Dual.apply, Function.comp_def],
-      by simp [Subst.apply_prod_map_local, List.map_map, Dual.applySubst,
+      by simp [List.map_map, Dual.applySubst,
         Dual.apply, Function.comp_def]⟩
 
 /-- An aligned primitive constructor exposes its actual child target
@@ -2769,9 +2769,9 @@ theorem PPatResolution.tuple_actual_children
       subst prevailing
       cases typing with
       | tuple children =>
-          exact ⟨_, .identity rfl children, by simp [Subst.apply_id]⟩
+          exact ⟨_, .identity rfl children, by simp⟩
   | tuple children =>
-      exact ⟨_, children, by simp [Subst.apply_prod_map_local]⟩
+      exact ⟨_, children, by simp⟩
 
 /-- Split a nonempty aligned primitive-pattern list without assuming that its
 raw target, hole, or binding streams coincide with another derivation. -/

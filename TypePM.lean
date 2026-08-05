@@ -26,6 +26,7 @@ import TypePM.Preservation
 import TypePM.DynamicMetatheory
 import TypePM.Reachability
 import TypePM.Safety
+import TypePM.RuntimeAgreementBridge
 import TypePM.InferenceBase
 import TypePM.Inference
 import TypePM.InferenceInput
@@ -34,6 +35,8 @@ import TypePM.Reconstruction
 import TypePM.BridgeChecks
 import TypePM.CertifiedInference
 import TypePM.CertifiedInferenceRegression
+import TypePM.DynamicSafetyRegression
+import TypePM.ProducerStrengtheningRegression
 import TypePM.InferenceRegression
 import TypePM.Soundness
 import TypePM.RecursiveExamples

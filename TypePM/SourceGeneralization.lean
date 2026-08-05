@@ -1291,7 +1291,7 @@ theorem TerminalPatternResolutions.transportUnderPost
         targetContext (parameters.applySubst S) (bindings.applySubst S)
         patterns (duals.map (Dual.applySubst S))
         (resultBindings.applySubst S)
-  | _, _, _, _, _, _, _, contextFlow, .nil => .nil
+  | _, _, _, _, _, _, _, _contextFlow, .nil => .nil
   | _, _, _, _, _, _, _, contextFlow, .cons head tail =>
       .cons
         (TerminalPatternResolution.transportUnderPost postVariable
@@ -1350,7 +1350,7 @@ theorem HasTy.transportFlows
     {sourceContext : Context} {expression : Expr} {source : Ty}
     (typing : HasTy signature sourceContext expression source) :
     ∀ {S : Subst} {targetContext : Context}
-      (postVariable : VariablePost S),
+      (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
       Context.FlowsUnder S sourceContext targetContext →
@@ -1504,7 +1504,7 @@ theorem ExprsTy.transportFlows
     {sourceContext : Context} {expressions : List Expr} {sources : List Ty}
     (typing : ExprsTy signature sourceContext expressions sources) :
     ∀ {S : Subst} {targetContext : Context}
-      (postVariable : VariablePost S),
+      (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
       Context.FlowsUnder S sourceContext targetContext →
@@ -1530,7 +1530,7 @@ theorem PatternTy.transportFlows
     (typing : PatternTy signature sourceContext parameters bindings pattern
       capability source resultBindings) :
     ∀ {S : Subst} {targetContext : Context}
-      (postVariable : VariablePost S),
+      (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
       Context.FlowsUnder S sourceContext targetContext →
@@ -2111,7 +2111,7 @@ set_option maxHeartbeats 200000
 def HasTy.GeneralizedValueFlow
     {signature : FrozenSig} {context : Context}
     {expression : Expr} {source : Ty}
-    (typing : HasTy signature context expression source) : Prop :=
+    (_typing : HasTy signature context expression source) : Prop :=
   ∀ {target : Ty},
     (signature.generalize context source).ValueFlowInst target →
     HasTy signature context expression target
@@ -2403,7 +2403,7 @@ body may introduce ordinary pattern bindings.
 def PatternDefTy.InstantiatedBody
     {signature : FrozenSig} {context : Context}
     {definition : PatternDef} {scheme : DualScheme}
-    (typing : PatternDefTy signature context definition scheme) : Prop :=
+    (_typing : PatternDefTy signature context definition scheme) : Prop :=
   ∀ {actualArgs : List Dual} {actualResult : Dual},
     scheme.ValueFlowInst actualArgs actualResult →
     ∃ prevailing bodyOutput,

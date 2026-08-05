@@ -1743,8 +1743,8 @@ def alignTypesCore
   let resolvedLeft := state.prevailing.apply left
   let resolvedRight := state.prevailing.apply right
   match resolvedLeft, resolvedRight with
-  | .matcher leftCap leftTarget, .matcher rightCap rightTarget
-  | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+  | .matcher leftCap _leftTarget, .matcher rightCap _rightTarget
+  | .slot leftCap _leftTarget, .slot rightCap _rightTarget =>
       let state <- runResolvedConstraint state origin
         (.capEq leftCap rightCap)
       let afterLeft := state.prevailing.apply left
@@ -1778,7 +1778,7 @@ def alignAtSlot
   | .matcher producerCap producerTarget, .slot consumerCap consumerTarget =>
       runResolvedConstraint state origin
         (.producerToSlot producerCap producerTarget consumerCap consumerTarget)
-  | .slot sourceCap sourceTarget, .slot requestedCap requestedTarget =>
+  | .slot sourceCap _sourceTarget, .slot requestedCap _requestedTarget =>
       let state <- runResolvedConstraint state origin
         (.capEq sourceCap requestedCap)
       let afterSource := state.prevailing.apply inferred
@@ -2220,6 +2220,107 @@ def freshenSkeletonMasked
 
 end
 
+/-! ### Consumer-side capability solving for user pattern constructors -/
+
+/--
+Allocate one shared capability meta-variable for each observable ordinary
+variable of a pattern-constructor result.  The keys are constructor-scheme
+variables, while the evidence leaves are fresh inference metas.  Repeated
+result occurrences therefore receive the same capability leaf.
+-/
+def freshPatternCtorAssignments
+    (origin : ConstraintOrigin) :
+    List TypePM.TyVar -> InferState ->
+      Projection.Assignments × InferState
+  | [], state => ([], state)
+  | varId :: variables, state =>
+      let (capability, state) := state.freshCap origin
+      let (assignments, state) :=
+        freshPatternCtorAssignments origin variables state
+      ((varId, Shape.ofCap capability) :: assignments, state)
+
+/--
+Build the capability demanded of each constructor child by the shared result
+assignment.  A field with no observable path to a result variable contributes
+no constraint; capability evidence is never seeded from an unrelated target
+position.
+-/
+def patternCtorFieldDemands
+    (observable : Shape.Observability)
+    (resultVariables : List TypePM.TyVar)
+    (assignments : Projection.Assignments) :
+    List Ty -> Option (List (Option Cap))
+  | [] => some []
+  | fieldType :: fieldTypes => do
+      let relevant <-
+        Projection.relevantVars observable resultVariables fieldType
+      let demand <-
+        match relevant with
+        | [] => pure none
+        | _ :: _ => do
+            let evidence <- Projection.buildResultTemplate observable
+              resultVariables assignments fieldType
+            let capability <- Shape.finalize observable evidence
+            pure (some capability)
+      let demands <- patternCtorFieldDemands observable resultVariables
+        assignments fieldTypes
+      pure (demand :: demands)
+
+/--
+Solve only the consumer capabilities of constructor children against the
+shared structural demands induced by the constructor relation.  For example,
+the generic List `cons` signature generates `kappa` and `List kappa` for its
+two fields.  Protected producer variables are still guarded by
+`runResolvedConstraint`.
+-/
+def alignPatternCtorCapabilities :
+    InferState -> ConstraintOrigin -> List Cap -> List (Option Cap) ->
+      Option InferState
+  | state, _, [], [] => some state
+  | state, origin, child :: children, demand :: demands => do
+      let state <-
+        match demand with
+        | none => pure state
+        | some expected =>
+            runResolvedConstraint state origin
+              (.capEq (child.apply state.prevailing.cap)
+                (expected.apply state.prevailing.cap))
+      alignPatternCtorCapabilities state origin children demands
+  | _, _, _, _ => none
+
+/--
+Infer a user pattern-constructor capability from its actual child consumers.
+The existing exact-projection path remains the fast path.  When independent
+fresh child variables obscure sharing required by the constructor signature,
+the fallback allocates one shared result skeleton, solves the corresponding
+field constraints, and reruns exact projection on the zonked children.
+-/
+def solvePatternCtorCapability
+    (signature : FrozenSig) (entry : PatternCtorScheme signature.observability)
+    (origin : ConstraintOrigin) (childCaps : List Cap)
+    (state : InferState) : Option (Cap × InferState) := do
+  let resolvedChildren :=
+    childCaps.map fun capability => capability.apply state.prevailing.cap
+  match Projection.projectSignature entry.projection
+      (resolvedChildren.map Shape.ofCap) with
+  | some projected =>
+      freshenSkeleton signature.observability origin projected state
+  | none =>
+      let resultVariables <- Projection.relevantVars signature.observability
+        (Projection.targetVars entry.projection.resultType)
+        entry.projection.resultType
+      let resultVariables := resultVariables.eraseDups
+      let (assignments, state) :=
+        freshPatternCtorAssignments origin resultVariables state
+      let demands <- patternCtorFieldDemands signature.observability
+        resultVariables assignments entry.projection.fieldTypes
+      let state <- alignPatternCtorCapabilities state origin childCaps demands
+      let resolvedChildren :=
+        childCaps.map fun capability => capability.apply state.prevailing.cap
+      let projected <- Projection.projectSignature entry.projection
+        (resolvedChildren.map Shape.ofCap)
+      freshenSkeleton signature.observability origin projected state
+
 
 /--
 Infer the recursive producer skeleton from actual clause syntax alone.  A
@@ -2577,26 +2678,27 @@ def inferPatternFuel :
                   | none => none
                   | some state =>
                       let childCaps := results.duals.map Dual.cap
-                      match Projection.projectSignature entry.projection
-                          (childCaps.map Shape.ofCap) with
+                      match solvePatternCtorCapability signature entry
+                          (freshOrigin .pattern path
+                            "pattern-constructor-capability")
+                          childCaps state with
                       | none => none
-                      | some projected =>
-                          match freshenSkeleton signature.observability
-                              (freshOrigin .pattern path
-                                "pattern-constructor-capability")
-                              projected state with
-                          | none => none
-                          | some (capability, state) =>
-                              if capCompatibleCheck entry childCaps capability then
-                                let dual := Dual.mk capability resultTarget
-                                some ⟨dual, results.bindings,
-                                  (state.recordEvent
-                                      (.patternCtorCompatibility
-                                        state.trace.solves.length name childCaps
-                                        capability)).recordEvent
-                                      (.inferredPattern pattern dual
-                                        results.bindings path)⟩
-                              else none
+                      | some (capability, state) =>
+                          let resolvedChildren := childCaps.map fun child =>
+                            child.apply state.prevailing.cap
+                          let resolvedCapability :=
+                            capability.apply state.prevailing.cap
+                          if capCompatibleCheck entry resolvedChildren
+                              resolvedCapability then
+                            let dual := Dual.mk capability resultTarget
+                            some ⟨dual, results.bindings,
+                              (state.recordEvent
+                                  (.patternCtorCompatibility
+                                    state.trace.solves.length name childCaps
+                                    capability)).recordEvent
+                                  (.inferredPattern pattern dual
+                                    results.bindings path)⟩
+                          else none
       | .pand left right =>
           match inferPatternFuel fuel signature context parameters bindings
               selfEnv (0 :: path) left (visit state .patternAnd path) with
@@ -2907,7 +3009,7 @@ def inferClauseFuel :
       InferState -> Option ClauseResult
   | 0, _, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, selfEnv, path,
-      clause@(.mk primitivePattern next arms), sharedTarget, state =>
+      (.mk primitivePattern next arms), sharedTarget, state =>
       match inferPPatFuel fuel signature (0 :: path) primitivePattern
           sharedTarget (visit state .clause path) with
       | none => none
@@ -3376,7 +3478,7 @@ theorem runResolvedConstraint_historyPrefix
   cases stepEquation : solveResolved state.trace.solves.length origin constraint with
   | none => simp [stepEquation] at success
   | some step =>
-      simp only [stepEquation, Option.bind_some] at success
+      simp only [stepEquation] at success
       change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
         then some (state.recordSolve step) else none) = some result at success
       split at success <;> try contradiction
@@ -3502,6 +3604,88 @@ theorem alignPatternTargets_historyPrefix
             ⟨middle, firstSuccess, restSuccess⟩
           exact (alignTypes_historyPrefix firstSuccess).trans
             (induction restSuccess)
+
+theorem freshPatternCtorAssignments_historyPrefix
+    {origin : ConstraintOrigin} {variables : List TypePM.TyVar}
+    {state result : InferState} {assignments : Projection.Assignments}
+    (success : freshPatternCtorAssignments origin variables state =
+      (assignments, result)) :
+    state.HistoryPrefix result := by
+  induction variables generalizing state assignments result with
+  | nil =>
+      simp only [freshPatternCtorAssignments, Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact InferState.HistoryPrefix.refl state
+  | cons varId variables induction =>
+      simp only [freshPatternCtorAssignments] at success
+      let fresh := state.freshCap origin
+      cases restEq : freshPatternCtorAssignments origin variables fresh.2 with
+      | mk restAssignments restState =>
+          simp only [fresh, restEq, Prod.mk.injEq] at success
+          rcases success with ⟨_, rfl⟩
+          exact (InferState.historyPrefix_freshCap state origin).trans
+            (induction restEq)
+
+theorem alignPatternCtorCapabilities_historyPrefix
+    {state result : InferState} {origin : ConstraintOrigin}
+    {children : List Cap} {demands : List (Option Cap)}
+    (success : alignPatternCtorCapabilities state origin children demands =
+      some result) :
+    state.HistoryPrefix result := by
+  induction children generalizing state demands with
+  | nil =>
+      cases demands <;>
+        simp [alignPatternCtorCapabilities] at success
+      subst result
+      exact InferState.HistoryPrefix.refl state
+  | cons child children induction =>
+      cases demands with
+      | nil => simp [alignPatternCtorCapabilities] at success
+      | cons demand demands =>
+          cases demand with
+          | none =>
+              simpa only [alignPatternCtorCapabilities] using
+                induction success
+          | some expected =>
+              simp only [alignPatternCtorCapabilities] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨middle, firstSuccess, restSuccess⟩
+              exact (runResolvedConstraint_historyPrefix firstSuccess).trans
+                (induction restSuccess)
+
+theorem solvePatternCtorCapability_historyPrefix
+    {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {origin : ConstraintOrigin} {childCaps : List Cap}
+    {state result : InferState} {capability : Cap}
+    (success : solvePatternCtorCapability signature entry origin childCaps
+      state = some (capability, result)) :
+    state.HistoryPrefix result := by
+  unfold solvePatternCtorCapability at success
+  simp only at success
+  split at success
+  · exact freshenSkeleton_historyPrefix success
+  ·
+    rcases Option.bind_eq_some_iff.mp success with
+      ⟨resultVariables, _resultVariablesEq, rest⟩
+    let uniqueVariables := resultVariables.eraseDups
+    let allocated :=
+      freshPatternCtorAssignments origin uniqueVariables state
+    rcases allocatedEq : allocated with ⟨assignments, allocatedState⟩
+    rcases Option.bind_eq_some_iff.mp rest with
+      ⟨demands, _demandsEq, rest⟩
+    rcases Option.bind_eq_some_iff.mp rest with
+      ⟨alignedState, alignmentEq, rest⟩
+    rcases Option.bind_eq_some_iff.mp rest with
+      ⟨projected, _projectionEq, skeletonEq⟩
+    have allocationEq :
+        freshPatternCtorAssignments origin uniqueVariables state =
+          (assignments, allocatedState) := by
+      simpa [allocated] using allocatedEq
+    rw [allocationEq] at alignmentEq
+    exact (freshPatternCtorAssignments_historyPrefix allocationEq).trans
+      ((alignPatternCtorCapabilities_historyPrefix alignmentEq).trans
+        (freshenSkeleton_historyPrefix skeletonEq))
 
 theorem freshTargets_historyPrefix
     {state result : InferState} {origin : ConstraintOrigin}
@@ -3780,6 +3964,9 @@ theorem inferExprFuel_historyPrefix
     have patternTargetsHistory := alignPatternTargets_historyPrefix
       (by assumption)
   all_goals try
+    have patternCtorCapabilityHistory :=
+      solvePatternCtorCapability_historyPrefix (by assumption)
+  all_goals try
     have skeletonHistory := freshenSkeleton_historyPrefix (by assumption)
   all_goals try
     have recursiveMatcherHistory :=
@@ -3812,6 +3999,7 @@ theorem inferExprFuel_historyPrefix
         alignDuals_historyPrefix,
         alignDualLists_historyPrefix,
         alignPatternTargets_historyPrefix,
+        solvePatternCtorCapability_historyPrefix,
         runResolvedConstraint_historyPrefix,
         freshenSkeleton_historyPrefix,
         recursiveMatcherTemplate_historyPrefix,
@@ -3829,7 +4017,7 @@ left-to-right binding context instead of resetting it. -/
 theorem inferPatternsFuel_empty_preserves_nonempty_bindings
     (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
     (bindings : MonoCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
-    (index fuel : Nat) (state : InferState) (nonempty : bindings ≠ []) :
+    (index fuel : Nat) (state : InferState) (_nonempty : bindings ≠ []) :
     ∃ result,
       inferPatternsFuel fuel.succ signature context parameters bindings
           selfEnv path index [] state = some result ∧

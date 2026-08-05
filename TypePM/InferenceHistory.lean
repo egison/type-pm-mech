@@ -169,7 +169,7 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                   instantiation at success
                 rcases instantiation with ⟨⟨expectedTargets, resultTarget⟩,
                   instState⟩
-                simp only [Prod.fst, Prod.snd] at success
+                dsimp only at success
                 cases childrenEq : inferPatternsFuel fuel signature context
                     parameters bindings selfEnv path 0 patterns
                     (visit instState .patternCtor path) with
@@ -183,50 +183,34 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                     | none => simp [alignmentEq] at success
                     | some aligned =>
                         simp only [alignmentEq] at success
-                        cases projectionEq : Projection.projectSignature
-                            entry.projection
-                            (children.duals.map (Shape.ofCap ∘ Dual.cap)) with
+                        cases capabilityEq : solvePatternCtorCapability
+                            signature entry
+                            (freshOrigin .pattern path
+                              "pattern-constructor-capability")
+                            (children.duals.map Dual.cap) aligned with
                         | none =>
-                            have projectionEq' :
-                                Projection.projectSignature entry.projection
-                                  ((children.duals.map Dual.cap).map
-                                    Shape.ofCap) = none := by
-                              simpa only [List.map_map] using projectionEq
-                            rw [projectionEq'] at success <;> contradiction
-                        | some projected =>
-                            have projectionEq' :
-                                Projection.projectSignature entry.projection
-                                  ((children.duals.map Dual.cap).map
-                                    Shape.ofCap) = some projected := by
-                              simpa only [List.map_map] using projectionEq
-                            rw [projectionEq'] at success
+                            rw [capabilityEq] at success <;> contradiction
+                        | some solved =>
+                            rcases solved with ⟨capability, solvedState⟩
+                            rw [capabilityEq] at success
                             try simp only at success
-                            cases freshEq : freshenSkeleton signature.observability
-                                (freshOrigin .pattern path
-                                  "pattern-constructor-capability") projected
-                                aligned with
-                            | none =>
-                                rw [freshEq] at success <;> contradiction
-                            | some fresh =>
-                                rcases fresh with ⟨capability, freshState⟩
-                                rw [freshEq] at success
-                                try simp only at success
-                                split at success
-                                · simp only [Option.some.injEq] at success
-                                  subst result
-                                  exact (instantiateCtorInState_historyPrefix_of_eq
-                                      instEq).trans
-                                    ((visit_historyPrefix instState .patternCtor
-                                      path).trans
-                                      ((ih.many childrenEq).trans
-                                        ((alignPatternTargets_historyPrefix
-                                          alignmentEq).trans
-                                          ((freshenSkeleton_historyPrefix freshEq).trans
-                                            ((InferState.historyPrefix_recordEvent
-                                              _ _).trans
-                                              (InferState.historyPrefix_recordEvent
-                                                _ _))))))
-                                · contradiction
+                            split at success
+                            · simp only [Option.some.injEq] at success
+                              subst result
+                              exact (instantiateCtorInState_historyPrefix_of_eq
+                                  instEq).trans
+                                ((visit_historyPrefix instState .patternCtor
+                                  path).trans
+                                  ((ih.many childrenEq).trans
+                                    ((alignPatternTargets_historyPrefix
+                                      alignmentEq).trans
+                                      ((solvePatternCtorCapability_historyPrefix
+                                        capabilityEq).trans
+                                        ((InferState.historyPrefix_recordEvent
+                                          _ _).trans
+                                          (InferState.historyPrefix_recordEvent
+                                            _ _))))))
+                            · contradiction
         | pand left right =>
             simp only [inferPatternFuel] at success
             cases leftEq : inferPatternFuel fuel signature context parameters
@@ -293,7 +277,7 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                   instState⟩
                 dsimp [normalizedContext, normalizedParameters,
                   normalizedBindings] at instEq
-                simp only [Prod.fst, Prod.snd] at success
+                dsimp only at success
                 cases childrenEq : inferPatternsFuel fuel signature context
                     parameters bindings selfEnv path 0 patterns
                     (visit instState .patternApp path) with
@@ -407,7 +391,7 @@ theorem inferClauseFuel_historyPrefix
       | some ppResult =>
           simp only [ppEq] at success
           cases nextEq : decomposeME next ppResult.holes.length with
-          | none => simp [ppEq, nextEq] at success
+          | none => simp [nextEq] at success
           | some nextMatchers =>
               simp only [nextEq] at success
               cases nextMatchersEq : checkExprsFuel fuel signature context selfEnv
@@ -472,9 +456,9 @@ theorem inferMatcherFuel_historyPrefix
       rcases fresh with ⟨target, freshState⟩
       cases clausesEq : inferClausesFuel fuel signature context selfEnv path 0
           clauses target freshState with
-      | none => simp [freshEq, clausesEq] at success
+      | none => simp [clausesEq] at success
       | some clausesResult =>
-          simp only [Prod.fst, Prod.snd, clausesEq] at success
+          simp only [clausesEq] at success
           cases evidenceEq : collectClauseEvidence signature.toMatcherSig clauses
               (clausesResult.rawHoleLists.map fun holes =>
                 (holes.map

@@ -2164,24 +2164,25 @@ theorem inferExprFuel_reconstructAt
     simpa only [Dual.applySubst, Dual.apply, Cap.apply_prod,
       Subst.apply_prod, List.map_map, Function.comp_def] using
       PatternResolutionDeriv.tuple children
-  case case55 =>
+  case case54 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial name patterns entry lookup expecteds resultTarget instState instEq
-      results patternsEq alignedState alignEq childCaps projected capability
-      skeletonState result terminal projectionEq skeletonEq compatible patternsIH
-      resultEq bridge' terminalHistory
+      results patternsEq alignedState alignEq childCaps capability solvedState
+      resolvedChildren resolvedCapability result terminal capabilityEq compatible
+      patternsIH resultEq bridge' terminalHistory
     simp only [if_pos trivial, Option.some.injEq] at resultEq
     subst result
     let compatibilityEvent := TraceEvent.patternCtorCompatibility
-      skeletonState.trace.solves.length name childCaps capability
+      solvedState.trace.solves.length name childCaps capability
     let inferredEvent := TraceEvent.inferredPattern (.pctor name patterns)
       ⟨capability, resultTarget⟩ results.bindings path'
-    have skeletonHistory : skeletonState.HistoryPrefix terminal :=
-      (InferState.historyPrefix_recordEvent skeletonState compatibilityEvent).trans
+    have solvedHistory : solvedState.HistoryPrefix terminal :=
+      (InferState.historyPrefix_recordEvent solvedState compatibilityEvent).trans
         ((InferState.historyPrefix_recordEvent _ inferredEvent).trans
           terminalHistory)
     have alignedHistory : alignedState.HistoryPrefix terminal :=
-      (freshenSkeleton_historyPrefix skeletonEq).trans skeletonHistory
+      (solvePatternCtorCapability_historyPrefix capabilityEq).trans
+        solvedHistory
     have resultsHistory : results.state.HistoryPrefix terminal :=
       (alignPatternTargets_historyPrefix alignEq).trans alignedHistory
     have children := patternsIH results rfl terminal bridge' resultsHistory
@@ -2196,7 +2197,7 @@ theorem inferExprFuel_reconstructAt
       (instHistory.event_mem localInstantiation)
     rw [← targetsAligned] at instantiated
     have localCompatibility : compatibilityEvent ∈
-        ((skeletonState.recordEvent compatibilityEvent).recordEvent
+        ((solvedState.recordEvent compatibilityEvent).recordEvent
           inferredEvent).trace.events := by
       simp [compatibilityEvent, inferredEvent, InferState.recordEvent]
     have capabilityCompatible := tracePatternCtorCheck_final
@@ -2221,7 +2222,7 @@ theorem inferExprFuel_reconstructAt
         prevailingEta, PatternCtorScheme.Inst] using instantiated
     exact PatternResolutionDeriv.ctor lookup children capabilityCompatible'
       instantiated'
-  case case60 =>
+  case case59 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial left right leftResult leftEq rightResult rightEq alignedState
       alignEq terminal leftIH rightIH bridge' terminalHistory
@@ -2246,7 +2247,7 @@ theorem inferExprFuel_reconstructAt
       rw [aligned]
       exact rightDeriv
     exact PatternResolutionDeriv.and leftDeriv rightDeriv'
-  case case64 =>
+  case case63 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial left right leftResult leftEq rightResult rightEq sameBindings
       alignedState alignEq result terminal leftIH rightIH resultEq bridge'
@@ -2276,7 +2277,7 @@ theorem inferExprFuel_reconstructAt
       exact rightDeriv
     simpa only [sameBindings] using
       PatternResolutionDeriv.or leftDeriv rightDeriv'
-  case case69 =>
+  case case68 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial name patterns scheme lookup normalizedContext normalizedParameters
       normalizedBindings expectedArgs resultDual instState results alignedState
@@ -2298,7 +2299,7 @@ theorem inferExprFuel_reconstructAt
       (instHistory.event_mem localInstantiation)
     rw [← argumentsAligned] at instantiated
     exact PatternResolutionDeriv.app lookup children instantiated
-  case case74 =>
+  case case73 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' parent index
       pattern patterns initial head headEq tail tailEq terminal headIH tailIH
       bridge' terminalHistory
@@ -2307,7 +2308,7 @@ theorem inferExprFuel_reconstructAt
     have tailDeriv := tailIH tail rfl terminal bridge' terminalHistory
     simpa only [List.map_cons] using
       PatternResolutionsDeriv.cons headDeriv tailDeriv
-  case case79 =>
+  case case78 =>
     rename_i fuel' signature' context' selfEnv' path' clauses initial target
       freshState freshEq clausesResult clausesEq finalHoleLists evidences
       capability finalTarget result terminal collectEq shapeEq checks clausesIH
@@ -2348,13 +2349,13 @@ theorem inferExprFuel_reconstructAt
         (catchAllLastCheck_sound finalCatchAll)
         (armExhaustiveCheck_sound finalExhaustive) binderWitness.1
         binderWitness.2 (coverageCheck_sound finalCoverage))
-  case case82 =>
+  case case81 =>
     rename_i n signature' context' selfEnv' path' index target initial terminal
       capability evidences bridge' terminalHistory caps evidence
     cases caps
     cases evidence
     exact ClausesDeriv.nil
-  case case85 =>
+  case case84 =>
     rename_i fuel' signature' context' selfEnv' parent index clause clauses
       target initial head headEq tail tailEq terminal capability evidences
       headIH tailIH bridge' terminalHistory caps evidence
@@ -2368,7 +2369,7 @@ theorem inferExprFuel_reconstructAt
                 _ _ headCaps headEvidence)
               (tailIH tail rfl terminal bridge' terminalHistory _ _ tailCaps
                 tailEvidence)
-  case case91 =>
+  case case90 =>
     rename_i fuel' signature' context' selfEnv' path' primitivePattern next
       arms target initial ppatResult ppatEq nextMatchers decompose slotTargets
       nextState bodyTarget armsState terminal capability evidence nextEq armsEq
@@ -2408,7 +2409,7 @@ theorem inferExprFuel_reconstructAt
     exact ClauseDeriv.mk (clauseEvidence_coreOrder evidenceEq)
       (ResolvedPPatDeriv.ofTerminal ppatDeriv) caps
       decompose' nextDeriv' armsDeriv' evidenceEq
-  case case96 =>
+  case case95 =>
     rename_i fuel' signature' context' selfEnv' ppBindings parent index pattern
       body arms target bodyTarget initial dpatResult dpatEq distinct bodyContext
       bodyEnv bodyState result terminal bodyEq bodyIH tailIH resultEq bridge'
@@ -2432,7 +2433,7 @@ theorem inferExprFuel_reconstructAt
         MonoCtx.toContext_applySubst] using bodyDeriv
     exact ArmsDeriv.cons armDeriv
       (tailIH result resultEq terminal bridge' terminalHistory)
-  case case101 =>
+  case case100 =>
     rename_i fuel' signature' context' selfEnv' parent index expression
       expressions expected expecteds initial middle headEq result terminal headIH
       tailIH tailEq bridge' terminalHistory
@@ -2440,7 +2441,7 @@ theorem inferExprFuel_reconstructAt
       ((checkExprsFuel_historyPrefix tailEq).trans terminalHistory)
     have tailDeriv := tailIH result rfl terminal bridge' terminalHistory
     simpa only [List.map_cons] using ExprsDeriv.cons headDeriv tailDeriv
-  case case107 =>
+  case case106 =>
     rename_i fuel' signature' context' selfEnv' parent index expression
       expressions initial head headEq tail tailEq terminal headIH tailIH bridge'
       terminalHistory

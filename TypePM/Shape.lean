@@ -248,14 +248,12 @@ theorem merge_applyRen
     by_cases namesEqual : leftName = rightName
     · subst rightName
       cases merged : mergeList leftChildren rightChildren <;>
-        simp [merge, merged, mergeList_applyRen injective,
-          Evidence.applyRen]
-    · simp [merge, namesEqual]
+        simp [Evidence.applyRen]
+    · simp [namesEqual]
   case prod.prod =>
     rename_i leftComponents rightComponents
     cases merged : mergeList leftComponents rightComponents <;>
-      simp [merge, merged, mergeList_applyRen injective,
-        Evidence.applyRen]
+      simp [Evidence.applyRen]
 
 /-- List form of `merge_applyRen`. -/
 theorem mergeList_applyRen
@@ -272,9 +270,7 @@ theorem mergeList_applyRen
     rename_i leftHead leftTail rightHead rightTail
     cases headMerged : merge leftHead rightHead <;>
       cases tailMerged : mergeList leftTail rightTail <;>
-        simp [mergeList, headMerged, tailMerged,
-          merge_applyRen injective, mergeList_applyRen injective,
-          Evidence.applyRenList]
+        simp [Evidence.applyRenList]
 
 end
 
@@ -839,17 +835,17 @@ theorem finalize_applyRen
   | con name children =>
       simp only [Evidence.applyRen, finalize]
       cases observableAtName : observable name with
-      | none => simp [observableAtName]
+      | none => simp
       | some mask =>
           simp only
           rw [finalizeMasked_applyRen]
           cases finalized : finalizeMasked observable mask children <;>
-            simp [finalized, Cap.applyRen]
+            simp [Cap.applyRen]
   | prod components =>
       simp only [Evidence.applyRen, finalize]
       rw [finalizeList_applyRen]
       cases finalized : finalizeList observable components <;>
-        simp [finalized, Cap.applyRen]
+        simp [Cap.applyRen]
 
 /-- List form of `finalize_applyRen`. -/
 theorem finalizeList_applyRen
@@ -864,7 +860,7 @@ theorem finalizeList_applyRen
       rw [finalize_applyRen, finalizeList_applyRen]
       cases headFinalized : finalize observable head <;>
         cases tailFinalized : finalizeList observable tail <;>
-          simp [headFinalized, tailFinalized, Cap.applyRenList]
+          simp [Cap.applyRenList]
 
 /-- Masked form of `finalize_applyRen`. -/
 theorem finalizeMasked_applyRen
@@ -883,11 +879,11 @@ theorem finalizeMasked_applyRen
             simp only [Evidence.applyRenList, finalizeMasked]
           · rw [finalizeMasked_applyRen]
             cases tailFinalized : finalizeMasked observable mask tail <;>
-              simp [tailFinalized, Cap.applyRenList, Cap.applyRen]
+              simp [Cap.applyRenList, Cap.applyRen]
           · rw [finalize_applyRen, finalizeMasked_applyRen]
             cases headFinalized : finalize observable head <;>
               cases tailFinalized : finalizeMasked observable mask tail <;>
-                simp [headFinalized, tailFinalized, Cap.applyRenList]
+                simp [Cap.applyRenList]
 
 end
 

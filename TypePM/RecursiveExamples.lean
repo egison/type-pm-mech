@@ -231,6 +231,51 @@ theorem paperCompleteMultisetMatcher_typed :
     HasTy multisetSignature [] paperCompleteMultisetMatcher matcherTy :=
   paperCompleteMultisetMatcher_reconstructed.toHasTy
 
+/-! ## Flagship recursive-matcher use through an element slot -/
+
+/--
+The complete recursive `listMatcher` is applied to an inferred element slot,
+then consumed by a nontrivial `matchAll`.  The constructor pattern binds both
+the head and tail, and the body observes both bindings.
+-/
+def listMatcherMatchAll : Expr :=
+  .lam "element"
+    (.matchAll
+      (.ctor "cons" [.lit 1, .ctor "nil" []])
+      (.app listMatcher (.var "element"))
+      (.pctor "cons" [.pvar "x", .pvar "rest"])
+      (.tuple [.var "x", .var "rest"]))
+
+/-- Exact terminal type, including the inferred element-slot capability. -/
+def listMatcherMatchAllTy : Ty :=
+  .fn (.slot (.var 4) .int)
+    (.listT (.prod [.int, .data "List" [.int]]))
+
+theorem listMatcherMatchAll_inference_succeeds :
+    Inference.inferenceSucceeds listSignature [] listMatcherMatchAll = true := by
+  native_decide
+
+def listMatcherMatchAllInferenceResult : Inference.ExprResult :=
+  (Inference.infer listSignature [] listMatcherMatchAll).get (by native_decide)
+
+theorem listMatcherMatchAllInferenceResult_success :
+    Inference.infer listSignature [] listMatcherMatchAll =
+      some listMatcherMatchAllInferenceResult := by
+  exact option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem listMatcherMatchAllInferenceResult_target :
+    listMatcherMatchAllInferenceResult.resolvedTarget =
+      listMatcherMatchAllTy := by
+  native_decide
+
+/-- Public certified inference reconstructs the complete source typing. -/
+theorem listMatcherMatchAll_typed :
+    HasTy listSignature [] listMatcherMatchAll listMatcherMatchAllTy := by
+  have typing := Inference.infer_success_sound
+    listMatcherMatchAllInferenceResult_success
+  rw [listMatcherMatchAllInferenceResult_target] at typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+
 /-! ## Deliberately incomplete multiset regression -/
 
 def simplifiedMultisetClauses : List Clause :=

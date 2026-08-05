@@ -22,8 +22,7 @@ theorem inferPatternFuel_pctor_threads_child_state
     {entry : PatternCtorScheme signature.observability}
     {expectedTargets : List Ty} {resultTarget : Ty}
     {instantiatedState : InferState} {results : PatternsResult}
-    {alignedState : InferState} {projected : Shape.Evidence}
-    {capability : Cap} {finalState : InferState}
+    {alignedState : InferState} {capability : Cap} {finalState : InferState}
     (lookup : signature.findPatternCtor name = some entry)
     (instantiated : instantiateCtorInState state entry.scheme =
       ((expectedTargets, resultTarget), instantiatedState))
@@ -33,13 +32,14 @@ theorem inferPatternFuel_pctor_threads_child_state
     (aligned : alignPatternTargets results.state
       (freshOrigin .pattern path "pattern-constructor-fields")
       results.duals expectedTargets = some alignedState)
-    (projection : Projection.projectSignature entry.projection
-      ((results.duals.map Dual.cap).map Shape.ofCap) = some projected)
-    (freshened : freshenSkeleton signature.observability
+    (solved : solvePatternCtorCapability signature entry
       (freshOrigin .pattern path "pattern-constructor-capability")
-      projected alignedState = some (capability, finalState))
+      (results.duals.map Dual.cap) alignedState =
+        some (capability, finalState))
     (compatible : capCompatibleCheck entry
-      (results.duals.map Dual.cap) capability = true) :
+      ((results.duals.map Dual.cap).map fun child =>
+        child.apply finalState.prevailing.cap)
+      (capability.apply finalState.prevailing.cap) = true) :
     inferPatternFuel (fuel + 1) signature context parameters bindings selfEnv
       path (.pctor name patterns) state =
         some
@@ -49,11 +49,13 @@ theorem inferPatternFuel_pctor_threads_child_state
                   (results.duals.map Dual.cap) capability)).recordEvent
               (.inferredPattern (.pctor name patterns)
                 ⟨capability, resultTarget⟩ results.bindings path)⟩ := by
-  have projection' : Projection.projectSignature entry.projection
-      (results.duals.map (Shape.ofCap ∘ Dual.cap)) = some projected := by
-    simpa only [List.map_map] using projection
-  simp [inferPatternFuel, lookup, instantiated, children, aligned, projection',
-    freshened, compatible]
+  have compatible' : capCompatibleCheck entry
+      (results.duals.map
+        ((fun child => child.apply finalState.prevailing.cap) ∘ Dual.cap))
+      (capability.apply finalState.prevailing.cap) = true := by
+    simpa only [List.map_map] using compatible
+  simp [inferPatternFuel, lookup, instantiated, children, aligned, solved,
+    compatible']
 
 /-- `matchAll` passes the raw target inferred for its target expression to the
 matcher-slot check; `checkExprFuel` performs prevailing normalization exactly

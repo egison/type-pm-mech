@@ -111,6 +111,16 @@ core order，evidence，`PPatCapsAt` check を最終 capability に対して再�
 再計算時の `projectClauseSignature` による closed field-head validation は result type
 variable の有無と独立であり，closed structured field の observable capability-head
 mismatch も fail closed にする．Generic projection と `CapCompatible` の挙動は変えない．
+user pattern constructor の子 pattern が別々の fresh consumer capability を持つために
+result-variable の共有構造がまだ見えない場合は，一つの共有 result-variable skeleton を
+作り，constructor の各 field type へ展開した demand（例えば `cons` なら
+`kappa` と `List kappa`）に子の consumer capability だけを整合させる．最終 zonk 後に
+exact projection を再実行し，terminal validator でも最終的な `CapCompatible` を再検査する．
+これは pattern consumer 間の制約解決であり，value producer capability を consumer
+demand から構造化する seed ではない．protected producer variable は従来どおり固定する．
+共有 result variable に到達する field の内部では，到達しない observable subposition を
+`none` に canonicalize して field 全体を整合させる保守的な fallback である．その位置だけを
+無視する partial/path-wise alignment と W の completeness は主張しない．
 再構成では生成時の raw provenance と，substitution 適用後の実際の index で構造を追う
 terminal derivation を分ける．nested child の raw index と親の raw field index が
 構文的に同一であることは仮定しない．
@@ -154,6 +164,11 @@ judgment 上の証明を与える．各 preservation／reachability／search 結
 concrete derivation に付随する `*RuntimeSigAgrees` mirror と，source context に対する
 `RuntimeSigAgrees` を引数に取る．したがって任意の runtime signature を無条件に source
 signature と同一視する主張ではない．
+[`TypePM/RuntimeAgreementBridge.lean`](TypePM/RuntimeAgreementBridge.lean) は，
+`∀ context, RuntimeSigAgrees signature context SF` という一つの global agreement
+から，任意の concrete `Eval`／`PPM`／`MAtom`／`Step`／`Search`／`Reaches` 導出に対応する
+mirror を，その導出の構造に沿って構成する．従って mirror family は実行導出を外部から
+与える oracle ではない．
 
 1. pristine な typed environment からの expression evaluation の preservation
 2. matching state 一段の preservation
@@ -171,6 +186,12 @@ user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導
 「型付けだけから一段を発見する」定理ではなく，規則ごとの局所的な実行証拠から concrete
 `Step` を組み立てる境界である．
 
+[`TypePM/DynamicSafetyRegression.lean`](TypePM/DynamicSafetyRegression.lean) は，
+`SF = []` の concrete frozen signature と実際の `matchAll` 実行について，
+`FrozenSigWF`，global runtime agreement，評価・primitive-pattern matching・atom reduction・
+step・search・reachability を同時に構成し，`CoreSafety` の評価保存結論を実際に適用する
+end-to-end 回帰である．これにより動的パッケージ全体が一つの実プログラム上で発火することも検査する．
+
 ### Recursive matcher regressions
 
 [`TypePM/RecursiveExamples.lean`](TypePM/RecursiveExamples.lean) は，外部の
@@ -180,9 +201,18 @@ user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導
 - paper-complete multiset interface: list とは別の self binder／clause list に対する
   source typing と W の成功
 - simplified multiset: `join` 一般節不足により source coverage と W が失敗
-- structured consumer が polymorphic producer を強化しようとする入力は W が失敗
+- generic `listSignature` と `fix` で構成した `listMatcher` を slot に適用し，
+  `matchAll` の `cons $x $rest` が束縛した `x` と `rest` の両方を body で使う旗艦例が
+  公開 `infer` を通過する．結果型を concrete literal に固定し，成功等式から
+  `infer_success_sound` により `HasTy` を再構成する
 - 量化 binder と target specialization 内の自由 capability が同じ番号でも，ordered
   binder-local instance と let generalization が成功
+
+[`TypePM/ProducerStrengtheningRegression.lean`](TypePM/ProducerStrengtheningRegression.lean)
+は，同一の structured consumer に対して，fresh capability variable を公開する
+polymorphic value producer を公開 `infer` が拒否することと，要求済みの concrete
+producer へ置き換えた control twin が成功することを対で検査する．成功側は結果型を
+`Int` に固定し，`infer_success_sound` から concrete `HasTy` も構成する．
 
 ## 明示的な境界
 
@@ -202,9 +232,9 @@ user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety` | 評価・matching semantics，state invariant，preservation/progress/safety |
+| runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples` | evidence，source-level binder collision，公開 inference soundness の代表ケース，recursive list/multiset の正負例 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `DynamicSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening の control twin，動的安全性の end-to-end 適用 |
 
 各ファイルは `TypePM/` 以下にある．
 

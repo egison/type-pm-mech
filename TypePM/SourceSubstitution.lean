@@ -2060,8 +2060,7 @@ theorem MonoCtx.toContext_applySubst
       cases entry with
       | mk name target =>
           simp [MonoCtx.applySubst, MonoCtx.toContext,
-            Context.applySubst, Scheme.mono, Scheme.applySubst,
-            induction]
+            Context.applySubst, Scheme.mono, Scheme.applySubst]
 
 /-- Slot targets built from duals commute with paired substitution. -/
 theorem Dual.map_slot_applySubst
@@ -2074,8 +2073,7 @@ theorem Dual.map_slot_applySubst
   | cons dual duals induction =>
       cases dual with
       | mk capability target =>
-          simp only [List.map_cons, Dual.applySubst, Dual.cap, Dual.target,
-            Dual.apply, induction]
+          simp only [List.map_cons, Dual.applySubst, Dual.apply, induction]
           rfl
 
 /-- `prodTy` commutes with occurrence-wide paired substitution. -/

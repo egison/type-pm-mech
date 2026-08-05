@@ -165,7 +165,7 @@ theorem DispatchTrace.hole_current_final
       beforeNonHole⟩
   obtain ⟨failed, headers, failures⟩ := trace.failedPrefix
   rw [originalEquality] at headers
-  simp only [List.map_append, List.map_singleton, List.map_cons,
+  simp only [List.map_append, List.map_cons,
     Clause.pp] at headers
   have tailHeaders : clauses.map Clause.pp = [] :=
     ppat_tail_after_final_hole_nil
@@ -1429,7 +1429,7 @@ theorem TerminalPatternResolution.embedVars_bound
       exact @TerminalPatternResolutions.embedVarsList_bound
         (prevailing, context, parameters) _ _ _ _ children
 termination_by prevailing context parameters bindings pattern capability target
-  output typing => sizeOf pattern
+  output _typing => sizeOf pattern
 
 theorem TerminalPatternResolutions.embedVarsList_bound
     (scope : Subst × Context × PatternCtx) : ∀ {bindings : MonoCtx}
@@ -1449,7 +1449,7 @@ theorem TerminalPatternResolutions.embedVarsList_bound
           scope.2.1 scope.2.2 _ _ _ _ _ head name member
       · exact @TerminalPatternResolutions.embedVarsList_bound scope
           _ _ _ _ tail name member
-termination_by bindings patterns duals output typing => sizeOf patterns
+termination_by bindings patterns duals output _typing => sizeOf patterns
 
 end
 
@@ -1704,7 +1704,7 @@ theorem resolveEmbedOccs_zip :
       simp only [List.nodup_cons] at nodup
       simp only [List.length_cons, Nat.succ.injEq] at length
       simp only [resolveEmbedOccs, List.flatMap_cons, List.zip_cons_cons,
-        List.find?_cons, beq_self_eq_true, ↓reduceIte, Pattern.embedVarsList]
+        List.find?_cons, beq_self_eq_true, Pattern.embedVarsList]
       congr 1
       calc
         _ = parameters.flatMap (fun name =>
@@ -1752,7 +1752,7 @@ theorem atomPatterns_zip3 :
           | cons value values =>
               simp only [List.length_cons, Nat.succ.injEq] at patternLength
               simp only [List.length_cons, Nat.succ.injEq] at valueLength
-              simp only [List.zip_cons_cons, List.map_cons, Atom.p]
+              simp only [List.zip_cons_cons, List.map_cons]
               rw [induction patternLength valueLength]
 
 /-- Atom-tree embedding exposes exactly the atoms' pattern occurrences. -/
@@ -2104,7 +2104,7 @@ theorem MAtom.embedVars
     intro environment pattern matchers value primitive noOr atoms member
     simp only [List.mem_singleton] at member
     subst atoms
-    simp [Pattern.embedVarsList, Pattern.embedVars]
+    simp [Pattern.embedVarsList]
   case mppfail =>
     intro environment matcherEnvironment original pattern value pp next arms
       clauses continuations substitution dispatch ppFailure recursive ppIH
@@ -2646,7 +2646,7 @@ theorem matom_someWC_typed
     {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
       input .wild capability target output)
-    (valueTyping : ValueTy signature value target) :
+    (_valueTyping : ValueTy signature value target) :
     MAtomTypedOutput signature context parameters input output [[]] [] := by
   have outputEquality := resolution.wild_inversion
   subst output
@@ -2701,7 +2701,7 @@ theorem matom_someValNeq_typed
     {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {expression : Expr}
     {capability : Cap} {target : Ty}
-    (resolution : ResolvedPatternTy signature prevailing context parameters
+    (_resolution : ResolvedPatternTy signature prevailing context parameters
       input (.pval expression) capability target output) :
     MAtomTypedOutput signature context parameters input output [] [] := by
   intro substitution substitutionTyping
@@ -3843,13 +3843,13 @@ private theorem PPMRuntimeSigAgrees.pristine_with
 /-- Fold exact child PPM preservation across a source-aligned compound
 capture derivation. -/
 private theorem CaptureAdms.ppm_environments_typed
-    {signature : FrozenSig} {SF : RuntimeSigF}
+    {signature : FrozenSig} {_SF : RuntimeSigF}
     {context : Context} {input : MonoCtx}
     {pps : List PPat} {patterns : List Pattern} {targets : List Ty}
     {bindings : MonoCtx}
     (admissible : CaptureAdms signature context input pps patterns targets
       bindings)
-    {environment : Env} {results : List (List Pattern × Env)}
+    {_environment : Env} {results : List (List Pattern × Env)}
     (patternLength : pps.length = patterns.length)
     (resultLength : (pps.zip patterns).length = results.length)
     (preserve :
@@ -3963,8 +3963,8 @@ private theorem PPMRuntimeSigAgrees.preserve_with
     cases equality
     cases captureTyping with
     | ctor find children instantiation =>
-        exact children.ppm_environments_typed (SF := SF)
-          (environment := runtimeEnvironment) patternLength resultLength
+        exact children.ppm_environments_typed (_SF := SF)
+          (_environment := runtimeEnvironment) patternLength resultLength
           (fun entry member {target} {entryBindings} entryAdmissible =>
             childrenIH entry member rfl runtimePristine runtimeTyping
               entryAdmissible)
@@ -3976,8 +3976,8 @@ private theorem PPMRuntimeSigAgrees.preserve_with
     cases equality
     cases captureTyping with
     | tuple children =>
-        exact children.ppm_environments_typed (SF := SF)
-          (environment := runtimeEnvironment) patternLength resultLength
+        exact children.ppm_environments_typed (_SF := SF)
+          (_environment := runtimeEnvironment) patternLength resultLength
           (fun entry member {target} {entryBindings} entryAdmissible =>
             childrenIH entry member rfl runtimePristine runtimeTyping
               entryAdmissible)
@@ -4687,9 +4687,9 @@ private def PatfunPreservationKernel
   ∀ {stack : List Tree} {environment : Env} {substitution : MatchSubst}
       {name : String} {arguments : List Pattern} {matcher value : Value}
       {runtime : PatFunRuntimeSig}
-      {found : List.find? (fun entry => entry.1 == name) SF =
+      {_found : List.find? (fun entry => entry.1 == name) SF =
         some (name, runtime)}
-      {length : runtime.params.length = arguments.length}
+      {_length : runtime.params.length = arguments.length}
       {context : Context} {parameters : PatternCtx} {goal : MonoCtx},
     RuntimeSigAgrees signature context SF →
     MStateTyAt signature context parameters
@@ -4796,8 +4796,7 @@ private theorem PatfunPreservationKernel.of_instantiatedBody
                                   [.atom ⟨definition.body, matcher, value⟩] =
                                 (definition.parameterNames.zip arguments).map
                                   Prod.fst := by
-                            simp only [stackEmbedOccs, treeEmbedOccs,
-                              List.nil_append]
+                            simp only [stackEmbedOccs, treeEmbedOccs]
                             rw [Pattern.embedVars_eq_of_linearEmbeds
                               definition.body bodyLinear']
                             simpa using
@@ -4879,7 +4878,7 @@ private theorem PatfunPreservationKernel.of_source
   exact PatfunPreservationKernel.of_instantiatedBody
     (fun typing => typing.instantiatedBody
       signatureWF.armExhaustiveBasic signatureWF.patternFunNamesNodup)
-    (found := found) (length := length) runtimeAgreement stateTyping
+    (_found := found) (_length := length) runtimeAgreement stateTyping
 
 /-- The five derivation-local agreement judgments are eliminated together.
 The result rooted at `Eval` carries both the pristine runtime fact needed by
@@ -5275,8 +5274,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       cases equality
       cases captureTyping with
       | ctor found children instantiation =>
-          exact children.ppm_environments_typed (SF := SF)
-            (environment := runtimeEnvironment) patternLength resultLength
+          exact children.ppm_environments_typed (_SF := SF)
+            (_environment := runtimeEnvironment) patternLength resultLength
             (fun entry member {target} {entryBindings} entryAdmissible =>
               (childrenIH entry member).2 rfl runtimePristine runtimeTyping
                 entryAdmissible)
@@ -5295,8 +5294,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       cases equality
       cases captureTyping with
       | tuple children =>
-          exact children.ppm_environments_typed (SF := SF)
-            (environment := runtimeEnvironment) patternLength resultLength
+          exact children.ppm_environments_typed (_SF := SF)
+            (_environment := runtimeEnvironment) patternLength resultLength
             (fun entry member {target} {entryBindings} entryAdmissible =>
               (childrenIH entry member).2 rfl runtimePristine runtimeTyping
                 entryAdmissible)
@@ -5480,7 +5479,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       runtimeAgreement stateTyping next member
     simp only [List.mem_singleton] at member
     subst next
-    exact patfunPreserve (found := found) (length := length)
+    exact patfunPreserve (_found := found) (_length := length)
       runtimeAgreement stateTyping
   case smnodeStep =>
     intro ignored1 ignored2 ignored3 stack runtimeEnvironment substitution tree innerStack
@@ -5696,8 +5695,8 @@ theorem StepRuntimeSigAgrees.preservation
       exact PatfunPreservationKernel.of_instantiatedBody
         (fun typing => typing.instantiatedBody
           signatureWF.armExhaustiveBasic
-          signatureWF.patternFunNamesNodup) (found := found)
-        (length := length) runtimeAgreement stateTyping
+          signatureWF.patternFunNamesNodup) (_found := found)
+        (_length := length) runtimeAgreement stateTyping
   case smnodeStep =>
       intro ignored1 ignored2 ignored3 stack environment substitution tree
         innerStack innerEnvironment innerSubstitution piE states guard inner

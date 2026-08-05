@@ -1004,9 +1004,21 @@ protected producer として記録し，全 solver delta がそれらを固定�
 監査する．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
 binder 線形性の各 checker の成功を要求する．
 
-Pattern constructor の capability inference は projection の
-$\mathsf{unseen}$ 位置を fresh capability variable で埋めた候補を作り，後続 constraint
-で最終 matcher capability と照合する．各 clause が保持する raw hole dual は，literal
+Pattern constructor の capability inference は，まず zonk 済み child capability に対する
+exact projection を試みる．子 pattern が互いに独立な fresh consumer capability を持つために
+result type variable の共有構造がまだ見えず projection が失敗した場合だけ，各 observable
+result variable に一つの共有 fresh capability を割り当て，constructor の field type へ
+展開した demand を作る．例えば generic list の $\mathtt{cons}$ では，二つの field に
+$\kappa$ と $\mathtt{List}\;\kappa$ を要求する．result variable へ到達しない field は
+constraint を生成せず，到達する field だけについて child consumer capability と demand の
+capability equality を protected-producer guard の下で解く．その後に child を再び zonk し，
+exact projection を再実行する．これは pattern consumer 間の制約解決であり，expected target
+や value producer capability を seed として構造化する経路ではない．
+共有 result variable に到達する field の内部では，到達しない observable subposition を
+$\mathsf{none}$ に canonicalize して field 全体を整合させる保守的な fallback とする．
+その位置だけを無視する partial/path-wise alignment と W の completeness は主張しない．
+
+各 clause が保持する raw hole dual は，literal
 全体の prevailing substitution が確定した後に一度だけ zonk する．その時点で全
 clause evidence を再計算し，$\PPatCaps$ の executable checker も最終 capability に
 対して実行する．途中の clause で計算した古い evidence を finalization に再利用しない．
@@ -1016,7 +1028,9 @@ result-variable evidence projection により assignment を集める．従っ�
 closed structured field は result evidence を生成しない一方，その next matcher の
 observable path 上の capability head／arity が field target と一致しなければ inference
 は失敗する．
-これらは target や expected type を evidence の seed にしない．
+user pattern constructor についても，終端 validator は最終 substitution で zonk した
+child／result capability に対して $\capcompat$ を再検査する．これらは target や
+expected type を evidence の seed にしない．
 
 各 nested pattern はそれ自身の fresh raw index を持ち，solver は親が要求する index と
 終端 substitution 適用後に一致させる．従って再構成では，生成時 certificate を残す
@@ -1125,8 +1139,25 @@ freeze 済み signature の整形式性と source/runtime pattern-function signa
 \end{enumerate}
 
 最後に W の再構成定理をこの declarative safety package へ接続する．caller-supplied
-premise として残るのは局所 $\mathsf{StepReady}$ だけであり，capture admissibility，任意の
-capability 輸送，抽象 runtime oracle，型付け済み外部 list／multiset matcher は不要である．
+runtime agreement は derivation-local mirror を別の oracle として与える必要はない．
+全 source context $\Gamma$ に対する
+$\mathsf{RuntimeSigAgrees}(\Sighat,\Gamma,\mathit{SF})$ から，任意の concrete
+$\mathsf{Eval}$／$\mathsf{PPM}$／$\mathsf{MAtom}$／$\mathsf{Step}$／
+$\mathsf{Search}$／$\mathsf{Reaches}$ 導出に対応する mirror を，その導出の構造再帰で
+構成する bridge を機械化する．この bridge は評価結果，successor，停止性，型付け
+導出を追加前提としない．
+
+また $\mathit{SF}=[]$ の concrete frozen signature と一つの実際の
+$\mathtt{matchAll}$ について，$\mathsf{FrozenSigWF}$，global runtime agreement，
+評価，primitive-pattern matching，atom reduction，二段の state step，search，
+reachability を同時に構成し，$\mathsf{CoreSafety}$ を実際に適用する end-to-end
+regression を置く．従って動的 package は論理的に非空であるだけでなく，一つの
+program 上で同時に発火する．
+
+公開 composition の境界には $\mathsf{FrozenSigWF}$ と適切な runtime agreement が残るが，
+局所的な実行証拠として caller が与えるのは $\mathsf{StepReady}$ だけである．
+capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
+list／multiset matcher は不要である．
 
 Lean の主定理と一般補題は kernel が検査し，\texttt{sorry}，\texttt{admit}，
 project-defined \texttt{axiom} を用いない．具体的な executable regression は
