@@ -49,7 +49,25 @@ commit／push はその都度の明示指示がある場合に限るという規
   任意の capability 輸送を許す blanket premise で穴を隠さない．
 - `TypePM.lean` は現行 public surface の全モジュールを import する．変更後は個別 target
   だけでなく必ず `lake build` を通す．
-- `TypePM/RecursiveExamples.lean` の list／multiset direct-self 正例と coverage 不足
-  multiset 負例，`TypePM/Inference.lean` の producer-strengthening 負例を回帰として維持する．
+- 次の executable regression とその正負境界を維持する．
+  - `TypePM/CertifiedInferenceRegression.lean`: primitive-pattern pattern の core order を
+    `inferRaw` と公開 `infer` の両方で検査する正順 accept／逆順 reject の対．
+  - `TypePM/RecursiveExamples.lean`: list／multiset direct-self 正例，coverage 不足 multiset
+    負例，および recursive list matcher を slot に適用して `cons $x $rest` の両束縛を
+    body で使う静的な公開 inference 旗艦例．この旗艦例について動的実行までは主張しない．
+  - `TypePM/ProducerStrengtheningRegression.lean`: polymorphic producer を公開 `infer` が
+    拒否し，同じ consumer に concrete producer を与えた control twin が成功する対．
+  - `TypePM/DynamicSafetyRegression.lean`: `SF = []` の具体実行と全 mirror を構成し，
+    `CoreSafety.evalPreservation` を消費する end-to-end 例．
+  - `TypePM/DynamicCaptureRegression.lean`: 合法な value-pattern capture を
+    `PPM.pval` から matcher reduction と `CoreSafety.stepPreservation` まで接続する例．
+  - `TypePM/PatternCtorCapabilityRegression.lean`: pattern-constructor capability fallback の
+    exact projection 前後，public inference の正負対，および実際の protected child に対する
+    fail-closed な producer guard を固定する例．
+  - `TypePM/DynamicDispatchRegression.lean`: 一つの concrete matcher 実行で
+    `matcherPPFail`，`matcherDPFail`，二 child の `PPM.ctor`，成功 arm，terminal search を
+    順に発火させる例．
+  - `TypePM/PatternFunctionSafetyRegression.lean`: 非空 runtime signature で `papp` から
+    pattern-function node `.mnode` を実行し，`CoreSafety` の六フィールドをすべて消費する例．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．

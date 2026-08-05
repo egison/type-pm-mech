@@ -119,5 +119,14 @@ def inferenceSucceeds
     (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
   (infer signature context expression).isSome
 
+/-- Recover the exact `some` equation witnessed by an executable `isSome`
+check.  Concrete inference regressions share this small elimination lemma. -/
+theorem option_eq_some_get_of_isSome {α : Type} (value : Option α)
+    (present : value.isSome = true) :
+    value = some (value.get present) := by
+  cases value with
+  | none => simp at present
+  | some result => rfl
+
 end Inference
 end TypePM

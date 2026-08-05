@@ -272,19 +272,12 @@ theorem program_evaluation :
 
 /-! ## Public inference and concrete state typing -/
 
-private theorem option_eq_some_get_of_isSome {alpha : Type}
-    (value : Option alpha) (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 def inferenceResult : Inference.ExprResult :=
   (Inference.infer signature programContext program).get (by native_decide)
 
 theorem inference_success :
     Inference.infer signature programContext program = some inferenceResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 /-- Pin the public W result rather than leaving the preservation conclusion at
 an opaque inferred target. -/

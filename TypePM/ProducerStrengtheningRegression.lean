@@ -49,13 +49,6 @@ theorem polymorphicProducer_public_rejected :
       consumerExpression = none := by
   native_decide
 
-private theorem option_eq_some_get_of_isSome {α : Type} (value : Option α)
-    (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 def concreteProducerResult : Inference.ExprResult :=
   (Inference.infer protectionSignature concreteContext consumerExpression).get
     (by native_decide)
@@ -64,7 +57,7 @@ def concreteProducerResult : Inference.ExprResult :=
 theorem concreteProducer_public_succeeds :
     Inference.infer protectionSignature concreteContext consumerExpression =
       some concreteProducerResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 /-- The consumer's declared result pins the successful public result to `Int`. -/
 theorem concreteProducer_result_type :

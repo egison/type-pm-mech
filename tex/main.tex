@@ -1027,7 +1027,13 @@ projection が失敗することから始め，fallback 後には一つの fresh
 $[\kappa,\mathtt{List}\;\kappa]$ へ zonk され，result が
 $\mathtt{List}\;\kappa$ となり，最終 $\capcompat$ が成功することを直接検査する．
 同時に unrelated protected-producer ledger が不変であり，全 solver delta がその producer
-を固定することも検査する．これは solver 境界の回帰であり，W の completeness 主張ではない．
+を固定することも検査する．さらに target は整合するが capability の rigid head が衝突する
+pattern constructor を raw/public inference がともに拒否し，capability だけを整合させた
+control twin が公開 inference と soundness elimination を通ることを対で検査する．量化
+pattern-function instance の protected capability variable を実際に $\mathtt{cons}$ の tail
+child に置く負例では，raw unifier が structural delta を作れる一方，producer guard がその
+delta，直接 fallback，raw inference，public inference をすべて fail closed にすることを固定する．
+これらは solver／公開 acceptance 境界の回帰であり，W の completeness 主張ではない．
 
 各 clause が保持する raw hole dual は，literal
 全体の prevailing substitution が確定した後に一度だけ zonk する．その時点で全
@@ -1179,6 +1185,15 @@ $\mathsf{PPM.pval}$ から $\mathsf{MAtom.matcher}$，state step，search，reac
 具体的に構成する．$\mathsf{AtomTy.mk}$ から得た初期 state へ step preservation を適用する
 ため，$\mathsf{captureAdm\_of\_coreOrder}$ の value-pattern 分岐が実際の reduction で
 消費される．
+
+ordered-dispatch regression は具体的な $\mathtt{cons}\;\$x\;\$rest$ を，先行する
+$\mathtt{nil}$ clause の primitive-pattern failure，$\mathtt{cons}$ clause の先頭
+data-pattern arm failure，次 arm の成功へ順に通す．一つの kernel 導出内で
+$\mathsf{MAtom.matcherPPFail}$，$\mathsf{MAtom.matcherDPFail}$，二 child の
+$\mathsf{PPM.ctor}$，$\mathsf{MAtom.matcher}$ を発火させ，同じ証拠から
+$\mathsf{DispatchTrace.nextClause}$ と $\mathsf{DispatchTrace.nextArm}$ を構成する．生成された
+二 atom は $x$ と $rest$ を束縛し，state step，search，reachability，$\mathtt{matchAll}$
+評価を terminal まで閉じる．
 
 さらに source/runtime signature が closed nullary pattern function
 $\mathtt{unit}:=\mathtt{ptuple}\;[]$ を一つ持つ非空の例を置く．全 context に対する global

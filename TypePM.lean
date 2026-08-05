@@ -37,6 +37,7 @@ import TypePM.CertifiedInference
 import TypePM.CertifiedInferenceRegression
 import TypePM.DynamicSafetyRegression
 import TypePM.DynamicCaptureRegression
+import TypePM.DynamicDispatchRegression
 import TypePM.PatternFunctionSafetyRegression
 import TypePM.ProducerStrengtheningRegression
 import TypePM.InferenceRegression

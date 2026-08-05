@@ -157,13 +157,6 @@ def matcherTy : Ty :=
 
 /-! ## Executable W results -/
 
-theorem option_eq_some_get_of_isSome {α : Type} (value : Option α)
-    (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 theorem listMatcher_inference_succeeds :
     Inference.inferenceSucceeds listSignature [] listMatcher = true := by
   native_decide
@@ -174,7 +167,7 @@ def listMatcherInferenceResult : Inference.ExprResult :=
 theorem listMatcherInferenceResult_success :
     Inference.infer listSignature [] listMatcher =
       some listMatcherInferenceResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem paperCompleteMultisetMatcher_inference_succeeds :
     Inference.inferenceSucceeds multisetSignature []
@@ -188,7 +181,7 @@ def paperCompleteMultisetInferenceResult : Inference.ExprResult :=
 theorem paperCompleteMultisetInferenceResult_success :
     Inference.infer multisetSignature [] paperCompleteMultisetMatcher =
       some paperCompleteMultisetInferenceResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 /-- Matcher finalization exports the structural producer variable into the
 protected ledger in both recursive end-to-end examples. -/
@@ -261,7 +254,7 @@ def listMatcherMatchAllInferenceResult : Inference.ExprResult :=
 theorem listMatcherMatchAllInferenceResult_success :
     Inference.infer listSignature [] listMatcherMatchAll =
       some listMatcherMatchAllInferenceResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem listMatcherMatchAllInferenceResult_target :
     listMatcherMatchAllInferenceResult.resolvedTarget =

@@ -22,13 +22,6 @@ def emptySignature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
-theorem option_eq_some_get_of_isSome {α : Type} (value : Option α)
-    (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 /-! ## A generalized `let` whose ambient lambda variable is solved later -/
 
 def terminalLetExpression : Expr :=
@@ -45,7 +38,7 @@ def terminalLetResult : Inference.ExprResult :=
 theorem terminalLetResult_success :
     Inference.infer emptySignature [] terminalLetExpression =
       some terminalLetResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem terminalLet_typed :
     HasTy emptySignature
@@ -78,7 +71,7 @@ def quantifiedSchemeResult : Inference.ExprResult :=
 theorem quantifiedSchemeResult_success :
     Inference.infer emptySignature quantifiedContext quantifiedExpression =
       some quantifiedSchemeResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem quantifiedScheme_typed :
     HasTy emptySignature
@@ -114,7 +107,7 @@ def quantifiedPAppResult : Inference.ExprResult :=
 theorem quantifiedPAppResult_success :
     Inference.infer patternFunctionSignature [] quantifiedPAppExpression =
       some quantifiedPAppResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem quantifiedPApp_typed :
     HasTy patternFunctionSignature
@@ -142,7 +135,7 @@ def slotToSlotResult : Inference.ExprResult :=
 theorem slotToSlotResult_success :
     Inference.infer emptySignature slotContext slotToSlotExpression =
       some slotToSlotResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 def isSlotToSlotEvent : Inference.TraceEvent → Bool
   | .slotAlignment _ _ (.slot _ _) (.slot _ _) => true
@@ -188,7 +181,7 @@ def specializedMatcherResult : Inference.ExprResult :=
 theorem specializedMatcherResult_success :
     Inference.infer matcherSignature [] specializedMatcherExpression =
       some specializedMatcherResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 def isMatcherTargetSpecializedToInt
     (state : Inference.InferState) : Inference.TraceEvent → Bool
@@ -259,7 +252,7 @@ certification as well as at the public entry point. -/
 theorem inOrderMatcher_raw_inference_succeeds :
     Inference.inferRaw matcherSignature [] inOrderMatcherExpression =
       some inOrderRawMatcherResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 def inOrderMatcherResult : Inference.ExprResult :=
   (Inference.infer matcherSignature [] inOrderMatcherExpression).get
@@ -270,7 +263,7 @@ an order restriction rather than a blanket rejection of the two forms. -/
 theorem inOrderMatcher_inference_succeeds :
     Inference.infer matcherSignature [] inOrderMatcherExpression =
       some inOrderMatcherResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 end CertifiedInferenceRegression
 end TypePM

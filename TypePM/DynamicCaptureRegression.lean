@@ -131,19 +131,12 @@ theorem state_reaches_terminal :
 
 /-! ## Public inference and the typed initial state -/
 
-private theorem option_eq_some_get_of_isSome {alpha : Type}
-    (value : Option alpha) (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 def inferenceResult : Inference.ExprResult :=
   (Inference.infer signature [] program).get (by native_decide)
 
 theorem inference_success :
     Inference.infer signature [] program = some inferenceResult :=
-  option_eq_some_get_of_isSome _ (by native_decide)
+  Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 /-- Pin the observable result of the public certified inference run. -/
 theorem inference_result_type :

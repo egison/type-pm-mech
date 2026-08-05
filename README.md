@@ -131,7 +131,12 @@ terminal derivation を分ける．nested child の raw index と親の raw fiel
 は，独立な二つの child consumer に対して旧 exact projection が失敗すること，fallback
 後にはそれらが同じ fresh `kappa` と `List kappa` に zonk され，exact compatibility が
 成功することを直接固定する．同じ回帰は protected-producer ledger が不変であり，全 solver
-delta が protected producer を固定することも検査する．
+delta が protected producer を固定することも検査する．さらに target 側は整合するが
+capability の rigid head が衝突する pctor を `inferRaw` と公開 `infer` が拒否し，capability
+だけを整合させた control twin が公開 `infer` と `infer_success_sound` を通ることを対で固定する．
+pattern-function instantiation が実際に ledger へ登録した protected variable を `cons` の
+tail child に置く負例では，raw unifier が作る structural delta を producer guard が拒否する
+ことを，直接 solver と raw/public inference の両方で検査する．
 
 公開 entry point `infer` は，停止する二 sort W 走査 `inferRaw` の結果に
 有限な terminal validator を適用する．validator は成功 trace の supply に基づく
@@ -207,6 +212,14 @@ step・search・reachability と各 mirror を同時に構成し，`CoreSafety.e
 `CoreSafety.stepPreservation` を適用するため，`captureAdm_of_coreOrder` の value-pattern
 分岐が実際の matcher reduction で消費される．結果型は `List Int` に固定する．
 
+[`TypePM/DynamicDispatchRegression.lean`](TypePM/DynamicDispatchRegression.lean) は，具体的な
+`cons $x $rest` の実行を，先行 `nil` clause の primitive-pattern mismatch，`cons` clause
+先頭 arm の data-pattern mismatch，次 arm の成功へ順に通す．単一の kernel 導出内で
+`MAtom.matcherPPFail`，`MAtom.matcherDPFail`，二 child の `PPM.ctor`，`MAtom.matcher` を
+発火させ，同じ失敗証拠から `DispatchTrace.nextClause`／`nextArm` も構成する．生成された
+`x`／`rest` atom を二段で束縛し，`Step`，`Search`，`Reaches`，`matchAll` の具体評価まで
+terminal に閉じる．
+
 [`TypePM/PatternFunctionSafetyRegression.lean`](TypePM/PatternFunctionSafetyRegression.lean)
 は，closed nullary pattern function `unit := ptuple []` を source と runtime の非空
 signature に置き，`∀ context, RuntimeSigAgrees` からこの実行に必要な各 mirror を構成する．
@@ -258,7 +271,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening の control twin，PAT-CON fallback の直接境界，空／非空 runtime signature と capture 経路を含む動的安全性の具体適用 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，ordered dispatch failure を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．
 

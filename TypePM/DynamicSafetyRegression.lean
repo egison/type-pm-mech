@@ -298,19 +298,12 @@ theorem program_evaluation :
 
 /-! ## Bridge construction and application of `CoreSafety` -/
 
-private theorem option_eq_some_get_of_isSome {α : Type} (value : Option α)
-    (present : value.isSome = true) :
-    value = some (value.get present) := by
-  cases value with
-  | none => simp at present
-  | some result => rfl
-
 def inferenceResult : Inference.ExprResult :=
   (Inference.infer signature [] program).get (by native_decide)
 
 theorem inference_success :
     Inference.infer signature [] program = some inferenceResult := by
-  exact option_eq_some_get_of_isSome _ (by native_decide)
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 /-- Pin the concrete result independently of the derivation reconstructed from
 public inference, so a future change in W cannot silently widen this fixture. -/
