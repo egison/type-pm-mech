@@ -55,7 +55,16 @@ hole はその構造位置の capability と一致し，bare root hole だけが
 独立した slot capability を消費できる．Pattern constructor の capability projection は
 partial evidence を返してよく，`CapCompatible` がそれを最終 capability の canonical
 evidence と exact merge できることを要求する．このため，element capability を直接は
-観測しない nullary `nil` も周囲の list capability と整合できる．
+観測しない nullary `nil` も周囲の list capability と整合できる．Generic な
+`projectSignature`／`CapCompatible` は result type variable へ到達する evidence だけを
+運ぶ **result-variable evidence projection** を行う．Actual clause 専用の
+`projectClauseSignature` は，その前段に actual hole evidence に対する
+**closed field-head validation** を追加し，この二つを混同しない．
+wildcard／value-pattern-pattern による `unseen` child は hole obligation を課さない．
+一方，closed structured field は結果へ evidence を運ばなくても，actual hole の next
+matcher が field の observable path と同じ capability head／arity を持つことを要求する．
+`Matcher none [Integer]` 自体は有効であり，closed list hole の next matcher として
+使う場合だけ不適合になる．
 
 Scheme の宣言的な利用は二段階である．最初に量化 capability を binder-local な
 capability variable へだけ写し，その結果に量化 target binder だけを support とする
@@ -88,6 +97,9 @@ matcher literal を検査する．各 fresh value instance の producer variable
 Pattern constructor の未観測位置は fresh capability で埋め，literal 全体の prevailing
 substitution が確定してから raw hole dual を一度だけ解決する．その後，全 clause の
 evidence と `PPatCapsAt` check を最終 capability に対して再計算する．
+再計算時の `projectClauseSignature` による closed field-head validation は result type
+variable の有無と独立であり，closed structured field の observable capability-head
+mismatch も fail closed にする．Generic projection と `CapCompatible` の挙動は変えない．
 再構成では生成時の raw provenance と，substitution 適用後の実際の index で構造を追う
 terminal derivation を分ける．nested child の raw index と親の raw field index が
 構文的に同一であることは仮定しない．

@@ -1,4 +1,5 @@
 import TypePM.ClauseEvidence
+import TypePM.CapTarget
 
 /-!
 # Executable List-former clause-evidence examples
@@ -294,6 +295,62 @@ theorem consEvidence_target_nonseeding :
     TargetNonseeding consEvidenceAtTarget := by
   intro _ _
   rfl
+
+/-! ## Closed structured field-head validation -/
+
+/-- `Matcher none (List Int)` remains a valid capability/target pairing. -/
+theorem matcher_none_closed_list_is_well_corresponded :
+    CapTargetOK [] .none (.data "List" [.int]) :=
+  .none
+
+/-- Both the closed result former and the List field former are observable. -/
+def closedBoxObservability : Shape.Observability :=
+  fun former =>
+    if former = "Box" then some []
+    else if former = "List" then some [true]
+    else none
+
+/-- `box : List Int =>_P Box` has no result target variable to receive evidence. -/
+def closedBoxProjection :
+    Projection.ProjectionSignature closedBoxObservability where
+  fieldTypes := [.data "List" [.int]]
+  resultType := .data "Box" []
+  resultRoot := .data (mask := []) (by
+    simp [closedBoxObservability]) rfl
+
+/-- Frozen signature fragment for the unary `box` pattern constructor. -/
+def closedBoxSignature : FrozenMatcherSig where
+  observability := closedBoxObservability
+  patternConstructors := [("box", closedBoxProjection)]
+  constructorsByFormer := [("Box", [("box", 1)])]
+
+/-- `box $` rejects a next matcher with capability `none`. -/
+theorem closed_box_hole_rejects_none :
+    clauseEvidence closedBoxSignature
+        (.ctor "box" [.hole]) [.none] =
+      none := by
+  native_decide
+
+/-- `box $` accepts a next matcher with the required List head. -/
+theorem closed_box_hole_accepts_list :
+    clauseEvidence closedBoxSignature
+        (.ctor "box" [.hole]) [.con "List" [.none]] =
+      some (.con "Box" []) := by
+  native_decide
+
+/-- A wildcard child is `unseen` and has no next-matcher obligation. -/
+theorem closed_box_wildcard_is_allowed :
+    clauseEvidence closedBoxSignature
+        (.ctor "box" [.wild]) [] =
+      some (.con "Box" []) := by
+  native_decide
+
+/-- A value-pattern-pattern child is likewise `unseen` and remains allowed. -/
+theorem closed_box_value_pattern_is_allowed :
+    clauseEvidence closedBoxSignature
+        (.ctor "box" [.pval "value"]) [] =
+      some (.con "Box" []) := by
+  native_decide
 
 end ClauseEvidenceExamples
 end TypePM

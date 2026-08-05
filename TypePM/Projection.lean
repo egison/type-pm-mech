@@ -107,6 +107,169 @@ def relevantVarsMasked
 
 end
 
+mutual
+
+/--
+Validate the observable structured heads supplied by one actual clause child.
+
+`unseen` records a wildcard or value-pattern-pattern child and creates no hole
+obligation.  A non-`unseen` child below an observable constructor or product
+must have the same head and arity as the field type along every observable
+path.  Ordinary target variables, ground leaves, functions, matchers, slots,
+and opaque data formers
+remain barriers: validation never manufactures evidence from a target.
+-/
+def validateFieldHead
+    (observable : Observability) : Ty → Evidence → Option Unit
+  | _, .unseen =>
+      some ()
+  | .prod componentTypes, .prod componentEvidence =>
+      validateFieldHeads observable componentTypes componentEvidence
+  | .prod _, _ =>
+      none
+  | .data name arguments, .con evidenceName children =>
+      match observable name with
+      | none =>
+          some ()
+      | some mask =>
+          if name = evidenceName then
+            validateFieldHeadsMasked observable mask arguments children
+          else
+            none
+  | .data name _, _ =>
+      match observable name with
+      | none => some ()
+      | some _ => none
+  | _, _ =>
+      some ()
+
+/-- Validate equal-length parallel field/evidence lists. -/
+def validateFieldHeads
+    (observable : Observability) : List Ty → List Evidence → Option Unit
+  | [], [] =>
+      some ()
+  | fieldType :: fieldTypes, evidence :: restEvidence => do
+      validateFieldHead observable fieldType evidence
+      validateFieldHeads observable fieldTypes restEvidence
+  | _, _ =>
+      none
+
+/-- Validate observable positions under an exact-arity mask. -/
+def validateFieldHeadsMasked
+    (observable : Observability) :
+    List Bool → List Ty → List Evidence → Option Unit
+  | [], [], [] =>
+      some ()
+  | isObservable :: mask, argument :: arguments, child :: children => do
+      if isObservable then
+        validateFieldHead observable argument child
+      else
+        some ()
+      validateFieldHeadsMasked observable mask arguments children
+  | _, _, _ =>
+      none
+
+end
+
+mutual
+
+/-- Field-head validation is invariant under capability-variable renaming. -/
+theorem validateFieldHead_applyRen
+    (r : CapVar → CapVar) (observable : Observability) :
+    ∀ fieldType evidence,
+      validateFieldHead observable fieldType (evidence.applyRen r) =
+        validateFieldHead observable fieldType evidence
+  | _, .unseen =>
+      rfl
+  | fieldType, .known leaf => by
+      cases fieldType <;>
+        simp [validateFieldHead, Shape.Evidence.applyRen]
+  | fieldType, .con evidenceName children => by
+      cases fieldType with
+      | data typeName arguments =>
+          cases observableResult : observable typeName with
+          | none =>
+              simp [validateFieldHead, Shape.Evidence.applyRen,
+                observableResult]
+          | some mask =>
+              by_cases namesEqual : typeName = evidenceName
+              · simp [validateFieldHead, Shape.Evidence.applyRen,
+                  namesEqual,
+                  validateFieldHeadsMasked_applyRen r observable]
+              · simp [validateFieldHead, Shape.Evidence.applyRen,
+                  observableResult, namesEqual]
+      | prod componentTypes =>
+          simp [validateFieldHead, Shape.Evidence.applyRen]
+      | var varId
+      | skolem name
+      | unit
+      | int
+      | bool
+      | fn domain codomain
+      | matcher capability target
+      | slot capability target =>
+          simp [validateFieldHead, Shape.Evidence.applyRen]
+  | fieldType, .prod components => by
+      cases fieldType with
+      | prod componentTypes =>
+          simp [validateFieldHead, Shape.Evidence.applyRen,
+            validateFieldHeads_applyRen r observable]
+      | data name arguments =>
+          cases observableResult : observable name <;>
+            simp [validateFieldHead, Shape.Evidence.applyRen,
+              observableResult]
+      | var varId
+      | skolem name
+      | unit
+      | int
+      | bool
+      | fn domain codomain
+      | matcher capability target
+      | slot capability target =>
+          simp [validateFieldHead, Shape.Evidence.applyRen]
+
+/-- Parallel field-head validation is invariant under renaming. -/
+theorem validateFieldHeads_applyRen
+    (r : CapVar → CapVar) (observable : Observability) :
+    ∀ fieldTypes evidence,
+      validateFieldHeads observable fieldTypes
+          (Shape.Evidence.applyRenList r evidence) =
+        validateFieldHeads observable fieldTypes evidence
+  | [], [] =>
+      rfl
+  | fieldType :: fieldTypes, evidence :: restEvidence => by
+      simp [validateFieldHeads, Shape.Evidence.applyRenList,
+        validateFieldHead_applyRen r observable,
+        validateFieldHeads_applyRen r observable]
+  | [], _ :: _
+  | _ :: _, [] =>
+      rfl
+
+/-- Masked field-head validation is invariant under renaming. -/
+theorem validateFieldHeadsMasked_applyRen
+    (r : CapVar → CapVar) (observable : Observability) :
+    ∀ mask fieldTypes evidence,
+      validateFieldHeadsMasked observable mask fieldTypes
+          (Shape.Evidence.applyRenList r evidence) =
+        validateFieldHeadsMasked observable mask fieldTypes evidence
+  | [], [], [] =>
+      rfl
+  | isObservable :: mask, fieldType :: fieldTypes,
+      evidence :: restEvidence => by
+      cases isObservable <;>
+        simp [validateFieldHeadsMasked, Shape.Evidence.applyRenList,
+          validateFieldHead_applyRen r observable,
+          validateFieldHeadsMasked_applyRen r observable]
+  | [], [], _ :: _
+  | [], _ :: _, []
+  | [], _ :: _, _ :: _
+  | _ :: _, [], []
+  | _ :: _, [], _ :: _
+  | _ :: _, _ :: _, [] =>
+      rfl
+
+end
+
 /-- Look up evidence already assigned to a signature variable. -/
 def lookupAssignment
     (varId : TypePM.TyVar) : Assignments → Option Evidence
@@ -718,6 +881,22 @@ def projectSignature
   projectPaired observable signature.resultType fields
 
 /--
+Project evidence produced by an actual primitive-pattern clause.
+
+Unlike generic capability projection, this path first validates every
+non-`unseen` child against the observable structured head of its field.  The
+distinction is essential: an actual nested hole carries canonical next-matcher
+evidence, whereas a wildcard or value-pattern-pattern carries `unseen` and has
+no next-matcher obligation.
+-/
+def projectClauseSignature
+    {observable : Observability}
+    (signature : ProjectionSignature observable)
+    (childEvidence : List Evidence) : Option Evidence := do
+  validateFieldHeads observable signature.fieldTypes childEvidence
+  projectSignature signature childEvidence
+
+/--
 The certified projection path is invariant when field types and their
 corresponding child evidence are permuted together.
 -/
@@ -810,6 +989,47 @@ theorem projectSignature_eq_some_iff
         simp [projectSignature, projectPaired, hfields, hvars,
           hchunks, hassignments, hresult]
 
+/--
+Proof-relevant derivation for actual primitive-clause projection.
+
+The field-head audit and result-variable projection remain separate premises,
+so validating a closed field cannot accidentally add an assignment.
+-/
+structure ClauseProjectionDerivation
+    (observable : Observability)
+    (fieldTypes : List Ty) (resultType : Ty)
+    (childEvidence : List Evidence) (result : Evidence) : Prop where
+  fieldHeads :
+    validateFieldHeads observable fieldTypes childEvidence = some ()
+  projection :
+    ProjectionDerivation observable fieldTypes resultType childEvidence result
+
+/-- The executable actual-clause path exposes exactly its two stages. -/
+theorem projectClauseSignature_eq_some_iff
+    {observable : Observability}
+    (signature : ProjectionSignature observable)
+    {childEvidence : List Evidence} {result : Evidence} :
+    projectClauseSignature signature childEvidence = some result ↔
+      ClauseProjectionDerivation observable signature.fieldTypes
+        signature.resultType childEvidence result := by
+  constructor
+  · intro hproject
+    cases hvalidation :
+        validateFieldHeads observable signature.fieldTypes childEvidence with
+    | none =>
+        simp [projectClauseSignature, hvalidation] at hproject
+    | some validationWitness =>
+        cases validationWitness
+        have projectionSuccess :
+            projectSignature signature childEvidence = some result := by
+          simpa [projectClauseSignature, hvalidation] using hproject
+        exact ⟨hvalidation,
+          (projectSignature_eq_some_iff signature).mp projectionSuccess⟩
+  · rintro ⟨hvalidation, projection⟩
+    have projectionSuccess :=
+      (projectSignature_eq_some_iff signature).mpr projection
+    simp [projectClauseSignature, hvalidation, projectionSuccess]
+
 /-- Declarative agreement between a result type's root and projected evidence. -/
 inductive ResultEvidenceRoot : Ty → Evidence → Prop where
   | data {name arguments children} :
@@ -899,6 +1119,22 @@ theorem projectSignature_sound
     (projectSignature_eq_some_iff signature).mp hproject
   exact ⟨derivation, derivation.resultRoot⟩
 
+/--
+Actual-clause projection soundness includes the closed field-head audit and
+retains the same result-root guarantee as generic projection.
+-/
+theorem projectClauseSignature_sound
+    {observable : Observability}
+    (signature : ProjectionSignature observable)
+    {childEvidence : List Evidence} {result : Evidence}
+    (hproject : projectClauseSignature signature childEvidence = some result) :
+    ClauseProjectionDerivation observable signature.fieldTypes
+        signature.resultType childEvidence result ∧
+      ResultEvidenceRoot signature.resultType result := by
+  have derivation :=
+    (projectClauseSignature_eq_some_iff signature).mp hproject
+  exact ⟨derivation, derivation.projection.resultRoot⟩
+
 /-- Executable projection has at most one result. -/
 theorem project_deterministic
     {observable : Observability}
@@ -972,6 +1208,20 @@ private def wrapObservability : Observability :=
     if name = "Wrap" then some [true]
     else if name = "List" then some [true]
     else none
+
+/-- A closed list field whose result carries no ordinary parameter. -/
+private def closedFieldObservability : Observability :=
+  fun name =>
+    if name = "Box" then some []
+    else if name = "List" then some [true]
+    else none
+
+private def closedFieldSignature :
+    ProjectionSignature closedFieldObservability where
+  fieldTypes := [.data "List" [.int]]
+  resultType := .data "Box" []
+  resultRoot := ResolvedResultRoot.data (mask := []) (by
+    simp [closedFieldObservability]) rfl
 
 example :
     project swapObservability
@@ -1062,6 +1312,65 @@ example :
       (.con "Wrap"
         [.prod [.known (.var 10), .known .none]]) := by
   rfl
+
+/-- A closed structured field still rejects a next matcher with no head. -/
+example :
+    projectClauseSignature closedFieldSignature [.known .none] = none := by
+  rfl
+
+/-- Generic projection does not reinterpret a child as an actual hole. -/
+example :
+    projectSignature closedFieldSignature [.known .none] =
+      some (.con "Box" []) := by
+  simp [projectSignature, closedFieldSignature, projectPaired,
+    closedFieldObservability, pairFields, relevantVars, relevantVarsMasked,
+    targetVars, targetVarsList, collectFieldAssignments, collectAssignments,
+    canonicalAssignments, buildResultRoot, buildResultSlotsMasked]
+
+/-- Matching evidence validates the field head. -/
+example :
+    validateFieldHead closedFieldObservability
+        (.data "List" [.int])
+        (.con "List" [.known .none]) =
+      some () := by
+  rfl
+
+/-- Observable nested heads are validated rather than inferred from targets. -/
+example :
+    validateFieldHead closedFieldObservability
+        (.data "List" [.data "List" [.int]])
+        (.con "List" [.known .none]) =
+      none := by
+  rfl
+
+/-- Nested evidence succeeds only when it supplies every observable head. -/
+example :
+    validateFieldHead closedFieldObservability
+        (.data "List" [.data "List" [.int]])
+        (.con "List" [.con "List" [.known .none]]) =
+      some () := by
+  rfl
+
+/-- Closed-field validation does not project the field head into `Box`. -/
+example :
+    projectClauseSignature closedFieldSignature
+        [.con "List" [.known .none]] =
+      some (.con "Box" []) := by
+  simp [projectClauseSignature, validateFieldHeads, validateFieldHead,
+    validateFieldHeadsMasked, projectSignature, closedFieldSignature, projectPaired,
+    closedFieldObservability, pairFields, relevantVars, relevantVarsMasked,
+    targetVars, targetVarsList, collectFieldAssignments, collectAssignments,
+    canonicalAssignments, buildResultRoot, buildResultSlotsMasked]
+
+/-- `unseen` carries no next-matcher obligation for a wildcard/value child. -/
+example :
+    projectClauseSignature closedFieldSignature [.unseen] =
+      some (.con "Box" []) := by
+  simp [projectClauseSignature, validateFieldHeads, validateFieldHead,
+    projectSignature, closedFieldSignature, projectPaired,
+    closedFieldObservability, pairFields, relevantVars, relevantVarsMasked,
+    targetVars, targetVarsList, collectFieldAssignments, collectAssignments,
+    canonicalAssignments, buildResultRoot, buildResultSlotsMasked]
 
 end Projection
 end TypePM

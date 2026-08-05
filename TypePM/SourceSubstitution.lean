@@ -1532,7 +1532,7 @@ theorem clauseEvidenceGo_applyRen_of_success
           | some result =>
               rcases result with ⟨children, afterChildren⟩
               cases projection :
-                  Projection.projectSignature constructor children with
+                  Projection.projectClauseSignature constructor children with
               | none =>
                   simp [clauseEvidenceGo, lookup, childrenRun,
                     projection] at success
@@ -1546,8 +1546,8 @@ theorem clauseEvidenceGo_applyRen_of_success
                     clauseEvidenceListGo_applyRen_of_success r signature
                       patterns capabilities children afterChildren childrenRun
                   have renamedProjection :=
-                    Projection.projectSignature_rename_of_success r constructor
-                      projection
+                    Projection.projectClauseSignature_rename_of_success r
+                      constructor projection
                   simp [clauseEvidenceGo, lookup, renamedChildren,
                     renamedProjection]
   | atRoot, .tuple patterns, capabilities, evidence, remaining,

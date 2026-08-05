@@ -2250,6 +2250,41 @@ theorem Projection.projectSignature_rename_of_success
       simpa [Projection.projectSignature, renamedFieldsResult] using
         renamedSuccess
 
+/-- Actual-clause field-head validation and projection preserve renaming. -/
+theorem Projection.projectClauseSignature_rename_of_success
+    (r : CapVar → CapVar)
+    {observable : Shape.Observability}
+    (signature : Projection.ProjectionSignature observable)
+    {childEvidence : List Shape.Evidence} {result : Shape.Evidence}
+    (success : Projection.projectClauseSignature signature childEvidence =
+      some result) :
+    Projection.projectClauseSignature signature
+        (Shape.Evidence.applyRenList r childEvidence) =
+      some (result.applyRen r) := by
+  cases validationResult :
+      Projection.validateFieldHeads observable signature.fieldTypes
+        childEvidence with
+  | none =>
+      simp [Projection.projectClauseSignature, validationResult] at success
+  | some validationWitness =>
+      cases validationWitness
+      have renamedValidation :
+          Projection.validateFieldHeads observable signature.fieldTypes
+              (Shape.Evidence.applyRenList r childEvidence) =
+            some () := by
+        rw [Projection.validateFieldHeads_applyRen]
+        exact validationResult
+      have projectionSuccess :
+          Projection.projectSignature signature childEvidence =
+            some result := by
+        simpa [Projection.projectClauseSignature, validationResult] using
+          success
+      have renamedProjection :=
+        Projection.projectSignature_rename_of_success r signature
+          projectionSuccess
+      simp [Projection.projectClauseSignature, renamedValidation,
+        renamedProjection]
+
 /-- Constructor capability compatibility is preserved by pointwise renaming. -/
 theorem PatternCtorScheme.CapCompatible.applyRen
     {observable : Shape.Observability}

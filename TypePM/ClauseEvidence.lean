@@ -95,7 +95,8 @@ def clauseEvidenceGo
       let constructor ← signature.findPatternConstructor? name
       let (children, remaining) ←
         clauseEvidenceListGo signature patterns capabilities
-      let evidence ← Projection.projectSignature constructor children
+      let evidence ←
+        Projection.projectClauseSignature constructor children
       pure (evidence, remaining)
   | .tuple patterns, capabilities => do
       let (children, remaining) ←

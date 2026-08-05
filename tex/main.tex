@@ -316,8 +316,9 @@ Frozen pattern signature が提供する target instance と，capability projec
 \]
 $\pi_c$ はこの二つの判断へ明示的に渡す同一の fresh
 pattern-constructor signature instance である．$\capcompat$ はその field に
-$\overline\kappa$ の canonical evidence を対応付け，result argument slot へ
-部分 evidence $ev_p$ を投影した上で，
+$\overline\kappa$ の canonical evidence を対応付け，result argument slot へ到達する
+evidence だけを部分 evidence $ev_p$ として投影する（result-variable evidence
+projection）．その上で，
 \[
   \merge(ev_p,\lceil\kappa\rceil_{ev})
     =\mathsf{some}\;\lceil\kappa\rceil_{ev}
@@ -371,14 +372,25 @@ next matcher の slot capability 列から，一 clause 分の partial evidence 
 pattern $\#\$x$ は root evidence を生成せず $\mathsf{unseen}$ を返す一方，
 constructor または tuple の内側にある $\$$ は対応する $\kappa_i$ の canonical
 evidence を供給する．Tuple は component evidence をそのまま product node にし，
-constructor-headed $pp$ は fresh/frozen signature の field type と result argument
-slot に沿って child evidence を投影する．このとき surface constructor 名ではなく
+constructor-headed $pp$ は fresh/frozen signature の field type に対して actual hole
+evidence の observable な structured head／arity を検査してから，result argument
+slot に到達する部分だけを投影する．このとき surface constructor 名ではなく
 signature の result former を evidence の root とする．hole 数，arity，canonical
 former，または同じ result slot へ届く evidence が exact に一致しなければ
 $\mathsf{none}$ を返す．target 型，expected 型，annotation は evidence の seed にしない．
-$\mathsf{unseen}$ は assignment を作らず，opaque／function／unobservable path は
-barrier として内部を観測しない．必要な observable path に既知の異なる head が
-現れた場合は，$\mathsf{unseen}$ へ弱めず失敗する．
+$\mathsf{unseen}$ は field-head obligation も assignment も作らず，
+opaque／function／unobservable path は barrier として内部を観測しない．
+non-$\mathsf{unseen}$ evidence の result variable へ到達しない closed path も
+assignment は作らないが，その observable な constructor／product head の検査は
+省略しない．必要な observable path に既知の異なる head が現れた場合は，
+$\mathsf{unseen}$ へ弱めず失敗する．
+従って $\mathtt{box} : (\ListTy{\mathsf{Int}})\Rightarrow_P\mathsf{Box}$ の closed field は
+result capability へ evidence を投影しないが，$\mathtt{box}\;\$$ の actual next matcher
+capability は list head を持たなければならない．一方，generic な
+$\capcompat$／projection 自体にはこの actual-hole 検査を加えないので，
+$\mathtt{box}\;\_$ や $\mathtt{box}\;\#\$x$ は不要な hole obligation を受けない．
+$\Matcher{\bullet}{\ListTy{\mathsf{Int}}}$ という型それ自体は有効であり，却下されるのは
+その matcher をこの closed list hole の actual producer として使う場合だけである．
 
 $\PPatCaps_{\Sighat}(b,pp,\overline\kappa,\kappa)$ は，$pp$ の hole 列を
 $\overline\kappa$ と左から右へ対応させ，その構造が最終 matcher capability
@@ -982,6 +994,12 @@ $\mathsf{unseen}$ 位置を fresh capability variable で埋めた候補を作�
 全体の prevailing substitution が確定した後に一度だけ zonk する．その時点で全
 clause evidence を再計算し，$\PPatCaps$ の executable checker も最終 capability に
 対して実行する．途中の clause で計算した古い evidence を finalization に再利用しない．
+この再計算では，actual hole evidence に対する closed field-head validation を先に
+行い，成功した field のうち result variable へ到達するものだけから
+result-variable evidence projection により assignment を集める．従って
+closed structured field は result evidence を生成しない一方，その next matcher の
+observable path 上の capability head／arity が field target と一致しなければ inference
+は失敗する．
 これらは target や expected type を evidence の seed にしない．
 
 各 nested pattern はそれ自身の fresh raw index を持ち，solver は親が要求する index と
