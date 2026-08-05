@@ -2024,7 +2024,7 @@ theorem ClauseTy.transportFlows
   intro S targetContext postVariable capFixed targetFixed contextFlow
   exact match typing with
   | @ClauseTy.mk _ prevailing context capability target pp next arms holes
-      ppBindings nextMatchers evidence ppTyping capsTyping decomposition
+      ppBindings nextMatchers evidence orderTyping ppTyping capsTyping decomposition
       nextTyping armsTyping evidenceTyping => by
       have ppMoved := ResolvedPPatTy.transport
         (signature.patternCtorInstCompositionAdm_of_free_fixed
@@ -2037,7 +2037,7 @@ theorem ClauseTy.transportFlows
       have evidenceMoved := clauseEvidence_applyRen_of_success
         postVariable.capRen evidenceTyping
       rw [← postVariable.applyCapList_eq_applyRenList] at evidenceMoved
-      apply ClauseTy.mk ppMoved
+      apply ClauseTy.mk orderTyping ppMoved
       · simpa only [Dual.map_cap_applySubst, Cap.applyList_eq_map] using capsMoved
       · simpa using decomposition
       · simpa only [Dual.map_slot_applySubst] using nextMoved

@@ -17,8 +17,11 @@ commit／push はその都度の明示指示がある場合に限るという規
   抽象 `RuntimeSpec`／`CoreSpecWF`，それらに相対的な旧安全性証明を復活させない．
 - source matcher literal は actual clause evidence，`ShapeCap`，`CatchAllLast`，
   data-arm exhaustiveness，binder 線形性，`CoverageOK` をすべて要求する．
-- scheme の宣言的 instance では capability binder を capability variable へだけ写し，
-  producer capability を consumer demand に合わせて構造化する経路を追加しない．
+- value-flow scheme の宣言的 instance（context lookup と pattern-function lookup）では
+  capability binder を capability variable へだけ写し，producer capability を consumer
+  demand に合わせて構造化する経路を追加しない．constructor／primitive signature の
+  `Inst` は binder-supported な通常の二 sort structural instance であり，この
+  variable-only 条件の対象ではない．
   binder image の相異性と ambient freshness は Algorithm W の強い allocation witness にだけ
   要求する．capability binder の variable-only mapping と構造的な target specialization は
   一つの global pair へ潰さず，binder-local に順序付けて適用する．利用後の輸送も
@@ -35,8 +38,10 @@ commit／push はその都度の明示指示がある場合に限るという規
   戻さない．terminal validator の completeness，full principality，principal-type theorem は
   主張しない．
 - 動的安全性は concrete `HasTy`／`ValueTy`／matching-state judgments 上で述べる．
-  値パターン capture admissibility と局所的な埋込み評価の `StepReady` だけは，
-  それぞれ該当する preservation／progress 定理の明示前提としてよい．
+  primitive-pattern pattern は depth-first・左から右に走査し，一度 hole を通過した後の
+  value-pattern-pattern を禁止する．この順序条件から値パターン capture admissibility を
+  導出し，公開 preservation の前提には戻さない．局所的な埋込み評価の `StepReady` だけは
+  progress 定理の明示前提としてよい．
 
 ## 証明と文書の品質
 
@@ -44,7 +49,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   任意の capability 輸送を許す blanket premise で穴を隠さない．
 - `TypePM.lean` は現行 public surface の全モジュールを import する．変更後は個別 target
   だけでなく必ず `lake build` を通す．
-- `TypePM/RecursiveExamples.lean` の list／multiset direct-self 正例，coverage 不足
-  multiset と producer-strengthening の負例を回帰として維持する．
+- `TypePM/RecursiveExamples.lean` の list／multiset direct-self 正例と coverage 不足
+  multiset 負例，`TypePM/Inference.lean` の producer-strengthening 負例を回帰として維持する．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．

@@ -66,14 +66,25 @@ matcher が field の observable path と同じ capability head／arity を持�
 `Matcher none [Integer]` 自体は有効であり，closed list hole の next matcher として
 使う場合だけ不適合になる．
 
-Scheme の宣言的な利用は二段階である．最初に量化 capability を binder-local な
-capability variable へだけ写し，その結果に量化 target binder だけを support とする
-構造的な target substitution を順に適用する．宣言的 relation 自体は binder の像の
+さらに formal core の primitive-pattern pattern は depth-first・左から右に走査し，
+一度 hole を通過した後に value-pattern-pattern `#$x` が現れる形を禁止する．例えば
+`cons $ #$x` や `($, #$x)` は core では不受理だが，`cons #$x $` は受理する．この順序は
+`PPatCoreOrder`／`PPat.coreOrderCheck` で表し，`clauseEvidence` の成功条件なので公開
+`infer` の terminal reconstruction も fail closed になる．full Egison では利便性のため
+同じ条件を `--pattern-hole-before-primitive-value-pattern-warnings` として警告にしてよい．
+
+Expression context と pattern-function signature の value-flow scheme は，宣言的な
+利用を二段階に分ける．最初に量化 capability を binder-local な capability variable
+へだけ写し，その結果に量化 target binder だけを support とする構造的な target
+substitution を順に適用する．この `ValueFlowInst` relation 自体は binder の像の
 相異性や ambient freshness を要求しない．Algorithm W はこの relation を強化した witness として，
 両 sort の binder へ互いに異なる fresh variable を signature と context の自由変数に
 対して割り当てる．
 別 scheme の局所 binder 名はこの ambient scope に含めない．利用側の consumer
 demand に合わせて value producer の capability を構造化する instance は作れない．
+一方，data constructor，pattern constructor，primitive operation の `Inst` は通常の
+binder-supported な二 sort structural instance であり，この variable-only 条件の
+対象ではない．
 二段階は一つの global paired substitution へ潰さず，capability binder-local な
 variable mapping の後へ target specialization を順に適用する．従って，後段が挿入した
 自由 capability と同じ
@@ -96,7 +107,7 @@ matcher literal を検査する．各 fresh value instance の producer variable
 監査する．matcher inference は coverage／exhaustiveness checker を必ず実行する．
 Pattern constructor の未観測位置は fresh capability で埋め，literal 全体の prevailing
 substitution が確定してから raw hole dual を一度だけ解決する．その後，全 clause の
-evidence と `PPatCapsAt` check を最終 capability に対して再計算する．
+core order，evidence，`PPatCapsAt` check を最終 capability に対して再計算する．
 再計算時の `projectClauseSignature` による closed field-head validation は result type
 variable の有無と独立であり，closed structured field の observable capability-head
 mismatch も fail closed にする．Generic projection と `CapCompatible` の挙動は変えない．
@@ -139,7 +150,10 @@ structured pattern が先行する対応 clause をすべて飛ばして bare-ho
 不正な branch を排除する．
 
 `CoreSafety` は次を個別に取り出せる形でまとめ，`core_safety` が concrete
-judgment 上の証明を与える．
+judgment 上の証明を与える．各 preservation／reachability／search 結論は，対象の
+concrete derivation に付随する `*RuntimeSigAgrees` mirror と，source context に対する
+`RuntimeSigAgrees` を引数に取る．したがって任意の runtime signature を無条件に source
+signature と同一視する主張ではない．
 
 1. pristine な typed environment からの expression evaluation の preservation
 2. matching state 一段の preservation
@@ -149,9 +163,13 @@ judgment 上の証明を与える．
 6. 上の終端性質としての matcher consistency
 
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
-context で型付くことは局所 `CaptureAdm`，一段の dispatch が必要とする局所評価・decode
-結果は `StepReady` として明示する．前者は該当する preservation にだけ，後者は
-progress にだけ必要であり，一般の program termination は仮定しない．
+context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，
+user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導く．したがって
+`OperationalCaptureAdm` のような caller-supplied premise は公開 safety surface にない．
+一段の dispatch が必要とする局所評価・decode 結果だけを `StepReady` として progress に
+明示し，一般の program termination は仮定しない．この local progress は古典的な
+「型付けだけから一段を発見する」定理ではなく，規則ごとの局所的な実行証拠から concrete
+`Step` を組み立てる境界である．
 
 ### Recursive matcher regressions
 
@@ -173,9 +191,9 @@ progress にだけ必要であり，一般の program termination は仮定し�
 - Algorithm W の completeness／full principality
 - alias，mutual recursion，transform，高階 origin を含む一般 producer-flow 解析
 - raw declaration から frozen signature を構築する validator
-- full Egison の warning mode，module/import persistence，標準ライブラリ移行
+- full Egison の warning mode の実装，module/import persistence，標準ライブラリ移行
 - CAS の target-indexed pattern view
-- capture admissibilityそのものの証明，一般の評価停止性
+- 一般の評価停止性
 
 ## モジュール
 
@@ -207,4 +225,5 @@ make
 ```
 
 出力は `tex/type-pm-mech.pdf` である．`sorry`，`admit`，project-defined `axiom` は
-使用しない．
+使用しない．主定理と一般補題は kernel が検査する．一方，具体的な実行回帰の
+`native_decide` は Lean の native compiler を信頼するため，この二層を区別する．

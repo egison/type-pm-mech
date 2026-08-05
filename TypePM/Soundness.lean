@@ -8,8 +8,7 @@ This module is the public composition point between executable inference and
 the concrete dynamic metatheory.  The public Algorithm W entry point performs
 its finite reconstruction audit itself, so successful inference reconstructs
 source typing without a caller-supplied bridge.  `FrozenSigWF` and the local
-value-pattern capture condition independently supply the reusable runtime
-safety package.
+primitive-pattern order invariant supply the reusable runtime safety package.
 -/
 
 namespace TypePM
@@ -34,11 +33,10 @@ theorem infer_safe
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult} {SF : RuntimeSigF}
     (success : infer signature context expression = some result)
-    (signatureWF : FrozenSigWF signature)
-    (captureAdm : OperationalCaptureAdm signature SF) :
+    (signatureWF : FrozenSigWF signature) :
     SafeResult signature context expression result SF where
   typing := infer_success_sound success
-  core := core_safety signatureWF captureAdm
+  core := core_safety signatureWF
 
 end Inference
 end TypePM

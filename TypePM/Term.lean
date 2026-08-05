@@ -21,6 +21,114 @@ inductive PPat where
   | tuple : List PPat → PPat
 deriving Repr
 
+/-! ## Core ordering of primitive-pattern patterns -/
+
+mutual
+
+/--
+Left-to-right, depth-first order for one primitive-pattern pattern.  The
+Boolean indices record whether a pattern hole has already been visited.
+`pval` is available only while that state is still `false`.
+-/
+inductive PPatOrder : Bool → PPat → Bool → Prop where
+  | hole {seen} : PPatOrder seen .hole true
+  | wild {seen} : PPatOrder seen .wild seen
+  | pval {name} : PPatOrder false (.pval name) false
+  | ctor {seen name patterns finished} :
+      PPatsOrder seen patterns finished →
+      PPatOrder seen (.ctor name patterns) finished
+  | tuple {seen patterns finished} :
+      PPatsOrder seen patterns finished →
+      PPatOrder seen (.tuple patterns) finished
+
+/-- List form of `PPatOrder`, threading the hole-seen state in source order. -/
+inductive PPatsOrder : Bool → List PPat → Bool → Prop where
+  | nil {seen} : PPatsOrder seen [] seen
+  | cons {seen pattern middle patterns finished} :
+      PPatOrder seen pattern middle →
+      PPatsOrder middle patterns finished →
+      PPatsOrder seen (pattern :: patterns) finished
+
+end
+
+/-- Formal-core boundary: no `#$x` occurs after a PP hole in DFS order. -/
+def PPatCoreOrder (pattern : PPat) : Prop :=
+  ∃ finished, PPatOrder false pattern finished
+
+mutual
+
+/-- Executable state-threading check corresponding to `PPatOrder`. -/
+def PPat.orderState (seen : Bool) : PPat → Option Bool
+  | .hole => some true
+  | .wild => some seen
+  | .pval _ => if seen then none else some false
+  | .ctor _ patterns => PPat.orderStates seen patterns
+  | .tuple patterns => PPat.orderStates seen patterns
+
+/-- Executable list form of `PPat.orderState`. -/
+def PPat.orderStates (seen : Bool) : List PPat → Option Bool
+  | [] => some seen
+  | pattern :: patterns => do
+      let middle ← pattern.orderState seen
+      PPat.orderStates middle patterns
+
+end
+
+
+/-- Executable formal-core order check used by Algorithm W. -/
+def PPat.coreOrderCheck (pattern : PPat) : Bool :=
+  (pattern.orderState false).isSome
+
+mutual
+
+/-- A successful executable order scan reconstructs its declarative proof. -/
+theorem PPat.orderState_sound
+    {seen finished : Bool} {pattern : PPat}
+    (checked : pattern.orderState seen = some finished) :
+    PPatOrder seen pattern finished := by
+  cases pattern with
+  | hole => simp [PPat.orderState] at checked; subst finished; exact .hole
+  | wild => simp [PPat.orderState] at checked; subst finished; exact .wild
+  | pval name =>
+      cases seen <;> simp [PPat.orderState] at checked
+      subst finished
+      exact .pval
+  | ctor name patterns =>
+      exact .ctor (PPat.orderStates_sound checked)
+  | tuple patterns =>
+      exact .tuple (PPat.orderStates_sound checked)
+
+/-- List form of `PPat.orderState_sound`. -/
+theorem PPat.orderStates_sound
+    {seen finished : Bool} {patterns : List PPat}
+    (checked : PPat.orderStates seen patterns = some finished) :
+    PPatsOrder seen patterns finished := by
+  cases patterns with
+  | nil =>
+      simp [PPat.orderStates] at checked
+      subst finished
+      exact .nil
+  | cons pattern patterns =>
+      simp only [PPat.orderStates] at checked
+      cases middleEq : pattern.orderState seen with
+      | none => simp [middleEq] at checked
+      | some middle =>
+          simp only [middleEq] at checked
+          exact .cons (PPat.orderState_sound middleEq)
+            (PPat.orderStates_sound checked)
+
+end
+
+
+/-- Boolean success is sufficient for the declarative core order boundary. -/
+theorem PPat.coreOrderCheck_sound {pattern : PPat}
+    (checked : pattern.coreOrderCheck = true) : PPatCoreOrder pattern := by
+  unfold PPat.coreOrderCheck at checked
+  cases stateEq : pattern.orderState false with
+  | none => simp [stateEq] at checked
+  | some finished =>
+      exact ⟨finished, PPat.orderState_sound stateEq⟩
+
 /-- Primitive data patterns `dp`. -/
 inductive DPat where
   | var   : String → DPat

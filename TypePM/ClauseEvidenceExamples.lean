@@ -352,5 +352,34 @@ theorem closed_box_value_pattern_is_allowed :
       some (.con "Box" []) := by
   native_decide
 
+/-! ## Core order of holes and primitive value patterns -/
+
+/-- A value-pattern-pattern may precede a later hole in depth-first,
+left-to-right order. -/
+theorem value_before_hole_is_core_ordered :
+    (PPat.ctor "cons" [.pval "head", .hole]).coreOrderCheck = true := by
+  native_decide
+
+/-- The core rejects the convenient surface-language form whose value
+pattern-pattern occurs to the right of an earlier hole. -/
+theorem hole_before_value_is_not_core_ordered :
+    (PPat.ctor "cons" [.hole, .pval "head"]).coreOrderCheck = false := by
+  native_decide
+
+/-- The same restriction traverses tuple nesting, not merely constructor
+children. -/
+theorem nested_hole_before_value_is_not_core_ordered :
+    (PPat.tuple [.wild, .tuple [.hole, .pval "key"]]).coreOrderCheck =
+      false := by
+  native_decide
+
+/-- Clause evidence is the executable gate used by reconstruction, so an
+out-of-order PP cannot acquire certified evidence even if its remaining
+shape and hole capability would otherwise be accepted. -/
+theorem clause_evidence_rejects_hole_before_value :
+    clauseEvidence listSignature
+      (.ctor "cons" [.hole, .pval "head"]) [.con "List" [.none]] = none := by
+  native_decide
+
 end ClauseEvidenceExamples
 end TypePM

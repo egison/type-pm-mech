@@ -872,21 +872,354 @@ inductive CaptureAdms (signature : FrozenSig)
 
 end
 
+/-- Terminal value patterns retain their expression typing and input. -/
+theorem TerminalPatternResolution.pval_parts
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
+    {target : Ty} {expression : Expr}
+    (typing : TerminalPatternResolution signature prevailing context parameters
+      input (.pval expression) capability target output) :
+    output = input ∧
+      HasTy signature (input.toContext ++ context) expression target := by
+  cases typing with
+  | pval fresh separate expressionTyping => exact ⟨rfl, expressionTyping⟩
+
+/-- Inversion of a terminal constructor pattern at its actual indices. -/
+theorem TerminalPatternResolution.ctor_parts
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
+    {target : Ty} {name : String} {patterns : List Pattern}
+    (typing : TerminalPatternResolution signature prevailing context parameters
+      input (.pctor name patterns) capability target output) :
+    ∃ entry duals,
+      signature.findPatternCtor name = some entry ∧
+      TerminalPatternResolutions signature prevailing context parameters input
+        patterns duals output ∧
+      entry.CapCompatible (duals.map Dual.cap) capability ∧
+      entry.Inst (duals.map Dual.target) target := by
+  cases typing with
+  | ctor find children caps inst => exact ⟨_, _, find, children, caps, inst⟩
+
+/-- Inversion of a terminal tuple pattern at its actual indices. -/
+theorem TerminalPatternResolution.tuple_parts
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
+    {target : Ty} {patterns : List Pattern}
+    (typing : TerminalPatternResolution signature prevailing context parameters
+      input (.ptuple patterns) capability target output) :
+    ∃ duals,
+      TerminalPatternResolutions signature prevailing context parameters input
+        patterns duals output ∧
+      capability = .prod (duals.map Dual.cap) ∧
+      target = .prod (duals.map Dual.target) := by
+  cases typing with
+  | tuple children => exact ⟨_, children, rfl, rfl⟩
+
+/-- Empty terminal pattern lists expose their exact endpoint indices. -/
+theorem TerminalPatternResolutions.nil_parts
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx} {duals : List Dual}
+    (typing : TerminalPatternResolutions signature prevailing context parameters
+      input [] duals output) : duals = [] ∧ output = input := by
+  cases typing
+  exact ⟨rfl, rfl⟩
+
+/-- Nonempty terminal pattern lists expose their threaded head and tail. -/
+theorem TerminalPatternResolutions.cons_parts
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx}
+    {pattern : Pattern} {patterns : List Pattern} {duals : List Dual}
+    (typing : TerminalPatternResolutions signature prevailing context parameters
+      input (pattern :: patterns) duals output) :
+    ∃ capability target rest middle,
+      duals = ⟨capability, target⟩ :: rest ∧
+      TerminalPatternResolution signature prevailing context parameters input
+        pattern capability target middle ∧
+      TerminalPatternResolutions signature prevailing context parameters middle
+        patterns rest output := by
+  cases typing with
+  | cons head tail => exact ⟨_, _, _, _, rfl, head, tail⟩
+
+private theorem ppShapeOKList_of_ppm_children
+    {pps : List PPat} {patterns : List Pattern}
+    {results : List (List Pattern × Env)}
+    (lengthPP : pps.length = patterns.length)
+    (lengthResults : (pps.zip patterns).length = results.length)
+    (all : ∀ entry ∈ (pps.zip patterns).zip results,
+      ppShapeOK entry.1.1 entry.1.2 = true) :
+    ppShapeOKList pps patterns = true := by
+  cases pps with
+  | nil =>
+      cases patterns with
+      | cons pattern patterns => simp at lengthPP
+      | nil => rfl
+  | cons pp pps =>
+      cases patterns with
+      | nil => simp at lengthPP
+      | cons pattern patterns =>
+        cases results with
+        | nil => simp [List.zip_cons_cons] at lengthResults
+        | cons result results =>
+          have headShape : ppShapeOK pp pattern = true :=
+            all ((pp, pattern), result) (by simp [List.zip_cons_cons])
+          have tailShapes :
+              ∀ entry ∈ (pps.zip patterns).zip results,
+                ppShapeOK entry.1.1 entry.1.2 = true := by
+            intro entry member
+            exact all entry (by
+              simp [List.zip_cons_cons]
+              exact .inr member)
+          simp only [ppShapeOKList, Bool.and_eq_true]
+          exact ⟨headShape,
+            ppShapeOKList_of_ppm_children (by simpa using lengthPP)
+              (by simpa [List.zip_cons_cons] using lengthResults)
+              tailShapes⟩
+
+private theorem PPM.success_shape_result
+    {SF : RuntimeSigF} {environment : Env} {pp : PPat} {pattern : Pattern}
+    {result : Option (List Pattern × Env)}
+    (matching : PPM SF environment pp pattern result) :
+    match result with
+    | some _ => ppShapeOK pp pattern = true
+    | none => True := by
+  refine PPM.rec
+    (motive_1 := fun _ _ _ _ => True)
+    (motive_2 := fun _ pp pattern result _ =>
+      match result with
+      | some _ => ppShapeOK pp pattern = true
+      | none => True)
+    (motive_3 := fun _ _ _ _ _ _ _ => True)
+    (motive_4 := fun _ _ _ => True)
+    (motive_5 := fun _ _ _ => True)
+    ?evar ?elam ?efix ?eapp ?elit ?etuple ?ector ?eprim ?elet
+    ?esomething ?ematcher ?ematchAll
+    ?phole ?pwild ?ppval ?pctor ?ptuple ?pfail
+    ?msomeWC ?msomeVar ?msomeValEq ?msomeValNeq ?mand ?mor ?mtuple
+    ?mprodSome ?mppfail ?mdpfail ?mmatcher
+    ?sreduce ?spatfunEnter ?smnodeStep ?smnodeVarpat ?smnodeDone
+    ?sdone ?sstep matching
+  case phole => intros; rfl
+  case pwild => intros; rfl
+  case ppval => intros; rfl
+  case pctor =>
+    intro runtimeEnvironment name pps patterns results lengthPP lengthResults
+      all childrenIH
+    simp [ppShapeOK, ppShapeOKList_of_ppm_children lengthPP lengthResults
+      childrenIH]
+  case ptuple =>
+    intro runtimeEnvironment pps patterns results lengthPP lengthResults all
+      childrenIH
+    exact ppShapeOKList_of_ppm_children lengthPP lengthResults childrenIH
+  case pfail => intros; trivial
+  all_goals intros; trivial
+
+/-- Every successful primitive-pattern match has the corresponding shape. -/
+theorem PPM.success_shape
+    {SF : RuntimeSigF} {environment : Env} {pp : PPat} {pattern : Pattern}
+    {captures : List Pattern} {ppEnvironment : Env}
+    (matching : PPM SF environment pp pattern
+      (some (captures, ppEnvironment))) : ppShapeOK pp pattern = true :=
+  matching.success_shape_result
+
 /--
-The local value-pattern boundary for one atom dispatch.  It is queried only at an actual
-successful `PPM` site and is indexed by the concrete resolved clause evidence;
-it does not assert termination or provide a pre-built matching reduction.
+The core PP order makes value-pattern capture admissibility derivable from the
+actual clause and user-pattern typings.  The auxiliary Boolean indices thread
+whether a hole has already occurred; while they remain `false`, user-pattern
+typing cannot have extended the atom's input bindings.
 -/
-def MAtomCaptureAdm
-    (signature : FrozenSig) (SF : RuntimeSigF)
-    (context : Context) (input : MonoCtx)
-    (environment : Env) (pattern : Pattern) : Prop :=
-  ∀ {prevailing : Subst} {pp : PPat} {target : Ty}
-      {holes : List Dual} {ppBindings : MonoCtx}
-      {captures : List Pattern} {ppEnvironment : Env},
-    ResolvedPPatTy signature prevailing pp target holes ppBindings →
-    PPM SF environment pp pattern (some (captures, ppEnvironment)) →
-    CaptureAdm signature context input pp pattern target ppBindings
+theorem captureAdm_of_order_at
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {prevailing : Subst} {pp : PPat} {target : Ty}
+    {holes : List Dual} {ppBindings : MonoCtx}
+    (ppTyping : TerminalPPatResolution signature prevailing pp target holes
+      ppBindings) :
+    ∀ {atRoot : Bool} {holeCapabilities : List Cap}
+      {patternPrevailing : Subst} {context : Context}
+      {parameters : PatternCtx} {rootInput current output : MonoCtx}
+      {pattern : Pattern} {patternCapability : Cap}
+      {seen finished : Bool},
+      PPatOrder seen pp finished →
+      (seen = false → current = rootInput) →
+      PPatCapsAt signature atRoot pp holeCapabilities patternCapability →
+      TerminalPatternResolution signature patternPrevailing context parameters
+        current pattern patternCapability target output →
+      ppShapeOK pp pattern = true →
+      CaptureAdm signature context rootInput pp pattern target ppBindings ∧
+        (finished = false → output = rootInput) := by
+  refine TerminalPPatResolution.rec
+    (motive_1 := fun pp target holes ppBindings _ =>
+      ∀ {atRoot : Bool} {holeCapabilities : List Cap}
+        {patternPrevailing : Subst} {context : Context}
+        {parameters : PatternCtx} {rootInput current output : MonoCtx}
+        {pattern : Pattern} {patternCapability : Cap}
+        {seen finished : Bool},
+        PPatOrder seen pp finished →
+        (seen = false → current = rootInput) →
+        PPatCapsAt signature atRoot pp holeCapabilities patternCapability →
+        TerminalPatternResolution signature patternPrevailing context
+          parameters current pattern patternCapability target output →
+        ppShapeOK pp pattern = true →
+        CaptureAdm signature context rootInput pp pattern target ppBindings ∧
+          (finished = false → output = rootInput))
+    (motive_2 := fun pps targets holes ppBindings _ =>
+      ∀ {holeCapabilities childCapabilities : List Cap}
+        {patternPrevailing : Subst} {context : Context}
+        {parameters : PatternCtx} {rootInput current output : MonoCtx}
+        {patterns : List Pattern} {patternDuals : List Dual}
+        {seen finished : Bool},
+        PPatsOrder seen pps finished →
+        (seen = false → current = rootInput) →
+        PPatCapsList signature pps holeCapabilities childCapabilities →
+        TerminalPatternResolutions signature patternPrevailing context
+          parameters current patterns patternDuals output →
+        patternDuals.map Dual.cap = childCapabilities →
+        patternDuals.map Dual.target = targets →
+        ppShapeOKList pps patterns = true →
+        CaptureAdms signature context rootInput pps patterns targets ppBindings ∧
+          (finished = false → output = rootInput))
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ppTyping
+  · intro rawTarget varId fresh atRoot holeCapabilities patternPrevailing
+      context parameters rootInput current output pattern patternCapability
+      seen finished order beforeHole capTyping patternTyping shape
+    cases order
+    exact ⟨CaptureAdm.hole, fun impossible => by contradiction⟩
+  · intro rawTarget atRoot holeCapabilities patternPrevailing context
+      parameters rootInput current output pattern patternCapability seen
+      finished order beforeHole capTyping patternTyping shape
+    cases order
+    cases pattern <;> simp [ppShapeOK] at shape
+    have outputEquality := patternTyping.wild_output
+    subst output
+    exact ⟨CaptureAdm.wild, fun notSeen => beforeHole notSeen⟩
+  · intro name rawTarget atRoot holeCapabilities patternPrevailing context
+      parameters rootInput current output pattern patternCapability seen
+      finished order beforeHole capTyping patternTyping shape
+    cases order
+    cases pattern <;> simp [ppShapeOK] at shape
+    obtain ⟨outputEquality, expressionTyping⟩ := patternTyping.pval_parts
+    subst output
+    have currentEq := beforeHole rfl
+    subst current
+    constructor
+    · simpa [MonoCtx.applySubst] using
+        (CaptureAdm.pval expressionTyping)
+    · intro _
+      rfl
+  · intro name entry pps targets result holes bindings ppFind ppsTyping
+      ppInstance childrenIH atRoot holeCapabilities patternPrevailing context
+      parameters rootInput current output pattern patternCapability seen
+      finished order beforeHole capTyping patternTyping shape
+    cases order with
+    | ctor childrenOrder =>
+      cases capTyping with
+      | @ctor _ _ capEntry _ _ childCapabilities _ capFind capsList
+          capCompatible =>
+        cases pattern <;> simp [ppShapeOK] at shape
+        rename_i patternName patterns
+        rcases shape with ⟨nameEquality, childrenShape⟩
+        have patternNameEquality : patternName = name := by
+          simpa using nameEquality.symm
+        subst patternName
+        obtain ⟨patternEntry, patternDuals, patternFind, patternsTyping,
+            patternCompatible, patternInstance⟩ := patternTyping.ctor_parts
+        have capEntryEquality : capEntry = entry :=
+          Option.some.inj (capFind.symm.trans ppFind)
+        subst capEntry
+        have patternEntryEquality : patternEntry = entry :=
+          Option.some.inj (patternFind.symm.trans ppFind)
+        subst patternEntry
+        have capsEquality :
+            patternDuals.map Dual.cap = childCapabilities :=
+          signatureWF.patternCapArgsUnique ppFind patternCompatible
+            capCompatible
+        have targetsEquality : patternDuals.map Dual.target = targets :=
+          signatureWF.patternInstArgsUnique ppFind patternInstance ppInstance
+        obtain ⟨childrenAdm, finishedBindings⟩ :=
+          childrenIH childrenOrder beforeHole capsList patternsTyping
+            capsEquality targetsEquality childrenShape
+        exact ⟨CaptureAdm.ctor ppFind childrenAdm ppInstance,
+          finishedBindings⟩
+  · intro pps targets holes bindings ppsTyping childrenIH atRoot
+      holeCapabilities patternPrevailing context parameters rootInput current
+      output pattern patternCapability seen finished order beforeHole capTyping
+      patternTyping shape
+    cases order with
+    | tuple childrenOrder =>
+      cases capTyping with
+      | tuple capsList =>
+        cases pattern <;> simp [ppShapeOK] at shape
+        rename_i patterns
+        obtain ⟨patternDuals, patternsTyping, capEquality, targetEquality⟩ :=
+          patternTyping.tuple_parts
+        have capsEquality : patternDuals.map Dual.cap = _ :=
+          (Cap.prod.inj capEquality).symm
+        have targetsEquality : patternDuals.map Dual.target = targets :=
+          (Ty.prod.inj targetEquality).symm
+        obtain ⟨childrenAdm, finishedBindings⟩ :=
+          childrenIH childrenOrder beforeHole capsList patternsTyping
+            capsEquality targetsEquality shape
+        exact ⟨CaptureAdm.tuple childrenAdm, finishedBindings⟩
+  · intro holeCapabilities childCapabilities patternPrevailing context
+      parameters rootInput current output patterns patternDuals seen finished
+      order beforeHole capsTyping patternsTyping capsEquality targetsEquality
+      shape
+    cases order
+    cases capsTyping
+    cases patterns <;> simp [ppShapeOKList] at shape
+    obtain ⟨rfl, rfl⟩ := patternsTyping.nil_parts
+    exact ⟨CaptureAdms.nil, fun notSeen => beforeHole notSeen⟩
+  · intro pp target headHoles headBindings pps targets tailHoles
+      tailBindings headTyping tailTyping distinct headIH tailIH holeCapabilities
+      childCapabilities
+      patternPrevailing context parameters rootInput current output patterns
+      patternDuals seen finished order beforeHole capsTyping patternsTyping
+      capsEquality targetsEquality shape
+    cases order with
+    | cons headOrder tailOrder =>
+      cases capsTyping with
+      | @cons _ _ headCapHoles tailCapHoles headCapability tailCapabilities
+          headCaps tailCaps =>
+        cases patterns with
+        | nil => simp [ppShapeOKList] at shape
+        | cons pattern patterns =>
+          obtain ⟨patternCap, patternTarget, patternDualsTail, middle, rfl,
+              patternHead, patternTail⟩ := patternsTyping.cons_parts
+          simp only [List.map_cons, List.cons.injEq] at capsEquality
+          simp only [List.map_cons, List.cons.injEq] at targetsEquality
+          obtain ⟨headCapEquality, tailCapsEquality⟩ := capsEquality
+          obtain ⟨headTargetEquality, tailTargetsEquality⟩ :=
+            targetsEquality
+          rw [headCapEquality, headTargetEquality] at patternHead
+          simp only [ppShapeOKList, Bool.and_eq_true] at shape
+          obtain ⟨headAdm, middleBeforeHole⟩ :=
+            headIH headOrder beforeHole headCaps patternHead shape.1
+          obtain ⟨tailAdm, finishedBindings⟩ :=
+            tailIH tailOrder middleBeforeHole tailCaps patternTail
+              tailCapsEquality tailTargetsEquality shape.2
+          exact ⟨CaptureAdms.cons headAdm tailAdm, finishedBindings⟩
+
+/-- Core-ordered successful PPM sites have no external capture premise. -/
+theorem captureAdm_of_coreOrder
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {SF : RuntimeSigF} {environment : Env}
+    {ppPrevailing patternPrevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx}
+    {pp : PPat} {pattern : Pattern} {capability : Cap} {target : Ty}
+    {holes : List Dual} {ppBindings : MonoCtx}
+    {captures : List Pattern} {ppEnvironment : Env}
+    (order : PPatCoreOrder pp)
+    (ppTyping : ResolvedPPatTy signature ppPrevailing pp target holes
+      ppBindings)
+    (capTyping : PPatCapsAt signature true pp (holes.map Dual.cap) capability)
+    (patternTyping : ResolvedPatternTy signature patternPrevailing context
+      parameters input pattern capability target output)
+    (matching : PPM SF environment pp pattern
+      (some (captures, ppEnvironment))) :
+    CaptureAdm signature context input pp pattern target ppBindings := by
+  obtain ⟨finished, ordered⟩ := order
+  have shape := matching.success_shape
+  exact (captureAdm_of_order_at signatureWF ppTyping.terminal ordered
+    (fun _ => rfl) capTyping patternTyping.terminal shape).1
 
 /--
 PPM's value environment is typed when its narrow `#$x` evaluations preserve
@@ -2593,6 +2926,40 @@ theorem matcher_success_primitive_continuations_typed
   | tuple lengthPP lengthResults all =>
       simp [Pattern.isPrimForm] at primitive
 
+/-- Primitive source patterns need no capability alignment to recover the
+narrow capture fact: a successful PPM can only be a hole, wildcard, or value
+pattern at these indices. -/
+theorem captureAdm_of_primitive_success
+    {signature : FrozenSig} {SF : RuntimeSigF} {environment : Env}
+    {ppPrevailing patternPrevailing : Subst} {context : Context}
+    {parameters : PatternCtx} {input output : MonoCtx}
+    {pp : PPat} {pattern : Pattern} {patternCapability : Cap} {target : Ty}
+    {holes : List Dual} {ppBindings : MonoCtx}
+    {captures : List Pattern} {ppEnvironment : Env}
+    (patternTyping : ResolvedPatternTy signature patternPrevailing context
+      parameters input pattern patternCapability target output)
+    (primitive : pattern.isPrimForm = true)
+    (ppTyping : ResolvedPPatTy signature ppPrevailing pp target holes
+      ppBindings)
+    (matching : PPM SF environment pp pattern
+      (some (captures, ppEnvironment))) :
+    CaptureAdm signature context input pp pattern target ppBindings := by
+  cases matching with
+  | hole =>
+      obtain ⟨_, _, bindingsEquality⟩ := ppTyping.hole_inversion
+      subst ppBindings
+      exact .hole
+  | wild =>
+      obtain ⟨_, bindingsEquality⟩ := ppTyping.wild_inversion
+      subst ppBindings
+      exact .wild
+  | pval evaluation =>
+      cases ppTyping.terminal
+      have expressionTyping := patternTyping.pval_inversion.2
+      simpa [MonoCtx.applySubst] using (CaptureAdm.pval expressionTyping)
+  | ctor => simp [Pattern.isPrimForm] at primitive
+  | tuple => simp [Pattern.isPrimForm] at primitive
+
 /-- Full typed-output rule for the successful matcher arm.  Its three
 recursive premises are tied to the concrete PPM/body/next derivations of this
 very `MAtom.matcher` constructor. -/
@@ -2629,10 +2996,8 @@ theorem matom_matcher_success_typed
     (nextEvaluation : Eval SF matcherEnvironment next matcherValue)
     (matcherDecode : decodeTuple captures.length matcherValue = some matchers)
     (ppPreserve :
-      ∀ {clausePrevailing : Subst} {clauseTarget : Ty}
-        {clauseHoles : List Dual} {clauseBindings : MonoCtx},
-        PPM SF environment pp pattern (some (captures, ppEnvironment)) →
-        ResolvedPPatTy signature clausePrevailing pp clauseTarget clauseHoles
+      ∀ {clauseTarget : Ty} {clauseBindings : MonoCtx},
+        CaptureAdm signature context input pp pattern clauseTarget
           clauseBindings →
         MonoEnvTys signature clauseBindings ppEnvironment)
     (bodyPreserve :
@@ -2679,7 +3044,12 @@ theorem matom_matcher_success_typed
   subst typedDP
   subst typedBody
   subst result
-  have ppEnvironmentTyping := ppPreserve ppSuccess ppTyping
+  have ppOrder : PPatCoreOrder pp := by
+    rw [headerPP]
+    exact clauseTyping.coreOrder
+  have ppAdmissible := captureAdm_of_coreOrder signatureWF
+    ppOrder ppTyping ppCaps patternTyping ppSuccess
+  have ppEnvironmentTyping := ppPreserve ppAdmissible
   have dataEnvironmentTyping :=
     pdMatch_typed signatureWF dataPatternTyping valueTyping dataSuccess
   have bodyEnvironmentTyping :
@@ -2770,10 +3140,8 @@ theorem matom_matcher_success_primitive_typed
     (nextEvaluation : Eval SF matcherEnvironment next matcherValue)
     (matcherDecode : decodeTuple captures.length matcherValue = some matchers)
     (ppPreserve :
-      ∀ {clausePrevailing : Subst} {clauseTarget : Ty}
-        {clauseHoles : List Dual} {clauseBindings : MonoCtx},
-        PPM SF environment pp pattern (some (captures, ppEnvironment)) →
-        ResolvedPPatTy signature clausePrevailing pp clauseTarget clauseHoles
+      ∀ {clauseTarget : Ty} {clauseBindings : MonoCtx},
+        CaptureAdm signature context input pp pattern clauseTarget
           clauseBindings →
         MonoEnvTys signature clauseBindings ppEnvironment)
     (bodyPreserve :
@@ -2820,7 +3188,9 @@ theorem matom_matcher_success_primitive_typed
   subst typedDP
   subst typedBody
   subst result
-  have ppEnvironmentTyping := ppPreserve ppSuccess ppTyping
+  have ppAdmissible := captureAdm_of_primitive_success patternTyping
+    primitive ppTyping ppSuccess
+  have ppEnvironmentTyping := ppPreserve ppAdmissible
   have dataEnvironmentTyping :=
     pdMatch_typed signatureWF dataPatternTyping valueTyping dataSuccess
   have bodyEnvironmentTyping :
@@ -2979,20 +3349,6 @@ def MAtomDispatchTrace
   ∀ {matcherEnvironment : Env} {original current : List Clause},
     matcher = .matcherV matcherEnvironment original current →
     DispatchTrace SF environment pattern value original current
-
-/-- The concrete per-use-site boundary for an operational derivation.  It
-supplies only the narrow `#$x` source-typing fact for a concrete typed
-`MAtom`; it contains neither an evaluation result nor a matching successor. -/
-def OperationalCaptureAdm
-    (signature : FrozenSig) (SF : RuntimeSigF) : Prop :=
-  ∀ {environment : Env} {pattern : Pattern} {matcher value : Value}
-      {continuations : List (List Atom)} {substitution : MatchSubst}
-      {context : Context} {parameters : PatternCtx}
-      {input output : MonoCtx},
-    MAtom SF environment pattern matcher value continuations substitution →
-    AtomTy signature context parameters input ⟨pattern, matcher, value⟩
-      output →
-    MAtomCaptureAdm signature SF context input environment pattern
 
 /-! ## Derivation-local runtime-signature agreement -/
 
@@ -3650,8 +4006,7 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
       EnvTyped signature (input.toContext ++ context) environment)
     (typing : AtomTy signature context parameters input
       ⟨pattern, matcher, value⟩ output)
-    (trace : MAtomDispatchTrace SF environment pattern value matcher)
-    (capture : MAtomCaptureAdm signature SF context input environment pattern) :
+    (trace : MAtomDispatchTrace SF environment pattern value matcher) :
     MAtomTypedOutput signature context parameters input output
       continuations new := by
   cases agreement with
@@ -3712,7 +4067,7 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
             environmentPristine valuePristine
             (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment,
               by assumption⟩)
-            environmentTyping recursiveTyping recursiveTrace capture)
+            environmentTyping recursiveTyping recursiveTrace)
   | mdpfail ppAgreement recursiveAgreement =>
       exact matom_matcherDPFail_typed (by assumption) (by assumption) typing
         trace (fun recursiveTyping recursiveTrace =>
@@ -3721,7 +4076,7 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
             environmentPristine valuePristine
             (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment,
               by assumption⟩)
-            environmentTyping recursiveTyping recursiveTrace capture)
+            environmentTyping recursiveTyping recursiveTrace)
   | mmatcher ppAgreement bodyAgreement nextAgreement =>
       cases typing with
       | mk patternTyping matcherTyping valueTyping =>
@@ -3739,9 +4094,9 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
             matcherTyping valueTyping (trace rfl) (by assumption)
             (by assumption) (by assumption) (by assumption) (by assumption)
             (by assumption) (by assumption) (by assumption)
-            (fun _ ppTyping =>
+            (fun admissible =>
               ppmPreserve ppAgreement environmentPristine environmentTyping
-                (capture ppTyping (by assumption)))
+                admissible)
             (fun _ bodyEnvironment bodyTyping =>
               evalPreserve bodyAgreement bodyEnvironmentPristine
                 bodyEnvironment bodyTyping)
@@ -3763,9 +4118,9 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
             patternTyping primitive matcherTyping valueTyping
             (by assumption) (by assumption) (by assumption) (by assumption)
             (by assumption) (by assumption) (by assumption)
-            (fun _ ppTyping =>
+            (fun admissible =>
               ppmPreserve ppAgreement environmentPristine environmentTyping
-                (capture ppTyping (by assumption)))
+                admissible)
             (fun _ bodyEnvironment bodyTyping =>
               evalPreserve bodyAgreement bodyEnvironmentPristine
                 bodyEnvironment bodyTyping)
@@ -4532,7 +4887,6 @@ nested `matchAll` and concrete type preservation. -/
 private theorem EvalRuntimeSigAgrees.preserve_with
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     (generalizedValueFlow :
       ∀ {context : Context} {expression : Expr} {source : Ty}
         (typing : HasTy signature context expression source),
@@ -4581,8 +4935,6 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           ⟨userPattern, runtimeMatcher, runtimeValue⟩ sourceOutput →
         MAtomDispatchTrace SF runtimeEnvironment userPattern runtimeValue
           runtimeMatcher →
-        MAtomCaptureAdm signature SF sourceContext sourceInput
-          runtimeEnvironment userPattern →
         MAtomTypedOutput signature sourceContext sourceParameters sourceInput
           sourceOutput continuations newSubstitution)
     (motive_4 := fun {state} {states} _ _ =>
@@ -4958,7 +5310,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case msomeWC =>
     intro runtimeEnvironment runtimeValue sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace capture
+      runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someWC_typed patternTyping valueTyping
@@ -4967,7 +5319,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case msomeVar =>
     intro runtimeEnvironment name runtimeValue sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace capture
+      runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someVar_typed patternTyping valueTyping
@@ -4977,7 +5329,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment compared value expected evaluation equal
       evaluationAgreement evaluationIH sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace capture
+      runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someValEq_typed patternTyping
@@ -4987,7 +5339,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment compared value expected evaluation unequal
       evaluationAgreement evaluationIH sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace capture
+      runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someValNeq_typed patternTyping
@@ -4996,7 +5348,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mand =>
     intro runtimeEnvironment left right runtimeMatcher runtimeValue sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace capture
+      matcherPristine runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_and_typed patternTyping matcherTyping valueTyping
@@ -5005,7 +5357,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mor =>
     intro runtimeEnvironment left right runtimeMatcher runtimeValue sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace capture
+      matcherPristine runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_or_typed patternTyping matcherTyping valueTyping
@@ -5014,7 +5366,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mtuple =>
     intro ignored runtimeEnvironment patterns matchers values patternLength valueLength
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace capture
+      valuePristine matcherPristine runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_tuple_typed signatureWF patternTyping matcherTyping
@@ -5024,7 +5376,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mprodSome =>
     intro ignored1 ignored2 ignored3 runtimeEnvironment userPattern matchers runtimeValue primitive
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace capture
+      valuePristine matcherPristine runtimeTyping atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_prodSome_typed patternTyping primitive valueTyping
@@ -5035,24 +5387,24 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       pp next arms clauses continuations new dispatch failure recursive
       failureAgreement recursiveAgreement failureIH recursiveIH sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace capture
+      matcherPristine runtimeTyping atomTyping trace
     exact matom_matcherPPFail_typed failure atomTyping trace
       (fun recursiveTyping recursiveTrace =>
         recursiveIH runtimePristine valuePristine
           (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment, dispatch⟩)
-          runtimeTyping recursiveTyping recursiveTrace capture)
+          runtimeTyping recursiveTyping recursiveTrace)
   case mdpfail =>
     intro ignored runtimeEnvironment matcherEnvironment original userPattern runtimeValue
       pp next dp body arms clauses captures ppEnvironment continuations new
       dispatch ppSuccess dataFailure recursive ppAgreement recursiveAgreement
       ppIH recursiveIH sourceContext sourceParameters sourceInput sourceOutput
       runtimePristine valuePristine matcherPristine runtimeTyping atomTyping
-      trace capture
+      trace
     exact matom_matcherDPFail_typed ppSuccess dataFailure atomTyping trace
       (fun recursiveTyping recursiveTrace =>
         recursiveIH runtimePristine valuePristine
           (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment, dispatch⟩)
-          runtimeTyping recursiveTyping recursiveTrace capture)
+          runtimeTyping recursiveTyping recursiveTrace)
   case mmatcher =>
     intro ignored1 ignored2 ignored3 runtimeEnvironment matcherEnvironment original userPattern runtimeValue
       pp next dp body arms clauses captures ppEnvironment dataEnvironment
@@ -5060,7 +5412,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       dataSuccess bodyEvaluation listDecode tupleDecodes nextEvaluation
       matcherDecode ppAgreement bodyAgreement nextAgreement ppIH bodyIH nextIH
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace capture
+      valuePristine matcherPristine runtimeTyping atomTyping trace
     have ppEnvironmentPristine := ppIH.1 runtimePristine
     have dataEnvironmentPristine :=
       pdMatch_pristine valuePristine dataSuccess
@@ -5074,9 +5426,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
         exact (matom_matcher_success_typed signatureWF patternTyping
           matcherTyping valueTyping (trace rfl) dispatch ppSuccess dataSuccess
           bodyEvaluation listDecode tupleDecodes nextEvaluation matcherDecode
-          (fun _ ppTyping =>
-            ppIH.2 rfl runtimePristine runtimeTyping
-              (capture ppTyping ppSuccess))
+          (fun admissible =>
+            ppIH.2 rfl runtimePristine runtimeTyping admissible)
           (fun _ bodyEnvironment bodyTyping =>
             bodyIH.2 bodyEnvironmentPristine bodyEnvironment bodyTyping)
           (fun _ nextEnvironment nextTyping =>
@@ -5088,9 +5439,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           patternTyping primitive matcherTyping valueTyping ppSuccess
           dataSuccess bodyEvaluation listDecode tupleDecodes nextEvaluation
           matcherDecode
-          (fun _ ppTyping =>
-            ppIH.2 rfl runtimePristine runtimeTyping
-              (capture ppTyping ppSuccess))
+          (fun admissible =>
+            ppIH.2 rfl runtimePristine runtimeTyping admissible)
           (fun _ bodyEnvironment bodyTyping =>
             bodyIH.2 bodyEnvironmentPristine bodyEnvironment bodyTyping)
           (fun _ nextEnvironment nextTyping =>
@@ -5121,7 +5471,6 @@ private theorem EvalRuntimeSigAgrees.preserve_with
               exact atomIH combinedPristine valuePristine
                 (.inl matcherPristine) combinedTyping atomTyping
                 (MAtomDispatchTrace.pristine matcherPristine)
-                (captureAdm atomReduction atomTyping)
             exact Step.reduce_preservation
               runtimeAgreement.runtimePatternLinear atomReduction typedOutput
               stateTyping next member
@@ -5199,13 +5548,12 @@ private theorem EvalRuntimeSigAgrees.preserve_with
 theorem EvalRuntimeSigAgrees.pristine
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {environment : Env} {expression : Expr} {value : Value}
     {evaluation : Eval SF environment expression value}
     (agreement : EvalRuntimeSigAgrees signature SF evaluation)
     (environmentPristine : EnvPristine environment) :
     ValuePristine value :=
-  (EvalRuntimeSigAgrees.preserve_with signatureWF captureAdm
+  (EvalRuntimeSigAgrees.preserve_with signatureWF
     (fun typing => typing.generalizedValueFlow
       signatureWF.armExhaustiveBasic)
     (@PatfunPreservationKernel.of_source signature signatureWF SF) agreement).1
@@ -5216,7 +5564,6 @@ target. -/
 theorem EvalRuntimeSigAgrees.preservation
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {environment : Env} {expression : Expr} {value : Value}
     {evaluation : Eval SF environment expression value}
     (agreement : EvalRuntimeSigAgrees signature SF evaluation)
@@ -5225,7 +5572,7 @@ theorem EvalRuntimeSigAgrees.preservation
     (environmentTyping : EnvTyped signature context environment)
     (sourceTyping : HasTy signature context expression target) :
     ValueTy signature value target :=
-  (EvalRuntimeSigAgrees.preserve_with signatureWF captureAdm
+  (EvalRuntimeSigAgrees.preserve_with signatureWF
     (fun typing => typing.generalizedValueFlow
       signatureWF.armExhaustiveBasic)
     (@PatfunPreservationKernel.of_source signature signatureWF SF) agreement).2
@@ -5236,7 +5583,6 @@ the public evaluation theorem. -/
 private theorem MAtomRuntimeSigAgrees.preservation
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {environment : Env} {pattern : Pattern} {matcher value : Value}
     {continuations : List (List Atom)} {new : MatchSubst}
     {reduction : MAtom SF environment pattern matcher value continuations new}
@@ -5249,20 +5595,19 @@ private theorem MAtomRuntimeSigAgrees.preservation
       EnvTyped signature (input.toContext ++ context) environment)
     (typing : AtomTy signature context parameters input
       ⟨pattern, matcher, value⟩ output)
-    (trace : MAtomDispatchTrace SF environment pattern value matcher)
-    (capture : MAtomCaptureAdm signature SF context input environment pattern) :
+    (trace : MAtomDispatchTrace SF environment pattern value matcher) :
     MAtomTypedOutput signature context parameters input output
       continuations new := by
   let evalPristine : EvalPristineKernel signature SF :=
     fun {environment} {expression} {value} {evaluation}
         evaluationAgreement pristine =>
-      EvalRuntimeSigAgrees.pristine signatureWF captureAdm
+      EvalRuntimeSigAgrees.pristine signatureWF
         evaluationAgreement pristine
   let evalPreserve : EvalPreservationKernel signature SF :=
     fun {environment} {expression} {value} {evaluation}
         evaluationAgreement {context} {target} pristine environmentTyping
           sourceTyping =>
-      EvalRuntimeSigAgrees.preservation signatureWF captureAdm
+      EvalRuntimeSigAgrees.preservation signatureWF
         evaluationAgreement pristine environmentTyping sourceTyping
   let ppmPristine : PPMPristineKernel signature SF :=
     fun {environment} {pp} {pattern} {result} {matching}
@@ -5277,14 +5622,13 @@ private theorem MAtomRuntimeSigAgrees.preservation
   intro runtimeSubstitution runtimeSubstitutionTyping
   exact (agreement.preserve_with signatureWF evalPristine evalPreserve
     ppmPristine ppmPreserve environmentPristine valuePristine matcherPristine
-    environmentTyping typing trace capture) runtimeSubstitutionTyping
+    environmentTyping typing trace) runtimeSubstitutionTyping
 
 /-- Every successor of one derivation-locally agreed concrete step remains
 typed at the same matching goal. -/
 theorem StepRuntimeSigAgrees.preservation
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {state : MState} {states : List MState}
     {reduction : Step SF state states}
     (derivationAgreement : StepRuntimeSigAgrees signature SF reduction)
@@ -5335,11 +5679,10 @@ theorem StepRuntimeSigAgrees.preservation
                     MAtomTypedOutput signature sourceContext sourceParameters
                       input output continuations new := by
                 intro input output combinedTyping atomTyping
-                exact atomAgreement.preservation signatureWF captureAdm
+                exact atomAgreement.preservation signatureWF
                   combinedPristine valuePristine (.inl matcherPristine)
                   combinedTyping atomTyping
                   (MAtomDispatchTrace.pristine matcherPristine)
-                  (captureAdm atomReduction atomTyping)
               exact Step.reduce_preservation
                 runtimeAgreement.runtimePatternLinear atomReduction typedOutput
                 stateTyping next member
@@ -5407,7 +5750,6 @@ inductive ReachesRuntimeSigAgrees
 theorem ReachesRuntimeSigAgrees.typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {start finish : MState} {reachable : Reaches SF start finish}
     (pathAgreement : ReachesRuntimeSigAgrees signature SF reachable)
     {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
@@ -5418,7 +5760,7 @@ theorem ReachesRuntimeSigAgrees.typed
   | refl => exact initialTyping
   | step stepAgreement tailAgreement induction =>
       exact induction
-        (stepAgreement.preservation signatureWF captureAdm runtimeAgreement
+        (stepAgreement.preservation signatureWF runtimeAgreement
           initialTyping _ (by assumption))
 
 /-- Every substitution returned by an agreed exhaustive search is typed at
@@ -5426,7 +5768,6 @@ the source binding goal of its initial state. -/
 theorem SearchRuntimeSigAgrees.substitutions_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {state : MState} {substitutions : List MatchSubst}
     {search : Search SF state substitutions}
     (searchAgreement : SearchRuntimeSigAgrees signature SF search)
@@ -5472,7 +5813,7 @@ theorem SearchRuntimeSigAgrees.substitutions_typed
       obtain ⟨successor, paired⟩ :=
         List.exists_fst_mem_zip_of_snd_mem (by assumption) resultListMember
       have successorTyping :=
-        stepAgreement.preservation signatureWF captureAdm runtimeAgreement
+        stepAgreement.preservation signatureWF runtimeAgreement
           initialTyping successor (List.fst_mem_of_mem_zip paired)
       exact childrenIH (successor, resultList) paired runtimeAgreement
         successorTyping substitution substitutionMember
@@ -5510,7 +5851,6 @@ well-typed pristine initial atom has exactly its source binding context. -/
 theorem matcher_consistency
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF)
     {context : Context} {goal : MonoCtx} {environment : Env}
     {pattern : Pattern} {matcher value : Value}
     {substitutions : List MatchSubst}
@@ -5527,7 +5867,7 @@ theorem matcher_consistency
       ⟨pattern, matcher, value⟩ goal) :
     ∀ substitution ∈ substitutions,
       MatchSubstTyped signature goal substitution :=
-  searchAgreement.substitutions_typed signatureWF captureAdm runtimeAgreement
+  searchAgreement.substitutions_typed signatureWF runtimeAgreement
     (atomTyping.initialState_typed environmentPristine matcherPristine
       valuePristine environmentTyping)
 
@@ -5676,32 +6016,31 @@ structure CoreSafety (signature : FrozenSig) (SF : RuntimeSigF) : Prop where
       ∀ substitution ∈ substitutions,
         MatchSubstTyped signature goal substitution
 
-/-- Frozen-signature well-formedness and the concrete per-use capture
-boundary discharge the complete public safety package. -/
+/-- Frozen-signature well-formedness discharges the complete public safety
+package; value-pattern capture admissibility is derived from clause order. -/
 theorem core_safety
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    {SF : RuntimeSigF}
-    (captureAdm : OperationalCaptureAdm signature SF) :
+    {SF : RuntimeSigF} :
     CoreSafety signature SF where
   evalPreservation := fun agreement environmentPristine environmentTyping
       sourceTyping =>
-    agreement.preservation signatureWF captureAdm environmentPristine
+    agreement.preservation signatureWF environmentPristine
       environmentTyping sourceTyping
   stepPreservation := fun agreement runtimeAgreement stateTyping next member =>
-    agreement.preservation signatureWF captureAdm runtimeAgreement stateTyping
+    agreement.preservation signatureWF runtimeAgreement stateTyping
       next member
   localProgress := fun runtimeAgreement ready stateTyping =>
     ready.progress signatureWF runtimeAgreement stateTyping
   reachesTyped := fun pathAgreement runtimeAgreement initialTyping =>
-    pathAgreement.typed signatureWF captureAdm runtimeAgreement initialTyping
+    pathAgreement.typed signatureWF runtimeAgreement initialTyping
   searchSubstitutionsTyped :=
     fun searchAgreement runtimeAgreement initialTyping substitution member =>
-      searchAgreement.substitutions_typed signatureWF captureAdm
+      searchAgreement.substitutions_typed signatureWF
         runtimeAgreement initialTyping substitution member
   matcherConsistency :=
     fun searchAgreement runtimeAgreement environmentPristine matcherPristine
         valuePristine environmentTyping atomTyping substitution member =>
-      matcher_consistency signatureWF captureAdm searchAgreement
+      matcher_consistency signatureWF searchAgreement
         runtimeAgreement environmentPristine matcherPristine valuePristine
         environmentTyping atomTyping substitution member
 

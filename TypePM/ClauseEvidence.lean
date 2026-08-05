@@ -135,11 +135,26 @@ stable theorem for the source checker.
 def clauseEvidence
     (signature : FrozenMatcherSig) (pattern : PPat)
     (holeCapabilities : List Cap) : Option Shape.Evidence :=
-  if holeCapabilities.length = pattern.holeCount then
-    finishClauseEvidence
-      (clauseEvidenceGo signature true pattern holeCapabilities)
+  if pattern.coreOrderCheck then
+    if holeCapabilities.length = pattern.holeCount then
+      finishClauseEvidence
+        (clauseEvidenceGo signature true pattern holeCapabilities)
+    else
+      none
   else
     none
+
+/-- Successful clause evidence certifies the formal core's PP order boundary. -/
+theorem clauseEvidence_coreOrder
+    {signature : FrozenMatcherSig} {pattern : PPat}
+    {holeCapabilities : List Cap} {evidence : Shape.Evidence}
+    (hcheck :
+      clauseEvidence signature pattern holeCapabilities = some evidence) :
+    PPatCoreOrder pattern := by
+  unfold clauseEvidence at hcheck
+  split at hcheck
+  · exact PPat.coreOrderCheck_sound (by assumption)
+  · contradiction
 
 /-- A successful deterministic checker cannot return two evidence trees. -/
 theorem clauseEvidence_deterministic
@@ -159,7 +174,9 @@ theorem clauseEvidence_holeCount
     holeCapabilities.length = pattern.holeCount := by
   unfold clauseEvidence at hcheck
   split at hcheck
-  · assumption
+  · split at hcheck
+    · assumption
+    · contradiction
   · contradiction
 
 /-- Inversion for the all-capabilities-consumed boundary. -/
@@ -191,7 +208,9 @@ theorem clauseEvidence_consumesAll
       some (evidence, []) := by
   unfold clauseEvidence at hcheck
   split at hcheck
-  · exact finishClauseEvidence_eq_some hcheck
+  · split at hcheck
+    · exact finishClauseEvidence_eq_some hcheck
+    · contradiction
   · contradiction
 
 /-- A checker parameterized by a target is non-seeding when targets are inert. -/

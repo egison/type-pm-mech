@@ -76,6 +76,17 @@ theorem ResolvedClausesTy.length
 
 /-! ## Actual-clause evidence -/
 
+/-- Every declaratively typed matcher clause satisfies the core PP order. -/
+theorem ClauseTy.coreOrder
+    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {clause : Clause} {capability : Cap} {target : Ty}
+    {evidence : Shape.Evidence}
+    (typing :
+      ClauseTy signature prevailing context clause capability target evidence) :
+    PPatCoreOrder clause.pp := by
+  cases typing with
+  | mk order _ _ _ _ _ _ => exact order
+
 /-- A typed clause's evidence is the result of the concrete checker. -/
 theorem ClauseTy.checked
     {signature : FrozenSig} {prevailing : Subst} {context : Context}
@@ -95,7 +106,7 @@ theorem ClauseTy.checked
       clauseEvidence signature.toMatcherSig pp (holes.map Dual.cap) =
         some evidence := by
   cases typing with
-  | mk hpp hcaps hdecompose hnext harms hcheck =>
+  | mk _horder hpp hcaps hdecompose hnext harms hcheck =>
       exact
         ⟨_, _, _, _, _, _, rfl, hpp, hcaps, hdecompose, hnext, harms,
           hcheck⟩

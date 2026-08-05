@@ -1625,6 +1625,12 @@ theorem clauseEvidence_applyRen_of_success
       some (evidence.applyRen r) := by
   have lengthEquality := clauseEvidence_holeCount success
   unfold clauseEvidence at success ⊢
+  have orderCheck : pattern.coreOrderCheck = true := by
+    cases checkEq : pattern.coreOrderCheck with
+    | false => simp [checkEq] at success
+    | true => rfl
+  rw [orderCheck] at success ⊢
+  simp only [if_true] at success ⊢
   rw [lengthEquality] at success
   simp only [if_true] at success
   rw [Cap.applyRenList_length, lengthEquality]

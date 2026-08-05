@@ -455,6 +455,7 @@ inductive ClauseDeriv (signature : FrozenSig) :
     Subst -> Context -> Clause -> Cap -> Ty -> Shape.Evidence -> Prop where
   | mk {context capability target pp next arms holes ppBindings nextMatchers
         evidence} :
+      PPatCoreOrder pp ->
       ResolvedPPatDeriv signature prevailing pp target holes ppBindings ->
       PPatCapsAt signature true pp (holes.map Dual.cap) capability ->
       decomposeME next holes.length = some nextMatchers ->
@@ -2404,7 +2405,8 @@ theorem inferExprFuel_reconstructAt
         (ppatResult.holes.map (Dual.applySubst terminal.prevailing)).length =
           some nextMatchers := by
       simpa using decompose
-    exact ClauseDeriv.mk (ResolvedPPatDeriv.ofTerminal ppatDeriv) caps
+    exact ClauseDeriv.mk (clauseEvidence_coreOrder evidenceEq)
+      (ResolvedPPatDeriv.ofTerminal ppatDeriv) caps
       decompose' nextDeriv' armsDeriv' evidenceEq
   case case96 =>
     rename_i fuel' signature' context' selfEnv' ppBindings parent index pattern

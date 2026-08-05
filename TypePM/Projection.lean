@@ -130,6 +130,8 @@ def validateFieldHead
   | .data name arguments, .con evidenceName children =>
       match observable name with
       | none =>
+          -- An unobservable former is an intentional barrier, so child
+          -- evidence cannot impose or reveal a structured-head obligation.
           some ()
       | some mask =>
           if name = evidenceName then

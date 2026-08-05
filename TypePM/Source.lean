@@ -3010,9 +3010,9 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
   /--
   Declarative T-SOME: `something` inhabits `Matcher none τ` for every target.
 
-  The TeX/inference rule generates a fresh target meta-variable; separating
-  that algorithmic choice from this declarative rule makes substitution
-  closure explicit (`somethingScheme = ∀α. Matcher none α`).
+  The inference implementation generates a fresh target meta-variable;
+  separating that algorithmic choice from this declarative rule makes
+  substitution closure explicit (`somethingScheme = ∀α. Matcher none α`).
   -/
   | something {context target} :
       HasTy signature context .something (.matcher .none target)
@@ -3479,6 +3479,7 @@ inductive ClauseTy (signature : FrozenSig) :
   | mk
       {context capability target pp next arms holes ppBindings nextMatchers
        evidence} :
+      PPatCoreOrder pp →
       ResolvedPPatTy signature prevailing pp target holes ppBindings →
       PPatCapsAt signature true pp (holes.map Dual.cap) capability →
       decomposeME next holes.length = some nextMatchers →

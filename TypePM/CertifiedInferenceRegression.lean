@@ -212,5 +212,46 @@ theorem specializedMatcher_typed :
       specializedMatcherExpression specializedMatcherResult.resolvedTarget :=
   Inference.infer_success_sound specializedMatcherResult_success
 
+/-! ## Public enforcement of the hole/value-pattern-pattern order -/
+
+/-- A general tuple clause keeps coverage independent of the malformed
+refinement clause tested below. -/
+def generalTupleClause : Clause :=
+  .mk (.tuple [.hole, .hole]) (.tuple [.something, .something])
+    [.mk .wild (.ctor "nil" [])]
+
+/-- This clause has one PP hole to the left of `#$same`. -/
+def outOfOrderTupleClause : Clause :=
+  .mk (.tuple [.hole, .pval "same"]) .something
+    [.mk .wild (.ctor "nil" [])]
+
+def outOfOrderMatcherExpression : Expr :=
+  .matcher [generalTupleClause, outOfOrderTupleClause, catchAllClause]
+
+/-- The public terminally certified entry point rejects the out-of-order PP,
+not merely the standalone clause-evidence helper. -/
+theorem outOfOrderMatcher_inference_fails :
+    Inference.infer matcherSignature [] outOfOrderMatcherExpression = none := by
+  native_decide
+
+/-- Reversing only the relevant children puts `#$same` before the PP hole. -/
+def inOrderTupleClause : Clause :=
+  .mk (.tuple [.pval "same", .hole]) .something
+    [.mk .wild (.ctor "nil" [])]
+
+def inOrderMatcherExpression : Expr :=
+  .matcher [generalTupleClause, inOrderTupleClause, catchAllClause]
+
+def inOrderMatcherResult : Inference.ExprResult :=
+  (Inference.infer matcherSignature [] inOrderMatcherExpression).get
+    (by native_decide)
+
+/-- The public entry point accepts the reverse order, fixing the boundary as
+an order restriction rather than a blanket rejection of the two forms. -/
+theorem inOrderMatcher_inference_succeeds :
+    Inference.infer matcherSignature [] inOrderMatcherExpression =
+      some inOrderMatcherResult := by
+  exact option_eq_some_get_of_isSome _ (by native_decide)
+
 end CertifiedInferenceRegression
 end TypePM
