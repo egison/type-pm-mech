@@ -417,6 +417,10 @@ inductive TraceEvent where
       TypePM.TyVar -> TraceEvent
   | patternValueFresh : Context -> PatternCtx -> MonoCtx -> CapVar -> Ty ->
       TraceEvent
+  /-- Raw constructor-child and result capabilities at the local solving cut.
+  The pattern branch checks their locally zonked forms immediately; the
+  terminal validator reapplies the final prevailing substitution to these raw
+  operands before checking `CapCompatible` again. -/
   | patternCtorCompatibility : Nat -> String -> List Cap -> Cap -> TraceEvent
   | inferredPPat : PPat -> Ty -> List Dual -> MonoCtx -> SyntaxPath -> TraceEvent
   | inferredDPat : DPat -> Ty -> MonoCtx -> SyntaxPath -> TraceEvent
@@ -2684,6 +2688,9 @@ def inferPatternFuel :
                           childCaps state with
                       | none => none
                       | some (capability, state) =>
+                          -- Keep raw operands in the trace for provenance, but
+                          -- make this acceptance decision at the local zonked
+                          -- cut produced by the consumer-side solver.
                           let resolvedChildren := childCaps.map fun child =>
                             child.apply state.prevailing.cap
                           let resolvedCapability :=

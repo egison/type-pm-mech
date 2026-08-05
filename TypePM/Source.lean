@@ -3472,7 +3472,10 @@ inductive ArmsTy (signature : FrozenSig) :
       ArmsTy signature context target ppBindings result arms →
       ArmsTy signature context target ppBindings result (arm :: arms)
 
-/-- CLAUSE-TY, indexed by its shared substitution and concrete evidence. -/
+/-- CLAUSE-TY, indexed by its shared substitution and concrete evidence.
+The order premise is intentionally explicit even though the final
+`clauseEvidence` equality implies it: this belt-and-braces presentation keeps
+the declarative boundary visible and matches the displayed paper rule. -/
 inductive ClauseTy (signature : FrozenSig) :
     Subst → Context → Clause → Cap → Ty → Shape.Evidence → Prop where
   | mk

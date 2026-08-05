@@ -69,8 +69,10 @@ matcher が field の observable path と同じ capability head／arity を持�
 さらに formal core の primitive-pattern pattern は depth-first・左から右に走査し，
 一度 hole を通過した後に value-pattern-pattern `#$x` が現れる形を禁止する．例えば
 `cons $ #$x` や `($, #$x)` は core では不受理だが，`cons #$x $` は受理する．この順序は
-`PPatCoreOrder`／`PPat.coreOrderCheck` で表し，`clauseEvidence` の成功条件なので公開
-`infer` の terminal reconstruction も fail closed になる．full Egison では利便性のため
+`PPatCoreOrder`／`PPat.coreOrderCheck` で表し，`clauseEvidence` の成功条件とする．
+`inferRaw` は matcher literal の finalization でこれを検査して不正順序を棄却し，公開
+`infer` の terminal validator も最終 substitution の下で clause evidence を再計算する．
+従って raw finalization と terminal cut の二箇所が fail closed になる．full Egison では利便性のため
 同じ条件を `--pattern-hole-before-primitive-value-pattern-warnings` として警告にしてよい．
 
 Expression context と pattern-function signature の value-flow scheme は，宣言的な
@@ -124,6 +126,12 @@ demand から構造化する seed ではない．protected producer variable は
 再構成では生成時の raw provenance と，substitution 適用後の実際の index で構造を追う
 terminal derivation を分ける．nested child の raw index と親の raw field index が
 構文的に同一であることは仮定しない．
+
+[`TypePM/PatternCtorCapabilityRegression.lean`](TypePM/PatternCtorCapabilityRegression.lean)
+は，独立な二つの child consumer に対して旧 exact projection が失敗すること，fallback
+後にはそれらが同じ fresh `kappa` と `List kappa` に zonk され，exact compatibility が
+成功することを直接固定する．同じ回帰は protected-producer ledger が不変であり，全 solver
+delta が protected producer を固定することも検査する．
 
 公開 entry point `infer` は，停止する二 sort W 走査 `inferRaw` の結果に
 有限な terminal validator を適用する．validator は成功 trace の supply に基づく
@@ -189,8 +197,23 @@ user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導
 [`TypePM/DynamicSafetyRegression.lean`](TypePM/DynamicSafetyRegression.lean) は，
 `SF = []` の concrete frozen signature と実際の `matchAll` 実行について，
 `FrozenSigWF`，global runtime agreement，評価・primitive-pattern matching・atom reduction・
-step・search・reachability を同時に構成し，`CoreSafety` の評価保存結論を実際に適用する
-end-to-end 回帰である．これにより動的パッケージ全体が一つの実プログラム上で発火することも検査する．
+step・search・reachability と各 mirror を同時に構成し，`CoreSafety.evalPreservation` を
+実際に適用する end-to-end 回帰である．公開 W の結果と保存後の runtime value はともに
+`List Int` へ固定する．
+
+[`TypePM/DynamicCaptureRegression.lean`](TypePM/DynamicCaptureRegression.lean) は，合法な
+`#$captured` clause について `PPM.pval`，`MAtom.matcher`，`Step`，`Search`，`Reaches`
+を具体的に接続する．`AtomTy.mk` から構成した初期 state へ
+`CoreSafety.stepPreservation` を適用するため，`captureAdm_of_coreOrder` の value-pattern
+分岐が実際の matcher reduction で消費される．結果型は `List Int` に固定する．
+
+[`TypePM/PatternFunctionSafetyRegression.lean`](TypePM/PatternFunctionSafetyRegression.lean)
+は，closed nullary pattern function `unit := ptuple []` を source と runtime の非空
+signature に置き，`∀ context, RuntimeSigAgrees` からこの実行に必要な各 mirror を構成する．
+非空な `RuntimeSigAgrees.sourceLookup` も step preservation と local progress で実際に消費する．実行は
+`papp` から `mnode` へ入り，inner atom reduction と completed-node removal を経て terminal
+state に到達する．この一例で `CoreSafety` の六フィールドをすべて具体的に適用し，search
+と matcher consistency には実際の `[] ∈ [[]]` を渡す．公開 W の結果も `List Int` に固定する．
 
 ### Recursive matcher regressions
 
@@ -204,7 +227,8 @@ end-to-end 回帰である．これにより動的パッケージ全体が一つ
 - generic `listSignature` と `fix` で構成した `listMatcher` を slot に適用し，
   `matchAll` の `cons $x $rest` が束縛した `x` と `rest` の両方を body で使う旗艦例が
   公開 `infer` を通過する．結果型を concrete literal に固定し，成功等式から
-  `infer_success_sound` により `HasTy` を再構成する
+  `infer_success_sound` により `HasTy` を再構成する．これは静的 inference 回帰であり，
+  再帰 matcher の動的実行は主張しない
 - 量化 binder と target specialization 内の自由 capability が同じ番号でも，ordered
   binder-local instance と let generalization が成功
 
@@ -234,7 +258,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `DynamicSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening の control twin，動的安全性の end-to-end 適用 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening の control twin，PAT-CON fallback の直接境界，空／非空 runtime signature と capture 経路を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．
 

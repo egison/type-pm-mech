@@ -312,10 +312,17 @@ theorem inference_success :
     Inference.infer signature [] program = some inferenceResult := by
   exact option_eq_some_get_of_isSome _ (by native_decide)
 
+/-- Pin the concrete result independently of the derivation reconstructed from
+public inference, so a future change in W cannot silently widen this fixture. -/
+theorem inferenceResult_target :
+    inferenceResult.resolvedTarget = Ty.listT .int := by
+  native_decide
+
 theorem program_typed :
-    HasTy signature [] program inferenceResult.resolvedTarget := by
-  simpa [Inference.ResolvedContext, Context.applySubst] using
-    Inference.infer_success_sound inference_success
+    HasTy signature [] program (Ty.listT .int) := by
+  have typing := Inference.infer_success_sound inference_success
+  rw [inferenceResult_target] at typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
 
 theorem evaluation_mirror :
     EvalRuntimeSigAgrees signature runtimeSignature program_evaluation :=
@@ -355,7 +362,7 @@ private theorem empty_environment_typed : EnvTyped signature [] [] := by
 /-- The general `CoreSafety` package fires on the concrete evaluation and
 returns a kernel-checked typing derivation for its actual runtime value. -/
 theorem program_value_typed :
-    ValueTy signature programValue inferenceResult.resolvedTarget :=
+    ValueTy signature programValue (Ty.listT .int) :=
   safetyPackage.evalPreservation evaluation_mirror EnvPristine.nil
     empty_environment_typed program_typed
 
@@ -389,7 +396,7 @@ structure EndToEndWitness : Prop where
       program_reaches_terminal
   core : CoreSafety signature runtimeSignature
   resultTyped :
-    ValueTy signature programValue inferenceResult.resolvedTarget
+    ValueTy signature programValue (Ty.listT .int)
 
 theorem end_to_end : EndToEndWitness where
   signatureWF := signature_wf

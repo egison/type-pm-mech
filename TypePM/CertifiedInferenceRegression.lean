@@ -228,6 +228,14 @@ def outOfOrderTupleClause : Clause :=
 def outOfOrderMatcherExpression : Expr :=
   .matcher [generalTupleClause, outOfOrderTupleClause, catchAllClause]
 
+/-- Raw W already rejects the malformed clause when matcher finalization asks
+for actual clause evidence; the terminal validator is a second fail-closed
+boundary, not the first order check. -/
+theorem outOfOrderMatcher_raw_inference_fails :
+    Inference.inferRaw matcherSignature [] outOfOrderMatcherExpression =
+      none := by
+  native_decide
+
 /-- The public terminally certified entry point rejects the out-of-order PP,
 not merely the standalone clause-evidence helper. -/
 theorem outOfOrderMatcher_inference_fails :
@@ -241,6 +249,17 @@ def inOrderTupleClause : Clause :=
 
 def inOrderMatcherExpression : Expr :=
   .matcher [generalTupleClause, inOrderTupleClause, catchAllClause]
+
+def inOrderRawMatcherResult : Inference.ExprResult :=
+  (Inference.inferRaw matcherSignature [] inOrderMatcherExpression).get
+    (by native_decide)
+
+/-- Reversing the two relevant children succeeds before terminal
+certification as well as at the public entry point. -/
+theorem inOrderMatcher_raw_inference_succeeds :
+    Inference.inferRaw matcherSignature [] inOrderMatcherExpression =
+      some inOrderRawMatcherResult := by
+  exact option_eq_some_get_of_isSome _ (by native_decide)
 
 def inOrderMatcherResult : Inference.ExprResult :=
   (Inference.infer matcherSignature [] inOrderMatcherExpression).get

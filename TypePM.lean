@@ -36,10 +36,13 @@ import TypePM.BridgeChecks
 import TypePM.CertifiedInference
 import TypePM.CertifiedInferenceRegression
 import TypePM.DynamicSafetyRegression
+import TypePM.DynamicCaptureRegression
+import TypePM.PatternFunctionSafetyRegression
 import TypePM.ProducerStrengtheningRegression
 import TypePM.InferenceRegression
 import TypePM.Soundness
 import TypePM.RecursiveExamples
+import TypePM.PatternCtorCapabilityRegression
 
 /-!
 # Egison core with two-index matcher types

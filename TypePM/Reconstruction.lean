@@ -450,7 +450,11 @@ inductive ArmsDeriv (signature : FrozenSig) :
       ArmsDeriv signature context target ppBindings result arms ->
       ArmsDeriv signature context target ppBindings result (arm :: arms)
 
-/-- Reconstructed actual clause under its shared prevailing substitution. -/
+/-- Reconstructed actual clause under its shared prevailing substitution.
+The explicit `PPatCoreOrder` premise is intentionally belt-and-braces:
+successful `clauseEvidence` below already implies it, but retaining the premise
+makes the declarative rule display the core boundary directly and keeps it
+aligned with the paper rule. -/
 inductive ClauseDeriv (signature : FrozenSig) :
     Subst -> Context -> Clause -> Cap -> Ty -> Shape.Evidence -> Prop where
   | mk {context capability target pp next arms holes ppBindings nextMatchers
@@ -966,7 +970,10 @@ theorem tracePatternLeafCheck_value
       capSignature (frozenSig_fcv_mem_capVars freeMembership),
       capContext, capParameters, capBindings⟩, separate⟩
 
-/-- Executable terminal audit for every user-constructor capability event. -/
+/-- Executable terminal audit for every user-constructor capability event.
+Events retain raw operands even though W checked locally zonked operands at
+the inference site.  This final cut reapplies the complete prevailing
+substitution and therefore covers every later constraint in the trace. -/
 def tracePatternCtorCheck
     (signature : FrozenSig) (state : InferState) : Bool :=
   state.trace.events.all fun event =>
