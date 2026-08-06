@@ -1226,6 +1226,14 @@ pattern を含まない $\lambda$／$\mathtt{let}$／$\mathtt{fix}$ 断片につ
 capability binder は空であり，capability substitution は埋め込まれた型に自明に作用し，
 $\mathtt{let}$ の一般化は二 sort generalizer と可換である．逆方向（conservativity）と
 algorithmic acceptance は主張しない．
+
+principality はそのままの形では成り立たない．閉じた式
+$(\mathtt{something},\mathtt{something})$ は T-TUPLE により matcher の product 型へ，
+COERCE-TUPLE-MATCHER により product matcher 型へ型付くが，tuple 式の導出可能型の頭構成子は
+$\mathsf{prod}$／$\mathsf{matcher}$／$\mathsf{slot}$ に限られ，paired substitution は
+これらの頭を保存する．従って両方の型付けを instance に持つ導出可能型は存在しない．この
+反例は機械化済みであり，原因は coercion の重なりそのものであって capability evidence とは
+独立である．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

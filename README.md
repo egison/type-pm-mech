@@ -215,6 +215,16 @@ operation ごと（`append`，`splits`）に一度証明する．関数値 field
 （conservativity）と algorithmic acceptance（公開 `infer` が DM program を全受理すること）は
 主張しない．
 
+[`TypePM/PrincipalityCounterexample.lean`](TypePM/PrincipalityCounterexample.lean) は，
+宣言体系のprincipalityが**そのままの形では偽**であることを機械化された反例で確定する．
+閉じた式 `(something, something)` は T-TUPLE でmatcherのproduct型に，
+COERCE-TUPLE-MATCHER でproduct matcher型に型付き，両者の頭構成子（`prod` と `matcher`）は
+異なる．tuple式の導出可能型の頭は `prod`/`matcher`/`slot` に限られ（`tuple_ty_head`），
+paired substitutionは頭を保存するため，両方をinstanceに持つ導出可能型は存在しない
+（`no_principal_type`）．失敗の原因はcoercionの重なりそのもの（使えるproduct matcherの代価）で
+あり，capability evidenceとは独立である．制限されたprincipality文はこの重なりを除外する必要が
+ある．coercionを持たない DamasMilner 断片は影響を受けない．
+
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
 context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，
 user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導く．したがって

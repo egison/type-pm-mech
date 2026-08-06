@@ -16,6 +16,7 @@ import TypePM.DirectSelf
 import TypePM.Unification
 import TypePM.Source
 import TypePM.DamasMilner
+import TypePM.PrincipalityCounterexample
 import TypePM.SourceSubstitution
 import TypePM.SourceMetatheory
 import TypePM.Semantics
