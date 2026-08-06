@@ -35,13 +35,26 @@ commit／push はその都度の明示指示がある場合に限るという規
   `infer_success_sound` が concrete `HasTy` を与える状態を維持する．`InferenceInputWF` は
   意図する入力境界を記述するが，fail-closed な validator の soundness 前提には戻さない．
   `WBridgeWF` は validator が内部で構成する証明書であり，呼び出し側の追加前提に
-  戻さない．terminal validator の completeness，full principality，principal-type theorem は
-  主張しない．
+  戻さない．terminal validator の completeness は主張しない．principality は
+  そのままの形では `PrincipalityCounterexample` の機械化反例
+  （`no_principal_type`）により**反証済み**であり，principal-type theorem を
+  無証明で復活させない．制限版（coercion-free／per-sort／evidence 法）は open として
+  扱う．
+- pattern を含まない `λ`/`let`/`fix` 断片の Damas–Milner 一致は，宣言側の埋め込み
+  `DM.HasTy.emb`（`DamasMilner.lean`，閉じた signature 上）だけが証明済みである．
+  逆方向（conservativity）と algorithmic acceptance（公開 `infer` が DM program を
+  全受理すること）は非主張のまま維持する．
 - 動的安全性は concrete `HasTy`／`ValueTy`／matching-state judgments 上で述べる．
   primitive-pattern pattern は depth-first・左から右に走査し，一度 hole を通過した後の
   value-pattern-pattern を禁止する．この順序条件から値パターン capture admissibility を
   導出し，公開 preservation の前提には戻さない．局所的な埋込み評価の `StepReady` だけは
   progress 定理の明示前提としてよい．
+- 動的定理の唯一の global 条件 `FrozenSigWF` は仮定に戻さず，実行可能 checker
+  `frozenSigWFCheck`＋`frozenSigWFCheck_sound`（`SignatureChecker.lean`）で確立する．
+  checker は保守的・fail closed を維持する（pattern constructor は単一パラメータ
+  collection family に限定，primitive は canonical scheme 一致，唯一の定義的入力は
+  `armExhaustive = basicArmExhaustive`）．具体 signature の `signature_wf` は
+  `by decide` で discharge し，`native_decide` を新たに導入しない．
 
 ## 証明と文書の品質
 
@@ -69,5 +82,10 @@ commit／push はその都度の明示指示がある場合に限るという規
     順に発火させる例．
   - `TypePM/PatternFunctionSafetyRegression.lean`: 非空 runtime signature で `papp` から
     pattern-function node `.mnode` を実行し，`CoreSafety` の六フィールドをすべて消費する例．
+  - `TypePM/RecursiveExamples.lean` の `listSignature_wf`／`multisetSignature_wf`:
+    非空 pattern-constructor 表に対する非空虚な `FrozenSigWF` instance（checker 経由）．
+  - `TypePM/DamasMilner.lean`: DM 断片の宣言的埋め込みと多相 `let` 証人．
+  - `TypePM/PrincipalityCounterexample.lean`: `(something, something)` の二重型付けと
+    `no_principal_type`．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．
