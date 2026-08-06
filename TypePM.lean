@@ -43,6 +43,7 @@ import TypePM.CoherentSurface
 import TypePM.BridgeChecks
 import TypePM.CertifiedInference
 import TypePM.CoreTyping
+import TypePM.CoherentTyping
 import TypePM.CertifiedInferenceRegression
 import TypePM.ApplicationCoercionRegression
 import TypePM.DynamicSafetyRegression

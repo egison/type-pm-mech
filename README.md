@@ -2,21 +2,55 @@
 
 ## 最上位目標
 
-本リポジトリの完成目標は，次を正確に主張できる機械化を与えることである．
+本リポジトリの完成目標は，Egison core の**注釈不要性**（annotation-freeness）を
+機械化することである．
+
+> Well-typed programs need no type annotations: if a closed Egison core program
+> has any declarative typing, executable inference accepts it.
+
+形式的には，公開 executable `infer` に対する受理完全性
+
+```text
+∀ signature e τ,  HasTy signature [] e τ  →  (infer signature [] e).isSome
+```
+
+である．core の構文（[`TypePM/Term.lean`](TypePM/Term.lean)）には型注釈の形が
+そもそも存在しないので，この定理が「ユーザーは型注釈を書く必要がない」の正確な形である．
+この命題は [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
+`Coherent.AnnotationFree` として**言明のみ**を固定してあり，未証明の目標である
+（定理としても公理としても主張しない）．principality と異なり，この目標は
+`(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
+代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
+利用位置での明示的 coercion 挿入が引き受ける．
+
+達成済みの主柱は逆方向の soundness である．
 
 > The soundness of executable type inference for the Egison core is mechanized in Lean 4.
 
-具体的には，executable `infer` が成功したならば，その結果に対応する宣言的な
-`HasTy` 導出が必ず得られることを証明する．
 公開 `infer` は raw な停止 W 走査 `inferRaw` と有限な terminal validator を合成し，
-`infer_success_sound` は成功等式だけから `HasTy` を返す．これは意図する
-`InferenceInputWF` 入力に限定した主張より強い．
-`WBridgeWF` は validator が内部で構成する証明書であり，呼び出し側の仮定ではない．
-plain surface principality は機械化済み反例により偽である．現在はその境界を保ったまま，
-推論器が principal core typing を生成し，surface typing を core type の置換と明示的
-coercion に分解する定理を次の目標としている．現時点では core evidence を伴う
-soundness，raw provenance を保つ再帰的 core head factorization，および外側 coercion plan の
-論理的な normalization completeness までを証明している．core の一意性／surface completeness と
+`infer_success_sound` は成功等式だけから宣言的 `HasTy` を返す．これは意図する
+`InferenceInputWF` 入力に限定した主張より強く，`WBridgeWF` は validator が内部で
+構成する証明書であって呼び出し側の仮定ではない．
+
+目標への段階は次のとおり．
+
+1. **済**: 相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか 10 family，
+   [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean)）と reconstruction
+   certificate `ExprDeriv` の相互変換，surface への忘却 `CoherentExpr.toHasTy`，
+   および `infer` 成功から coherent typing を得る `infer_success_coherent`．
+   product lift の構成子は将来の可視性 fragment を言明するための raw-source
+   provenance 添字を持つ．
+2. MGU 普遍性（unifier factorization）と inference 状態不変量を機械化し，pattern を
+   含まない Damas–Milner 断片の全受理（algorithmic acceptance）を証明する．
+3. coherent かつ product lift の raw head が可視で capability freeze に適合する
+   fragment に対する受理完全性を証明する．制限された principality
+   （置換 + 一意な coercion-plan kinds への因子化）はこの段の系として狙う．
+4. solve-cut event により selector の raw-head 死角を除去し，fragment 条件を
+   取り外して `AnnotationFree` 本体へ到達する．
+
+plain surface principality は機械化済み反例により偽である．現時点では core evidence を
+伴う soundness，raw provenance を保つ再帰的 core head factorization，外側 coercion plan の
+論理的な normalization completeness，および段階 1 までを証明している．core の一意性と
 Egison コンパイラ全体の検証はまだ主張しない．
 
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．形式仕様は
@@ -273,10 +307,15 @@ forgetful map は証明済みである．`PatternResolutionDeriv(s)` 自体も�
 thread を保持する形へ強化し，W の pattern reconstruction motive がこれを直接生成する．その `pval` は
 再帰的な `ExprDeriv` を要求し，arm と clause も既存の reconstruction family に閉じているため，公開
 inference が返す `CoreTyping` は全構文部分で surface typing oracle へ戻らない．この core evidence から
-`ThreadedPatternResolution(s)` への bridge では `ExprDeriv` を `HasTy` へ忘却する．従って独立した
-surface 側の judgment はなお pattern-local であり，任意の coherent surface typing に対する completeness
-には expression，arm，clause を含む別の相互帰納的 domain が必要である．現時点ではこの進展を
-principality として主張しない．
+`ThreadedPatternResolution(s)` への bridge では `ExprDeriv` を `HasTy` へ忘却する．
+[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) はこの残りを埋める：expression，arm，
+clause まで含む 10 family の相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか）を
+独立に定式化し，`Reconstruction` certificate との相互変換（`toExprDeriv`／`ofExprDeriv`），surface への
+忘却 `CoherentExpr.toHasTy`，推論成功から coherent typing を得る `infer_success_coherent`，standalone
+threaded 境界への忘却 `toThreadedSurface` を証明する．pattern 層は threaded-only で，product lift
+構成子は raw-source provenance 添字を持つ（恒等 witness が常に取れるため判断を制限しない）．
+最上位目標の注釈不要性 `Coherent.AnnotationFree` は言明のみを固定した未証明の目標である．
+現時点ではこの進展を algorithmic completeness や principality として主張しない．
 
 ### Runtime safety
 
@@ -460,7 +499,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，pattern-local coherent surface 境界 |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，pattern-local coherent surface 境界，mutual coherent surface typing と注釈不要性目標 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
 | 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |

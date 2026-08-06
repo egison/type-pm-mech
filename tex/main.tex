@@ -1371,9 +1371,15 @@ $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な co
 全 child で共有し，raw binding context だけを左から右へ threadする強い judgment と忘却写像を与える．
 reconstruction judgment 自体も同じ raw indices を保持する形へ強化し，W の reconstruction motive が
 この evidence を直接生成する．value-pattern 内の式 typing は reconstruction 側では再帰的 core evidence
-であり，surface judgment への bridge でのみ通常の typing へ忘却する．従って inference-generated core の
-再帰的 coherence は得られたが，任意の coherent surface typing を定式化するには expression，arm，clause
-まで含む独立した相互帰納的 domain がなお必要である．
+であり，surface judgment への bridge でのみ通常の typing へ忘却する．この上に，expression，arm，clause
+まで含む相互帰納的な coherent surface typing を 10 family の独立した domain として定式化した．
+pattern 層は threaded 形のみ，value-pattern／arm body／clause next-matcher の式 premise は judgment 自身へ
+再帰する．この judgment は reconstruction certificate と相互に変換でき，surface typing への忘却と，
+公開 inference の成功から coherent typing を得る系を持つ．product lift の構成子は将来の raw-head 可視
+fragment を言明するための raw-source provenance 添字を保持する（恒等 witness が常に取れるため判断を
+制限しない）．最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
+$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ であり，
+命題としての言明のみを固定した未証明の目標として扱う．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
 unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
 整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として

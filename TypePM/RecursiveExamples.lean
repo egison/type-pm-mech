@@ -1,4 +1,5 @@
 import TypePM.CertifiedInference
+import TypePM.CoherentTyping
 import TypePM.SignatureChecker
 
 /-!
@@ -289,6 +290,16 @@ theorem listMatcherMatchAllInferenceResult_target :
 theorem listMatcherMatchAll_typed :
     HasTy listSignature [] listMatcherMatchAll listMatcherMatchAllTy := by
   have typing := Inference.infer_success_sound
+    listMatcherMatchAllInferenceResult_success
+  rw [listMatcherMatchAllInferenceResult_target] at typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+
+/-- The same flagship success lands in the mutual coherent judgment, so the
+coherent fragment is non-vacuous on a recursive-matcher program. -/
+theorem listMatcherMatchAll_coherent :
+    Coherent.CoherentExpr listSignature [] listMatcherMatchAll
+      listMatcherMatchAllTy := by
+  have typing := Coherent.infer_success_coherent
     listMatcherMatchAllInferenceResult_success
   rw [listMatcherMatchAllInferenceResult_target] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing

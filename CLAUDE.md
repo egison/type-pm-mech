@@ -60,10 +60,18 @@ commit／push はその都度の明示指示がある場合に限るという規
   thread を保持する形へ強化済みであり，W reconstruction motive が直接生成する．その `pval` premise は
   `ExprDeriv` なので，inference-generated な `CoreTyping` は expression／pattern／arm／clause を通じて
   surface typing oracle へ戻らない recursive coherent core certificate である．一方，独立した surface
-  `ThreadedPatternResolution(s)` の `pval` premise は plain `HasTy` のままなので，任意の coherent surface
-  typing を対象にする completeness には，expression／arm／clause を含む別の mutual coherent judgment が
-  必要である．proof-indexed な derivation property や
-  `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない．
+  `ThreadedPatternResolution(s)` の `pval` premise は plain `HasTy` のままである．expression／arm／clause
+  まで含む mutual coherent judgment は `CoherentTyping.lean` の `Coherent.CoherentExpr` ほか 10 family と
+  して定式化済みである．pattern 層は threaded-only（aligned twin は導入しない），式 premise
+  （pattern `pval`・arm body・clause next-matcher）は判断自身へ再帰する．この judgment は
+  `Reconstruction` certificate と相互に変換でき（`toExprDeriv`／`ofExprDeriv`），surface への忘却
+  `CoherentExpr.toHasTy`，推論成功からの `infer_success_coherent`，standalone threaded 境界への忘却
+  `toThreadedSurface` を持つ．product lift 構成子（`coerceProductMatcher`／`coerceSlotTuple`）は
+  raw-source と lift substitution の provenance 添字を持つが，恒等 witness が常に取れるため判断を
+  制限しない（`ofExprDeriv` は縮退 witness を供給する）．この相互変換を algorithmic completeness や
+  principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として**言明のみ**
+  （`def` であって定理でも公理でもない）を固定し，無証明で主張しない．proof-indexed な derivation
+  property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない方針は維持する．
   `CanonicalCoercion.lean` の `Step`／`Spine`／`NormalPlan` は observable な `Type` 値の
   candidate coercion-plan syntax であり，identity と一般 `trans` を分離し，whole-product-first
   の二段経路を固定する．observable step は型の頭を変える3規則だけとし，product-of-slots は
@@ -125,7 +133,8 @@ commit／push はその都度の明示指示がある場合に限るという規
     product-of-matchers の matcher／slot 利用位置 selector．
   - `TypePM/RecursiveExamples.lean`: list／multiset direct-self 正例，coverage 不足 multiset
     負例，および recursive list matcher を slot に適用して `cons $x $rest` の両束縛を
-    body で使う静的な公開 inference 旗艦例．この旗艦例について動的実行までは主張しない．
+    body で使う静的な公開 inference 旗艦例．旗艦例の coherent instance
+    （`listMatcherMatchAll_coherent`）も固定する．この旗艦例について動的実行までは主張しない．
   - `TypePM/ProducerStrengtheningRegression.lean`: polymorphic producer を公開 `infer` が
     拒否し，同じ consumer に concrete producer を与えた control twin が成功する対．
   - `TypePM/DynamicSafetyRegression.lean`: `SF = []` の具体実行と全 mirror を構成し，
@@ -149,6 +158,9 @@ commit／push はその都度の明示指示がある場合に限るという規
     `COERCE-PRODUCT-MATCHER` plan，および `let` 後の変数利用位置での unary lift．
   - `TypePM/CoherentSurface.lean`: pattern leaf の raw/actual context を結ぶ indices-only
     coherent judgment，surface forgetful map，reconstruction bridge．
+  - `TypePM/CoherentTyping.lean`: 10 family の mutual coherent surface typing と
+    `Reconstruction` certificate の相互変換，`CoherentExpr.toHasTy`，
+    `infer_success_coherent`，および目標命題 `AnnotationFree`（言明のみ・未証明）．
   - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
     matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
     `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal
