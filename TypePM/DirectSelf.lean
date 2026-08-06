@@ -126,6 +126,13 @@ def Holds (binder : String) (body : Expr) : Prop :=
 instance (binder : String) (body : Expr) : Decidable (Holds binder body) :=
   inferInstanceAs (Decidable (check binder body = true))
 
+/-- The executable `fix` gate is exactly the pair of declarative side
+conditions carried by T-FIX. -/
+theorem fix_gate_eq_true (self argument : String) (body : Expr) :
+    (self != argument && check self body) = true ↔
+      self ≠ argument ∧ Holds self body := by
+  simp [Holds]
+
 @[simp] theorem bare_self_rejected (binder : String) :
     ¬ Holds binder (.var binder) := by
   simp [Holds, check]
@@ -139,6 +146,12 @@ instance (binder : String) (body : Expr) : Decidable (Holds binder body) :=
     (binder argument : String) (hne : argument ≠ binder) :
     ¬ Holds binder (.lam argument (.var binder)) := by
   simp [Holds, check, hne]
+
+/-- A recursive binder may never flow through an argument position. -/
+@[simp] theorem self_as_argument_rejected
+    (binder : String) (function : Expr) :
+    ¬ Holds binder (.app function (.var binder)) := by
+  simp [Holds, check]
 
 @[simp] theorem alias_rejected
     (binder alias argument : String) :

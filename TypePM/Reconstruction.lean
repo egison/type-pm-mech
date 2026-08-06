@@ -39,6 +39,8 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
         ((name, signature.generalize context valueTy) :: context) body bodyTy ->
       ExprDeriv signature context (.letE name value body) bodyTy
   | fixE {context self argument body domain codomain} :
+      self ≠ argument ->
+      DirectSelf.Holds self body ->
       ExprDeriv signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
@@ -1852,7 +1854,11 @@ theorem inferExprFuel_reconstructAt
         body (terminal.prevailing.apply codomain) := by
       simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
         Subst.apply_fn, aligned] using bodyDeriv
-    simpa [finishExpr, Subst.apply_fn] using ExprDeriv.fixE bodyDeriv'
+    have directParts :
+        self ≠ argument ∧ DirectSelf.Holds self body := by
+      exact (DirectSelf.fix_gate_eq_true self argument body).mp direct
+    simpa [finishExpr, Subst.apply_fn] using
+      ExprDeriv.fixE directParts.1 directParts.2 bodyDeriv'
   case case14 =>
     rename_i fuel' signature' context' selfEnv' path' initial function argument
       functionResult argumentResult argumentEq resultTarget freshState freshEq

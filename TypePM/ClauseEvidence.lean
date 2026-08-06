@@ -25,7 +25,8 @@ abbrev GeneralCtor := String × Nat
 /--
 The frozen, non-CAS matcher-signature fragment used by clause evidence and
 coverage.  Every pattern-constructor entry contains a certified, normalized
-projection signature.  `constructorsByFormer` is the finite coverage index.
+projection signature.  `constructorsByFormer` is the finite conservative
+coverage index; its rows are not defined as a recomputation of that table.
 -/
 structure FrozenMatcherSig where
   observability : Shape.Observability

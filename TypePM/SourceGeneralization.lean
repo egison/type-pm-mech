@@ -1395,8 +1395,8 @@ theorem HasTy.transportFlows
       have bodyMoved := bodyTyping.transportFlows basic postVariable capFixed
         targetFixed (contextFlow.consGeneralizedFresh postVariable name)
       exact HasTy.letE valueMoved bodyMoved
-  | .fixE bodyTyping => by
-      simpa only [Subst.apply_fn] using HasTy.fixE
+  | .fixE distinct direct bodyTyping => by
+      simpa only [Subst.apply_fn] using HasTy.fixE distinct direct
         (bodyTyping.transportFlows basic postVariable capFixed targetFixed
           ((contextFlow.consMono _ _).consMono _ _))
   | .lit => by simpa only [Subst.apply_int] using
@@ -2299,11 +2299,11 @@ theorem FrozenSig.fcv_mem_filtered_or_context
     (scheme : DualScheme) (args : List Dual) (result : Dual)
     (namesNodup : (signature.patternFuns.map Prod.fst).Nodup)
     (lookup : signature.findPatternFun removed = some scheme)
-    (schemeEquation : scheme =
-      ({ signature with
-        patternFuns := signature.patternFuns.filter
-          fun entry => entry.1 != removed }).generalizeDual
-        context args result)
+    (schemeFreeCaps : scheme.fcv =
+      (({ signature with
+          patternFuns := signature.patternFuns.filter
+            fun entry => entry.1 != removed }).generalizeDual
+        context args result).fcv)
     {varId : CapVar} (membership : varId ∈ signature.fcv) :
     varId ∈
         ({ signature with
@@ -2327,7 +2327,7 @@ theorem FrozenSig.fcv_mem_filtered_or_context
           (removedEntry.trans selectedName.symm)
       have entryScheme : entry.2 = scheme := by
         rw [entryEquality, selectedScheme]
-      rw [entryScheme, schemeEquation] at variableMember
+      rw [entryScheme, schemeFreeCaps] at variableMember
       exact FrozenSig.generalizeDual_fcv_mem_environment
         ({ signature with
           patternFuns := signature.patternFuns.filter
@@ -2350,11 +2350,11 @@ theorem FrozenSig.ftv_mem_filtered_or_context
     (scheme : DualScheme) (args : List Dual) (result : Dual)
     (namesNodup : (signature.patternFuns.map Prod.fst).Nodup)
     (lookup : signature.findPatternFun removed = some scheme)
-    (schemeEquation : scheme =
-      ({ signature with
-        patternFuns := signature.patternFuns.filter
-          fun entry => entry.1 != removed }).generalizeDual
-        context args result)
+    (schemeFreeTargets : scheme.ftv =
+      (({ signature with
+          patternFuns := signature.patternFuns.filter
+            fun entry => entry.1 != removed }).generalizeDual
+        context args result).ftv)
     {varId : TypePM.TyVar} (membership : varId ∈ signature.ftv) :
     varId ∈
         ({ signature with
@@ -2378,7 +2378,7 @@ theorem FrozenSig.ftv_mem_filtered_or_context
           (removedEntry.trans selectedName.symm)
       have entryScheme : entry.2 = scheme := by
         rw [entryEquality, selectedScheme]
-      rw [entryScheme, schemeEquation] at variableMember
+      rw [entryScheme, schemeFreeTargets] at variableMember
       exact FrozenSig.generalizeDual_ftv_mem_environment
         ({ signature with
           patternFuns := signature.patternFuns.filter
@@ -2425,13 +2425,17 @@ theorem PatternDefTy.instantiatedBody
   | @mk capabilities result resultBindings _ lookup nonrecursive
       parameterLength parameterNamesNodup freshCapabilities capabilitiesNodup
       bodyTyping linear schemeEquation =>
-      rcases requested with ⟨C, T, instanceTyping⟩
       let filteredSignature : FrozenSig :=
         { signature with
           patternFuns := signature.patternFuns.filter
             fun entry => entry.1 != definition.name }
       let sourceArgs :=
         patternParameterDuals definition.parameters capabilities
+      have requestedLocal :
+          (filteredSignature.generalizeDual context sourceArgs result).ValueFlowInst
+            actualArgs actualResult := by
+        exact (schemeEquation.instances actualArgs actualResult).mp requested
+      rcases requestedLocal with ⟨C, T, instanceTyping⟩
       let S := Subst.mk C T
       have postVariable : VariablePost S :=
         ⟨instanceTyping.capVariable⟩
@@ -2443,7 +2447,6 @@ theorem PatternDefTy.instantiatedBody
         intro binder
         have binder' : varId ∈
             (filteredSignature.generalizeDual context sourceArgs result).capBinders := by
-          rw [← schemeEquation]
           exact binder
         exact (filteredSignature.mem_generalizeDual_capBinders_not_environment
           context sourceArgs result binder') membership
@@ -2455,7 +2458,6 @@ theorem PatternDefTy.instantiatedBody
         intro binder
         have binder' : varId ∈
             (filteredSignature.generalizeDual context sourceArgs result).tyBinders := by
-          rw [← schemeEquation]
           exact binder
         exact (filteredSignature.mem_generalizeDual_tyBinders_not_environment
           context sourceArgs result binder') membership
@@ -2465,14 +2467,14 @@ theorem PatternDefTy.instantiatedBody
         apply capFixedFilteredEnvironment varId
         exact signature.fcv_mem_filtered_or_context context definition.name
           scheme sourceArgs result patternFunNamesNodup lookup
-          schemeEquation membership
+          schemeEquation.freeCaps membership
       have targetFixedSignature : ∀ varId, varId ∈ signature.ftv →
           S.target varId = .var varId := by
         intro varId membership
         apply targetFixedFilteredEnvironment varId
         exact signature.ftv_mem_filtered_or_context context definition.name
           scheme sourceArgs result patternFunNamesNodup lookup
-          schemeEquation membership
+          schemeEquation.freeTargets membership
       have contextFlow : Context.FlowsUnder S context context :=
         Context.self_flowsUnder context
           (fun varId membership => capFixedFilteredEnvironment varId
@@ -2485,12 +2487,10 @@ theorem PatternDefTy.instantiatedBody
           sourceArgs.map (Dual.applySubst S) = actualArgs := by
         change sourceArgs.map (Dual.apply C T) = actualArgs
         have equation := instanceTyping.argsResult
-        rw [schemeEquation] at equation
         simpa only [FrozenSig.generalizeDual, sourceArgs] using equation
       have resultEquation : result.applySubst S = actualResult := by
         change result.apply C T = actualResult
         have equation := instanceTyping.resultResult
-        rw [schemeEquation] at equation
         simpa only [FrozenSig.generalizeDual] using equation
       have parameterContextEquation :
           (patternParameterContext definition.parameters capabilities).applySubst S =

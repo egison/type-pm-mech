@@ -1,19 +1,20 @@
 import TypePM.Source
 
 /-!
-# Damas–Milner agreement on the pattern-free fragment
+# Direct-self Damas–Milner embedding on the pattern-free fragment
 
-This module isolates the pattern-free `λ`/`let`/`fix` fragment of the core
-expression language and relates it to a standard, one-sorted Damas–Milner
-system defined from scratch below.
+This module isolates the pattern-free `λ`/`let`/direct-self `fix` fragment of
+the core expression language and relates it to a one-sorted Damas–Milner system
+defined from scratch below.  Its recursion rule deliberately carries the same
+singleton direct-self side conditions as the core.
 
 The main theorem `DM.HasTy.emb` is the completeness half of the intended
-fragment agreement: every Damas–Milner derivation embeds into the two-sort
-declarative system over any closed frozen signature, with the capability
-sort inert.  Under the embedding, capability binder lists are empty,
-capability substitutions act trivially, and `let` generalization commutes
-with the two-sort generalizer.  The converse (conservativity) direction is
-not claimed here.
+fragment agreement: every derivation in this direct-self-restricted
+Damas–Milner system embeds into the two-sort declarative system over any closed
+frozen signature, with the capability sort inert.  Under the embedding,
+capability binder lists are empty, capability substitutions act trivially, and
+`let` generalization commutes with the two-sort generalizer.  The converse
+(conservativity) direction is not claimed here.
 -/
 
 namespace TypePM
@@ -138,7 +139,7 @@ def SCtx.generalize (context : SCtx) (τ : STy) : SScheme :=
 
 mutual
 
-/-- Standard Damas–Milner typing of the pattern-free fragment. -/
+/-- Damas–Milner typing with the core's direct-self recursion boundary. -/
 inductive HasTy : SCtx → Expr → STy → Prop where
   | var {context name scheme target} :
       SCtx.find? context name = some scheme →
@@ -157,6 +158,8 @@ inductive HasTy : SCtx → Expr → STy → Prop where
         body bodyTy →
       HasTy context (.letE name value body) bodyTy
   | fixE {context self argument body domain codomain} :
+      self ≠ argument →
+      DirectSelf.Holds self body →
       HasTy ((argument, SScheme.mono domain) ::
         (self, SScheme.mono (.fn domain codomain)) :: context)
         body codomain →
@@ -377,7 +380,7 @@ theorem generalize_emb {signature : FrozenSig}
 mutual
 
 /--
-Every Damas–Milner derivation on the pattern-free fragment embeds into the
+Every derivation in the direct-self Damas–Milner fragment embeds into the
 two-sort declarative system over any closed frozen signature.
 -/
 theorem HasTy.emb {signature : FrozenSig}
@@ -397,8 +400,8 @@ theorem HasTy.emb {signature : FrozenSig}
       refine TypePM.HasTy.letE (HasTy.emb sigFtv valueTyping) ?_
       rw [generalize_emb sigFtv]
       exact HasTy.emb sigFtv bodyTyping
-  | _, _, _, .fixE bodyTyping =>
-      TypePM.HasTy.fixE (HasTy.emb sigFtv bodyTyping)
+  | _, _, _, .fixE distinct direct bodyTyping =>
+      TypePM.HasTy.fixE distinct direct (HasTy.emb sigFtv bodyTyping)
   | _, _, _, .lit =>
       TypePM.HasTy.lit
   | _, _, _, .tuple componentTypings =>

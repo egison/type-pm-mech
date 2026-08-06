@@ -114,6 +114,15 @@ theorem listSignature_wf : FrozenSigWF listSignature :=
 theorem multisetSignature_wf : FrozenSigWF multisetSignature :=
   frozenSigWFCheck_sound (by decide) rfl
 
+/-- A declared pattern-constructor family without its coverage-index row is
+rejected instead of satisfying index coherence vacuously. -/
+def listSignatureWithoutCoverageIndex : FrozenSig :=
+  { listSignature with constructorsByFormer := [] }
+
+theorem listSignatureWithoutCoverageIndex_checker_rejects :
+    frozenSigWFCheck listSignatureWithoutCoverageIndex = false := by
+  decide
+
 /-! ## Complete recursive List and paper multiset terms -/
 
 def selfName := "self"
@@ -296,10 +305,37 @@ theorem simplifiedMultiset_directSelf :
     DirectSelf.Holds selfName (.matcher simplifiedMultisetClauses) := by
   native_decide
 
+/-- The omitted general `join` clause fails the exact coverage obligation for
+the expected List-family matcher capability. -/
+theorem simplifiedMultiset_coverageCheck_fails :
+    Inference.coverageCheck multisetSignature.toMatcherSig
+      simplifiedMultisetClauses (.con "List" [resultP]) = false := by
+  decide
+
+theorem simplifiedMultiset_not_coverageOK :
+    ¬ CoverageOK multisetSignature.toMatcherSig simplifiedMultisetClauses
+      (.con "List" [resultP]) := by
+  intro coverage
+  have checked := Inference.coverageCheck_complete coverage
+  rw [simplifiedMultiset_coverageCheck_fails] at checked
+  contradiction
+
+/-- The protected raw W traversal rejects the coverage-incomplete matcher. -/
+theorem simplifiedMultisetMatcher_raw_inference_rejected :
+    Inference.inferRaw multisetSignature [] simplifiedMultisetMatcher = none := by
+  native_decide
+
+/-- The public reconstruction-audited entry point rejects it as well. -/
+theorem simplifiedMultisetMatcher_public_inference_rejected :
+    Inference.infer multisetSignature [] simplifiedMultisetMatcher = none := by
+  simp [Inference.infer,
+    simplifiedMultisetMatcher_raw_inference_rejected]
+
 theorem simplifiedMultisetMatcher_inference_fails :
     Inference.inferenceSucceeds multisetSignature [] simplifiedMultisetMatcher =
       false := by
-  native_decide
+  simp [Inference.inferenceSucceeds,
+    simplifiedMultisetMatcher_public_inference_rejected]
 
 end RecursiveExamples
 end TypePM

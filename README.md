@@ -36,7 +36,8 @@ producer から slot への接続は対称単一化ではなく producer-stable 
 
 - lambda，application，`let`，tuple，data constructor，primitive，`something`
 - matcher literal，`matchAll`，pattern function
-- singleton direct-self の単相 `fix f x.e`
+- `f ≠ x` と `DirectSelf.Holds f e` を要求する singleton direct-self の単相
+  `fix f x.e`
 - user pattern，primitive-pattern pattern，primitive data pattern，clause／arm
 - actual clause からの決定的 evidence，`PPatCapsAt`，`ShapeCap`，`CoverageOK`
 
@@ -45,8 +46,15 @@ exhaustiveness，binder 線形性，`CoverageOK` を必須とする．coverage �
 追加 mode で受理する経路はない．
 Frozen signature の lookup table は有限 map として扱い，pattern-function 名の
 非重複性を `FrozenSigWF` が明示的に保持する．
+`HasTy.fix_inversion` は宣言的に型付く `fix` からこの二つの条件を回復し，
+`higherOrderFix_untypable` は再帰 binder を引数として渡す具体反例の拒否を固定する．
 Pattern-function 定義の本体は freeze 済みの完全な signature で型付けする一方，
 自身の scheme は generalization の ambient free-variable 集合から除外する．
+固定済み lookup scheme と context ごとの局所 generalization は，数値 binder 名の
+構文的一致ではなく `DualScheme.ValueFlowEquivalent` で結ぶ．これは両 scheme の
+`ValueFlowInst` が同じ引数／結果を許し，自由 capability／target 変数集合も等しいことを
+要求する．従って alpha-renaming を含む観測不能な binder 表現差を許す一方，宣言の
+value-flow 意味と ambient free-variable 境界は変えない．
 自己 `papp` は `pval` 内の `matchAll` や matcher clause の next／arm body を含む
 全構文を走査して拒否するため，別定義への参照を許しながら直接自己再帰を受理しない．
 
@@ -197,18 +205,24 @@ global 条件である `FrozenSigWF` を，有限の実行可能検査 `frozenSi
 binder 被覆を検査して（instantiation の一意性は substitution-agreement の逆補題から
 従う），pattern constructor は単一パラメータ collection family（`nil`／`cons`／`join` 型）
 に限定して capability projection の明示的 inversion から uniqueness と index coherence を
-導出し，primitive は canonical scheme との一致を検査して delta preservation を
+導出する．各 pattern constructor には `constructorsByFormer` の対応 row と
+`(name, arity)` membership を必須とし，row 欠落は fail closed で拒否する．この row は
+保守的 coverage index であり，追加 entry は許すが coverage obligation を強めるだけである．primitive は
+canonical scheme との一致を検査して delta preservation を
 operation ごと（`append`，`splits`）に一度証明する．関数値 field
 `armExhaustive = basicArmExhaustive` だけは signature 構成時の定義等式として受け取る．
 `DynamicSafetyRegression`／`PatternFunctionSafetyRegression` の `signature_wf` は
 この checker の一回の実行（`by decide`）で立ち，`RecursiveExamples` の
 `listSignature`／`multisetSignature` には非空 pattern-constructor 表に対する初の
-非空虚な `FrozenSigWF`（`listSignature_wf`／`multisetSignature_wf`）が立つ．
+非空虚な `FrozenSigWF`（`listSignature_wf`／`multisetSignature_wf`）が立つ．対応 row を
+削った List signature は checker が拒否する．
 
 [`TypePM/DamasMilner.lean`](TypePM/DamasMilner.lean) は，pattern を含まない
-`λ`/`let`/`fix` 断片について，独立に定義した一 sort の標準 Damas–Milner 体系
-`DM.HasTy` を与え，**すべての DM 導出が閉じた frozen signature 上の二 sort 宣言体系へ
-埋め込まれる**こと（`DM.HasTy.emb`）を証明する．埋め込みの下で capability sort は不活性で
+`λ`/`let`/direct-self `fix` 断片について，独立に定義した一 sort の Damas–Milner 体系
+`DM.HasTy` を与える．その再帰規則は core と同じ `self ≠ argument` と
+`DirectSelf.Holds self body` を要求し，**この制限体系のすべての導出が閉じた frozen
+signature 上の二 sort 宣言体系へ埋め込まれる**こと（`DM.HasTy.emb`）を証明する．
+埋め込みの下で capability sort は不活性で
 ある：capability binder は空，capability substitution は自明に作用し（`STy.emb_fcv` = 空），
 `let` の一般化は二 sort generalizer と可換（`generalize_emb`）．多相 `let` の証人
 `let id = λx.x in (id id) 1` の DM 導出とその埋め込みも固定する．逆方向
@@ -253,7 +267,10 @@ step・search・reachability と各 mirror を同時に構成し，`CoreSafety.e
 `MAtom.matcherPPFail`，`MAtom.matcherDPFail`，二 child の `PPM.ctor`，`MAtom.matcher` を
 発火させ，同じ失敗証拠から `DispatchTrace.nextClause`／`nextArm` も構成する．生成された
 `x`／`rest` atom を二段で束縛し，`Step`，`Search`，`Reaches`，`matchAll` の具体評価まで
-terminal に閉じる．
+terminal に閉じる．さらに同じ三段の private cursor 遷移を，非再帰 `Pair α` family の
+型付き fixture でも発火させる．後者は `frozenSigWFCheck` と公開 `infer` を通り，非空な
+`[(rest, 2), (x, 1)]` へ到達する同一実行に `evalPreservation`，`stepPreservation`，
+reachability，search substitution typing，matcher consistency を適用する．
 
 [`TypePM/PatternFunctionSafetyRegression.lean`](TypePM/PatternFunctionSafetyRegression.lean)
 は，closed nullary pattern function `unit := ptuple []` を source と runtime の非空
@@ -262,6 +279,10 @@ signature に置き，`∀ context, RuntimeSigAgrees` からこの実行に必�
 `papp` から `mnode` へ入り，inner atom reduction と completed-node removal を経て terminal
 state に到達する．この一例で `CoreSafety` の六フィールドをすべて具体的に適用し，search
 と matcher consistency には実際の `[] ∈ [[]]` を渡す．公開 W の結果も `List Int` に固定する．
+加えて非 nullary の `pass(parameter : Unit) := embed parameter` について，context ごとに
+fresh な binder を選んだ局所 scheme と固定 lookup scheme の value-flow 外延同値を構成する．これにより
+`∀ context, RuntimeSigAgrees` と実際の `patfunEnter` step の `of_global` mirror が，
+引数を持つ定義でも成立することを固定する．
 
 ### Recursive matcher regressions
 
@@ -271,7 +292,8 @@ state に到達する．この一例で `CoreSafety` の六フィールドをす
 - list: direct-self source typing と W の成功
 - paper-complete multiset interface: list とは別の self binder／clause list に対する
   source typing と W の成功
-- simplified multiset: `join` 一般節不足により source coverage と W が失敗
+- simplified multiset: `join` 一般節不足により `coverageCheck = false`，
+  `¬ CoverageOK`，raw W，公開 W のすべてが失敗
 - generic `listSignature` と `fix` で構成した `listMatcher` を slot に適用し，
   `matchAll` の `cons $x $rest` が束縛した `x` と `rest` の両方を body で使う旗艦例が
   公開 `infer` を通過する．結果型を concrete literal に固定し，成功等式から
@@ -306,7 +328,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，ordered dispatch failure を含む動的安全性の具体適用 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．
 

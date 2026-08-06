@@ -1211,7 +1211,7 @@ def patternCtorCheck (signature : FrozenSig) (name : String)
       (match signature.toMatcherSig.constructorsFor? former with
         | some constructors =>
             decide ((name, entry.scheme.args.length) ∈ constructors)
-        | none => true)
+        | none => false)
   | _ => false
 
 /--
@@ -1336,9 +1336,9 @@ theorem patternCtorCheck_sound
       signature.observability former = some [true] ∧
       (∀ arg ∈ entry.scheme.args,
         arg = .var t ∨ arg = .data former [.var t]) ∧
-      (∀ {constructors},
-        signature.toMatcherSig.constructorsFor? former = some constructors →
-        (name, entry.scheme.args.length) ∈ constructors) := by
+      ∃ constructors,
+        signature.toMatcherSig.constructorsFor? former = some constructors ∧
+        (name, entry.scheme.args.length) ∈ constructors := by
   unfold patternCtorCheck at checked
   cases resultShape : entry.scheme.result with
   | data former resultArgs =>
@@ -1358,9 +1358,15 @@ theorem patternCtorCheck_sound
                   · intro arg argMem
                     have := argsOK arg argMem
                     simpa using this
-                  · intro constructors indexFound
-                    rw [indexFound] at indexOK
-                    simpa using indexOK
+                  · cases indexFound :
+                        signature.toMatcherSig.constructorsFor? former with
+                    | none =>
+                        rw [indexFound] at indexOK
+                        simp at indexOK
+                    | some constructors =>
+                        refine ⟨constructors, rfl, ?_⟩
+                        rw [indexFound] at indexOK
+                        simpa using indexOK
               | skolem _ => simp at checked
               | unit => simp at checked
               | int => simp at checked
@@ -1469,17 +1475,17 @@ theorem frozenSigWFCheck_sound
     rw [leftChildren, rightChildren, elemEq]
   · intro name entry childCaps capability found compatible
     have entryChecked := patternChecked _ (findPatternCtor_mem found)
-    obtain ⟨former, t, resultShape, maskOK, argsOK, indexOK⟩ :=
+    obtain ⟨former, t, resultShape, maskOK, argsOK,
+      constructors, indexFound, indexed⟩ :=
       patternCtorCheck_sound entryChecked
     obtain ⟨elem, outerEq, childrenEq⟩ :=
       PatternCtorScheme.capCompatible_family_inversion resultShape maskOK
         argsOK compatible
-    refine ⟨former, [elem], outerEq, ?_⟩
-    intro constructors indexFound
+    refine ⟨former, [elem], constructors, outerEq, indexFound, ?_⟩
     have lengthEq : childCaps.length = entry.scheme.args.length := by
       rw [childrenEq, List.length_map]
     rw [lengthEq]
-    exact indexOK indexFound
+    exact indexed
   · intro op scheme values targets result value found instanceTyping
       valuesTyped evaluated
     have schemeCanonical := primChecked _ (findPrimitive_mem found)

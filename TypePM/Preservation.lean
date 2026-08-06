@@ -80,8 +80,9 @@ structure FrozenSigWF (signature : FrozenSig) : Prop where
       entry.CapCompatible rightCaps result →
       leftCaps = rightCaps
   /--
-  Every named pattern constructor has a canonical data-former capability and
-  occurs at its exact arity in the frozen coverage index for that former.
+  Every compatible pattern-constructor instance has a canonical data-former
+  capability and occurs at its exact arity in the frozen coverage index for
+  that former.
   This is the coherence condition connecting `patternCtors` with the otherwise
   independent `constructorsByFormer` table.
   -/
@@ -89,11 +90,10 @@ structure FrozenSigWF (signature : FrozenSig) : Prop where
     ∀ {name entry childCaps capability},
       signature.findPatternCtor name = some entry →
       entry.CapCompatible childCaps capability →
-      ∃ former arguments,
+      ∃ former arguments constructors,
         capability = .con former arguments ∧
-        ∀ {constructors},
-          signature.toMatcherSig.constructorsFor? former = some constructors →
-          (name, childCaps.length) ∈ constructors
+        signature.toMatcherSig.constructorsFor? former = some constructors ∧
+        (name, childCaps.length) ∈ constructors
   /-- The frozen primitive delta implementation preserves its declared type. -/
   primEvalTyped :
     ∀ {op scheme values targets result value},
@@ -197,12 +197,14 @@ inductive Terminal {signature : FrozenSig} :
       Terminal (HasTy.letE valueTyping bodyTyping)
   | fixE {context : Context} {self argument : String} {body : Expr}
       {domain codomain : Ty}
+      (distinct : self ≠ argument)
+      (direct : DirectSelf.Holds self body)
       (bodyTyping :
         HasTy signature
           ((argument, Scheme.mono domain) ::
             (self, Scheme.mono (.fn domain codomain)) :: context)
           body codomain) :
-      Terminal (HasTy.fixE bodyTyping)
+      Terminal (HasTy.fixE distinct direct bodyTyping)
   | lit {context : Context} {value : Int} :
       Terminal (@HasTy.lit signature context value)
   | tuple {context : Context} {expressions : List Expr} {targets : List Ty}
@@ -309,8 +311,9 @@ def preserveSourceCoercions
         environmentTyping
   | terminalTyping@(.letE valueTyping bodyTyping) =>
       terminal terminalTyping (.letE valueTyping bodyTyping) environmentTyping
-  | terminalTyping@(.fixE bodyTyping) =>
-      terminal terminalTyping (.fixE bodyTyping) environmentTyping
+  | terminalTyping@(.fixE distinct direct bodyTyping) =>
+      terminal terminalTyping (.fixE distinct direct bodyTyping)
+        environmentTyping
   | terminalTyping@(.lit) =>
       terminal terminalTyping .lit environmentTyping
   | terminalTyping@(.tuple expressionsTyping) =>

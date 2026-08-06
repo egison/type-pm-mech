@@ -2980,8 +2980,10 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
       HasTy signature
         ((name, signature.generalize context valueTy) :: context) body bodyTy →
       HasTy signature context (.letE name value body) bodyTy
-  /-- T-FIX, with monomorphic recursion exactly as in the declarative rules. -/
+  /-- T-FIX, restricted to singleton direct-self monomorphic recursion. -/
   | fixE {context self argument body domain codomain} :
+      self ≠ argument →
+      DirectSelf.Holds self body →
       HasTy signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
@@ -3725,6 +3727,30 @@ theorem ClausesTy.resolve_id
       ClausesTy signature Subst.id context clauses capability target evidence) :
     ResolvedClausesTy signature context clauses capability target evidence :=
   ResolvedClausesTy.ofShared typing
+
+/-! ## Fix inversion -/
+
+/-- Every declaratively typed function-shaped `fix` satisfies the public
+singleton direct-self boundary. -/
+theorem HasTy.fix_inversion
+    {signature : FrozenSig} {context : Context}
+    {self argument : String} {body : Expr} {domain codomain : Ty}
+    (typing :
+      HasTy signature context (.fix self argument body)
+        (.fn domain codomain)) :
+    self ≠ argument ∧ DirectSelf.Holds self body := by
+  cases typing with
+  | fixE distinct direct _bodyTyping => exact ⟨distinct, direct⟩
+
+/-- The higher-order self-flow counterexample cannot enter declarative T-FIX. -/
+theorem higherOrderFix_untypable
+    {signature : FrozenSig} {context : Context} {domain codomain : Ty} :
+    ¬ HasTy signature context
+      (.fix "f" "x" (.app (.lam "h" (.var "x")) (.var "f")))
+      (.fn domain codomain) := by
+  intro typing
+  exact DirectSelf.self_as_argument_rejected "f" (.lam "h" (.var "x"))
+    (HasTy.fix_inversion typing).2
 
 /-! ## Matcher-literal inversion -/
 

@@ -431,8 +431,9 @@ theorem PatternDefTy.actual_arity
   cases typing with
   | @mk capabilities rawResult resultBindings _ found nonrecursive
       parameterLength nodup fresh capsNodup bodyTyping linear schemeEquality =>
-      subst scheme
-      have instantiatedLength := instanceTyping.args_length
+      have localInstance :=
+        (schemeEquality.instances args result).mp instanceTyping
+      have instantiatedLength := localInstance.args_length
       have sourceLength :
           (patternParameterDuals definition.parameters capabilities).length =
             args.length := by

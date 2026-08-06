@@ -264,14 +264,17 @@ theorem DispatchTrace.pctor_not_finalCatchAll
   cases resolution with
   | @ctor _ _ _ _ _ entry _ duals _ result found children compatible
       instantiated =>
-      obtain ⟨former, arguments, capabilityEquality, indexed⟩ :=
+      obtain ⟨former, arguments, indexedConstructors,
+        capabilityEquality, indexedFound, indexed⟩ :=
         signatureWF.patternCtorIndexed found compatible
       rw [capabilityEquality] at dispatch
       obtain ⟨constructors, constructorsFound, required⟩ := dispatch
+      have constructorsEquality : indexedConstructors = constructors :=
+        Option.some.inj (indexedFound.symm.trans constructorsFound)
       have childLength : patterns.length = (duals.map Dual.cap).length := by
         simpa using children.length
       have before := required (name, (duals.map Dual.cap).length)
-        (indexed constructorsFound)
+        (constructorsEquality ▸ indexed)
       have failure := trace.failed_of_generalBeforeCatchAll before
       apply ppm_generalPP_not_failure
       rw [childLength]
@@ -4995,7 +4998,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
-          | fixE bodyTyping =>
+          | fixE _distinct _direct bodyTyping =>
               exact ValueTy.closure terminalContext
                 (fun name value found => terminalEnvironment.domain found)
                 (fun name value scheme actual found sourceFound instantiation =>

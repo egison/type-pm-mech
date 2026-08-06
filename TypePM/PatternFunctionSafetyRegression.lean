@@ -57,7 +57,7 @@ theorem unit_definition_typed (context : Context) :
   · simp
   · exact PatternTy.tuple PatternTys.nil
   · rfl
-  · rfl
+  · exact DualScheme.ValueFlowEquivalent.refl unitScheme
 
 /-- Adding a pattern-function table leaves the concrete data obligations
 unchanged; the executable signature checker re-establishes all of them. -/
@@ -91,6 +91,201 @@ theorem runtime_agrees (context : Context) :
 theorem global_runtime_agreement :
     ∀ context, RuntimeSigAgrees signature context runtimeSignature :=
   runtime_agrees
+
+/-! ## Parameterized global-agreement regression -/
+
+/-- The generic one-parameter identity-pattern dual. -/
+private def unaryDual (varId : CapVar) : Dual :=
+  ⟨.var varId, .unit⟩
+
+/-- Alpha variants of the same unary pattern-function scheme. -/
+private def unarySchemeAt (varId : CapVar) : DualScheme where
+  capBinders := [varId]
+  tyBinders := []
+  args := [unaryDual varId]
+  result := unaryDual varId
+
+private theorem unarySchemeAt_instance_transport
+    (source target : CapVar) {args : List Dual} {result : Dual}
+    (instanceTyping : (unarySchemeAt source).ValueFlowInst args result) :
+    (unarySchemeAt target).ValueFlowInst args result := by
+  rcases instanceTyping with ⟨C, T, instanceTyping⟩
+  rcases instanceTyping.capBinderVariable source (by simp [unarySchemeAt]) with
+    ⟨image, imageEquation⟩
+  have argsEquation : [unaryDual image] = args := by
+    simpa [unarySchemeAt, unaryDual, Dual.apply, Cap.apply, imageEquation] using
+      instanceTyping.argsResult
+  have resultEquation : unaryDual image = result := by
+    simpa [unarySchemeAt, unaryDual, Dual.apply, Cap.apply, imageEquation] using
+      instanceTyping.resultResult
+  refine ⟨Unification.CapSubst.single target (.var image), TySubst.id, ?_⟩
+  refine
+    { capSupport := ?_
+      tySupport := TySubst.id_supportWithin []
+      capBinderVariable := ?_
+      argsResult := ?_
+      resultResult := ?_ }
+  · intro candidate outside
+    have distinct : candidate ≠ target := by
+      simpa [unarySchemeAt] using outside
+    exact if_neg (Ne.symm distinct)
+  · intro candidate member
+    have equal : candidate = target := by
+      simpa [unarySchemeAt] using member
+    subst candidate
+    exact ⟨image, if_pos rfl⟩
+  · simpa [unarySchemeAt, unaryDual, Dual.apply, Cap.apply,
+      Unification.CapSubst.single] using
+      argsEquation
+  · simpa [unarySchemeAt, unaryDual, Dual.apply, Cap.apply,
+      Unification.CapSubst.single] using
+      resultEquation
+
+private theorem unarySchemeAt_equivalent (left right : CapVar) :
+    (unarySchemeAt left).ValueFlowEquivalent (unarySchemeAt right) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro args result
+    exact ⟨unarySchemeAt_instance_transport left right,
+      unarySchemeAt_instance_transport right left⟩
+  · simp [DualScheme.fcv, unarySchemeAt, unaryDual, Dual.fcv, Cap.fcv,
+      Ty.fcv]
+  · simp [DualScheme.ftv, unarySchemeAt, unaryDual, Dual.ftv, Ty.ftv]
+
+private def unaryBinder : CapVar := ⟨0⟩
+
+private def unaryScheme : DualScheme :=
+  unarySchemeAt unaryBinder
+
+private def unaryDefinition : PatternDef where
+  name := "pass"
+  parameters := [("parameter", .unit)]
+  body := .embed "parameter"
+
+/-- A minimal frozen source signature containing one parameterized definition. -/
+private def unarySignature : FrozenSig where
+  observability := fun _ => none
+  dataCtors := []
+  patternCtors := []
+  patternFuns := [("pass", unaryScheme)]
+  primitives := []
+  constructorsByFormer := []
+  armExhaustive := fun _ _ => false
+
+/-- A capability name above every identifier free in the signature or context. -/
+private def definitionFreshCap (context : Context) : CapVar :=
+  ⟨InferenceBase.binderSpan
+    ((unarySignature.fcv ++ context.fcv).map CapVar.id)⟩
+
+private theorem definitionFreshCap_not_reserved (context : Context) :
+    definitionFreshCap context ∉ unarySignature.fcv ++ context.fcv := by
+  intro member
+  have mapped :
+      (definitionFreshCap context).id ∈
+        (unarySignature.fcv ++ context.fcv).map CapVar.id :=
+    List.mem_map.mpr ⟨definitionFreshCap context, member, rfl⟩
+  have bounded := InferenceBase.mem_lt_binderSpan mapped
+  change InferenceBase.binderSpan
+      ((unarySignature.fcv ++ context.fcv).map CapVar.id) <
+    InferenceBase.binderSpan
+      ((unarySignature.fcv ++ context.fcv).map CapVar.id) at bounded
+  exact (Nat.lt_irrefl _ bounded)
+
+private theorem definitionFreshCap_fresh (context : Context) :
+    FreshCap unarySignature context [] [] (definitionFreshCap context) := by
+  refine ⟨?_, ?_, by simp [PatternCtx.fcv], by simp [MonoCtx.fcv]⟩
+  · intro member
+    exact definitionFreshCap_not_reserved context
+      (List.mem_append_left _ member)
+  · intro member
+    exact definitionFreshCap_not_reserved context
+      (List.mem_append_right _ member)
+
+@[simp] private theorem find_unary :
+    unarySignature.findPatternFun "pass" = some unaryScheme := by
+  rfl
+
+/-- Value-flow equivalence permits a fresh binder in every context. -/
+private theorem unary_definition_typed (context : Context) :
+    PatternDefTy unarySignature context unaryDefinition unaryScheme := by
+  let fresh := definitionFreshCap context
+  let result := unaryDual fresh
+  refine @PatternDefTy.mk unarySignature context unaryDefinition [.var fresh]
+    result [] unaryScheme find_unary ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · decide
+  · rfl
+  · simp [PatternDef.parameterNames, unaryDefinition]
+  · intro capability member
+    simp only [List.mem_singleton] at member
+    subst capability
+    exact ⟨fresh, rfl, definitionFreshCap_fresh context⟩
+  · simp
+  · apply PatternTy.embed
+    rfl
+  · rfl
+  · have localScheme :
+        ({ unarySignature with
+          patternFuns := unarySignature.patternFuns.filter
+            fun named => named.1 != unaryDefinition.name }).generalizeDual context
+          (patternParameterDuals unaryDefinition.parameters [.var fresh]) result =
+            unarySchemeAt fresh := by
+      have freshNotContext : definitionFreshCap context ∉ context.fcv :=
+        (definitionFreshCap_fresh context).2.1
+      simp [unarySignature, unaryDefinition, patternParameterDuals,
+        FrozenSig.generalizeDual, FrozenSig.fcv, FrozenSig.ftv, result,
+        unaryDual, fresh, DualScheme.fcv, Dual.fcv, Dual.ftv, Cap.fcv,
+        Ty.fcv, Ty.ftv, uniqueVars, freshNotContext]
+      rfl
+    rw [localScheme]
+    exact unarySchemeAt_equivalent unaryBinder fresh
+
+private def unaryRuntimeSignature : RuntimeSigF :=
+  [("pass", unaryDefinition.runtime)]
+
+private theorem unary_runtime_agrees (context : Context) :
+    RuntimeSigAgrees unarySignature context unaryRuntimeSignature where
+  runtimeTyped := by
+    intro entry member
+    simp only [unaryRuntimeSignature, List.mem_singleton] at member
+    subst entry
+    exact ⟨unaryDefinition, unaryScheme, rfl, unary_definition_typed context⟩
+  sourceLookup := by
+    intro name scheme found
+    by_cases passName : name = "pass"
+    · subst name
+      have schemeEquality : scheme = unaryScheme :=
+        (Option.some.inj (find_unary.symm.trans found)).symm
+      subst scheme
+      exact ⟨unaryDefinition, rfl, rfl, unary_definition_typed context⟩
+    · have reverseName : "pass" ≠ name :=
+        fun equality => passName equality.symm
+      simp [unarySignature, FrozenSig.findPatternFun, reverseName] at found
+
+private theorem unary_global_runtime_agreement :
+    ∀ context, RuntimeSigAgrees unarySignature context unaryRuntimeSignature :=
+  unary_runtime_agrees
+
+private def unaryInitialState : MState :=
+  ⟨[.atom ⟨.papp "pass" [.wild], .something, .lit 0⟩], [], []⟩
+
+private def unaryNodeState : MState :=
+  ⟨[.mnode [.atom ⟨.embed "parameter", .something, .lit 0⟩]
+      [] [] [("parameter", .wild)]], [], []⟩
+
+private theorem unary_pattern_function_step :
+    Step unaryRuntimeSignature unaryInitialState [unaryNodeState] := by
+  simpa [unaryRuntimeSignature, unaryDefinition, PatternDef.runtime,
+    PatternDef.parameterNames, unaryInitialState, unaryNodeState] using
+    (Step.patfunEnter (SF := unaryRuntimeSignature) (stack := [])
+      (ρ := []) (substitution := []) (name := "pass") (args := [.wild])
+      (matcher := Value.something) (value := Value.lit 0)
+      (signature := unaryDefinition.runtime) rfl rfl)
+
+/-- The global bridge is constructible for an actual non-nullary entry. -/
+theorem unary_pattern_function_step_mirror :
+    StepRuntimeSigAgrees unarySignature unaryRuntimeSignature
+      unary_pattern_function_step :=
+  StepRuntimeSigAgrees.of_global unary_global_runtime_agreement
+    unary_pattern_function_step
 
 /-! ## Concrete execution through a pattern-function node -/
 

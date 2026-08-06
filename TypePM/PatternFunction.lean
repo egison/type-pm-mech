@@ -158,6 +158,27 @@ def patternParameterDuals
   (parameters.zip capabilities).map fun entry =>
     ⟨entry.2, entry.1.2⟩
 
+/--
+Two frozen dual schemes are observationally the same declaration when they
+admit exactly the same safe value-flow instances.  This is the alpha-insensitive
+boundary used by pattern-function definitions: locally fresh binder names may
+change with the source context, while the frozen lookup scheme remains fixed.
+-/
+structure DualScheme.ValueFlowEquivalent
+    (left right : DualScheme) : Prop where
+  /-- Equivalent declarations admit exactly the same safe instances. -/
+  instances : ∀ args result, left.ValueFlowInst args result ↔
+    right.ValueFlowInst args result
+  /-- Equivalent declarations expose the same free capability variables. -/
+  freeCaps : left.fcv = right.fcv
+  /-- Equivalent declarations expose the same free target variables. -/
+  freeTargets : left.ftv = right.ftv
+
+/-- Value-flow equivalence is reflexive. -/
+theorem DualScheme.ValueFlowEquivalent.refl (scheme : DualScheme) :
+    scheme.ValueFlowEquivalent scheme := by
+  exact ⟨fun _ _ => Iff.rfl, rfl, rfl⟩
+
 /-- PATFUN-DEF for the concrete two-sorted source calculus. -/
 inductive PatternDefTy (signature : FrozenSig) (context : Context) :
     PatternDef → DualScheme → Prop where
@@ -175,11 +196,11 @@ inductive PatternDefTy (signature : FrozenSig) (context : Context) :
         (patternParameterContext definition.parameters capabilities)
         [] definition.body result.cap result.target resultBindings →
       LinearPatternParameters definition.parameterNames definition.body →
-      scheme =
-        ({ signature with
-          patternFuns := signature.patternFuns.filter
-            fun named => named.1 != definition.name }).generalizeDual context
-          (patternParameterDuals definition.parameters capabilities) result →
+      scheme.ValueFlowEquivalent
+        (({ signature with
+            patternFuns := signature.patternFuns.filter
+              fun named => named.1 != definition.name }).generalizeDual context
+            (patternParameterDuals definition.parameters capabilities) result) →
       PatternDefTy signature context definition scheme
 
 /-- Runtime erasure of a checked pattern-function definition. -/

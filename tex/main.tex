@@ -43,6 +43,7 @@
 \newcommand{\ClausesTy}{\mathsf{ClausesTy}}
 \newcommand{\clauseEvidence}{\mathsf{clauseEvidence}}
 \newcommand{\PPatCoreOrder}{\mathsf{PPatCoreOrder}}
+\newcommand{\DirectSelf}{\mathsf{DirectSelf}}
 \newcommand{\inferShape}{\mathsf{inferShape}}
 \newcommand{\merge}{\mathsf{merge}}
 \newcommand{\mergeAll}{\mathsf{mergeAll}}
@@ -490,8 +491,11 @@ fixpoint であり，個々の matcher clause や target annotation には依存
   &\quad\Longleftrightarrow\quad \mathsf{true},\\
 \CoverageOK_{\Sighat}(\mathit{cls},K\overline\kappa)
   &\quad\Longleftrightarrow\quad
-    \forall c\in\mathsf{ctors}_{\Sighat_P}(K).\;
-    \exists cl\in\mathit{cls}.\ cl.pp=c\;\$\cdots\$,\\
+    \exists\overline c.\;
+    \mathsf{constructorsFor?}_{\Sighat_P}(K)=\mathsf{some}\;\overline c
+    \;\land\;
+    \forall c\in\overline c.\;
+      \exists cl\in\mathit{cls}.\ cl.pp=c\;\$\cdots\$,\\
 \CoverageOK_{\Sighat}(\mathit{cls},(\kappa_1,\ldots,\kappa_n))
   &\quad\Longleftrightarrow\quad
     \exists cl\in\mathit{cls}.\ cl.pp=(\$,\ldots,\$).
@@ -499,9 +503,11 @@ fixpoint であり，個々の matcher clause や target annotation には依存
 \]
 $\CoverageOK$ のその他の root form は成立しない．Refinement は general clause に数えず，
 coverage は child capability へ再帰しない．
-$\mathsf{ctors}_{\Sighat_P}(K)$ は，fresh instantiate した result target の canonical
-root former が $K$ である pattern constructor の有限集合であり，$cl.pp$ は clause
-$cl$ の primitive-pattern-pattern を取り出す selector である．
+$\mathsf{constructorsFor?}_{\Sighat_P}(K)$ は独立に freeze した保守的 coverage-index row
+の lookup であり，$cl.pp$ は clause $cl$ の primitive-pattern-pattern を取り出す selector
+である．$\mathsf{FrozenSigWF}$ checker は，互換な各 pattern-constructor instance が canonical
+root former の row に正しい arity で含まれ，その row が実在することを保証する．row 内の
+追加 entry は許されるが，要求される general clause を増やして coverage を厳しくするだけである．
 Formal core では $\CoverageOK$ を matcher literal の必須条件とする．
 Egison 本体は同じ検査の失敗を warning として扱ってよいが，その診断方針は core の外側に置く．
 
@@ -581,6 +587,8 @@ checker である．core では $\overline{dp}$ に変数 pattern または wild
 }\rn{T-LET}
 
 \inferrule{
+  f\ne x \\
+  \DirectSelf(f,e) \\
   \Sighat;\Gamma,f:\mono{(\tau_1\to\tau_2)},
   x:\mono{\tau_1}\vdash e:\tau_2
 }{
@@ -593,6 +601,11 @@ checker である．core では $\overline{dp}$ に変数 pattern または wild
   \Sighat;\Gamma\vdash(e_1,\ldots,e_n):(\tau_1,\ldots,\tau_n)
 }\rn{T-TUPLE}
 \end{mathpar}
+
+$\DirectSelf(f,e)$ は shadowing-aware な決定可能構文条件である．$f$ の自由出現は
+application spine の head に直接現れる場合だけを受理し，bare value，引数位置，alias
+経由，高階の受渡しを拒否する．従って T-FIX 自身が公開 inference と同じ singleton
+direct-self 境界を持つ．
 
 \begin{mathpar}
 \inferrule{
@@ -726,7 +739,7 @@ checker である．core では $\overline{dp}$ に変数 pattern または wild
     p_{\mathit{body}}:\Pattern{\kappa}{\tau};\Delta \\
   \widetilde{x_1},\ldots,\widetilde{x_n}\ \text{occur exactly once,
     in declaration order, outside or-alternatives} \\
-  \varsigma_f=\GenDual\!\left(
+  \varsigma_f\equiv_{\mathsf{vf}}\GenDual\!\left(
     \Sighat\setminus f,\Gamma,
     (\chi_1\mathbin{\triangleright}\tau_1),\ldots,
     (\chi_n\mathbin{\triangleright}\tau_n)
@@ -740,6 +753,11 @@ checker である．core では $\overline{dp}$ に変数 pattern または wild
 ここで $\Sighat\setminus f$ は，有限 map $\Sighat_F$ から一意な $f$ の entry
 だけを除いた signature である．本体は freeze 済みの完全な $\Sighat$ で検査し，
 自身の scheme だけを generalization の ambient free-variable 集合から除外する．
+$\varsigma_1\equiv_{\mathsf{vf}}\varsigma_2$ は，両 dual scheme が同じ
+$\ValueFlowInstDual$ の引数／結果 relation を持ち，自由 capability 変数集合と自由 target
+変数集合も等しいことを表す．従って context ごとの fresh allocation に伴う alpha-renaming を
+含む観測不能な binder 表現差を許すが，許される value flow と ambient free-variable 境界は
+変えない．
 $\pcalls$ は pattern の全子孫を走査し，value pattern 内の式，その
 \texttt{matchAll} pattern，matcher clause の next と各 arm body も含めて
 自己 \texttt{papp} を拒否する．従って他の pattern function への参照は許すが，
@@ -1120,9 +1138,8 @@ $\mathsf{infer}$ を通ること，結果型の固定，$\mathsf{HasTy}$ の再�
 静的 inference 回帰であり，この再帰 matcher の動的実行を主張しない．
 
 singleton direct-self の $\mathtt{fix}$ では，再帰 binder は RHS 内で一つの monotype
-placeholder を共有する．binder の自由出現は application head に直接現れるものだけを
-認め，alias，引数としての受渡し，相互再帰，高階 origin は fail closed とする．actual
-clause evidence 以外の self-reference や demand は $\ShapeCap$ の seed にしない．
+placeholder を共有し，公開 W も T-FIX と同じ $\DirectSelf$ 境界を検査する．actual clause
+evidence 以外の self-reference や demand は $\ShapeCap$ の seed にしない．
 
 \subsection{Concrete runtime safety}
 
@@ -1136,7 +1153,7 @@ parameter context，残余 actual argument，内部 stack，terminal substitutio
 
 Ordered clause dispatch では，original clause 列から現在位置までの失敗 prefix を
 $\mathsf{DispatchTrace}$ が保持する．freeze 済み signature は compatible な child
-capability 列の一意性と，各 named pattern constructor の canonical former／arity 登録を
+capability 列の一意性と，各 compatible pattern-constructor instance の canonical former／arity 登録を
 要求する．従って最後の bare-hole catch-all まで到達した structured pattern は，先行する
 対応 constructor clause の失敗事実と矛盾し，stuck にならない．
 
@@ -1193,7 +1210,11 @@ $\mathsf{MAtom.matcherPPFail}$，$\mathsf{MAtom.matcherDPFail}$，二 child の
 $\mathsf{PPM.ctor}$，$\mathsf{MAtom.matcher}$ を発火させ，同じ証拠から
 $\mathsf{DispatchTrace.nextClause}$ と $\mathsf{DispatchTrace.nextArm}$ を構成する．生成された
 二 atom は $x$ と $rest$ を束縛し，state step，search，reachability，$\mathtt{matchAll}$
-評価を terminal まで閉じる．
+評価を terminal まで閉じる．さらに同じ private cursor の三段遷移を，非再帰
+$\mathtt{Pair}\;\alpha$ family の型付き fixture でも発火させる．後者は
+$\mathsf{frozenSigWFCheck}$ と公開 W を通り，非空な
+$[(rest,2),(x,1)]$ に到達する同一実行へ evaluation／step preservation，reachability，
+search substitution typing，matcher consistency を適用する．
 
 さらに source/runtime signature が closed nullary pattern function
 $\mathtt{unit}:=\mathtt{ptuple}\;[]$ を一つ持つ非空の例を置く．全 context に対する global
@@ -1204,6 +1225,11 @@ fixture は $\mathsf{CoreSafety}$ の六 field をすべて具体的に適用し
 matcher consistency には実際の $[]\in[[]]$ の member を渡す．公開 W の結果は
 $\ListTy{\mathsf{Int}}$ に固定する．従って六つの conclusion は個別に存在するだけでなく，
 一つの非空 runtime-signature program 上で同時に発火する．
+加えて非 nullary の
+$\mathtt{pass}(parameter:\mathsf{Unit}):=\mathtt{embed}\;parameter$ について，context ごとに
+fresh な binder を選ぶ局所 scheme と固定 lookup scheme の
+$\equiv_{\mathsf{vf}}$ を構成する．これにより全 context に対する runtime agreement と，
+実際の $\mathsf{patfunEnter}$ step に対する global bridge の mirror が引数付き定義でも成立する．
 
 公開 composition の境界には $\mathsf{FrozenSigWF}$ と適切な runtime agreement が残るが，
 局所的な実行証拠として caller が与えるのは $\mathsf{StepReady}$ だけである．
@@ -1213,16 +1239,22 @@ $\mathsf{frozenSigWFCheck\_sound}$ が構成する．検査は fail closed で�
 $\mathtt{nil}$／$\mathtt{cons}$ 宣言，data constructor の構文的 data root と binder
 被覆（instantiation の一意性は substitution-agreement の逆補題から従う），単一パラメータ
 collection family に限定した pattern constructor（capability projection の明示的
-inversion が uniqueness と coverage-index coherence を与える），canonical scheme に一致する
+inversion が uniqueness と coverage-index coherence を与える）を検査する．各 pattern
+constructor には $\mathsf{constructorsByFormer}$ の対応 row と $(name,arity)$ membership を
+必須とし，row 欠落は fail closed で拒否する．さらに canonical scheme に一致する
 primitive（delta preservation は operation ごとに一度証明する），非重複な
 pattern-function 名前空間を検査する．関数値 field
 $\mathsf{armExhaustive} = \mathsf{basicArmExhaustive}$ だけは signature 構成時の
 定義等式として受け取る．空でない pattern-constructor 表を持つ
 list／multiset signature の $\mathsf{FrozenSigWF}$ もこの checker の一回の実行で立つ．
+対応 row を削除した List signature は checker が拒否し，$\mathtt{join}$ 一般節を欠く
+multiset matcher は $\mathsf{coverageCheck}=\mathsf{false}$，
+$\neg\mathsf{CoverageOK}$，raw／公開 W のすべてで拒否される．
 
-pattern を含まない $\lambda$／$\mathtt{let}$／$\mathtt{fix}$ 断片については，独立に定義した
-一 sort の標準 Damas--Milner 体系からの埋め込み定理を機械化する．すべての DM 導出は，
-閉じた frozen signature（$\mathsf{ftv}=[]$）上の二 sort 宣言体系の導出へ写る．埋め込みの下で
+pattern を含まない $\lambda$／$\mathtt{let}$／direct-self $\mathtt{fix}$ 断片については，
+独立に定義した一 sort の Damas--Milner 体系からの埋め込み定理を機械化する．その再帰規則も
+$f\ne x$ と $\DirectSelf(f,e)$ を要求し，この制限体系のすべての導出は閉じた frozen
+signature（$\mathsf{ftv}=[]$）上の二 sort 宣言体系の導出へ写る．埋め込みの下で
 capability binder は空であり，capability substitution は埋め込まれた型に自明に作用し，
 $\mathtt{let}$ の一般化は二 sort generalizer と可換である．逆方向（conservativity）と
 algorithmic acceptance は主張しない．
