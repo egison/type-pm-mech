@@ -1219,6 +1219,13 @@ pattern-function 名前空間を検査する．関数値 field
 $\mathsf{armExhaustive} = \mathsf{basicArmExhaustive}$ だけは signature 構成時の
 定義等式として受け取る．空でない pattern-constructor 表を持つ
 list／multiset signature の $\mathsf{FrozenSigWF}$ もこの checker の一回の実行で立つ．
+
+pattern を含まない $\lambda$／$\mathtt{let}$／$\mathtt{fix}$ 断片については，独立に定義した
+一 sort の標準 Damas--Milner 体系からの埋め込み定理を機械化する．すべての DM 導出は，
+閉じた frozen signature（$\mathsf{ftv}=[]$）上の二 sort 宣言体系の導出へ写る．埋め込みの下で
+capability binder は空であり，capability substitution は埋め込まれた型に自明に作用し，
+$\mathtt{let}$ の一般化は二 sort generalizer と可換である．逆方向（conservativity）と
+algorithmic acceptance は主張しない．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

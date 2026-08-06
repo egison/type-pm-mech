@@ -205,6 +205,16 @@ operation ごと（`append`，`splits`）に一度証明する．関数値 field
 `listSignature`／`multisetSignature` には非空 pattern-constructor 表に対する初の
 非空虚な `FrozenSigWF`（`listSignature_wf`／`multisetSignature_wf`）が立つ．
 
+[`TypePM/DamasMilner.lean`](TypePM/DamasMilner.lean) は，pattern を含まない
+`λ`/`let`/`fix` 断片について，独立に定義した一 sort の標準 Damas–Milner 体系
+`DM.HasTy` を与え，**すべての DM 導出が閉じた frozen signature 上の二 sort 宣言体系へ
+埋め込まれる**こと（`DM.HasTy.emb`）を証明する．埋め込みの下で capability sort は不活性で
+ある：capability binder は空，capability substitution は自明に作用し（`STy.emb_fcv` = 空），
+`let` の一般化は二 sort generalizer と可換（`generalize_emb`）．多相 `let` の証人
+`let id = λx.x in (id id) 1` の DM 導出とその埋め込みも固定する．逆方向
+（conservativity）と algorithmic acceptance（公開 `infer` が DM program を全受理すること）は
+主張しない．
+
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
 context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，
 user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導く．したがって
