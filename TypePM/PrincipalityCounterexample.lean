@@ -7,7 +7,7 @@ This module settles the negative side of the principality question.  The
 closed expression `(something, something)` is derivably
 
 * a product of matchers, by `T-TUPLE`, and
-* a product matcher, by `COERCE-TUPLE-MATCHER`,
+* a product matcher, by `COERCE-PRODUCT-MATCHER`,
 
 and these two derivable types have different head constructors (`prod`
 versus `matcher`).  Every derivable type of a tuple expression has a
@@ -35,13 +35,13 @@ theorem pair_prod_typing {signature : FrozenSig} :
       (.prod [.matcher .none .int, .matcher .none .int]) :=
   HasTy.tuple (.cons HasTy.something (.cons HasTy.something .nil))
 
-/-- Its product-matcher typing, by `COERCE-TUPLE-MATCHER`. -/
+/-- Its product-matcher typing, by `COERCE-PRODUCT-MATCHER`. -/
 theorem pair_matcher_typing {signature : FrozenSig} :
     HasTy signature [] pairProgram
       (.matcher (.prod [.none, .none]) (.prod [.int, .int])) :=
-  HasTy.coerceTupleMatcher
+  HasTy.coerceProductMatcher
     (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
-    (.cons HasTy.something (.cons HasTy.something .nil))
+    pair_prod_typing
 
 /-- Every derivable type of a tuple has a `prod`, `matcher`, or `slot` head. -/
 theorem tuple_ty_head {signature : FrozenSig} {context : Context}
@@ -52,7 +52,7 @@ theorem tuple_ty_head {signature : FrozenSig} {context : Context}
     (∃ capability targetTy, target = .slot capability targetTy) := by
   cases typing with
   | tuple _ => exact .inl ⟨_, rfl⟩
-  | coerceTupleMatcher _ => exact .inr (.inl ⟨_, _, rfl⟩)
+  | coerceProductMatcher _ => exact .inr (.inl ⟨_, _, rfl⟩)
   | coerceMatcherToSlot _ _ _ => exact .inr (.inr ⟨_, _, rfl⟩)
   | checkSlotToSlot _ _ _ => exact .inr (.inr ⟨_, _, rfl⟩)
   | coerceSlotTuple _ => exact .inr (.inr ⟨_, _, rfl⟩)

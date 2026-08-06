@@ -1794,6 +1794,67 @@ def alignAtSlot
       | _, _ => none
   | _, _ => alignTypes state origin inferred expected
 
+/-! ### Explicit product-matcher use-site coercion -/
+
+/-- View a matcher type as the dual carried by that matcher. -/
+def matcherDual? : Ty -> Option Dual
+  | .matcher capability target => some ⟨capability, target⟩
+  | _ => none
+
+/--
+Recognize a raw product whose every component is a matcher.  This deliberately
+inspects the raw inferred target, not its prevailing-substitution-normalized
+image: the returned duals are reused as raw reconstruction indices and must
+therefore receive the terminal substitution exactly once.
+-/
+def productMatcherDuals? : Ty -> Option (List Dual)
+  | .prod targets => targets.mapM matcherDual?
+  | _ => none
+
+/-- A successful product-matcher view recovers the exact raw product type. -/
+theorem productMatcherDuals?_sound
+    {target : Ty} {duals : List Dual}
+    (success : productMatcherDuals? target = some duals) :
+    target = .prod (duals.map fun dual =>
+      .matcher dual.cap dual.target) := by
+  cases target <;> try simp [productMatcherDuals?] at success
+  case prod targets =>
+    congr 1
+    induction targets generalizing duals with
+    | nil => simpa [productMatcherDuals?] using success
+    | cons head tail induction =>
+        simp only [List.mapM_cons] at success
+        cases head <;> try simp [matcherDual?] at success
+        case matcher capability componentTarget =>
+          cases tailView : List.mapM matcherDual? tail with
+          | none => simp [tailView] at success
+          | some tailDuals =>
+              simp [tailView] at success
+              subst duals
+              simp only [List.map_cons, List.cons.injEq, true_and]
+              exact induction tailView
+
+/-- Build the unary product-matcher coercion target for raw component duals. -/
+def productMatcherTarget (duals : List Dual) : Ty :=
+  .matcher (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
+
+/--
+Choose the raw type presented to expected-type alignment.  Ordinary product
+uses retain their synthesized product type.  At a matcher or slot use site, a
+raw product of matchers is first lifted by the explicit unary
+`coerceProductMatcher` rule; `alignAtSlot` can then perform either equality or
+the existing producer-stable matcher-to-slot conversion.
+
+Keeping this choice in a non-recursive helper leaves the Algorithm W traversal
+and its fuel argument unchanged.
+-/
+def expectedCoercionSource
+    (state : InferState) (inferred expected : Ty) : Ty :=
+  match productMatcherDuals? inferred, state.prevailing.apply expected with
+  | some duals, .matcher _ _ => productMatcherTarget duals
+  | some duals, .slot _ _ => productMatcherTarget duals
+  | _, _ => inferred
+
 /-- Fresh capability images allocated for a binder batch. -/
 def freshCapImages
     (supply : InferenceBase.FreshSupply) (binders : List CapVar) :
@@ -2570,11 +2631,12 @@ def checkExprFuel :
       match inferExprFuel fuel signature context selfEnv path expression state with
       | none => none
       | some result =>
-          let inferred := result.state.prevailing.apply result.target
+          let source := expectedCoercionSource result.state result.target expected
+          let inferred := result.state.prevailing.apply source
           let requested := result.state.prevailing.apply expected
           match alignAtSlot result.state
               (freshOrigin .expression path "expected-type")
-              result.target expected with
+              source expected with
           | none => none
           | some aligned =>
               some (aligned.recordEvent (.slotAlignment

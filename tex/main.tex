@@ -822,12 +822,13 @@ $\pcalls$ は pattern の全子孫を走査し，value pattern 内の式，そ�
 
 \begin{mathpar}
 \inferrule{
-  \Sighat;\Gamma\vdash e_i:\Matcher{\kappa_i}{\tau_i}
-  \quad(1\le i\le n)
+  \Sighat;\Gamma\vdash e:
+  (\Matcher{\kappa_1}{\tau_1},\ldots,
+   \Matcher{\kappa_n}{\tau_n})
 }{
-  \Sighat;\Gamma\vdash(e_1,\ldots,e_n):
+  \Sighat;\Gamma\vdash e:
   \Matcher{(\kappa_1,\ldots,\kappa_n)}{(\tau_1,\ldots,\tau_n)}
-}\rn{COERCE-TUPLE-MATCHER}
+}\rn{COERCE-PRODUCT-MATCHER}
 
 \inferrule{
   \Sighat;\Gamma\vdash e:
@@ -1128,6 +1129,13 @@ raw traversal と validator はともに停止する executable function であ�
 には caller-supplied bridge，型付け oracle，completeness，full principal-type theorem を
 含めない．
 
+式 checking では，raw synthesized type が matcher の product で，期待型が matcher または
+matcher slot である場合に限り，まず COERCE-PRODUCT-MATCHER を利用位置で一意に選ぶ．その後は
+通常の type equality または既存の producer-stable な matcher-to-slot alignment を行う．
+terminal reconstruction は同じ raw type と期待型から unary coercion node を再構成するため，
+trace に型付け oracle を追加しない．raw metavariable が prevailing substitution 後に初めて
+matcher の product になる場合の completeness は現段階では主張しない．
+
 この公開境界には positive／negative control twin を置く．同じ structured consumer に
 対して polymorphic value producer を用いる項は $\mathsf{infer}$ が拒否し，あらかじめ
 concrete capability を持つ producer へ置き換えた項は成功して結果型を
@@ -1261,11 +1269,20 @@ algorithmic acceptance は主張しない．
 
 principality はそのままの形では成り立たない．閉じた式
 $(\mathtt{something},\mathtt{something})$ は T-TUPLE により matcher の product 型へ，
-COERCE-TUPLE-MATCHER により product matcher 型へ型付くが，tuple 式の導出可能型の頭構成子は
+COERCE-PRODUCT-MATCHER により product matcher 型へ型付くが，tuple 式の導出可能型の頭構成子は
 $\mathsf{prod}$／$\mathsf{matcher}$／$\mathsf{slot}$ に限られ，paired substitution は
 これらの頭を保存する．従って両方の型付けを instance に持つ導出可能型は存在しない．この
 反例は機械化済みであり，原因は coercion の重なりそのものであって capability evidence とは
-独立である．
+独立である．一方，surface typing を非 coercion root と明示的な外側 coercion spine へ
+分解する定理，および公開 inference の成功から proof-relevant な core typing を構成し，
+それを erase して surface typing を得る定理を機械化している．現段階の分解は再帰 premise に
+surface typing を残す root factorization であり，core typing の一意性，MGU による置換普遍性，
+surface typing に対する再帰的 completeness はまだ主張しない．現行の terminal pattern leaf は
+freshness 用 raw context と任意の actual context を独立に持てるため，後者はまず
+$\mathsf{actualContext}=S\,\mathsf{rawContext}$ を満たす coherent surface derivation に限定するか，
+source judgment 自体をこの条件へ tighten して述べる必要がある．
+COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
+unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

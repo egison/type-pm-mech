@@ -15,7 +15,8 @@ theorem checkExprFuel_historyPrefix
       | none => simp [inferredEq] at success
       | some inferred =>
           cases alignmentEq : alignAtSlot inferred.state
-              (freshOrigin .expression path "expected-type") inferred.target
+              (freshOrigin .expression path "expected-type")
+              (expectedCoercionSource inferred.state inferred.target expected)
               expected with
           | none => simp [inferredEq, alignmentEq] at success
           | some aligned =>

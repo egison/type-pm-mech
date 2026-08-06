@@ -255,13 +255,6 @@ inductive Terminal {signature : FrozenSig} :
       Terminal
         (HasTy.matcher clausesTyping shape catchAll exhaustive ppNodup armNodup
           coverage)
-  | coerceTupleMatcher {context : Context} {expressions : List Expr}
-      {duals : List Dual}
-      (expressionsTyping :
-        ExprsTy signature context expressions
-          (duals.map fun dual => .matcher dual.cap dual.target)) :
-      Terminal (HasTy.coerceTupleMatcher expressionsTyping)
-
 end HasTy
 
 /--
@@ -295,6 +288,13 @@ def preserveSourceCoercions
       ValueTy.slotToSlot
         (preserveSourceCoercions signatureWF inner environmentTyping terminal)
         raw post
+  | .coerceProductMatcher inner =>
+      let innerValue :=
+        preserveSourceCoercions signatureWF inner
+          environmentTyping terminal
+      match ValueTy.product_inversion signatureWF innerValue with
+      | ⟨_values, equality, valuesTyped⟩ =>
+          equality.symm ▸ ValueTy.matcherProduct valuesTyped
   | .coerceSlotTuple inner =>
       let innerValue :=
         preserveSourceCoercions signatureWF inner
@@ -336,10 +336,6 @@ def preserveSourceCoercions
         (.matcher clausesTyping shape catchAll exhaustive ppNodup armNodup
           coverage)
         environmentTyping
-  | terminalTyping@(.coerceTupleMatcher expressionsTyping) =>
-      terminal terminalTyping (.coerceTupleMatcher expressionsTyping)
-        environmentTyping
-
 /-! ## Pointwise evaluated expression lists -/
 
 /--

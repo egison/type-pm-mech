@@ -38,8 +38,22 @@ commit／push はその都度の明示指示がある場合に限るという規
   戻さない．terminal validator の completeness は主張しない．principality は
   そのままの形では `PrincipalityCounterexample` の機械化反例
   （`no_principal_type`）により**反証済み**であり，principal-type theorem を
-  無証明で復活させない．制限版（coercion-free／per-sort／evidence 法）は open として
-  扱う．
+  無証明で復活させない．`Elaboration.SynthHead`／`CoercionPlan`／`CheckHead` と
+  `HasTy.factorHead` が証明するのは surface typing の **root factorization** であり，
+  再帰 premise がまだ `HasTy` である間は full core principality と呼ばない．
+  `Elaboration.CoreTyping` は公開 inference が構成する proof-relevant な
+  `Reconstruction.ExprDeriv` の別名であり，明示的 coercion を erase して `HasTy` を得る
+  soundness 境界である．一意性／MGU 普遍性／surface completeness は open として扱う．
+  特に `TerminalPatternResolution` の leaf は `rawContext` と任意の `actualContext` を
+  独立に持てるため，無条件の `HasTy → ExprDeriv` は主張しない．再帰的 completeness は
+  `actualContext = rawContext.applySubst prevailing` を満たす coherent surface subset
+  （または同条件へ tighten した source judgment）を対象にする．
+  product-of-matchers の lift は tuple literal 専用へ戻さず，`let` 後の変数利用位置でも
+  挿入できる unary `COERCE-PRODUCT-MATCHER` を維持する．`checkExprFuel` の
+  `expectedCoercionSource` は raw synthesized type が product-of-matchers と見える
+  matcher／slot 利用位置だけでこの lift を選び，terminal reconstruction は
+  `expectedCoercionSource_deriv` から明示的 node を構成する．prevailing substitution 後に
+  初めて product head が現れる raw metavariable の completeness は非主張とする．
 - pattern を含まない `λ`/`let`/`fix` 断片の Damas–Milner 一致は，宣言側の埋め込み
   `DM.HasTy.emb`（`DamasMilner.lean`，閉じた signature 上）だけが証明済みである．
   逆方向（conservativity）と algorithmic acceptance（公開 `infer` が DM program を
@@ -64,7 +78,8 @@ commit／push はその都度の明示指示がある場合に限るという規
   だけでなく必ず `lake build` を通す．
 - 次の executable regression とその正負境界を維持する．
   - `TypePM/CertifiedInferenceRegression.lean`: primitive-pattern pattern の core order を
-    `inferRaw` と公開 `infer` の両方で検査する正順 accept／逆順 reject の対．
+    `inferRaw` と公開 `infer` の両方で検査する正順 accept／逆順 reject の対，および
+    product-of-matchers の matcher／slot 利用位置 selector．
   - `TypePM/RecursiveExamples.lean`: list／multiset direct-self 正例，coverage 不足 multiset
     負例，および recursive list matcher を slot に適用して `cons $x $rest` の両束縛を
     body で使う静的な公開 inference 旗艦例．この旗艦例について動的実行までは主張しない．
@@ -87,5 +102,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   - `TypePM/DamasMilner.lean`: DM 断片の宣言的埋め込みと多相 `let` 証人．
   - `TypePM/PrincipalityCounterexample.lean`: `(something, something)` の二重型付けと
     `no_principal_type`．
+  - `TypePM/ElaborationRegression.lean`: product の root synthesis と明示的
+    `COERCE-PRODUCT-MATCHER` plan，および `let` 後の変数利用位置での unary lift．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．

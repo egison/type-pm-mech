@@ -107,10 +107,10 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       ExprDeriv signature context expression
         (.slot ((requestedCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply requestedTarget)))
-  | coerceTupleMatcher {context expressions} {duals : List Dual} :
-      ExprsDeriv signature context expressions
-        (duals.map fun dual => .matcher dual.cap dual.target) ->
-      ExprDeriv signature context (.tuple expressions)
+  | coerceProductMatcher {context expression} {duals : List Dual} :
+      ExprDeriv signature context expression
+        (.prod (duals.map fun dual => .matcher dual.cap dual.target)) ->
+      ExprDeriv signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
   | coerceSlotTuple {context expression} {duals : List Dual} :
@@ -1312,6 +1312,40 @@ theorem history_terminal_apply_eq
   rw [List.drop_append_length]
   simpa only [replay] using sequential
 
+/--
+Reconstruct the explicit unary product-matcher node selected by
+`expectedCoercionSource`.  The executable selector only changes the source at
+a matcher/slot use site and only when the raw inferred target itself exposes a
+product of matchers.  Consequently no normalized component is substituted a
+second time at the terminal cut.
+-/
+theorem expectedCoercionSource_deriv
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {state : InferState} {inferred expected : Ty} {terminalSubst : Subst}
+    (derivation :
+      ExprDeriv signature context expression (terminalSubst.apply inferred)) :
+    ExprDeriv signature context expression
+      (terminalSubst.apply
+        (expectedCoercionSource state inferred expected)) := by
+  unfold expectedCoercionSource
+  cases view : productMatcherDuals? inferred with
+  | none => exact derivation
+  | some duals =>
+      cases requested : state.prevailing.apply expected
+      all_goals try exact derivation
+      all_goals
+        have rawShape := productMatcherDuals?_sound view
+        have productDerivation : ExprDeriv signature context expression
+            (.prod ((duals.map (Dual.applySubst terminalSubst)).map fun dual =>
+              .matcher dual.cap dual.target)) := by
+          rw [rawShape] at derivation
+          simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+            Function.comp_def] using derivation
+        have lifted := ExprDeriv.coerceProductMatcher productDerivation
+        simpa [productMatcherTarget, Subst.apply_matcher,
+          Cap.apply_prod, Subst.apply_prod, List.map_map,
+          Dual.applySubst, Dual.apply, Function.comp_def] using lifted
+
 /-- Successful pointwise pattern-target alignment identifies every child
 target at an enclosing terminal cut. -/
 theorem alignPatternTargets_terminal_eq
@@ -2039,30 +2073,33 @@ theorem inferExprFuel_reconstructAt
         (ResolvedPatternDeriv.ofTerminal patternDeriv') matcherDeriv'
         bodyDeriv')
   case case39 =>
-    rename_i fuel' signature' context' selfEnv' path' expression expected
-      initial bodyResult bodyEq alignedState alignEq terminal bodyIH bridge'
+    rename_i signature' context' selfEnv' path' expression expected initial
+      bodyResult bodyEq sourceTarget alignedState terminal alignEq bodyIH bridge'
       terminalHistory
     let slotEvent := TraceEvent.slotAlignment
       bodyResult.state.trace.solves.length alignedState.trace.solves.length
-      (bodyResult.state.prevailing.apply bodyResult.target)
+      (bodyResult.state.prevailing.apply sourceTarget)
       (bodyResult.state.prevailing.apply expected)
     have alignedHistory : alignedState.HistoryPrefix terminal :=
       (InferState.historyPrefix_recordEvent alignedState slotEvent).trans
         terminalHistory
     have bodyHistory : bodyResult.state.HistoryPrefix terminal :=
       (alignAtSlot_historyPrefix alignEq).trans alignedHistory
-    have inferredDeriv := bodyIH bodyResult rfl terminal bridge' bodyHistory
+    have rawInferredDeriv := bodyIH bodyResult rfl terminal bridge' bodyHistory
+    have inferredDeriv : ExprDeriv signature'
+        (context'.applySubst terminal.prevailing) expression
+        (terminal.prevailing.apply sourceTarget) := by
+      exact expectedCoercionSource_deriv rawInferredDeriv
     have localMembership : slotEvent ∈
         (alignedState.recordEvent slotEvent).trace.events := by
       simp [slotEvent, InferState.recordEvent]
     have finalMembership := terminalHistory.event_mem localMembership
     have slotCertificate := bridge'.slotAlignments.final finalMembership
-    have inferredTerminal := history_terminal_apply_eq bodyHistory
-      bodyResult.target
+    have inferredTerminal := history_terminal_apply_eq bodyHistory sourceTarget
     have requestedTerminal := history_terminal_apply_eq bodyHistory expected
     cases slotCertificate with
     | equal aligned =>
-        have finalEq : terminal.prevailing.apply bodyResult.target =
+        have finalEq : terminal.prevailing.apply sourceTarget =
             terminal.prevailing.apply expected := by
           rw [inferredTerminal, requestedTerminal]
           exact aligned

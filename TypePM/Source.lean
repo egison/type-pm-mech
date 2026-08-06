@@ -3078,11 +3078,17 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
       HasTy signature context expression
         (.slot ((requestedCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply requestedTarget)))
-  /-- COERCE-TUPLE-MATCHER. -/
-  | coerceTupleMatcher {context expressions} {duals : List Dual} :
-      ExprsTy signature context expressions
-        (duals.map fun dual => .matcher dual.cap dual.target) →
-      HasTy signature context (.tuple expressions)
+  /--
+  COERCE-PRODUCT-MATCHER.
+
+  This is a genuine unary product lift rather than a tuple-literal-only rule.
+  The general form lets elaboration delay the view choice across `let` and
+  insert the explicit coercion at the eventual matcher use site.
+  -/
+  | coerceProductMatcher {context expression} {duals : List Dual} :
+      HasTy signature context expression
+        (.prod (duals.map fun dual => .matcher dual.cap dual.target)) →
+      HasTy signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
   /-- COERCE-SLOT-TUPLE. -/
@@ -3776,5 +3782,6 @@ theorem HasTy.matcher_inversion
       exact
         ⟨_, clausesTyped, shape, catchAll, exhaustive,
           ppNodup, armNodup, coverage⟩
+  | coerceProductMatcher premise => cases premise
 
 end TypePM

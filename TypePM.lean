@@ -15,8 +15,10 @@ import TypePM.ClauseEvidenceExamples
 import TypePM.DirectSelf
 import TypePM.Unification
 import TypePM.Source
+import TypePM.Elaboration
 import TypePM.DamasMilner
 import TypePM.PrincipalityCounterexample
+import TypePM.ElaborationRegression
 import TypePM.SourceSubstitution
 import TypePM.SourceMetatheory
 import TypePM.Semantics
@@ -37,6 +39,7 @@ import TypePM.InferenceHistory
 import TypePM.Reconstruction
 import TypePM.BridgeChecks
 import TypePM.CertifiedInference
+import TypePM.CoreTyping
 import TypePM.CertifiedInferenceRegression
 import TypePM.DynamicSafetyRegression
 import TypePM.DynamicCaptureRegression

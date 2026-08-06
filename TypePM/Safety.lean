@@ -5062,12 +5062,6 @@ private theorem EvalRuntimeSigAgrees.preserve_with
                 (valueTys_of_evalZip expressionsTyping lengths
                   (fun pair member actual actualTyping =>
                     (childrenIH pair member).2 runtimePristine
-                      terminalEnvironment actualTyping))
-          | coerceTupleMatcher expressionsTyping =>
-              exact ValueTy.matcherProduct
-                (valueTys_of_evalZip expressionsTyping lengths
-                  (fun pair member actual actualTyping =>
-                    (childrenIH pair member).2 runtimePristine
                       terminalEnvironment actualTyping)))
   case ector =>
     intro ignoredName runtimeEnvironment name expressions values lengths evaluations

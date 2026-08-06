@@ -12,8 +12,11 @@
 `infer_success_sound` は成功等式だけから `HasTy` を返す．これは意図する
 `InferenceInputWF` 入力に限定した主張より強い．
 `WBridgeWF` は validator が内部で構成する証明書であり，呼び出し側の仮定ではない．
-completeness と full principality，および Egison コンパイラ全体の検証はこの目標に
-含めない．
+plain surface principality は機械化済み反例により偽である．現在はその境界を保ったまま，
+推論器が principal core typing を生成し，surface typing を core type の置換と明示的
+coercion に分解する定理を次の目標としている．現時点では core evidence を伴う
+soundness と surface coercion の root factorization までを証明しており，core
+principality／completeness と Egison コンパイラ全体の検証はまだ主張しない．
 
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．形式仕様は
 [`tex/main.tex`](tex/main.tex)，Lean の public import surface は
@@ -165,6 +168,42 @@ prevailing substitution で解決した context と結果型に対する concret
 terminal validator が raw 成功を棄却する場合はあるため，completeness や full
 principal-type theorem は主張しない．
 
+### Principal core elaboration boundary
+
+surface の `HasTy` は動的安全性の境界として維持しつつ，暗黙 coercion を明示化する
+elaboration 層を追加した．[`TypePM/Elaboration.lean`](TypePM/Elaboration.lean) の
+`SynthHead` は root の非 coercion 規則，`CoercionPlan` はその外側の coercion spine，
+`CheckHead` は両者の合成を表す．`HasTy.factorHead` と `checkHead_iff_surface` により，
+任意の surface typing がこの形へ分解でき，明示的 plan の replay が元の `HasTy` を
+復元することを証明している．ただし `SynthHead` の再帰 premise はまだ `HasTy` であり，
+これは **root factorization** であって再帰的な principal-core theorem ではない．
+
+[`TypePM/CoreTyping.lean`](TypePM/CoreTyping.lean) は，既存の proof-relevant な
+`Reconstruction.ExprDeriv` を `CoreTyping` として公開し，公開 `infer` の成功から
+推論が選んだ coercion constructor を含む oracle-free な core evidence が得られ，その
+erase が surface soundness を与えることを固定する．これは現段階では `Prop` 値の
+elaboration certificate であり，実行時に返す core AST ではない．
+product-of-matchers から product matcher への規則は
+tuple literal 専用ではなく unary な `COERCE-PRODUCT-MATCHER` とした．このため coercion は
+`let` の束縛時ではなく変数利用位置にも挿入できる．
+`checkExprFuel` は matcher／slot が要求されたとき，raw synthesized type が
+product-of-matchers なら `expectedCoercionSource` でこの lift を一意に選び，その後は既存の
+type equality または matcher-to-slot alignment を使う．terminal reconstruction の
+`expectedCoercionSource_deriv` は同じ選択から `ExprDeriv.coerceProductMatcher` を構成するため，
+solver trace に型付け oracle を追加しない．現段階の selector は raw type の頭を検査するので，
+raw metavariable が prevailing substitution 後に初めて product-of-matchers になる場合は
+completeness の今後の課題として残る．
+
+今後必要なのは，この root 境界を再帰的な canonical core judgment へ強化し，W が生成する
+core typing の一意性（binder の alpha 同値を除く），MGU による置換普遍性，および任意の
+coherent surface typing がその置換と明示的 coercion から得られる completeness を証明する
+ことである．現行 `TerminalPatternResolution` の leaf は freshness 用 `rawContext` と
+`actualContext` を独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も
+含まれる．従って再帰的 completeness の前に，両者を
+`actualContext = rawContext.applySubst prevailing` で結ぶ coherent surface 境界を定義するか，
+source judgment 自体を同条件へ tighten する必要がある．現時点ではこれらを principality として
+主張しない．
+
 ### Runtime safety
 
 runtime matcher value は，生成元の actual clause list と現在の clause cursor を別々に
@@ -232,12 +271,20 @@ signature 上の二 sort 宣言体系へ埋め込まれる**こと（`DM.HasTy.e
 [`TypePM/PrincipalityCounterexample.lean`](TypePM/PrincipalityCounterexample.lean) は，
 宣言体系のprincipalityが**そのままの形では偽**であることを機械化された反例で確定する．
 閉じた式 `(something, something)` は T-TUPLE でmatcherのproduct型に，
-COERCE-TUPLE-MATCHER でproduct matcher型に型付き，両者の頭構成子（`prod` と `matcher`）は
+COERCE-PRODUCT-MATCHER でproduct matcher型に型付き，両者の頭構成子（`prod` と `matcher`）は
 異なる．tuple式の導出可能型の頭は `prod`/`matcher`/`slot` に限られ（`tuple_ty_head`），
 paired substitutionは頭を保存するため，両方をinstanceに持つ導出可能型は存在しない
 （`no_principal_type`）．失敗の原因はcoercionの重なりそのもの（使えるproduct matcherの代価）で
 あり，capability evidenceとは独立である．制限されたprincipality文はこの重なりを除外する必要が
 ある．coercionを持たない DamasMilner 断片は影響を受けない．
+
+[`TypePM/ElaborationRegression.lean`](TypePM/ElaborationRegression.lean) は，この反例の
+product 型を canonical な root synthesis として固定し，product matcher view を明示的
+`CoercionPlan` として replay する．さらに product 型のまま `let` を越えた変数へ unary lift を
+利用位置で適用できることを宣言的に証明する．
+[`TypePM/CertifiedInferenceRegression.lean`](TypePM/CertifiedInferenceRegression.lean) は，
+executable checker の selector が matcher 期待時に product matcher を，slot 期待時にも
+matcher-to-slot の入力となる同じ product matcher を一意に選ぶことを固定する．
 
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
 context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，

@@ -22,6 +22,36 @@ def emptySignature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
+/-! ## Unary product-matcher selection at a use site -/
+
+def concretePairProductType : Ty :=
+  .prod [.matcher .none .int, .matcher .none .int]
+
+def concretePairMatcherType : Ty :=
+  .matcher (.prod [.none, .none]) (.prod [.int, .int])
+
+def concretePairSlotType : Ty :=
+  .slot (.prod [.none, .none]) (.prod [.int, .int])
+
+/-- A matcher expectation selects the unary product lift before alignment. -/
+theorem productMatcher_expected_source
+    (state : Inference.InferState) :
+    Inference.expectedCoercionSource state concretePairProductType
+      concretePairMatcherType = concretePairMatcherType := by
+  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.matcherDual?, Inference.productMatcherTarget,
+    concretePairProductType, concretePairMatcherType]
+
+/-- A slot expectation presents the lifted matcher to the existing
+matcher-to-slot alignment path. -/
+theorem productMatcher_slot_source
+    (state : Inference.InferState) :
+    Inference.expectedCoercionSource state concretePairProductType
+      concretePairSlotType = concretePairMatcherType := by
+  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.matcherDual?, Inference.productMatcherTarget,
+    concretePairProductType, concretePairMatcherType, concretePairSlotType]
+
 /-! ## A generalized `let` whose ambient lambda variable is solved later -/
 
 def terminalLetExpression : Expr :=

@@ -1474,13 +1474,13 @@ theorem HasTy.transportFlows
         (postVariable.seq premiseVariable)
       simpa only [Subst.apply_slot, Cap.apply_substSeq,
         Subst.seq_apply] using result
-  | @HasTy.coerceTupleMatcher _ context expressions duals expressionsTyping => by
-      have expressionsMoved := expressionsTyping.transportFlows basic
+  | @HasTy.coerceProductMatcher _ context expression duals expressionTyping => by
+      have expressionMoved := expressionTyping.transportFlows basic
         postVariable capFixed targetFixed contextFlow
-      have result := HasTy.coerceTupleMatcher
+      have result := HasTy.coerceProductMatcher
         (duals := duals.map (Dual.applySubst S)) (by
           simpa [List.map_map, Function.comp_def, Dual.applySubst, Dual.apply]
-            using expressionsMoved)
+            using expressionMoved)
       simpa only [Subst.apply_matcher, Subst.apply_prod, Cap.apply_prod,
         Dual.map_cap_applySubst, Cap.applyList_eq_map,
         Dual.map_target_applySubst] using result
