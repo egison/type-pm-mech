@@ -1335,8 +1335,12 @@ $\mathsf{prod}$／$\mathsf{matcher}$／$\mathsf{slot}$ に限られ，paired sub
 分解する定理，および公開 inference の成功から derivation-structured な
 $\mathsf{Prop}$ 証明書として core typing を構成し，それを erase して surface typing を得る定理を
 機械化している．proof irrelevance のため，この証明書自体は観測可能な elaboration data ではない．
-現段階の分解は再帰 premise に
-surface typing を残す root factorization であり，core typing の一意性，unifier の factorization（置換普遍性），
+現段階の surface 分解は再帰 premise に surface typing を残す root factorization である．一方，
+inference が構成する core typing 証明書は pattern の raw expression／parameter context を全 child で共有し，
+raw binding context を左から右へ threadする．value-pattern，arm，clause の premise も再帰的な core evidence
+であり，surface typing oracle へ戻らない．この証明書はさらに，再帰 premise を core evidence に保つ
+non-coercion head と明示的な外側 coercion plan に分解でき，逆向きの再構成も可能である．ただし core typing の
+一意性，unifier の factorization（置換普遍性），
 surface typing に対する再帰的 completeness はまだ主張しない．一方，命題値の coercion reachability
 とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を持つが一般の
 trans を持たない candidate normal-plan syntax を観測可能な型として定義する．product of matchers
@@ -1345,9 +1349,12 @@ COERCE-PRODUCT-MATCHER の後に COERCE-MATCHER-TO-SLOT，product of slots か�
 への経路は非空 product に対する COERCE-SLOT-TUPLE 一段とする．surface の slot-to-slot check は
 capability／target の決定的 unifier と後置換の後で両端が等しいことを証明し，identity へ吸収する．全 observable
 step／spine が端点を変えること，同じ端点の plan が identity だけであること，既存 surface coercion
-および typing への sound replay を証明する．任意の surface plan の normalization，normalization の
-一意性，異なる端点に対する plan inhabitant の一意性，公開推論結果へのこの plan data の格納は
-まだ主張しない．
+および typing への sound replay を証明する．identity 以外で合成可能な唯一の二段経路を
+whole-product-first spine へ畳み，空 product の slot-tuple rule も matcher-first の二段経路へ送ることで，
+任意の surface plan が candidate normal plan を持つことを証明する．ただし surface plan は命題値なので，
+結果は観測可能な値ではなく $\mathsf{Nonempty}$ に包まれた論理的存在である．同じ端点に対する
+observable rule 列の一意性も証明する．raw certificate を含む plan inhabitant 自体の
+一意性と，公開推論結果への plan data の格納はまだ主張しない．
 
 capability 後置換には rigid／rename-only／structural-flexible を区別する有限 ledger を用いる．
 admissible post は逐次合成で閉じ，freeze 後に既存の variable-only 境界へ接続できる．phased post は
@@ -1362,10 +1369,11 @@ terminal pattern leaf の任意の actual context をまず
 $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface
 への忘却，reconstruction bridge を機械化する．さらに一つの raw expression／parameter context を
 全 child で共有し，raw binding context だけを左から右へ threadする強い judgment と忘却写像を与える．
-既存 reconstruction の composite node は top-level raw provenance を保持せず，置換も非単射なので，
-そこからの generic bridge は置かない．次は W の reconstruction motive からこの evidence を直接
-生成する．value-pattern 内の式 typing はなお surface typing であり，full coherence には expression，
-arm，clause まで含む相互帰納的拡張が必要である．
+reconstruction judgment 自体も同じ raw indices を保持する形へ強化し，W の reconstruction motive が
+この evidence を直接生成する．value-pattern 内の式 typing は reconstruction 側では再帰的 core evidence
+であり，surface judgment への bridge でのみ通常の typing へ忘却する．従って inference-generated core の
+再帰的 coherence は得られたが，任意の coherent surface typing を定式化するには expression，arm，clause
+まで含む独立した相互帰納的 domain がなお必要である．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
 unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
 整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として
@@ -1375,8 +1383,8 @@ product-matcher lift，matcher-to-slot，slot-tuple を挿入できる．ただ�
 substitution 後に初めて product head または matcher／slot component を持つ場合には，matcher
 product／slot product の双方で，判明した solve cut と後続 suffix を記録する cut-indexed event が
 なお必要である．空 product は両 recognizer に一致するため product-matcher branch を優先する．
-この先は，任意 plan から candidate syntax への normalization completeness，component-first 経路を
-含む critical pair の解消，normalization uniqueness，coercion の意味的同値，置換に対する naturality
+外側 plan から candidate syntax への論理的 normalization completeness は得られた．この先は，
+component-first 経路を含む critical pair の解消，full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality
 を確定してから，core typing の一意性，unifier factorization，coherent surface completeness へ進む必要がある．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．

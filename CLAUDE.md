@@ -40,7 +40,11 @@ commit／push はその都度の明示指示がある場合に限るという規
   （`no_principal_type`）により**反証済み**であり，principal-type theorem を
   無証明で復活させない．`Elaboration.SynthHead`／`CoercionPlan`／`CheckHead` と
   `HasTy.factorHead` が証明するのは surface typing の **root factorization** であり，
-  再帰 premise がまだ `HasTy` である間は full core principality と呼ばない．
+  その再帰 premise は `HasTy` のままである．`CoreTyping.lean` の `CoreSynthHead`／`CoreCheck` は
+  同じ分解を recursive reconstruction premise へ強化し，`coreCheck_iff_coreTyping` と公開 inference
+  bridge を持つ．さらに `CoreTyping.factorNormalHead` は外側 plan に対する
+  `Nonempty NormalPlan` witness の論理的存在を与えるが，
+  これらを full core principality と呼ばない．
   `Elaboration.CoreTyping` は公開 inference が構成する derivation-structured な `Prop` 証明書
   `Reconstruction.ExprDeriv` の別名であり，明示的 coercion に沿う証明を erase して `HasTy` を得る
   soundness 境界である．proof irrelevance のため観測可能な core data とは呼ばない．
@@ -52,20 +56,26 @@ commit／push はその都度の明示指示がある場合に限るという規
   `CoherentTerminalPatternResolution(s)`／`CoherentResolvedPatternTy` と reconstruction
   bridge は leaf-local な第一境界である．`ThreadedPatternResolution(s)` は raw
   `Context`／`PatternCtx` を全 child で共有し，raw `MonoCtx` を左から右へ threadする強い第二境界で，
-  第一境界への forgetful map までを持つ．置換の非単射性により既存 `PatternResolutionDeriv` からの
-  generic bridge は主張せず，W reconstruction motive から直接同時生成することを次段階とする．
-  `pval` premise が plain `HasTy` の間は full recursive coherence と呼ばず，その後
-  expression／arm／clause を含む独立した mutual coherent judgment へ拡張する．proof-indexed な
-  derivation property や
+  第一境界への forgetful map を持つ．`PatternResolutionDeriv(s)` 自体は同じ raw context／binding
+  thread を保持する形へ強化済みであり，W reconstruction motive が直接生成する．その `pval` premise は
+  `ExprDeriv` なので，inference-generated な `CoreTyping` は expression／pattern／arm／clause を通じて
+  surface typing oracle へ戻らない recursive coherent core certificate である．一方，独立した surface
+  `ThreadedPatternResolution(s)` の `pval` premise は plain `HasTy` のままなので，任意の coherent surface
+  typing を対象にする completeness には，expression／arm／clause を含む別の mutual coherent judgment が
+  必要である．proof-indexed な derivation property や
   `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない．
   `CanonicalCoercion.lean` の `Step`／`Spine`／`NormalPlan` は observable な `Type` 値の
   candidate coercion-plan syntax であり，identity と一般 `trans` を分離し，whole-product-first
   の二段経路を固定する．observable step は型の頭を変える3規則だけとし，product-of-slots は
   非空の場合に限り一致する aggregate slot へ `slotTuple` 一段で移す．surface の slot-to-slot
   check は MGU 後の端点等式により `refl` へ吸収する．全 spine の端点非等式と，同じ端点の plan が
-  `refl` だけであることは証明済みである．現段階で証明するのは既存
-  `CoercionPlan`／`HasTy` への sound replay までであり，任意 plan の normalization，normalization
-  uniqueness，異なる端点に対する inhabitant の一意性，推論器による plan data の直接生成は主張しない．
+  `refl` だけであることは証明済みである．`NormalPlan.comp` は identity 以外の唯一の合成
+  `productMatcher; matcherToSlot` を二段 spine へ畳み，空 `slotTuple` は matcher-first の同じ二段経路へ
+  送る．`CoercionPlan.normalizable` と逆向きの sound replay により，外側 coercion reachability と
+  `Nonempty NormalPlan` の同値は証明済みである．`CoercionPlan : Prop` から `NormalPlan : Type` を
+  計算で取り出せないため，これは observable data の生成ではない．同じ端点の `NormalPlan.kinds` 列は
+  一意である．raw certificate を含む inhabitant 自体の一意性，
+  推論器による plan data の直接生成は主張しない．
   `CapabilityOrigin.lean` は `rigid`／`renameOnly`／`structuralFlexible` ledger，capability component
   に対する admissible post，局所 structural／frozen residual を分ける `PhasedPost`，`Subst.seq`
   閉性，freeze bridge の代数的基礎である．target component は現段階では制約しない．

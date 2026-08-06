@@ -15,8 +15,9 @@
 plain surface principality は機械化済み反例により偽である．現在はその境界を保ったまま，
 推論器が principal core typing を生成し，surface typing を core type の置換と明示的
 coercion に分解する定理を次の目標としている．現時点では core evidence を伴う
-soundness と surface coercion の root factorization までを証明しており，core
-principality／completeness と Egison コンパイラ全体の検証はまだ主張しない．
+soundness，raw provenance を保つ再帰的 core head factorization，および外側 coercion plan の
+論理的な normalization completeness までを証明している．core の一意性／surface completeness と
+Egison コンパイラ全体の検証はまだ主張しない．
 
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．形式仕様は
 [`tex/main.tex`](tex/main.tex)，Lean の public import surface は
@@ -198,7 +199,10 @@ elaboration 層を追加した．[`TypePM/Elaboration.lean`](TypePM/Elaboration.
 `Prop` 証明書 `Reconstruction.ExprDeriv` を `CoreTyping` として公開し，公開 `infer` の成功から
 推論が選んだ coercion constructor に沿う oracle-free な core evidence が得られ，その
 erase が surface soundness を与えることを固定する．Lean の proof irrelevance により，これは
-観測可能な elaboration data ではなく，実行時に返す core AST でもない．
+観測可能な elaboration data ではなく，実行時に返す core AST でもない．`CoreSynthHead` は
+再帰 premise をすべて reconstruction evidence に保った非 coercion head，`CoreCheck` はそれと
+明示的 `CoercionPlan` の合成であり，`coreCheck_iff_coreTyping` が既存 core certificate との同値を
+与える．公開 inference の成功もこの factorization を構成する．
 [`TypePM/CanonicalCoercion.lean`](TypePM/CanonicalCoercion.lean) はこの `Prop` 値の
 `CoercionPlan` とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を含む `NormalPlan` を
 観測可能な `Type` 値の候補 normal-plan syntax として定義する．これは一般の `trans` を持たず，
@@ -207,9 +211,12 @@ slots から一致する aggregate slot へは `slotTuple` 一段である．sur
 capability／target の決定的 unifier と後置換の後で両端が等しいことを証明し，`NormalPlan.refl` へ吸収する．
 全 `Step`／`Spine` が端点を変えることと，同じ端点の `NormalPlan` は `refl` だけであることも
 証明済みである．空 product の `slotTuple` は constructor 側で禁止し，matcher-product precedence
-を syntax にも反映する．既存 surface plan／`HasTy` への replay soundness は証明済みである．
-一方，任意 plan の normalization，normalization の一意性，および異なる端点に対する plan
-inhabitant の一意性は未証明である．公開推論がこのデータを直接返すことも次段階である．
+を syntax にも反映する．既存 surface plan／`HasTy` への replay soundness に加え，`NormalPlan.comp` と
+`CoercionPlan.normalizable` により任意の外側 plan が `NormalPlan` を持つことも証明する．空 product は
+matcher-first の二段経路へ正規化される．ただし `CoercionPlan : Prop` から `NormalPlan : Type` の値を
+計算で取り出せないため，結果は `Nonempty` に包まれる．observable rule 列は同じ端点から一意に
+決まることも証明済みである．一方，raw certificate を含む plan
+inhabitant 自体の一意性，および公開推論が observable plan data を直接返すことは未証明である．
 
 product-of-matchers から product matcher への規則は
 tuple literal 専用ではなく unary な `COERCE-PRODUCT-MATCHER` とした．このため coercion は
@@ -245,10 +252,10 @@ constraint acceptance と terminal audit は従来の `protectedCaps` をその�
 origin-aware orientation，および raw binder ではなく局所 solve 後に外へ生存する prevailing image の
 leaf を freeze する export event が必要である．
 
-今後必要なのは，この root 境界と observable plan syntax を再帰的な canonical core judgment
-へ強化することである．その前提として，algorithmic／surface plan から `NormalPlan` への
-normalization completeness，component-first 経路を含む critical pair の解消と normalization
-uniqueness，coercion の意味的同値，置換に対する naturality，および normalized product が判明した
+`CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
+completeness は得られた．今後 canonical core judgment へ強化するには，component-first 経路を含む
+critical pair の解消と full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality，
+および normalized product が判明した
 solve cut を保存する cut-indexed evidence が必要になる．その上で W が生成する core typing の
 一意性（binder の alpha 同値を除く），unifier の factorization（置換普遍性），および任意の coherent surface
 typing がその置換と明示的 coercion から得られる completeness を証明する．現行
@@ -262,12 +269,14 @@ evidence から既存 surface judgment への forgetful map と，inference reco
 `PatternResolutionDeriv(s)`／`ResolvedPatternDeriv` がこの leaf-local 境界へ入る bridge も証明する．
 さらに `ThreadedPatternResolution(s)` は一つの raw `Context`／`PatternCtx` を全 child で共有し，
 raw `MonoCtx` だけを binder 導入順に threadする．この強い judgment から leaf-local 境界への
-forgetful map は証明済みである．一方，既存 `PatternResolutionDeriv` は composite node に top-level
-raw provenance を保持せず，置換も非単射なので，そこからの一般 bridge は意図的に置かない．次は W の
-pattern reconstruction motive 自体から threaded evidence を同時生成する必要がある．また `pval` 内の
-式 typing はまだ通常の `HasTy` なので，いずれも pattern-local provenance coherence に限られ，full
-recursive coherent surface judgment ではない．その後 expression，arm，clause まで相互再帰的に同じ
-境界を広げる．現時点ではこれらを principality として主張しない．
+forgetful map は証明済みである．`PatternResolutionDeriv(s)` 自体も同じ raw context と raw binding
+thread を保持する形へ強化し，W の pattern reconstruction motive がこれを直接生成する．その `pval` は
+再帰的な `ExprDeriv` を要求し，arm と clause も既存の reconstruction family に閉じているため，公開
+inference が返す `CoreTyping` は全構文部分で surface typing oracle へ戻らない．この core evidence から
+`ThreadedPatternResolution(s)` への bridge では `ExprDeriv` を `HasTy` へ忘却する．従って独立した
+surface 側の judgment はなお pattern-local であり，任意の coherent surface typing に対する completeness
+には expression，arm，clause を含む別の相互帰納的 domain が必要である．現時点ではこの進展を
+principality として主張しない．
 
 ### Runtime safety
 
@@ -451,7 +460,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface` | root factorization，暫定 core evidence，observable coercion-plan syntax，origin-sensitive phased post，pattern-local coherent surface 境界 |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，pattern-local coherent surface 境界 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
 | 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |

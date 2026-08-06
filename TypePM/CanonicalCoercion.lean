@@ -24,9 +24,14 @@ certificate proves that its fully substituted endpoints are equal, so it is
 represented by `NormalPlan.refl`.
 
 The forgetful interpretation below proves that every observable spine is sound
-for the existing `Elaboration.CoercionPlan` relation.  Normalization of an
-arbitrary surface plan into this syntax and uniqueness of inhabitants are
-separate, currently unproved properties.
+for the existing `Elaboration.CoercionPlan` relation.  Conversely, every
+surface plan logically has a normal plan: composition closes on the sole
+whole-product-first two-step path, and the empty slot product uses that same
+matcher-first path.  Because `CoercionPlan` is a proposition, this completeness
+result is wrapped in `Nonempty` and does not compute observable plan data.
+The observable `kinds` sequence is unique at fixed endpoints; full plan
+inhabitant uniqueness remains a separate question because raw certificates can
+differ.
 -/
 
 namespace TypePM
@@ -109,6 +114,31 @@ def Step.kind
   | .productMatcher => .productMatcher
   | .slotTuple _ => .slotTuple
 
+/-- Observable rule classification determined by endpoint heads. -/
+private def endpointKind? : Ty -> Ty -> Option Kind
+  | .matcher _ _, .slot _ _ => some .matcherToSlot
+  | .prod _, .matcher _ _ => some .productMatcher
+  | .prod _, .slot _ _ => some .slotTuple
+  | _, _ => none
+
+private theorem Step.endpointKind?_eq
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (step : Step signature context expression source target) :
+    endpointKind? source target = some step.kind := by
+  cases step <;> rfl
+
+/-- Primitive steps with the same indexed endpoints have the same observable
+rule name, even when their hidden raw certificates differ. -/
+theorem Step.kind_unique
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (first second : Step signature context expression source target) :
+    first.kind = second.kind := by
+  have equality : some first.kind = some second.kind :=
+    first.endpointKind?_eq.symm.trans second.endpointKind?_eq
+  exact Option.some.inj equality
+
 /-- Forget one observable step into the existing surface coercion relation. -/
 def Step.toCoercionPlan
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -141,14 +171,14 @@ inductive Spine (signature : FrozenSig) (context : Context) (expression : Expr) 
       Step signature context expression source target ->
       Spine signature context expression source target
   | productMatcherToSlot
-      {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty} :
+      {duals : List Dual} {target : Ty} :
       Step signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
-        (.slot consumerCap consumerTarget) ->
+        target ->
       Spine signature context expression
         (.prod (duals.map fun dual => .matcher dual.cap dual.target))
-        (.slot consumerCap consumerTarget)
+        target
 
 /-- The observable primitive-rule sequence of a canonical spine. -/
 def Spine.kinds
@@ -160,6 +190,18 @@ def Spine.kinds
   | .productMatcherToSlot alignment =>
       [.productMatcher, alignment.kind]
 
+/-- Canonical observable sequence selected solely from the endpoint heads and
+the first product component.  Empty products follow matcher-first precedence. -/
+private def endpointSpineKinds : Ty -> Ty -> List Kind
+  | .matcher _ _, .slot _ _ => [.matcherToSlot]
+  | .prod [], .matcher _ _ => [.productMatcher]
+  | .prod [], .slot _ _ => [.productMatcher, .matcherToSlot]
+  | .prod (.matcher _ _ :: _), .matcher _ _ => [.productMatcher]
+  | .prod (.matcher _ _ :: _), .slot _ _ =>
+      [.productMatcher, .matcherToSlot]
+  | .prod (.slot _ _ :: _), .slot _ _ => [.slotTuple]
+  | _, _ => []
+
 private def MatcherHead : Ty -> Prop
   | .matcher _ _ => True
   | _ => False
@@ -168,29 +210,77 @@ private def SlotHead : Ty -> Prop
   | .slot _ _ => True
   | _ => False
 
-private theorem Step.kind_eq_matcherToSlot_of_heads
+/-- A primitive step whose source is a matcher must be matcher-to-slot. -/
+private theorem Step.kind_eq_matcherToSlot_of_source
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target)
-    (sourceMatcher : MatcherHead source) (targetSlot : SlotHead target) :
+    (sourceMatcher : MatcherHead source) :
     step.kind = .matcherToSlot := by
-  cases step <;> simp_all [MatcherHead, SlotHead, Step.kind]
+  cases step <;> simp_all [MatcherHead, Step.kind]
+
+/-- Observable primitive steps never start at a slot. -/
+private theorem Step.source_not_slot
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (step : Step signature context expression source target) :
+    ¬ SlotHead source := by
+  cases step <;> simp [SlotHead]
+
+/-- A primitive step starting at a matcher necessarily ends at a slot. -/
+private theorem Step.target_slot_of_source_matcher
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (step : Step signature context expression source target)
+    (sourceMatcher : MatcherHead source) :
+    SlotHead target := by
+  cases step <;> simp_all [MatcherHead, SlotHead]
 
 /-- A whole product-matcher lift followed by slot alignment has exactly the
 two intended primitive rules.  The endpoints of `alignment` rule out every
 `Step` constructor except matcher-to-slot. -/
 @[simp] theorem Spine.productMatcherToSlot_kinds
     {signature : FrozenSig} {context : Context} {expression : Expr}
-    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    {duals : List Dual} {target : Ty}
     (alignment : Step signature context expression
       (.matcher (.prod (duals.map Dual.cap))
         (.prod (duals.map Dual.target)))
-      (.slot consumerCap consumerTarget)) :
+      target) :
     (Spine.productMatcherToSlot alignment).kinds =
       [.productMatcher, .matcherToSlot] := by
   change [.productMatcher, alignment.kind] =
     [.productMatcher, .matcherToSlot]
-  rw [Step.kind_eq_matcherToSlot_of_heads alignment (by trivial) (by trivial)]
+  rw [Step.kind_eq_matcherToSlot_of_source alignment (by trivial)]
+
+private theorem Spine.kinds_eq_endpointSpineKinds
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (spine : Spine signature context expression source target) :
+    spine.kinds = endpointSpineKinds source target := by
+  cases spine with
+  | one step =>
+      cases step with
+      | matcherToSlot _ _ => rfl
+      | @productMatcher duals => cases duals <;> rfl
+      | @slotTuple duals nonempty =>
+          cases duals with
+          | nil => exact False.elim (nonempty rfl)
+          | cons _ _ => rfl
+  | @productMatcherToSlot duals target alignment =>
+      rw [Spine.productMatcherToSlot_kinds]
+      have targetSlot := alignment.target_slot_of_source_matcher (by trivial)
+      cases duals <;> cases target <;>
+        simp_all [SlotHead, endpointSpineKinds]
+
+/-- Canonical spines with the same endpoints have the same observable rule
+sequence, although their hidden certificates need not be equal. -/
+theorem Spine.kinds_unique
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (first second : Spine signature context expression source target) :
+    first.kinds = second.kinds := by
+  rw [first.kinds_eq_endpointSpineKinds,
+    second.kinds_eq_endpointSpineKinds]
 
 /-- Canonical spines contain no zero-step identity representation. -/
 theorem Spine.kinds_ne_nil
@@ -208,6 +298,16 @@ theorem Spine.kinds_length_le_two
     spine.kinds.length <= 2 := by
   cases spine <;> simp [Spine.kinds]
 
+/-- Canonical nonempty spines never start at a slot. -/
+private theorem Spine.source_not_slot
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (spine : Spine signature context expression source target) :
+    ¬ SlotHead source := by
+  cases spine with
+  | one step => exact step.source_not_slot
+  | productMatcherToSlot _ => simp [SlotHead]
+
 /-- Every observable nonempty spine changes its indexed type. -/
 theorem Spine.source_ne_target
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -216,7 +316,11 @@ theorem Spine.source_ne_target
     source ≠ target := by
   cases spine with
   | one step => exact step.source_ne_target
-  | productMatcherToSlot _ => simp
+  | productMatcherToSlot alignment =>
+      intro equality
+      have targetSlot := alignment.target_slot_of_source_matcher (by trivial)
+      rw [← equality] at targetSlot
+      exact targetSlot
 
 /--
 The whole-product-first policy is observable as the first primitive rule.
@@ -240,11 +344,11 @@ def Spine.WholeProductFirst
 
 @[simp] theorem Spine.productMatcherToSlot_wholeProductFirst
     {signature : FrozenSig} {context : Context} {expression : Expr}
-    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    {duals : List Dual} {target : Ty}
     (alignment : Step signature context expression
       (.matcher (.prod (duals.map Dual.cap))
         (.prod (duals.map Dual.target)))
-      (.slot consumerCap consumerTarget)) :
+      target) :
     Spine.WholeProductFirst (Spine.productMatcherToSlot alignment) := by
   rfl
 
@@ -315,6 +419,60 @@ def NormalPlan.ofSurfaceSlotToSlot
   rw [slotToSlotRawCert_appliedSlot_eq raw post]
   exact .refl
 
+/-- Compose two candidate normal plans.  Apart from identity, the indexed head
+shapes leave exactly one composable pair: a whole-product matcher lift followed
+by matcher-to-slot alignment. -/
+def NormalPlan.comp
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source middle target : Ty}
+    (first : NormalPlan signature context expression source middle)
+    (second : NormalPlan signature context expression middle target) :
+    NormalPlan signature context expression source target := by
+  cases first with
+  | refl => exact second
+  | coerce firstSpine =>
+      cases second with
+      | refl => exact .coerce firstSpine
+      | coerce secondSpine =>
+          cases firstSpine with
+          | one firstStep =>
+              cases firstStep with
+              | matcherToSlot _ _ =>
+                  exact False.elim (secondSpine.source_not_slot (by trivial))
+              | @productMatcher duals =>
+                  cases secondSpine with
+                  | one secondStep =>
+                      exact .coerce
+                        (.productMatcherToSlot (duals := duals) secondStep)
+              | slotTuple _ =>
+                  exact False.elim (secondSpine.source_not_slot (by trivial))
+          | productMatcherToSlot alignment =>
+              have middleSlot := alignment.target_slot_of_source_matcher
+                (by trivial)
+              exact False.elim (secondSpine.source_not_slot middleSlot)
+
+/-- Identity raw certificate used by the canonical empty-product overlap. -/
+theorem emptyProductMatcherToSlotRaw :
+    MatcherToSlotRawCert (.prod []) (.prod []) (.prod []) (.prod [])
+      [] CapSubst.id TySubst.id := by
+  refine
+    { matched := rfl
+      capSubstitution := rfl
+      targetUnified := rfl
+      rangeFixed := Subst.id_rangeFixed }
+
+/-- The empty slot-product surface rule normalizes through the matcher-first
+two-step policy, because observable `slotTuple` steps are nonempty. -/
+def NormalPlan.emptySlotTuple
+    {signature : FrozenSig} {context : Context} {expression : Expr} :
+    NormalPlan signature context expression (.prod [])
+      (.slot (.prod []) (.prod [])) := by
+  apply NormalPlan.coerce
+  apply Spine.productMatcherToSlot (duals := [])
+  simpa [Cap.apply_id] using
+    (Step.matcherToSlot (signature := signature) (context := context)
+      (expression := expression) emptyProductMatcherToSlotRaw VariablePost.id)
+
 /-- Observable rule sequence, with identity represented by the empty list. -/
 def NormalPlan.kinds
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -323,6 +481,30 @@ def NormalPlan.kinds
   match plan with
   | .refl => []
   | .coerce spine => spine.kinds
+
+private def endpointNormalKinds (source target : Ty) : List Kind :=
+  if source = target then [] else endpointSpineKinds source target
+
+private theorem NormalPlan.kinds_eq_endpointNormalKinds
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (plan : NormalPlan signature context expression source target) :
+    plan.kinds = endpointNormalKinds source target := by
+  cases plan with
+  | refl => simp [NormalPlan.kinds, endpointNormalKinds]
+  | coerce spine =>
+      simp [NormalPlan.kinds, endpointNormalKinds, spine.source_ne_target,
+        spine.kinds_eq_endpointSpineKinds]
+
+/-- Normal plans with the same endpoints have one observable rule sequence.
+The plans themselves may still differ in hidden raw certificates. -/
+theorem NormalPlan.kinds_unique
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (first second : NormalPlan signature context expression source target) :
+    first.kinds = second.kinds := by
+  rw [first.kinds_eq_endpointNormalKinds,
+    second.kinds_eq_endpointNormalKinds]
 
 /-- Forget a normal plan into the existing propositional coercion relation. -/
 def NormalPlan.toCoercionPlan
@@ -353,4 +535,48 @@ theorem NormalPlan.toHasTy
   plan.toCoercionPlan.toHasTy typing
 
 end CanonicalCoercion
+
+namespace Elaboration
+
+open CanonicalCoercion
+
+/-- Every propositional outer coercion spine has a candidate normal plan.
+`Nonempty` is necessary because a proof in `Prop` cannot computationally return
+observable `NormalPlan` data in `Type`. -/
+theorem CoercionPlan.normalizable
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty}
+    (plan : CoercionPlan signature context expression source target) :
+    Nonempty (NormalPlan signature context expression source target) := by
+  induction plan with
+  | refl => exact ⟨.refl⟩
+  | matcherToSlot raw post =>
+      exact ⟨.coerce (.one (.matcherToSlot raw post))⟩
+  | checkSlotToSlot raw post =>
+      exact ⟨.ofSurfaceSlotToSlot raw post⟩
+  | productMatcher =>
+      exact ⟨.coerce (.one .productMatcher)⟩
+  | @slotTuple duals =>
+      cases duals with
+      | nil => exact ⟨.emptySlotTuple⟩
+      | cons head tail =>
+          exact ⟨.coerce (.one (.slotTuple (by simp)))⟩
+  | trans _ _ firstIH secondIH =>
+      rcases firstIH with ⟨first⟩
+      rcases secondIH with ⟨second⟩
+      exact ⟨first.comp second⟩
+
+/-- The candidate normal syntax is sound and complete for propositional outer
+coercion reachability. -/
+theorem coercionPlan_iff_nonempty_normalPlan
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source target : Ty} :
+    CoercionPlan signature context expression source target ↔
+      Nonempty (NormalPlan signature context expression source target) := by
+  constructor
+  · exact CoercionPlan.normalizable
+  · rintro ⟨normal⟩
+    exact normal.sound
+
+end Elaboration
 end TypePM

@@ -105,27 +105,13 @@ def pairProductToSlotNormalPlan
   unfold pairProductToSlotNormalPlan CanonicalCoercion.NormalPlan.kinds
   apply CanonicalCoercion.Spine.productMatcherToSlot_kinds
 
-private theorem emptyProductMatcher_toSlot_raw :
-    MatcherToSlotRawCert (.prod []) (.prod []) (.prod []) (.prod [])
-      [] CapSubst.id TySubst.id := by
-  refine
-    { matched := rfl
-      capSubstitution := rfl
-      targetUnified := rfl
-      rangeFixed := Subst.id_rangeFixed }
-
 /-- The empty product overlap is resolved by the same matcher-first policy as
 the executable selector; an empty `slotTuple` step is not available. -/
 def emptyProductToSlotNormalPlan
     (context : Context) :
     CanonicalCoercion.NormalPlan emptySignature context (.tuple [])
       (.prod []) (.slot (.prod []) (.prod [])) := by
-  apply CanonicalCoercion.NormalPlan.coerce
-  apply CanonicalCoercion.Spine.productMatcherToSlot (duals := [])
-  simpa [Cap.apply_id] using
-    (CanonicalCoercion.Step.matcherToSlot
-      (signature := emptySignature) (context := context)
-      (expression := .tuple []) emptyProductMatcher_toSlot_raw VariablePost.id)
+  exact CanonicalCoercion.NormalPlan.emptySlotTuple
 
 @[simp] theorem emptyProductToSlotNormalPlan_kinds
     (context : Context) :

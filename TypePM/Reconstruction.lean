@@ -310,60 +310,52 @@ inductive DPatsDeriv (signature : FrozenSig) :
       DPatsDeriv signature (pattern :: patterns) (target :: targets)
         (bindings ++ restBindings)
 
-/-- Actual-indexed user-pattern reconstruction under one terminal prevailing
-substitution.  This is the proof-relevant counterpart of
-`TerminalPatternResolution`, without storing a source judgment. -/
+/-- User-pattern reconstruction under one fixed raw expression context and
+pattern-parameter context.  The raw monomorphic context is threaded
+left-to-right; capabilities, targets, and compound certificates live at their
+terminal indices.  Value-pattern leaves retain recursive `ExprDeriv` evidence. -/
 inductive PatternResolutionDeriv (signature : FrozenSig) :
     Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
-  | pvar {rawContext rawParameters rawBindings name capVar tyVar} :
-      name ∉ rawBindings.names ->
-      FreshCap signature rawContext rawParameters rawBindings capVar ->
-      FreshTy signature rawContext rawParameters rawBindings tyVar ->
+  | pvar {context parameters bindings name capVar tyVar} :
+      name ∉ bindings.names ->
+      FreshCap signature context parameters bindings capVar ->
+      FreshTy signature context parameters bindings tyVar ->
       PatternResolutionDeriv signature prevailing
-        (rawContext.applySubst prevailing)
-        (rawParameters.applySubst prevailing)
-        (rawBindings.applySubst prevailing) (.pvar name)
+        context parameters bindings (.pvar name)
         ((Cap.var capVar).apply prevailing.cap)
         (prevailing.apply (Ty.var tyVar))
-        ((rawBindings ++ [(name, Ty.var tyVar)]).applySubst prevailing)
-  | wild {rawContext rawParameters rawBindings capVar tyVar} :
-      FreshCap signature rawContext rawParameters rawBindings capVar ->
-      FreshTy signature rawContext rawParameters rawBindings tyVar ->
+        (bindings ++ [(name, Ty.var tyVar)])
+  | wild {context parameters bindings capVar tyVar} :
+      FreshCap signature context parameters bindings capVar ->
+      FreshTy signature context parameters bindings tyVar ->
       PatternResolutionDeriv signature prevailing
-        (rawContext.applySubst prevailing)
-        (rawParameters.applySubst prevailing)
-        (rawBindings.applySubst prevailing) .wild
+        context parameters bindings .wild
         ((Cap.var capVar).apply prevailing.cap)
         (prevailing.apply (.var tyVar))
-        (rawBindings.applySubst prevailing)
-  | pval
-      {rawContext rawParameters rawBindings expression rawTarget capVar} :
-      FreshCap signature rawContext rawParameters rawBindings capVar ->
+        bindings
+  | pval {context parameters bindings expression rawTarget capVar} :
+      FreshCap signature context parameters bindings capVar ->
       capVar ∉ rawTarget.fcv ->
       ExprDeriv signature
-        ((rawBindings.applySubst prevailing).toContext ++
-          rawContext.applySubst prevailing)
+        ((bindings.applySubst prevailing).toContext ++
+          context.applySubst prevailing)
         expression (prevailing.apply rawTarget) ->
       PatternResolutionDeriv signature prevailing
-        (rawContext.applySubst prevailing)
-        (rawParameters.applySubst prevailing)
-        (rawBindings.applySubst prevailing) (.pval expression)
+        context parameters bindings (.pval expression)
         ((Cap.var capVar).apply prevailing.cap)
         (prevailing.apply rawTarget)
-        (rawBindings.applySubst prevailing)
-  | embed {rawContext : Context} {rawParameters : PatternCtx}
-      {rawBindings : MonoCtx} {name : String} {rawDual : Dual} :
-      rawParameters.find? name = some rawDual ->
-      (rawParameters.applySubst prevailing).find? name =
+        bindings
+  | embed {context : Context} {parameters : PatternCtx}
+      {bindings : MonoCtx} {name : String} {rawDual : Dual} :
+      parameters.find? name = some rawDual ->
+      (parameters.applySubst prevailing).find? name =
         some (rawDual.applySubst prevailing) ->
       PatternResolutionDeriv signature prevailing
-        (rawContext.applySubst prevailing)
-        (rawParameters.applySubst prevailing)
-        (rawBindings.applySubst prevailing) (.embed name)
+        context parameters bindings (.embed name)
         (rawDual.cap.apply prevailing.cap)
         (prevailing.apply rawDual.target)
-        (rawBindings.applySubst prevailing)
+        bindings
   | tuple {context parameters bindings patterns duals resultBindings} :
       PatternResolutionsDeriv signature prevailing context parameters bindings
         patterns duals resultBindings ->
@@ -404,7 +396,7 @@ inductive PatternResolutionDeriv (signature : FrozenSig) :
       PatternResolutionDeriv signature prevailing context parameters bindings
         (.papp name patterns) result.cap result.target resultBindings
 
-/-- Left-to-right aligned user-pattern list reconstruction. -/
+/-- Left-to-right raw-context-threaded user-pattern list reconstruction. -/
 inductive PatternResolutionsDeriv (signature : FrozenSig) :
     Subst -> Context -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
       MonoCtx -> Prop where
@@ -425,12 +417,16 @@ inductive PatternResolutionsDeriv (signature : FrozenSig) :
 inductive ResolvedPatternDeriv (signature : FrozenSig) :
     Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
-  | ofTerminal
-      {context parameters bindings pattern capability target resultBindings} :
-      PatternResolutionDeriv signature prevailing context parameters bindings
-        pattern capability target resultBindings ->
-      ResolvedPatternDeriv signature prevailing context parameters bindings
-        pattern capability target resultBindings
+  | ofThreaded
+      {rawContext rawParameters rawBindings pattern capability target
+       rawResultBindings} :
+      PatternResolutionDeriv signature prevailing rawContext rawParameters
+        rawBindings pattern capability target rawResultBindings ->
+      ResolvedPatternDeriv signature prevailing
+        (rawContext.applySubst prevailing)
+        (rawParameters.applySubst prevailing)
+        (rawBindings.applySubst prevailing) pattern capability target
+        (rawResultBindings.applySubst prevailing)
 
 /-- Reconstructed matcher arm. -/
 inductive ArmDeriv (signature : FrozenSig) :
@@ -532,14 +528,20 @@ macro_rules
             DPatTy $signature pattern target bindings)
           (motive_11 := fun patterns targets bindings _ =>
             DPatTys $signature patterns targets bindings)
-          (motive_12 := fun prevailing context parameters bindings pattern
-              capability target result _ =>
-            TerminalPatternResolution $signature prevailing context parameters
-              bindings pattern capability target result)
-          (motive_13 := fun prevailing context parameters bindings patterns duals
-              result _ =>
-            TerminalPatternResolutions $signature prevailing context parameters
-              bindings patterns duals result)
+          (motive_12 := fun prevailing rawContext rawParameters rawBindings
+              pattern capability target rawResult _ =>
+            TerminalPatternResolution $signature prevailing
+              (rawContext.applySubst prevailing)
+              (rawParameters.applySubst prevailing)
+              (rawBindings.applySubst prevailing) pattern capability target
+              (rawResult.applySubst prevailing))
+          (motive_13 := fun prevailing rawContext rawParameters rawBindings
+              patterns duals rawResult _ =>
+            TerminalPatternResolutions $signature prevailing
+              (rawContext.applySubst prevailing)
+              (rawParameters.applySubst prevailing)
+              (rawBindings.applySubst prevailing) patterns duals
+              (rawResult.applySubst prevailing))
           (motive_14 := fun prevailing context parameters bindings pattern
               capability target result _ =>
             ResolvedPatternTy $signature prevailing context parameters bindings
@@ -626,14 +628,20 @@ theorem ExprDeriv.toHasTy
       DPatTy signature pattern target bindings)
     (motive_11 := fun patterns targets bindings _ =>
       DPatTys signature patterns targets bindings)
-    (motive_12 := fun prevailing context parameters bindings pattern capability
-        target result _ =>
-      TerminalPatternResolution signature prevailing context parameters bindings
-        pattern capability target result)
-    (motive_13 := fun prevailing context parameters bindings patterns duals
-        result _ =>
-      TerminalPatternResolutions signature prevailing context parameters bindings
-        patterns duals result)
+    (motive_12 := fun prevailing rawContext rawParameters rawBindings pattern
+        capability target rawResult _ =>
+      TerminalPatternResolution signature prevailing
+        (rawContext.applySubst prevailing)
+        (rawParameters.applySubst prevailing)
+        (rawBindings.applySubst prevailing) pattern capability target
+        (rawResult.applySubst prevailing))
+    (motive_13 := fun prevailing rawContext rawParameters rawBindings patterns
+        duals rawResult _ =>
+      TerminalPatternResolutions signature prevailing
+        (rawContext.applySubst prevailing)
+        (rawParameters.applySubst prevailing)
+        (rawBindings.applySubst prevailing) patterns duals
+        (rawResult.applySubst prevailing))
     (motive_14 := fun prevailing context parameters bindings pattern capability
         target result _ =>
       ResolvedPatternTy signature prevailing context parameters bindings pattern
@@ -729,21 +737,28 @@ theorem DPatsDeriv.toDPatTys
   finish_reconstruction
 
 theorem PatternResolutionDeriv.toTerminalPatternResolution
-    {signature prevailing context parameters bindings pattern capability target
-     result}
-    (derivation : PatternResolutionDeriv signature prevailing context parameters
-      bindings pattern capability target result) :
-    TerminalPatternResolution signature prevailing context parameters bindings
-      pattern capability target result := by
+    {signature prevailing rawContext rawParameters rawBindings pattern
+     capability target rawResult}
+    (derivation : PatternResolutionDeriv signature prevailing rawContext
+      rawParameters rawBindings pattern capability target rawResult) :
+    TerminalPatternResolution signature prevailing
+      (rawContext.applySubst prevailing)
+      (rawParameters.applySubst prevailing)
+      (rawBindings.applySubst prevailing) pattern capability target
+      (rawResult.applySubst prevailing) := by
   solve_reconstruction_with PatternResolutionDeriv.rec, signature, derivation
   finish_reconstruction
 
 theorem PatternResolutionsDeriv.toTerminalPatternResolutions
-    {signature prevailing context parameters bindings patterns duals result}
-    (derivation : PatternResolutionsDeriv signature prevailing context parameters
-      bindings patterns duals result) :
-    TerminalPatternResolutions signature prevailing context parameters bindings
-      patterns duals result := by
+    {signature prevailing rawContext rawParameters rawBindings patterns duals
+     rawResult}
+    (derivation : PatternResolutionsDeriv signature prevailing rawContext
+      rawParameters rawBindings patterns duals rawResult) :
+    TerminalPatternResolutions signature prevailing
+      (rawContext.applySubst prevailing)
+      (rawParameters.applySubst prevailing)
+      (rawBindings.applySubst prevailing) patterns duals
+      (rawResult.applySubst prevailing) := by
   solve_reconstruction_with PatternResolutionsDeriv.rec, signature, derivation
   finish_reconstruction
 
@@ -1810,12 +1825,10 @@ theorem inferExprFuel_reconstructAt
           WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           PatternResolutionDeriv signature terminal.prevailing
-            (context.applySubst terminal.prevailing)
-            (parameters.applySubst terminal.prevailing)
-            (bindings.applySubst terminal.prevailing) pattern
+            context parameters bindings pattern
             (result.dual.applySubst terminal.prevailing).cap
             (result.dual.applySubst terminal.prevailing).target
-            (result.bindings.applySubst terminal.prevailing))
+            result.bindings)
     (motive4 := fun fuel signature context parameters bindings selfEnv path
         index patterns state =>
       ∀ result,
@@ -1825,11 +1838,9 @@ theorem inferExprFuel_reconstructAt
           WBridgeWF signature terminal ->
           result.state.HistoryPrefix terminal ->
           PatternResolutionsDeriv signature terminal.prevailing
-            (context.applySubst terminal.prevailing)
-            (parameters.applySubst terminal.prevailing)
-            (bindings.applySubst terminal.prevailing) patterns
+            context parameters bindings patterns
             (result.duals.map (Dual.applySubst terminal.prevailing))
-            (result.bindings.applySubst terminal.prevailing))
+            result.bindings)
     (motive5 := fun fuel signature context selfEnv path clauses state =>
       ∀ result,
         inferMatcherFuel fuel signature context selfEnv path clauses state =
@@ -2136,22 +2147,16 @@ theorem inferExprFuel_reconstructAt
     have targetDeriv := targetIH targetResult rfl terminal bridge' targetHistory
     have rawPatternDeriv := patternIH patternResult rfl terminal bridge'
       patternHistory
-    have patternDeriv : PatternResolutionDeriv signature' terminal.prevailing
-        (context'.applySubst terminal.prevailing) [] [] pattern
-        (patternResult.dual.applySubst terminal.prevailing).cap
-        (patternResult.dual.applySubst terminal.prevailing).target
-        (patternResult.bindings.applySubst terminal.prevailing) := by
-      simpa [PatternCtx.applySubst, MonoCtx.applySubst] using rawPatternDeriv
     have localAlignment := alignTypes_event_mem alignEq
     have targetsAligned := bridge'.typeAlignments.final_eq
       (alignedHistory.event_mem localAlignment)
     have patternDeriv' : PatternResolutionDeriv signature'
-        terminal.prevailing (context'.applySubst terminal.prevailing) [] []
+        terminal.prevailing context' [] []
         pattern (patternResult.dual.applySubst terminal.prevailing).cap
         (terminal.prevailing.apply targetResult.target)
-        (patternResult.bindings.applySubst terminal.prevailing) := by
+        patternResult.bindings := by
       rw [← targetsAligned]
-      exact patternDeriv
+      exact rawPatternDeriv
     have matcherDeriv := matcherIH matcherState rfl terminal bridge'
       matcherHistory
     have prevailingEta :
@@ -2174,7 +2179,7 @@ theorem inferExprFuel_reconstructAt
         MonoCtx.toContext_applySubst] using bodyDeriv
     simpa [finishExpr, Subst.apply_listT] using
       (ExprDeriv.matchAll targetDeriv
-        (ResolvedPatternDeriv.ofTerminal patternDeriv') matcherDeriv'
+        (ResolvedPatternDeriv.ofThreaded patternDeriv') matcherDeriv'
         bodyDeriv')
   case case39 =>
     rename_i fuel' signature' context' selfEnv' path' expression expected initial
@@ -2208,8 +2213,7 @@ theorem inferExprFuel_reconstructAt
       (terminalHistory.event_mem localMembership)
     have nameFresh : name ∉ bindings.names := by
       simpa using absent
-    simpa [capabilityEq, targetValueEq, Dual.applySubst, Dual.apply,
-      MonoCtx.applySubst, List.map_append] using
+    simpa [capabilityEq, targetValueEq, Dual.applySubst, Dual.apply] using
       (PatternResolutionDeriv.pvar (prevailing := terminal.prevailing)
         nameFresh fresh.1 fresh.2)
   case case43 =>
@@ -2360,12 +2364,10 @@ theorem inferExprFuel_reconstructAt
     have aligned := bridge'.dualAlignments.final_eq
       (alignedHistory.event_mem localAlignment)
     have rightDeriv' : PatternResolutionDeriv signature' terminal.prevailing
-        (context'.applySubst terminal.prevailing)
-        (parameters.applySubst terminal.prevailing)
-        (leftResult.bindings.applySubst terminal.prevailing) right
+        context' parameters leftResult.bindings right
         (leftResult.dual.applySubst terminal.prevailing).cap
         (leftResult.dual.applySubst terminal.prevailing).target
-        (rightResult.bindings.applySubst terminal.prevailing) := by
+        rightResult.bindings := by
       rw [aligned]
       exact rightDeriv
     exact PatternResolutionDeriv.and leftDeriv rightDeriv'
@@ -2389,12 +2391,10 @@ theorem inferExprFuel_reconstructAt
     have aligned := bridge'.dualAlignments.final_eq
       (alignedHistory.event_mem localAlignment)
     have rightDeriv' : PatternResolutionDeriv signature' terminal.prevailing
-        (context'.applySubst terminal.prevailing)
-        (parameters.applySubst terminal.prevailing)
-        (bindings.applySubst terminal.prevailing) right
+        context' parameters bindings right
         (leftResult.dual.applySubst terminal.prevailing).cap
         (leftResult.dual.applySubst terminal.prevailing).target
-        (leftResult.bindings.applySubst terminal.prevailing) := by
+        leftResult.bindings := by
       rw [aligned]
       exact rightDeriv
     simpa only [sameBindings] using
