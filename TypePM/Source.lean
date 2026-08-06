@@ -397,20 +397,81 @@ def FrozenSig.generalize
   TypePM.generalize
     (signature.fcv ++ context.fcv) (signature.ftv ++ context.ftv) target
 
-/-- Signature-aware dual generalization for pattern-function definitions. -/
+/-- Capability occurrences in the complete pattern-function payload.  The
+list intentionally retains duplicates: multiplicity records whether a local
+capability expresses sharing between two or more positions. -/
+def dualCapOccurrences (args : List Dual) (result : Dual) : List CapVar :=
+  args.flatMap Dual.fcv ++ result.fcv
+
+/-- Local payload capabilities that occur exactly once.  Ambient variables
+are excluded before defaulting, but occurrence counts are always taken over
+the complete argument/result payload. -/
+def dualSingletonCaps (ambient : List CapVar)
+    (args : List Dual) (result : Dual) : List CapVar :=
+  let occurrences := dualCapOccurrences args result
+  uniqueVars (occurrences.filter fun varId =>
+    varId ∉ ambient ∧ occurrences.count varId = 1)
+
+/-- Local payload capabilities whose repeated occurrences carry observable
+sharing and therefore remain quantified. -/
+def dualSharedCaps (ambient : List CapVar)
+    (args : List Dual) (result : Dual) : List CapVar :=
+  let singletons := dualSingletonCaps ambient args result
+  let C : CapSubst := fun varId =>
+    if varId ∈ singletons then .any else .var varId
+  let normalizedArgs := args.map (Dual.apply C TySubst.id)
+  let normalizedResult := result.apply C TySubst.id
+  uniqueVars
+    ((dualCapOccurrences normalizedArgs normalizedResult).filter fun varId =>
+      varId ∉ ambient)
+
+/-- Replace only non-ambient singleton capability variables by `Any`. -/
+def singletonDefaultSubst (ambient : List CapVar)
+    (args : List Dual) (result : Dual) : CapSubst :=
+  let singletons := dualSingletonCaps ambient args result
+  fun varId => if varId ∈ singletons then .any else .var varId
+
+/-- Normalize all capability occurrences of a dual with the same singleton
+defaulting substitution. -/
+def normalizeDualSingletons (ambient : List CapVar)
+    (args : List Dual) (result : Dual) : List Dual × Dual :=
+  let C := singletonDefaultSubst ambient args result
+  (args.map (Dual.apply C TySubst.id), result.apply C TySubst.id)
+
+/--
+Signature-aware dual generalization for pattern-function definitions.
+
+Non-ambient capability variables are classified by their occurrence count in
+the *whole* argument/result payload.  Singletons carry no sharing information
+and are canonicalized to `Any`; variables occurring at least twice are
+quantified once and retain their repeated identity.  Ambient variables remain
+free and are never defaulted or quantified.
+-/
 def FrozenSig.generalizeDual
     (signature : FrozenSig) (context : Context)
     (args : List Dual) (result : Dual) : DualScheme :=
-  let capVars := args.flatMap Dual.fcv ++ result.fcv
-  let tyVars := args.flatMap Dual.ftv ++ result.ftv
-  { capBinders :=
-      uniqueVars (capVars.filter fun varId =>
-        varId ∉ signature.fcv ++ context.fcv)
+  let ambientCaps := signature.fcv ++ context.fcv
+  let normalized := normalizeDualSingletons ambientCaps args result
+  let tyVars := normalized.1.flatMap Dual.ftv ++ normalized.2.ftv
+  { capBinders := dualSharedCaps ambientCaps args result
     tyBinders :=
       uniqueVars (tyVars.filter fun varId =>
         varId ∉ signature.ftv ++ context.ftv)
-    args := args
-    result := result }
+    args := normalized.1
+    result := normalized.2 }
+
+/-- Singleton defaulting preserves the pattern-function arity. -/
+@[simp] theorem normalizeDualSingletons_args_length
+    (ambient : List CapVar) (args : List Dual) (result : Dual) :
+    (normalizeDualSingletons ambient args result).1.length = args.length := by
+  simp [normalizeDualSingletons]
+
+/-- Dual generalization changes capabilities but never the argument arity. -/
+@[simp] theorem FrozenSig.generalizeDual_args_length
+    (signature : FrozenSig) (context : Context)
+    (args : List Dual) (result : Dual) :
+    (signature.generalizeDual context args result).args.length = args.length := by
+  simp [FrozenSig.generalizeDual]
 
 /-- Free capability variables in a monomorphic context. -/
 def MonoCtx.fcv (context : MonoCtx) : List CapVar :=
@@ -745,7 +806,7 @@ theorem VariablePost.applyCap_eq_applyRen
     {post : Subst} (postVariable : VariablePost post) (capability : Cap) :
     capability.apply post.cap = capability.applyRen postVariable.capRen := by
   cases capability with
-  | none => rfl
+  | any => rfl
   | var varId => exact postVariable.capEquation varId
   | skolem name => rfl
   | con name children =>
@@ -940,8 +1001,12 @@ structure GeneralizedDualPost
       (signature.generalizeDual context sourceArgs sourceResult).tyBinders
       capImages post
   contextFixed : context.applySubst post = context
-  argsResult : sourceArgs.map (Dual.applySubst post) = targetArgs
-  resultResult : sourceResult.applySubst post = targetResult
+  argsResult :
+    (signature.generalizeDual context sourceArgs sourceResult).args.map
+      (Dual.applySubst post) = targetArgs
+  resultResult :
+    (signature.generalizeDual context sourceArgs sourceResult).result.applySubst
+      post = targetResult
 
 /-- An atomic post fixes every ambient free capability variable. -/
 theorem RestrictedPost.capFixed
@@ -1086,7 +1151,7 @@ theorem RestrictedPost.Chain.applyCap_eq_applyRen
     (capability : Cap) :
     capability.apply post.cap = capability.applyRen chain.capRen := by
   cases capability with
-  | none => rfl
+  | any => rfl
   | var varId => exact chain.capEquation varId
   | skolem name => rfl
   | con name children =>
@@ -2317,7 +2382,7 @@ theorem CoverageOK.applyRen
     (coverage : CoverageOK signature clauses capability) :
     CoverageOK signature clauses (capability.applyRen r) := by
   cases capability with
-  | none => trivial
+  | any => trivial
   | var varId => contradiction
   | skolem name => contradiction
   | con former children => exact coverage
@@ -3009,14 +3074,14 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
       ExprsTy signature context expressions targets →
       HasTy signature context (.prim op expressions) result
   /--
-  Declarative T-SOME: `something` inhabits `Matcher none τ` for every target.
+  Declarative T-SOME: `something` inhabits `Matcher Any τ` for every target.
 
   The inference implementation generates a fresh target meta-variable;
   separating that algorithmic choice from this declarative rule makes
-  substitution closure explicit (`somethingScheme = ∀α. Matcher none α`).
+  substitution closure explicit (`somethingScheme = ∀α. Matcher Any α`).
   -/
   | something {context target} :
-      HasTy signature context .something (.matcher .none target)
+      HasTy signature context .something (.matcher .any target)
   /-- T-MATCHALL. -/
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap

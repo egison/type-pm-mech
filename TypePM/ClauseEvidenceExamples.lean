@@ -298,10 +298,10 @@ theorem consEvidence_target_nonseeding :
 
 /-! ## Closed structured field-head validation -/
 
-/-- `Matcher none (List Int)` remains a valid capability/target pairing. -/
+/-- `Matcher Any (List Int)` remains a valid capability/target pairing. -/
 theorem matcher_none_closed_list_is_well_corresponded :
-    CapTargetOK [] .none (.data "List" [.int]) :=
-  .none
+    CapTargetOK [] .any (.data "List" [.int]) :=
+  .any
 
 /-- Both the closed result former and the List field former are observable. -/
 def closedBoxObservability : Shape.Observability :=
@@ -324,17 +324,17 @@ def closedBoxSignature : FrozenMatcherSig where
   patternConstructors := [("box", closedBoxProjection)]
   constructorsByFormer := [("Box", [("box", 1)])]
 
-/-- `box $` rejects a next matcher with capability `none`. -/
+/-- `box $` rejects a next matcher with capability `Any`. -/
 theorem closed_box_hole_rejects_none :
     clauseEvidence closedBoxSignature
-        (.ctor "box" [.hole]) [.none] =
+        (.ctor "box" [.hole]) [.any] =
       none := by
   native_decide
 
 /-- `box $` accepts a next matcher with the required List head. -/
 theorem closed_box_hole_accepts_list :
     clauseEvidence closedBoxSignature
-        (.ctor "box" [.hole]) [.con "List" [.none]] =
+        (.ctor "box" [.hole]) [.con "List" [.any]] =
       some (.con "Box" []) := by
   native_decide
 
@@ -378,7 +378,7 @@ out-of-order PP cannot acquire certified evidence even if its remaining
 shape and hole capability would otherwise be accepted. -/
 theorem clause_evidence_rejects_hole_before_value :
     clauseEvidence listSignature
-      (.ctor "cons" [.hole, .pval "head"]) [.con "List" [.none]] = none := by
+      (.ctor "cons" [.hole, .pval "head"]) [.con "List" [.any]] = none := by
   native_decide
 
 end ClauseEvidenceExamples

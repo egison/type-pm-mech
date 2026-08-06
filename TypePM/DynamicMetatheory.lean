@@ -428,16 +428,21 @@ theorem PatternDefTy.actual_arity
     {args : List Dual} {result : Dual}
     (instanceTyping : scheme.ValueFlowInst args result) :
     definition.parameterNames.length = args.length := by
-  cases typing with
-  | @mk capabilities rawResult resultBindings _ found nonrecursive
+  induction typing with
+  | @mk capabilities rawResult resultBindings _ _ found nonrecursive
       parameterLength nodup fresh capsNodup bodyTyping linear schemeEquality =>
       have localInstance :=
         (schemeEquality.instances args result).mp instanceTyping
       have instantiatedLength := localInstance.args_length
+      have normalizedLength :
+          (definition.coreScheme definitionSignature context capabilities
+            rawResult).args.length =
+          (patternParameterDuals definition.parameters capabilities).length := by
+        simp [PatternDef.coreScheme]
       have sourceLength :
           (patternParameterDuals definition.parameters capabilities).length =
             args.length := by
-        simpa only [FrozenSig.generalizeDual] using instantiatedLength
+        exact normalizedLength.symm.trans instantiatedLength
       have dualLength :
           (patternParameterDuals definition.parameters capabilities).length =
             definition.parameters.length := by
@@ -1074,39 +1079,119 @@ theorem MatchSubstTyped.envTyped_append
 
 /-! ## Canonical constructor values -/
 
-/-! ## Exact indices of runtime slot coercions -/
+/-! ## Runtime slot-coercion provenance -/
 
-/-- A successful producer-to-consumer check normalizes both capabilities and targets identically. -/
-theorem matcherToSlot_indices_eq
-    {producerCap consumerCap : Cap}
+/-!
+Advancing the private cursor of a matcher literal does not change its outer
+runtime type.  In particular, this transport must preserve a checked slot
+derivation itself: after `any` becomes the one-way catch-all demand, the
+slot's consumer capability need not be the literal's producer capability.
+-/
+
+/-- Dropping a failed head clause preserves the complete outer runtime type. -/
+theorem ValueTy.matcher_nextClause
+    {signature : FrozenSig} {environment : Env} {original : List Clause}
+    {pp : PPat} {next : Expr} {arms : List Arm}
+    {tail : List Clause} {target : Ty}
+    (typing : ValueTy signature
+      (.matcherV environment original (.mk pp next arms :: tail)) target) :
+    ValueTy signature (.matcherV environment original tail) target := by
+  refine ValueTy.rec
+    (motive_1 := fun actualValue actualTarget _ =>
+      actualValue =
+          .matcherV environment original (.mk pp next arms :: tail) →
+        ValueTy signature (.matcherV environment original tail) actualTarget)
+    (motive_2 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro actualEnvironment currentClauses originalClauses capability
+      matcherTarget context domain instances source cursor instancesIH equality
+    cases equality
+    exact .matcherLiteral context domain instances source (.nextClause cursor)
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro value producerCap producerTarget consumerCap consumerTarget
+      bindings C T post inner raw postVariable innerIH equality
+    cases equality
+    exact .matcherToSlot (innerIH rfl) raw postVariable
+  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
+      inner raw postVariable innerIH equality
+    cases equality
+    exact .slotToSlot (innerIH rfl) raw postVariable
+  · intros
+    contradiction
+  · trivial
+  · intros
+    trivial
+
+/-- Dropping a failed head arm preserves the complete outer runtime type. -/
+theorem ValueTy.matcher_nextArm
+    {signature : FrozenSig} {environment : Env} {original : List Clause}
+    {pp : PPat} {next : Expr} {arm : Arm} {arms : List Arm}
+    {clauses : List Clause} {target : Ty}
+    (typing : ValueTy signature
+      (.matcherV environment original
+        (.mk pp next (arm :: arms) :: clauses)) target) :
+    ValueTy signature
+      (.matcherV environment original (.mk pp next arms :: clauses)) target := by
+  refine ValueTy.rec
+    (motive_1 := fun actualValue actualTarget _ =>
+      actualValue = .matcherV environment original
+          (.mk pp next (arm :: arms) :: clauses) →
+        ValueTy signature
+          (.matcherV environment original (.mk pp next arms :: clauses))
+          actualTarget)
+    (motive_2 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro actualEnvironment currentClauses originalClauses capability
+      matcherTarget context domain instances source cursor instancesIH equality
+    cases equality
+    exact .matcherLiteral context domain instances source (.nextArm cursor)
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro value producerCap producerTarget consumerCap consumerTarget
+      bindings C T post inner raw postVariable innerIH equality
+    cases equality
+    exact .matcherToSlot (innerIH rfl) raw postVariable
+  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
+      inner raw postVariable innerIH equality
+    cases equality
+    exact .slotToSlot (innerIH rfl) raw postVariable
+  · intros
+    contradiction
+  · trivial
+  · intros
+    trivial
+
+/-- A successful producer-to-consumer check normalizes both targets identically. -/
+theorem matcherToSlot_targets_eq
     {producerTarget consumerTarget : Ty}
-    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
-    (matched : CapMatch.matchCap producerCap consumerCap = some bindings)
-    (capabilitySubstitution :
-      C = bindings.toSubstWithin consumerCap.fcv)
+    {C : CapSubst} {T : TySubst}
     (unified : Unification.mguTy
       (producerTarget.applyCapability C)
       (consumerTarget.applyCapability C) = some T) :
-    producerCap.apply C = consumerCap.apply C ∧
-      (Subst.mk C T).apply producerTarget =
-        (Subst.mk C T).apply consumerTarget := by
-  subst C
-  have checked :=
-    (CapMatch.matchCap_eq_some_iff producerCap consumerCap bindings).mp
-      matched
-  have consumerUnrestricted :
-      consumerCap.apply bindings.toSubst = producerCap :=
-    CapMatch.matchCapAcc_apply_eq producerCap consumerCap [] bindings
-      checked.1 bindings.toSubst bindings.toSubst_agrees
-  have consumerRestriction :
-      consumerCap.apply (bindings.toSubstWithin consumerCap.fcv) =
-        consumerCap.apply bindings.toSubst := by
-    apply CapMatch.apply_congr_on_fcv
-    intro varId membership
-    simp [CapMatch.Bindings.toSubstWithin, membership]
-  constructor
-  · rw [checked.2, consumerRestriction, consumerUnrestricted]
-  · simpa only [Subst.apply] using Unification.mguTy_sound unified
+    (Subst.mk C T).apply producerTarget =
+      (Subst.mk C T).apply consumerTarget := by
+  simpa only [Subst.apply] using Unification.mguTy_sound unified
 
 /-- A slot-to-slot check likewise gives equal normalized source/request indices. -/
 theorem slotToSlot_indices_eq
@@ -1127,6 +1212,198 @@ theorem slotToSlot_indices_eq
 
 /-! ## Canonical matcher products -/
 
+/--
+Raw one-way matching induces runtime demand evidence against the substituted
+consumer.  In particular, the variable case becomes `equal`: even when the
+variable's image is `any`, it is not reinterpreted as a wildcard occurrence.
+-/
+theorem CapabilityDemand.ofDemandMatches (S : CapSubst) :
+    ∀ (producer consumer : Cap),
+      DemandMatches S producer consumer →
+      CapabilityDemand producer (consumer.apply S) := by
+  intro producer consumer matching
+  exact Cap.rec
+    (motive_1 := fun consumer => ∀ producer,
+      DemandMatches S producer consumer →
+      CapabilityDemand producer (consumer.apply S))
+    (motive_2 := fun consumers => ∀ producers,
+      DemandMatchesList S producers consumers →
+      CapabilityDemands producers (Cap.applyList S consumers))
+    (by
+      intro _ _
+      exact .any)
+    (fun varId => by
+      intro producer matching
+      have equality : S varId = producer := by
+        cases producer <;> simpa [DemandMatches] using matching
+      rw [Cap.apply, equality]
+      exact .equal)
+    (fun consumerId => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producerId
+      change producerId = consumerId at matching
+      rw [matching]
+      exact .equal)
+    (fun consumerName consumers consumersIH => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producerName producers
+      change producerName = consumerName ∧
+        DemandMatchesList S producers consumers at matching
+      rw [matching.1]
+      exact .con (consumersIH producers matching.2))
+    (fun consumers consumersIH => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producers
+      change DemandMatchesList S producers consumers at matching
+      exact .prod (consumersIH producers matching))
+    (by
+      intro producers matching
+      cases producers with
+      | nil => exact .nil
+      | cons _ _ => contradiction)
+    (fun _ _ consumerIH consumersIH => by
+      intro producers matching
+      cases producers with
+      | nil => contradiction
+      | cons producer producers =>
+          simp only [DemandMatchesList] at matching
+          exact .cons (consumerIH producer matching.1)
+            (consumersIH producers matching.2))
+    consumer producer matching
+
+/-- A declarative one-way witness retains the normalized producer endpoint. -/
+theorem CapabilityDemand.ofOneWayAt
+    {S : CapSubst} {producer consumer : Cap}
+    (matching : OneWayAt S producer consumer) :
+    CapabilityDemand (producer.apply S) (consumer.apply S) := by
+  rw [matching.2.1]
+  exact CapabilityDemand.ofDemandMatches S producer consumer matching.2.2
+
+mutual
+
+/-- Variable renaming preserves runtime demand provenance. -/
+theorem CapabilityDemand.applyRen
+    {producer consumer : Cap} (ren : CapVar → CapVar)
+    (demand : CapabilityDemand producer consumer) :
+    CapabilityDemand (producer.applyRen ren)
+      (consumer.applyRen ren) := by
+  cases demand with
+  | equal => exact .equal
+  | any => exact .any
+  | con children => exact .con (children.applyRen ren)
+  | prod components => exact .prod (components.applyRen ren)
+
+/-- List form of `CapabilityDemand.applyRen`. -/
+theorem CapabilityDemands.applyRen
+    {producers consumers : List Cap} (ren : CapVar → CapVar)
+    (demands : CapabilityDemands producers consumers) :
+    CapabilityDemands (Cap.applyRenList ren producers)
+      (Cap.applyRenList ren consumers) := by
+  cases demands with
+  | nil => exact .nil
+  | cons head tail =>
+      exact .cons (head.applyRen ren) (tail.applyRen ren)
+
+end
+
+/-- The runtime demand carried by a matcher-to-slot raw certificate. -/
+theorem MatcherToSlotRawCert.capabilityDemand
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) :
+    CapabilityDemand (producerCap.apply C) (consumerCap.apply C) := by
+  rw [raw.capSubstitution]
+  exact CapabilityDemand.ofOneWayAt
+    (CapMatch.matchCap_restricted_sound raw.matched)
+
+/-- Variable-only solver posts preserve a raw matcher-to-slot demand. -/
+theorem MatcherToSlotRawCert.postCapabilityDemand
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    {post : Subst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T)
+    (postVariable : VariablePost post) :
+    CapabilityDemand ((producerCap.apply C).apply post.cap)
+      ((consumerCap.apply C).apply post.cap) := by
+  have renamed := raw.capabilityDemand.applyRen postVariable.capRen
+  rw [← postVariable.applyCap_eq_applyRen,
+    ← postVariable.applyCap_eq_applyRen] at renamed
+  exact renamed
+
+/-- Pointwise demand streams compose by append. -/
+theorem CapabilityDemands.append : ∀
+    {leftProducers leftConsumers rightProducers rightConsumers : List Cap},
+    CapabilityDemands leftProducers leftConsumers →
+    CapabilityDemands rightProducers rightConsumers →
+    CapabilityDemands (leftProducers ++ rightProducers)
+      (leftConsumers ++ rightConsumers)
+  | [], [], _, _, .nil, right => right
+  | _ :: _, _ :: _, _, _, .cons head tail, right =>
+      .cons head (CapabilityDemands.append tail right)
+
+/-- A product consumer exposes pointwise producer demands. -/
+theorem CapabilityDemand.prod_inversion
+    {producer : Cap} {consumers : List Cap}
+    (demand : CapabilityDemand producer (.prod consumers)) :
+    ∃ producers,
+      producer = .prod producers ∧ CapabilityDemands producers consumers := by
+  cases demand with
+  | equal => exact ⟨consumers, rfl, CapabilityDemand.equalList consumers⟩
+  | prod children => exact ⟨_, rfl, children⟩
+
+/-- A constructor consumer exposes pointwise producer demands at the same head. -/
+theorem CapabilityDemand.con_inversion
+    {producer : Cap} {name : String} {consumers : List Cap}
+    (demand : CapabilityDemand producer (.con name consumers)) :
+    ∃ producers,
+      producer = .con name producers ∧ CapabilityDemands producers consumers := by
+  cases demand with
+  | equal => exact ⟨consumers, rfl, CapabilityDemand.equalList consumers⟩
+  | con children => exact ⟨_, rfl, children⟩
+
+mutual
+
+/-- Runtime demand compatibility composes without erasing explicit `any` nodes. -/
+theorem CapabilityDemand.trans
+    {producer middle consumer : Cap}
+    (first : CapabilityDemand producer middle)
+    (second : CapabilityDemand middle consumer) :
+    CapabilityDemand producer consumer := by
+  cases second with
+  | equal => exact first
+  | any => exact .any
+  | @con name middleChildren consumerChildren children =>
+      obtain ⟨producerChildren, rfl, firstChildren⟩ := first.con_inversion
+      exact .con (CapabilityDemands.trans firstChildren children)
+  | @prod middleChildren consumerChildren children =>
+      obtain ⟨producerChildren, rfl, firstChildren⟩ := first.prod_inversion
+      exact .prod (CapabilityDemands.trans firstChildren children)
+
+/-- Pointwise runtime demand compatibility composes. -/
+theorem CapabilityDemands.trans
+    {producers middle consumers : List Cap}
+    (first : CapabilityDemands producers middle)
+    (second : CapabilityDemands middle consumers) :
+    CapabilityDemands producers consumers := by
+  cases second with
+  | nil =>
+      cases first
+      exact .nil
+  | cons secondHead secondTail =>
+      cases first with
+      | cons firstHead firstTail =>
+          exact .cons (CapabilityDemand.trans firstHead secondHead)
+            (CapabilityDemands.trans firstTail secondTail)
+
+end
+
 /-- Pointwise exact usability of runtime matcher components. -/
 inductive MatcherUsables (signature : FrozenSig) :
     List Value → List Dual → Prop where
@@ -1145,6 +1422,33 @@ theorem MatcherUsables.length
   | nil => rfl
   | cons head tail induction => simp only [List.length_cons, induction]
 
+/--
+Expose the producer capabilities hidden by a pointwise consumer view.  Target
+indices are unchanged; only capabilities participate in one-way demand.
+-/
+theorem MatcherUsables.hiddenProducers
+    {signature : FrozenSig} {values : List Value} {consumers : List Dual}
+    (typing : MatcherUsables signature values consumers) :
+    ∃ producers : List Dual,
+      ValueTys signature values
+        (producers.map fun dual => .matcher dual.cap dual.target) ∧
+      CapabilityDemands
+        (producers.map Dual.cap) (consumers.map Dual.cap) ∧
+      producers.map Dual.target = consumers.map Dual.target := by
+  induction typing with
+  | nil => exact ⟨[], .nil, .nil, rfl⟩
+  | @cons value values consumer consumers head tail induction =>
+      obtain ⟨producerCapability, headTyping, headDemand⟩ := head
+      obtain ⟨producers, producerTyping, demands, targets⟩ := induction
+      let producer : Dual :=
+        ⟨producerCapability, consumer.target⟩
+      refine ⟨producer :: producers, ?_, ?_, ?_⟩
+      · exact .cons headTyping producerTyping
+      · exact .cons headDemand demands
+      · simp only [List.map_cons, producer,
+          List.cons.injEq, true_and]
+        exact targets
+
 /-- Exact producer matcher components are usable at their declared duals. -/
 theorem ValueTys.matcherUsables
     {signature : FrozenSig} {values : List Value} {duals : List Dual}
@@ -1157,11 +1461,94 @@ theorem ValueTys.matcherUsables
       exact .nil
   | cons dual duals induction =>
       cases typing with
-      | cons head tail => exact .cons (.inl head) (induction tail)
+      | cons head tail => exact .cons (.ofMatcher head) (induction tail)
+
+/--
+Recover matcher origins from a checked runtime slot.  Frozen-signature
+well-formedness rules out an ill-formed data constructor whose declared result
+is itself a slot; the three genuine slot constructors retain all provenance
+needed for the remaining cases.
+-/
+theorem ValueTy.toMatcherUsable
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {value : Value} {capability : Cap} {target : Ty}
+    (typing : ValueTy signature value (.slot capability target)) :
+    MatcherUsable signature value capability target := by
+  refine ValueTy.rec
+    (motive_1 := fun actualValue actualTarget _ =>
+      ∀ requestedCapability requestedTarget,
+        actualTarget = .slot requestedCapability requestedTarget →
+        MatcherUsable signature actualValue requestedCapability
+          requestedTarget)
+    (motive_2 := fun actualValues actualTargets _ =>
+      ∀ requestedDuals,
+        actualTargets = requestedDuals.map
+          (fun dual => .slot dual.cap dual.target) →
+        MatcherUsables signature actualValues requestedDuals)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    typing capability target rfl
+  · intros
+    contradiction
+  · intro name scheme values targets result found instantiation valuesTyping _
+      requestedCapability requestedTarget equality
+    obtain ⟨former, arguments, resultEquality⟩ :=
+      signatureWF.dataResult found instantiation
+    rw [resultEquality] at equality
+    cases equality
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro value producerCap producerTarget consumerCap consumerTarget
+      bindings C T post inner raw postVariable _ requestedCapability
+      requestedTarget equality
+    cases equality
+    have producerTyping := inner
+    have targetEquality := matcherToSlot_targets_eq raw.targetUnified
+    rw [targetEquality] at producerTyping
+    exact ⟨_, producerTyping, raw.postCapabilityDemand postVariable⟩
+  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
+      inner raw postVariable innerIH requestedCapability actualTarget equality
+    cases equality
+    have sourceUsable := innerIH _ _ rfl
+    have indexEquality := slotToSlot_indices_eq raw.capabilityUnified
+      raw.targetUnified
+    have capabilityEquality := congrArg
+      (fun current => current.apply post.cap) indexEquality.1
+    have targetEquality := congrArg post.apply indexEquality.2
+    rw [capabilityEquality, targetEquality] at sourceUsable
+    exact sourceUsable
+  · intro values duals componentTyping componentIH requestedCapability
+      requestedTarget equality
+    cases equality
+    have components := componentIH duals rfl
+    obtain ⟨producers, producerTyping, demands, targetEquality⟩ :=
+      components.hiddenProducers
+    refine ⟨.prod (producers.map Dual.cap), ?_, .prod demands⟩
+    rw [← targetEquality]
+    exact .matcherProduct producerTyping
+  · intro requestedDuals equality
+    cases requestedDuals with
+    | nil => exact .nil
+    | cons head tail => simp at equality
+  · intro value actualTarget values actualTargets head tail headIH tailIH
+      requestedDuals equality
+    cases requestedDuals with
+    | nil => simp at equality
+    | cons requested rest =>
+        simp only [List.map_cons, List.cons.injEq] at equality
+        exact .cons (headIH _ _ equality.1) (tailIH rest equality.2)
 
 /-- Exact slot components are usable at their declared duals. -/
 theorem ValueTys.slotUsables
-    {signature : FrozenSig} {values : List Value} {duals : List Dual}
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {values : List Value} {duals : List Dual}
     (typing : ValueTys signature values
       (duals.map fun dual => .slot dual.cap dual.target)) :
     MatcherUsables signature values duals := by
@@ -1171,7 +1558,8 @@ theorem ValueTys.slotUsables
       exact .nil
   | cons dual duals induction =>
       cases typing with
-      | cons head tail => exact .cons (.inr head) (induction tail)
+      | cons head tail =>
+          exact .cons (head.toMatcherUsable signatureWF) (induction tail)
 
 /-- Capability and target projections jointly determine a dual list. -/
 theorem Dual.list_eq_of_maps_eq :
@@ -1205,133 +1593,114 @@ theorem Dual.list_eq_of_maps_eq :
                   exact congrArg (Dual.mk headCap headTarget :: ·)
                     (induction capTail targetTail)
 
-/--
-An exact product matcher or product slot exposes usable components at the
-same dual list.  Runtime slot coercions are stripped only after their concrete
-solver certificates prove equality of both normalized indices.
--/
+/-- Pointwise matcher origins compose with a later consumer-demand stream. -/
+theorem MatcherUsables.weaken
+    {signature : FrozenSig} {values : List Value}
+    {producers consumers : List Dual}
+    (typing : MatcherUsables signature values producers)
+    (demands : CapabilityDemands
+      (producers.map Dual.cap) (consumers.map Dual.cap))
+    (targets : producers.map Dual.target = consumers.map Dual.target) :
+    MatcherUsables signature values consumers := by
+  induction consumers generalizing producers values with
+  | nil =>
+      cases producers with
+      | nil =>
+          cases typing
+          exact .nil
+      | cons producer producers =>
+          cases demands
+  | cons consumer consumers induction =>
+      cases producers with
+      | nil =>
+          cases demands
+      | cons producer producers =>
+          cases typing with
+          | cons head tail =>
+              obtain ⟨hiddenCapability, hiddenTyping, hiddenDemand⟩ := head
+              cases demands with
+              | cons headDemand tailDemands =>
+                  simp only [List.map_cons, List.cons.injEq] at targets
+                  rcases targets with ⟨headTarget, tailTargets⟩
+                  cases producer with
+                  | mk producerCapability producerTarget =>
+                      cases consumer with
+                      | mk consumerCapability consumerTarget =>
+                          dsimp only [Dual.target] at headTarget
+                          subst consumerTarget
+                          exact .cons
+                            ⟨hiddenCapability, hiddenTyping,
+                              hiddenDemand.trans headDemand⟩
+                            (induction tail tailDemands tailTargets)
+
+/-- A matcher-product typing of a runtime tuple exposes its exact component
+duals without dependent elimination on the mapped capability/target indices. -/
+theorem ValueTy.tupleMatcher_inversion
+    {signature : FrozenSig} {values : List Value}
+    {capabilities : List Cap} {targets : List Ty}
+    (typing : ValueTy signature (.tuple values)
+      (.matcher (.prod capabilities) (.prod targets))) :
+    ∃ duals : List Dual,
+      ValueTys signature values
+        (duals.map fun dual => .matcher dual.cap dual.target) ∧
+      duals.map Dual.cap = capabilities ∧
+      duals.map Dual.target = targets := by
+  refine ValueTy.rec
+    (motive_1 := fun actualValue actualTarget _ =>
+      actualValue = .tuple values →
+      actualTarget = .matcher (.prod capabilities) (.prod targets) →
+      ∃ duals : List Dual,
+        ValueTys signature values
+          (duals.map fun dual => .matcher dual.cap dual.target) ∧
+        duals.map Dual.cap = capabilities ∧
+        duals.map Dual.target = targets)
+    (motive_2 := fun _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl rfl
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intros
+    contradiction
+  · intro actualValues actualDuals componentTyping _ valueEquality
+      targetEquality
+    cases valueEquality
+    simp only [Ty.matcher.injEq, Cap.prod.injEq, Ty.prod.injEq] at targetEquality
+    exact ⟨actualDuals, componentTyping, targetEquality.1,
+      targetEquality.2⟩
+  · intro value producerCap producerTarget consumerCap consumerTarget
+      bindings C T post inner raw postVariable _ valueEquality targetEquality
+    cases targetEquality
+  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
+      inner raw postVariable _ valueEquality targetEquality
+    cases targetEquality
+  · intro actualValues actualDuals componentTyping _ valueEquality
+      targetEquality
+    cases targetEquality
+  · exact True.intro
+  · intros
+    exact True.intro
+
+/-- A demanded product matcher exposes demand-compatible components. -/
 theorem ValueTy.tupleMatcherUsables
     {signature : FrozenSig} {values : List Value} {duals : List Dual}
     (typing : MatcherUsable signature (.tuple values)
       (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))) :
     MatcherUsables signature values duals := by
-  rcases typing with matcherTyping | slotTyping
-  · exact valueTyRec matcherTyping rfl (.inl rfl)
-  · exact valueTyRec slotTyping rfl (.inr rfl)
-where
-  valueTyRec {actualValue actualTarget}
-      (derivation : ValueTy signature actualValue actualTarget) :
-      ∀ {requestedValues requestedDuals},
-        actualValue = .tuple requestedValues →
-        (actualTarget = .matcher
-            (.prod (requestedDuals.map Dual.cap))
-            (.prod (requestedDuals.map Dual.target)) ∨
-          actualTarget = .slot
-            (.prod (requestedDuals.map Dual.cap))
-            (.prod (requestedDuals.map Dual.target))) →
-        MatcherUsables signature requestedValues requestedDuals := by
-    refine ValueTy.rec
-      (motive_1 := fun actualValue actualTarget _ =>
-        ∀ {requestedValues requestedDuals},
-          actualValue = .tuple requestedValues →
-          (actualTarget = .matcher
-              (.prod (requestedDuals.map Dual.cap))
-              (.prod (requestedDuals.map Dual.target)) ∨
-            actualTarget = .slot
-              (.prod (requestedDuals.map Dual.cap))
-              (.prod (requestedDuals.map Dual.target))) →
-          MatcherUsables signature requestedValues requestedDuals)
-      (motive_2 := fun _ _ _ => True)
-      ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ derivation
-    · intro literal requestedValues requestedDuals valueEquality
-      cases valueEquality
-    · intro name scheme actualValues targets result find inst actualTyping
-        actualIH requestedValues requestedDuals valueEquality
-      cases valueEquality
-    · intro actualValues targets actualTyping actualIH requestedValues
-        requestedDuals valueEquality targetEquality
-      cases valueEquality
-      rcases targetEquality with targetEquality | targetEquality <;>
-        cases targetEquality
-    · intro self environment parameter body domain codomain context envDomain
-        envValues noneBody someBody envIH requestedValues requestedDuals
-        valueEquality
-      cases valueEquality
-    · intro environment current original capability target context envDomain
-        envValues sourceTyping cursor envIH requestedValues requestedDuals
-        valueEquality
-      cases valueEquality
-    · intro target requestedValues requestedDuals valueEquality
-      cases valueEquality
-    · intro actualValues actualDuals componentTyping componentIH
-        requestedValues requestedDuals valueEquality targetEquality
-      cases valueEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · have capEquality : actualDuals.map Dual.cap =
-            requestedDuals.map Dual.cap := by
-          exact Cap.prod.inj (Ty.matcher.inj targetEquality).1
-        have targetMapEquality : actualDuals.map Dual.target =
-            requestedDuals.map Dual.target := by
-          exact Ty.prod.inj (Ty.matcher.inj targetEquality).2
-        have dualEquality := Dual.list_eq_of_maps_eq capEquality
-          targetMapEquality
-        subst actualDuals
-        exact componentTyping.matcherUsables
-      · cases targetEquality
-    · intro value producerCap producerTarget consumerCap consumerTarget
-        bindings C T post inner raw postVariable
-        innerIH requestedValues requestedDuals valueEquality targetEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · cases targetEquality
-      · have indices := matcherToSlot_indices_eq raw.matched
-            raw.capSubstitution raw.targetUnified
-        have capabilityIndex := congrArg (fun capability =>
-          capability.apply post.cap) indices.1
-        have targetIndex := congrArg post.apply indices.2
-        injection targetEquality with capabilityEquality targetEquality
-        apply innerIH valueEquality (.inl ?_)
-        rw [capabilityIndex, targetIndex]
-        have pairEquality :
-            ((consumerCap.apply C).apply post.cap,
-              post.apply ((Subst.mk C T).apply consumerTarget)) =
-            (.prod (requestedDuals.map Dual.cap),
-              .prod (requestedDuals.map Dual.target)) := by
-          apply Prod.ext
-          · exact capabilityEquality
-          · exact targetEquality
-        exact congrArg (fun indices : Cap × Ty =>
-          Ty.matcher indices.1 indices.2) pairEquality
-    · intro value sourceCap sourceTarget requestedCap requestedTarget C T
-        post inner raw postVariable
-        innerIH requestedValues requestedDuals valueEquality targetEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · cases targetEquality
-      · have indices := slotToSlot_indices_eq raw.capabilityUnified
-            raw.targetUnified
-        have capabilityIndex := congrArg (fun capability =>
-          capability.apply post.cap) indices.1
-        have targetIndex := congrArg post.apply indices.2
-        apply innerIH valueEquality (.inr ?_)
-        rw [capabilityIndex, targetIndex]
-        exact targetEquality
-    · intro actualValues actualDuals componentTyping componentIH
-        requestedValues requestedDuals valueEquality targetEquality
-      cases valueEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · cases targetEquality
-      · have capEquality : actualDuals.map Dual.cap =
-            requestedDuals.map Dual.cap := by
-          exact Cap.prod.inj (Ty.slot.inj targetEquality).1
-        have targetMapEquality : actualDuals.map Dual.target =
-            requestedDuals.map Dual.target := by
-          exact Ty.prod.inj (Ty.slot.inj targetEquality).2
-        have dualEquality := Dual.list_eq_of_maps_eq capEquality
-          targetMapEquality
-        subst actualDuals
-        exact componentTyping.slotUsables
-    · trivial
-    · intros
-      trivial
+  obtain ⟨producerCapability, producerTyping, demand⟩ := typing
+  obtain ⟨producerCaps, producerShape, componentDemands⟩ :=
+    demand.prod_inversion
+  subst producerCapability
+  obtain ⟨producerDuals, componentTyping, capEquality, targetEquality⟩ :=
+    producerTyping.tupleMatcher_inversion
+  rw [← capEquality] at componentDemands
+  exact componentTyping.matcherUsables.weaken componentDemands targetEquality
 
 /--
 An actual terminal pattern-list resolution, usable matchers, and typed values
@@ -1368,118 +1737,31 @@ theorem TerminalPatternResolutions.atomStack
                     (.atom (.mk (.ofTerminal head) matcherHead valueHead))
                     (induction tail matcherTail valueTail)
 
-/--
-Strip checked slot coercions from a concrete matcher literal.  Exact solver
-index equalities ensure that the recovered producer has precisely the dual
-requested by the atom, not merely a compatible one.
--/
+/-- Recover the hidden producer of a usable concrete matcher literal. -/
 theorem ValueTy.matcherUsable_asMatcher
     {signature : FrozenSig} {environment : Env}
     {original current : List Clause} {capability : Cap} {target : Ty}
     (typing : MatcherUsable signature
       (.matcherV environment original current) capability target) :
-    ValueTy signature (.matcherV environment original current)
-      (.matcher capability target) := by
-  rcases typing with matcherTyping | slotTyping
-  · exact valueTyRec matcherTyping rfl (.inl rfl)
-  · exact valueTyRec slotTyping rfl (.inr rfl)
-where
-  valueTyRec {actualValue actualTarget}
-      (derivation : ValueTy signature actualValue actualTarget) :
-      ∀ {requestedEnvironment requestedOriginal requestedCurrent
-          requestedCapability requestedTarget},
-        actualValue = .matcherV requestedEnvironment requestedOriginal
-          requestedCurrent →
-        (actualTarget = .matcher requestedCapability requestedTarget ∨
-          actualTarget = .slot requestedCapability requestedTarget) →
-        ValueTy signature
-          (.matcherV requestedEnvironment requestedOriginal requestedCurrent)
-          (.matcher requestedCapability requestedTarget) := by
-    refine ValueTy.rec
-      (motive_1 := fun actualValue actualTarget _ =>
-        ∀ {requestedEnvironment requestedOriginal requestedCurrent
-            requestedCapability requestedTarget},
-          actualValue = .matcherV requestedEnvironment requestedOriginal
-            requestedCurrent →
-          (actualTarget = .matcher requestedCapability requestedTarget ∨
-            actualTarget = .slot requestedCapability requestedTarget) →
-          ValueTy signature
-            (.matcherV requestedEnvironment requestedOriginal requestedCurrent)
-            (.matcher requestedCapability requestedTarget))
-      (motive_2 := fun _ _ _ => True)
-      ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ derivation
-    · intros
-      contradiction
-    · intros
-      contradiction
-    · intros
-      contradiction
-    · intros
-      contradiction
-    · intro actualEnvironment actualCurrent actualOriginal actualCapability
-        actualTarget context envDomain envValues sourceTyping cursor envIH
-        requestedEnvironment requestedOriginal requestedCurrent
-        requestedCapability requestedTarget valueEquality targetEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · rw [← valueEquality, ← targetEquality]
-        exact .matcherLiteral context envDomain envValues sourceTyping cursor
-      · cases targetEquality
-    · intros
-      contradiction
-    · intros
-      contradiction
-    · intro value producerCap producerTarget consumerCap consumerTarget
-        bindings C T post inner raw postVariable
-        innerIH requestedEnvironment requestedOriginal requestedCurrent
-        requestedCapability requestedTarget valueEquality targetEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · cases targetEquality
-      · have indices := matcherToSlot_indices_eq raw.matched
-            raw.capSubstitution raw.targetUnified
-        have capabilityIndex := congrArg (fun capability =>
-          capability.apply post.cap) indices.1
-        have targetIndex := congrArg post.apply indices.2
-        injection targetEquality with capabilityEquality targetEquality
-        apply innerIH valueEquality (.inl ?_)
-        rw [capabilityIndex, targetIndex]
-        have pairEquality :
-            ((consumerCap.apply C).apply post.cap,
-              post.apply ((Subst.mk C T).apply consumerTarget)) =
-            (requestedCapability, requestedTarget) := by
-          apply Prod.ext
-          · exact capabilityEquality
-          · exact targetEquality
-        exact congrArg (fun indices : Cap × Ty =>
-          Ty.matcher indices.1 indices.2) pairEquality
-    · intro value sourceCap sourceTarget requestedCap requestedTarget C T
-        post inner raw postVariable
-        innerIH requestedEnvironment requestedOriginal requestedCurrent
-        requestedCapability finalTarget valueEquality targetEquality
-      rcases targetEquality with targetEquality | targetEquality
-      · cases targetEquality
-      · have indices := slotToSlot_indices_eq raw.capabilityUnified
-            raw.targetUnified
-        have capabilityIndex := congrArg (fun capability =>
-          capability.apply post.cap) indices.1
-        have targetIndex := congrArg post.apply indices.2
-        apply innerIH valueEquality (.inr ?_)
-        rw [capabilityIndex, targetIndex]
-        exact targetEquality
-    · intros
-      contradiction
-    · trivial
-    · intros
-      trivial
+    ∃ producerCapability,
+      ValueTy signature (.matcherV environment original current)
+        (.matcher producerCapability target) := by
+  obtain ⟨producerCapability, producerTyping, _⟩ := typing
+  exact ⟨producerCapability, producerTyping⟩
 
-/-- Covered source evidence is available even when a matcher entered as a slot. -/
+/-- Covered source evidence is indexed by the hidden producer, not the demand. -/
 theorem ValueTy.coveredMatcherUsable_inversion
     {signature : FrozenSig} {environment : Env}
     {original current : List Clause} {capability : Cap} {target : Ty}
     (typing : MatcherUsable signature
       (.matcherV environment original current) capability target) :
-    CoveredMatcherLiteralView signature environment original current
-      capability target :=
-  (ValueTy.matcherUsable_asMatcher typing).coveredMatcherLiteral_inversion
+    ∃ producerCapability,
+      CoveredMatcherLiteralView signature environment original current
+        producerCapability target ∧
+      CapabilityDemand producerCapability capability := by
+  obtain ⟨producerCapability, producerTyping, demand⟩ := typing
+  exact ⟨producerCapability,
+    producerTyping.coveredMatcherLiteral_inversion, demand⟩
 
 /--
 Invert a concrete constructor value at a declared constructor instance.  The
@@ -2977,8 +3259,9 @@ theorem PPatCapsList.cons_inversion
 
 /-
 Terminal capture alignment is stated only at actual indices.  The matcher
-clause and the match site may retain unrelated raw substitutions; their
-terminal target, capability, and child streams are the only objects compared.
+clause and the match site may retain unrelated raw substitutions; targets
+remain equal while producer and consumer capability streams are related by
+the retained one-way demand witness.
 -/
 theorem ppm_captures_terminal_parts
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
@@ -2988,37 +3271,44 @@ theorem ppm_captures_terminal_parts
     {ppBindings : MonoCtx} {pattern : Pattern}
     {captures : List Pattern} {ppEnvironment : Env}
     {context : Context} {parameters : PatternCtx}
-    {input output : MonoCtx} {patternCapability : Cap}
+    {input output : MonoCtx}
+    {producerCapability consumerCapability : Cap}
     (ppResolution : TerminalPPatResolution signature ppPrevailing pp target
       holes ppBindings)
     (capTyping : PPatCapsAt signature true pp (holes.map Dual.cap)
-      patternCapability)
+      producerCapability)
     (patternResolution : TerminalPatternResolution signature
-      patternPrevailing context parameters input pattern patternCapability
+      patternPrevailing context parameters input pattern consumerCapability
       target output)
+    (capabilityDemand :
+      CapabilityDemand producerCapability consumerCapability)
     (matching : PPM SF environment pp pattern
       (some (captures, ppEnvironment)))
     (nonCatchAll : pp ≠ .hole) :
     ∃ capturedDuals,
       TerminalPatternResolutions signature patternPrevailing context parameters
         input captures capturedDuals output ∧
-      capturedDuals.map Dual.cap = holes.map Dual.cap ∧
+      CapabilityDemands (holes.map Dual.cap)
+        (capturedDuals.map Dual.cap) ∧
       capturedDuals.map Dual.target = holes.map Dual.target := by
   refine TerminalPPatResolution.rec
     (motive_1 := fun pp target holes _ _ =>
       ∀ {atRoot : Bool} {pattern : Pattern} {captures : List Pattern}
         {ppEnvironment : Env} {context : Context} {parameters : PatternCtx}
-        {input output : MonoCtx} {patternCapability : Cap},
+        {input output : MonoCtx}
+        {producerCapability consumerCapability : Cap},
         PPatCapsAt signature atRoot pp (holes.map Dual.cap)
-          patternCapability →
+          producerCapability →
         (atRoot = true → pp ≠ .hole) →
         TerminalPatternResolution signature patternPrevailing context
-          parameters input pattern patternCapability target output →
+          parameters input pattern consumerCapability target output →
+        CapabilityDemand producerCapability consumerCapability →
         PPM SF environment pp pattern (some (captures, ppEnvironment)) →
         ∃ capturedDuals,
           TerminalPatternResolutions signature patternPrevailing context
             parameters input captures capturedDuals output ∧
-          capturedDuals.map Dual.cap = holes.map Dual.cap ∧
+          CapabilityDemands (holes.map Dual.cap)
+            (capturedDuals.map Dual.cap) ∧
           capturedDuals.map Dual.target = holes.map Dual.target)
     (motive_2 := fun pps targets holes _ _ =>
       ∀ {patterns : List Pattern}
@@ -3030,7 +3320,8 @@ theorem ppm_captures_terminal_parts
           childCapabilities →
         TerminalPatternResolutions signature patternPrevailing context
           parameters input patterns patternDuals output →
-        patternDuals.map Dual.cap = childCapabilities →
+        CapabilityDemands childCapabilities
+          (patternDuals.map Dual.cap) →
         patternDuals.map Dual.target = targets →
         pps.length = patterns.length →
         (pps.zip patterns).length = results.length →
@@ -3040,41 +3331,43 @@ theorem ppm_captures_terminal_parts
           TerminalPatternResolutions signature patternPrevailing context
             parameters input ((results.map Prod.fst).flatten) capturedDuals
             output ∧
-          capturedDuals.map Dual.cap = holes.map Dual.cap ∧
+          CapabilityDemands (holes.map Dual.cap)
+            (capturedDuals.map Dual.cap) ∧
           capturedDuals.map Dual.target = holes.map Dual.target)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ppResolution
-    capTyping (fun _ => nonCatchAll) patternResolution matching
+    capTyping (fun _ => nonCatchAll) patternResolution capabilityDemand matching
   · intro rawTarget varId fresh atRoot pattern captures ppEnvironment
-      context parameters input output patternCapability caps notRoot
-      patternTyping matched
+      context parameters input output producerCapability consumerCapability
+      caps notRoot patternTyping capabilityDemand matched
     cases caps with
     | rootHole => exact (notRoot rfl rfl).elim
     | childHole =>
         cases matched
-        exact ⟨[⟨(Cap.var varId).apply ppPrevailing.cap,
-              ppPrevailing.apply rawTarget⟩],
-          .cons patternTyping .nil, by
-            simp [Dual.applySubst, Dual.apply], by
-            simp [Dual.applySubst, Dual.apply]⟩
+        refine ⟨[⟨consumerCapability, ppPrevailing.apply rawTarget⟩],
+          .cons patternTyping .nil, ?_, ?_⟩
+        · simpa [Dual.applySubst, Dual.apply] using
+            CapabilityDemands.cons capabilityDemand CapabilityDemands.nil
+        · simp [Dual.applySubst, Dual.apply]
   · intro rawTarget atRoot pattern captures ppEnvironment context parameters
-      input output patternCapability caps notRoot patternTyping matched
+      input output producerCapability consumerCapability caps notRoot
+      patternTyping capabilityDemand matched
     cases caps
     cases matched
     have outputEquality := patternTyping.wild_output
     subst output
-    exact ⟨[], .nil, rfl, rfl⟩
+    exact ⟨[], .nil, .nil, rfl⟩
   · intro name rawTarget atRoot pattern captures ppEnvironment context
-      parameters input output patternCapability caps notRoot patternTyping
-      matched
+      parameters input output producerCapability consumerCapability caps
+      notRoot patternTyping capabilityDemand matched
     cases caps
     cases matched
     have outputEquality := patternTyping.pval_output
     subst output
-    exact ⟨[], .nil, rfl, rfl⟩
+    exact ⟨[], .nil, .nil, rfl⟩
   · intro name entry pps targets result holes bindings found children
       instantiated listIH atRoot pattern captures ppEnvironment context
-      parameters input output patternCapability caps notRoot patternTyping
-      matched
+      parameters input output producerCapability consumerCapability caps
+      notRoot patternTyping capabilityDemand matched
     cases caps with
     | @ctor _ _ capEntry _ _ childCapabilities _ capFound capChildren
         capCompatible =>
@@ -3090,32 +3383,33 @@ theorem ppm_captures_terminal_parts
                 have patternEntryEquality : patternEntry = entry :=
                   Option.some.inj (patternFound.symm.trans found)
                 subst patternEntry
-                have capsEquality :
-                    patternDuals.map Dual.cap = childCapabilities :=
-                  signatureWF.patternCapArgsUnique found patternCompatible
-                    capCompatible
+                have childDemands : CapabilityDemands childCapabilities
+                    (patternDuals.map Dual.cap) :=
+                  signatureWF.patternCapDemands found capCompatible
+                    patternCompatible capabilityDemand
                 have targetsEquality :
                     patternDuals.map Dual.target = targets :=
                   signatureWF.patternInstArgsUnique found patternInstantiated
                     instantiated
-                exact listIH capChildren patternChildren capsEquality
+                exact listIH capChildren patternChildren childDemands
                   targetsEquality lengthPP lengthResults all
   · intro pps targets holes bindings children listIH atRoot pattern captures
-      ppEnvironment context parameters input output patternCapability caps
-      notRoot patternTyping matched
+      ppEnvironment context parameters input output producerCapability
+      consumerCapability caps notRoot patternTyping capabilityDemand matched
     obtain ⟨childCapabilities, capChildren, outerEquality⟩ :=
       PPatCapsAt.tuple_inv caps
     cases matched with
     | tuple lengthPP lengthResults all =>
         cases patternTyping with
         | @tuple _ _ _ _ _ patternDuals _ patternChildren =>
-            have capsEquality :
-                patternDuals.map Dual.cap = childCapabilities :=
-              Cap.prod.inj outerEquality
-            exact listIH capChildren patternChildren capsEquality
+            rw [outerEquality] at capabilityDemand
+            have childDemands : CapabilityDemands childCapabilities
+                (patternDuals.map Dual.cap) :=
+              capabilityDemand.prod_children
+            exact listIH capChildren patternChildren childDemands
               rfl lengthPP lengthResults all
   · intro patterns results context parameters input output patternDuals
-      childCapabilities caps patternTyping capsEquality targetsEquality
+      childCapabilities caps patternTyping capDemands targetsEquality
       lengthPP lengthResults all
     cases caps
     cases patterns with
@@ -3125,11 +3419,11 @@ theorem ppm_captures_terminal_parts
         | cons result results => simp at lengthResults
         | nil =>
             cases patternTyping
-            exact ⟨[], .nil, rfl, rfl⟩
+            exact ⟨[], .nil, .nil, rfl⟩
   · intro pp target headHoles headBindings pps targets tailHoles
       tailBindings headResolution tailResolution distinct headIH tailIH
       patterns results context parameters input output patternDuals
-      childCapabilities caps patternTyping capsEquality targetsEquality
+      childCapabilities caps patternTyping capDemands targetsEquality
       lengthPP lengthResults all
     obtain ⟨headCapHoles, tailCapHoles, headCapability, tailCapabilities,
         capHolesShape, childCapsShape, headCaps, tailCaps⟩ :=
@@ -3150,41 +3444,40 @@ theorem ppm_captures_terminal_parts
         cases patternTyping with
         | @cons _ _ _ _ _ patternCap patternTarget middle _ patternDualsTail
             _ patternHead patternTail =>
-            simp only [List.map_cons] at capsEquality targetsEquality
-            rw [childCapsShape] at capsEquality
-            simp only [List.cons.injEq] at capsEquality
-            obtain ⟨headCapEquality, tailCapsEquality⟩ := capsEquality
-            obtain ⟨headTargetEquality, tailTargetsEquality⟩ :=
-              targetsEquality
-            cases results with
-            | nil => simp [List.zip_cons_cons] at lengthResults
-            | cons result results =>
-                obtain ⟨headCaptures, headEnvironment⟩ := result
-                have headMatching :
-                    PPM SF environment pp pattern
-                      (some (headCaptures, headEnvironment)) :=
-                  all ((pp, pattern), (headCaptures, headEnvironment))
-                    (by simp [List.zip_cons_cons])
-                have headCaps' :
-                    PPatCapsAt signature false pp
-                      (headHoles.map Dual.cap) patternCap := by
-                  rw [headCapEquality]
-                  exact headCaps
-                obtain ⟨headDuals, headCaptured, headDualCaps,
-                    headDualTargets⟩ :=
-                  headIH (atRoot := false) headCaps' (by simp)
-                    patternHead headMatching
-                obtain ⟨tailDuals, tailCaptured, tailDualCaps,
-                    tailDualTargets⟩ :=
-                  tailIH tailCaps patternTail tailCapsEquality
-                    rfl (by simpa using lengthPP)
-                    (by simpa [List.zip_cons_cons] using lengthResults)
-                    (fun entry member => all entry
-                      (by simp [List.zip_cons_cons]; exact .inr member))
-                refine ⟨headDuals ++ tailDuals,
-                  headCaptured.append tailCaptured, ?_, ?_⟩
-                · simp [List.map_append, headDualCaps, tailDualCaps]
-                · simp [List.map_append, headDualTargets, tailDualTargets]
+            simp only [List.map_cons] at capDemands
+            simp only [List.map_cons, List.cons.injEq] at targetsEquality
+            rw [childCapsShape] at capDemands
+            cases capDemands with
+            | cons headDemand tailDemands =>
+                obtain ⟨headTargetEquality, tailTargetsEquality⟩ :=
+                  targetsEquality
+                rw [headTargetEquality] at patternHead
+                cases results with
+                | nil => simp [List.zip_cons_cons] at lengthResults
+                | cons result results =>
+                    obtain ⟨headCaptures, headEnvironment⟩ := result
+                    have headMatching :
+                        PPM SF environment pp pattern
+                          (some (headCaptures, headEnvironment)) :=
+                      all ((pp, pattern), (headCaptures, headEnvironment))
+                        (by simp [List.zip_cons_cons])
+                    obtain ⟨headDuals, headCaptured, headDualCaps,
+                        headDualTargets⟩ :=
+                      headIH (atRoot := false) headCaps (by simp)
+                        patternHead headDemand headMatching
+                    obtain ⟨tailDuals, tailCaptured, tailDualCaps,
+                        tailDualTargets⟩ :=
+                      tailIH tailCaps patternTail tailDemands
+                        tailTargetsEquality (by simpa using lengthPP)
+                        (by simpa [List.zip_cons_cons] using lengthResults)
+                        (fun entry member => all entry
+                          (by simp [List.zip_cons_cons]; exact .inr member))
+                    refine ⟨headDuals ++ tailDuals,
+                      headCaptured.append tailCaptured, ?_, ?_⟩
+                    · simpa only [List.map_append] using
+                        headDualCaps.append tailDualCaps
+                    · simp [List.map_append, headDualTargets,
+                        tailDualTargets]
 
 /--
 Capture alignment when the matcher clause and the match site were resolved by

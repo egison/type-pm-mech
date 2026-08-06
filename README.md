@@ -33,6 +33,14 @@ capability と target type は別 sort，別変数，別 substitution，別 quan
 producer から slot への接続は対称単一化ではなく producer-stable な one-way check で
 行う．動的定理は concrete source/runtime judgments だけを使う．
 
+`Any` はこの one-way check の **consumer 側に明記されたときだけ** wildcard であり，
+任意の producer capability を受理する．producer 側の `Any` は wildcard ではない．また，
+consumer 変数 `κ` が一度 `Any` に束縛されても，二度目以降の同じ `κ` は保存された
+`Any` と厳密に一致しなければならない．従って `[Any, K]` を `[κ, κ]` に合わせることは
+失敗する一方，literal `[Any, κ, κ]` の先頭だけは独立した wildcard になる．対称な
+`mguCap` では `Any` は通常の rigid ground constructor であり，`Any = Any` のみが
+直接成功する（flexible variable を `Any` へ束縛することはできる）．
+
 ## 証明している範囲
 
 ### Source typing
@@ -53,6 +61,14 @@ Frozen signature の lookup table は有限 map として扱い，pattern-functi
 `higherOrderFix_untypable` は再帰 binder を引数として渡す具体反例の拒否を固定する．
 Pattern-function 定義の本体は freeze 済みの完全な signature で型付けする一方，
 自身の scheme は generalization の ambient free-variable 集合から除外する．
+その canonical core payload は引数と結果（target 型内部の capability も含む）を一つの
+occurrence 列として数える．signature または context に自由な ambient capability は
+そのまま自由に保ち，非 ambient な変数は，一度だけ現れるなら全出現を `Any` に
+canonicalize し，二度以上現れるなら一つだけ量化して共有を保存する．`PatternDefTy` は
+この正規化済み引数／結果に対する，一つの prevailing substitution を伴う
+`ResolvedPatternTy` として本体を保持する．この prevailing substitution を canonical な
+singleton-default substitution そのものとは同一視しない．利用時の `ValueFlowInst` は共有変数の
+rename と target specialization だけを行い，singleton default を後付けの構造置換として偽装しない．
 固定済み lookup scheme と context ごとの局所 generalization は，数値 binder 名の
 構文的一致ではなく `DualScheme.ValueFlowEquivalent` で結ぶ．これは両 scheme の
 `ValueFlowInst` が同じ引数／結果を許し，自由 capability／target 変数集合も等しいことを
@@ -74,7 +90,7 @@ evidence と exact merge できることを要求する．このため，element
 wildcard／value-pattern-pattern による `unseen` child は hole obligation を課さない．
 一方，closed structured field は結果へ evidence を運ばなくても，actual hole の next
 matcher が field の observable path と同じ capability head／arity を持つことを要求する．
-`Matcher none [Integer]` 自体は有効であり，closed list hole の next matcher として
+`Matcher Any [Integer]` 自体は有効であり，closed list hole の next matcher として
 使う場合だけ不適合になる．
 
 さらに formal core の primitive-pattern pattern は depth-first・左から右に走査し，
@@ -132,7 +148,7 @@ exact projection を再実行し，terminal validator でも最終的な `CapCom
 これは pattern consumer 間の制約解決であり，value producer capability を consumer
 demand から構造化する seed ではない．protected producer variable は従来どおり固定する．
 共有 result variable に到達する field の内部では，到達しない observable subposition を
-`none` に canonicalize して field 全体を整合させる保守的な fallback である．その位置だけを
+`Any` に canonicalize して field 全体を整合させる保守的な fallback である．その位置だけを
 無視する partial/path-wise alignment と W の completeness は主張しない．
 再構成では生成時の raw provenance と，substitution 適用後の実際の index で構造を追う
 terminal derivation を分ける．nested child の raw index と親の raw field index が
@@ -188,7 +204,7 @@ erase が surface soundness を与えることを固定する．Lean の proof i
 観測可能な `Type` 値の候補 normal-plan syntax として定義する．これは一般の `trans` を持たず，
 product matcher から slot への二段経路を `productMatcher; matcherToSlot` と固定する．product of
 slots から一致する aggregate slot へは `slotTuple` 一段である．surface の slot-to-slot check は
-capability／target MGU と後置換の後で両端が等しいことを証明し，`NormalPlan.refl` へ吸収する．
+capability／target の決定的 unifier と後置換の後で両端が等しいことを証明し，`NormalPlan.refl` へ吸収する．
 全 `Step`／`Spine` が端点を変えることと，同じ端点の `NormalPlan` は `refl` だけであることも
 証明済みである．空 product の `slotTuple` は constructor 側で禁止し，matcher-product precedence
 を syntax にも反映する．既存 surface plan／`HasTy` への replay soundness は証明済みである．
@@ -225,7 +241,7 @@ constructor／primitive の局所 structural instantiation と既存 producer �
 一般 fresh capability と constructor／primitive image を `structuralFlexible`，context scheme／
 pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．ただし
 constraint acceptance と terminal audit は従来の `protectedCaps` をそのまま使うため，受理挙動はまだ
-変えていない．origin-aware solver へ切り替えるには，solve cut ごとの ledger snapshot，MGU の
+変えていない．origin-aware solver へ切り替えるには，solve cut ごとの ledger snapshot，unifier の
 origin-aware orientation，および raw binder ではなく局所 solve 後に外へ生存する prevailing image の
 leaf を freeze する export event が必要である．
 
@@ -234,7 +250,7 @@ leaf を freeze する export event が必要である．
 normalization completeness，component-first 経路を含む critical pair の解消と normalization
 uniqueness，coercion の意味的同値，置換に対する naturality，および normalized product が判明した
 solve cut を保存する cut-indexed evidence が必要になる．その上で W が生成する core typing の
-一意性（binder の alpha 同値を除く），MGU による置換普遍性，および任意の coherent surface
+一意性（binder の alpha 同値を除く），unifier の factorization（置換普遍性），および任意の coherent surface
 typing がその置換と明示的 coercion から得られる completeness を証明する．現行
 `TerminalPatternResolution` の leaf は freshness 用 `rawContext` と
 `actualContext` を独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も
@@ -262,6 +278,12 @@ intrinsic capability，target，captured environment，source matcher derivation
 を保持する．matching state の型付けは atom ごとの
 prevailing substitution，pattern-function node の隔離された parameter context，
 残余 actual argument，内部 stack を追跡する．
+
+runtime の `CapabilityDemand` は，raw `DemandMatches` または検査済み matcher-to-slot
+certificate から得られる，正規化済み endpoint compatibility の sound な忘却である．raw consumer
+構文や一つの substitution による共有相関そのものは保持しない．同じ consumer variable の二度目を
+wildcard として扱わない strict check は忘却前の `DemandMatches`／raw certificate が行い，
+`CapabilityDemand` から exact raw origin を逆に復元する converse は主張しない．
 
 Ordered dispatch は失敗済み clause prefix を `DispatchTrace` で追跡する．Frozen
 signature の pattern-constructor capability 一意性と coverage-index coherence により，

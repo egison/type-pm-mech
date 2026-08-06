@@ -413,13 +413,13 @@ def buildResultTemplate
         | some evidence => some evidence
         | none          => some .unseen
       else
-        some (.known .none)
+        some (.known .any)
   | .prod componentTypes =>
       match relevantVars observable resultVariables (.prod componentTypes) with
       | none =>
           none
       | some [] =>
-          some (.known .none)
+          some (.known .any)
       | some (_ :: _) =>
           match buildResultTemplateList observable resultVariables assignments
                   componentTypes with
@@ -430,30 +430,30 @@ def buildResultTemplate
       | none =>
           none
       | some [] =>
-          some (.known .none)
+          some (.known .any)
       | some (_ :: _) =>
           match observable name with
           | none =>
-              some (.known .none)
+              some (.known .any)
           | some mask =>
               match buildResultTemplateMasked observable resultVariables
                       assignments mask arguments with
               | some children => some (.con name children)
               | none          => none
   | .int =>
-      some (.known .none)
+      some (.known .any)
   | .skolem _ =>
-      some (.known .none)
+      some (.known .any)
   | .unit =>
-      some (.known .none)
+      some (.known .any)
   | .bool =>
-      some (.known .none)
+      some (.known .any)
   | .fn _ _ =>
-      some (.known .none)
+      some (.known .any)
   | .matcher _ _ =>
-      some (.known .none)
+      some (.known .any)
   | .slot _ _ =>
-      some (.known .none)
+      some (.known .any)
 
 /-- Build a template list whose positions are all structurally exposed. -/
 def buildResultTemplateList
@@ -484,7 +484,7 @@ def buildResultTemplateMasked
         if isObservable
           then buildResultTemplate observable resultVariables assignments
                  argument
-          else some (.known .none)
+          else some (.known .any)
       match head,
             buildResultTemplateMasked observable resultVariables assignments
               mask arguments with
@@ -500,7 +500,7 @@ end
 /--
 Build one result argument slot.
 
-A ground or structurally hidden slot has canonical `known none` evidence.  An
+A ground or structurally hidden slot has canonical `known Any` evidence.  An
 observable slot that received no assignment remains `unseen`.
 -/
 def buildResultSlot
@@ -512,7 +512,7 @@ def buildResultSlot
   | none =>
       none
   | some [] =>
-      some (.known .none)
+      some (.known .any)
   | some variables =>
       if hasAssignment variables assignments then
         buildResultTemplate observable resultVariables assignments slotType
@@ -548,7 +548,7 @@ def buildResultSlotsMasked
       let head :=
         if isObservable
           then buildResultSlot observable resultVariables assignments argument
-          else some (.known .none)
+          else some (.known .any)
       match head,
             buildResultSlotsMasked observable resultVariables assignments
               mask arguments with
@@ -1277,7 +1277,7 @@ example :
     project wrapObservability
       [.data "List" [.var 0]]
       (.data "Wrap" [.var 0])
-      [.known .none] =
+      [.known .any] =
     none := by
   rfl
 
@@ -1312,17 +1312,17 @@ example :
       [.known (.var 10)] =
     some
       (.con "Wrap"
-        [.prod [.known (.var 10), .known .none]]) := by
+        [.prod [.known (.var 10), .known .any]]) := by
   rfl
 
 /-- A closed structured field still rejects a next matcher with no head. -/
 example :
-    projectClauseSignature closedFieldSignature [.known .none] = none := by
+    projectClauseSignature closedFieldSignature [.known .any] = none := by
   rfl
 
 /-- Generic projection does not reinterpret a child as an actual hole. -/
 example :
-    projectSignature closedFieldSignature [.known .none] =
+    projectSignature closedFieldSignature [.known .any] =
       some (.con "Box" []) := by
   simp [projectSignature, closedFieldSignature, projectPaired,
     closedFieldObservability, pairFields, relevantVars, relevantVarsMasked,
@@ -1333,7 +1333,7 @@ example :
 example :
     validateFieldHead closedFieldObservability
         (.data "List" [.int])
-        (.con "List" [.known .none]) =
+        (.con "List" [.known .any]) =
       some () := by
   rfl
 
@@ -1341,7 +1341,7 @@ example :
 example :
     validateFieldHead closedFieldObservability
         (.data "List" [.data "List" [.int]])
-        (.con "List" [.known .none]) =
+        (.con "List" [.known .any]) =
       none := by
   rfl
 
@@ -1349,14 +1349,14 @@ example :
 example :
     validateFieldHead closedFieldObservability
         (.data "List" [.data "List" [.int]])
-        (.con "List" [.con "List" [.known .none]]) =
+        (.con "List" [.con "List" [.known .any]]) =
       some () := by
   rfl
 
 /-- Closed-field validation does not project the field head into `Box`. -/
 example :
     projectClauseSignature closedFieldSignature
-        [.con "List" [.known .none]] =
+        [.con "List" [.known .any]] =
       some (.con "Box" []) := by
   simp [projectClauseSignature, validateFieldHeads, validateFieldHead,
     validateFieldHeadsMasked, projectSignature, closedFieldSignature, projectPaired,

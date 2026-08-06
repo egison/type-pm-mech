@@ -8,9 +8,9 @@ structural capability.  Evidence is generated from matcher clauses, never from
 the matcher target or a result annotation.
 
 `Evidence.unseen` is the neutral element of exact merge.  It is deliberately
-different from the complete producer capability `Cap.none`: an observable
+different from the complete minimal capability `Cap.any`: an observable
 position that remains unseen is rejected during finalization, while an
-unobservable position is canonicalized to `Cap.none`.
+unobservable position is canonicalized to `Cap.any`.
 -/
 
 namespace TypePM
@@ -18,14 +18,14 @@ namespace Shape
 
 /-- Complete capability leaves that may occur in partial evidence. -/
 inductive Leaf where
-  | none
+  | any
   | var    : CapVar → Leaf
   | skolem : Nat → Leaf
 deriving Repr, DecidableEq
 
 /-- Embed a complete leaf back into the capability sort. -/
 def Leaf.toCap : Leaf → Cap
-  | .none      => .none
+  | .any       => .any
   | .var x     => .var x
   | .skolem x  => .skolem x
 
@@ -45,7 +45,7 @@ deriving Repr
 
 /-- Rename the flexible capability variables in a complete evidence leaf. -/
 def Leaf.applyRen (r : CapVar → CapVar) : Leaf → Leaf
-  | .none => .none
+  | .any => .any
   | .var varId => .var (r varId)
   | .skolem name => .skolem name
 
@@ -70,7 +70,7 @@ end
 
 /-- Canonical embedding of a complete capability into evidence. -/
 def ofCap : Cap → Evidence
-  | .none       => .known .none
+  | .any        => .known .any
   | .var x      => .known (.var x)
   | .skolem x   => .known (.skolem x)
   | .con k cs   => .con k (cs.map ofCap)
@@ -86,7 +86,7 @@ theorem ofCap_applyRen (r : CapVar → CapVar) :
       (motive_2 := fun capabilities =>
         (Cap.applyRenList r capabilities).map ofCap =
           Evidence.applyRenList r (capabilities.map ofCap)) with
-  | none => simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
+  | any => simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
   | var varId => simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
   | skolem name =>
       simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen, ofCap]
@@ -106,7 +106,7 @@ mutual
   Exact evidence merge.
 
   The operation neither unifies distinct variables nor weakens a structured
-  node to `Cap.none`.  Constructor names, node kinds, and arities must agree.
+  node to `Cap.any`.  Constructor names, node kinds, and arities must agree.
   -/
   def merge : Evidence → Evidence → Option Evidence
     | .unseen, evidence => some evidence
@@ -157,7 +157,7 @@ mutual
   Finalize partial evidence to a complete capability.
 
   Every observable unseen position is rejected.  Every unobservable
-  constructor parameter is canonicalized to `Cap.none`, regardless of any
+  constructor parameter is canonicalized to `Cap.any`, regardless of any
   stronger evidence supplied there.  Product components are always observable.
   -/
   def finalize (observable : Observability) : Evidence → Option Cap
@@ -193,7 +193,7 @@ mutual
     | [], [] => some []
     | isObservable :: mask, evidence :: rest =>
         let head :=
-          if isObservable then finalize observable evidence else some .none
+          if isObservable then finalize observable evidence else some .any
         match head, finalizeMasked observable mask rest with
         | some capability, some capabilities =>
             some (capability :: capabilities)
@@ -205,14 +205,14 @@ end
 Infer a matcher literal's root capability from its clause evidence.
 
 A literal with no structured root evidence has merged evidence `unseen` and
-therefore receives the complete catch-all capability `Cap.none`.  Any other
+therefore receives the complete catch-all capability `Cap.any`.  Any other
 partial tree is checked by observability-aware finalization.
 -/
 def inferShape
     (observable : Observability) (clauses : List Evidence) : Option Cap :=
   match mergeAll clauses with
   | none => none
-  | some .unseen => some .none
+  | some .unseen => some .any
   | some evidence => finalize observable evidence
 
 @[simp] theorem merge_unseen_left (evidence : Evidence) :
@@ -729,10 +729,10 @@ theorem merge_product_arity_ne
     merge (.con name children) (.prod components) = none := rfl
 
 @[simp] theorem inferShape_empty (observable : Observability) :
-    inferShape observable [] = some .none := rfl
+    inferShape observable [] = some .any := rfl
 
 @[simp] theorem inferShape_catchAll (observable : Observability) :
-    inferShape observable [.unseen] = some .none := rfl
+    inferShape observable [.unseen] = some .any := rfl
 
 @[simp] theorem finalize_unseen (observable : Observability) :
     finalize observable .unseen = none := rfl
@@ -747,7 +747,7 @@ theorem finalize_unobservable_child
     {observable : Observability} {name : String} {evidence : Evidence}
     (h : observable name = some [false]) :
     finalize observable (.con name [evidence]) =
-      some (.con name [.none]) := by
+      some (.con name [.any]) := by
   simp [finalize, finalizeMasked, h]
 
 set_option linter.unusedSimpArgs false in
@@ -766,7 +766,7 @@ theorem merge_ofCap_exact (left right : Cap) :
       ∀ rights,
         mergeList (lefts.map ofCap) (rights.map ofCap) =
           if lefts = rights then some (lefts.map ofCap) else none)
-  case none =>
+  case any =>
     intro right
     cases right <;> simp [ofCap, merge]
   case var left =>
@@ -778,7 +778,7 @@ theorem merge_ofCap_exact (left right : Cap) :
   case con leftName leftChildren children_ih =>
     intro right
     cases right with
-    | none => simp [ofCap, merge]
+    | any => simp [ofCap, merge]
     | var right => simp [ofCap, merge]
     | skolem right => simp [ofCap, merge]
     | prod rightComponents => simp [ofCap]
@@ -793,7 +793,7 @@ theorem merge_ofCap_exact (left right : Cap) :
   case prod leftComponents components_ih =>
     intro right
     cases right with
-    | none => simp [ofCap, merge]
+    | any => simp [ofCap, merge]
     | var right => simp [ofCap, merge]
     | skolem right => simp [ofCap, merge]
     | con rightName rightChildren => simp [ofCap, merge]

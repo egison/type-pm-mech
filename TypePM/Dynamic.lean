@@ -102,7 +102,7 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         (.matcherV environment originalClauses currentClauses)
         (.matcher capability target)
   | something {target} :
-      ValueTy signature .something (.matcher .none target)
+      ValueTy signature .something (.matcher .any target)
   | matcherProduct {values} {duals : List Dual} :
       ValueTys signature values
         (duals.map fun dual => .matcher dual.cap dual.target) →
@@ -468,11 +468,11 @@ theorem ValueTy.matcherLiteral_original_coverage
     ⟨_, _, _, cursor, _, _, _, _, _, _, _, coverage⟩
   exact ⟨cursor, coverage⟩
 
-/-- `something` has the unique complete capability `none`. -/
+/-- `something` has the unique catch-all producer capability `any`. -/
 theorem ValueTy.something_capability_unique
     {signature : FrozenSig} {capability : Cap} {target : Ty}
     (typing : ValueTy signature .something (.matcher capability target)) :
-    capability = .none := by
+    capability = .any := by
   cases typing
   rfl
 
@@ -489,12 +489,96 @@ theorem matcherLiteral_capability_unique_of_same_evidence
 
 /-! ## Typed atoms, pattern environments, trees, stacks, and states -/
 
-/-- A primitive pattern may carry either a producer matcher or a checked slot. -/
+mutual
+
+/--
+A runtime producer is compatible with an already-normalized consumer endpoint.
+This relation is the sound endpoint erasure obtained from raw `DemandMatches`
+or a checked matcher-to-slot certificate: an explicit consumer `any` accepts
+every producer, while all other heads decompose structurally.
+
+The relation intentionally does not index the original consumer syntax or its
+shared substitution.  In particular, `equal` expresses endpoint equality, not
+recoverable evidence that the endpoint came from a solved raw variable, and it
+overlaps with `any` at `CapabilityDemand .any .any`.  Repeated-variable
+strictness is checked by `DemandMatches` before this erasure; no converse or
+exact raw-origin theorem is claimed for `CapabilityDemand`.
+-/
+inductive CapabilityDemand : Cap → Cap → Prop where
+  | equal {capability} :
+      CapabilityDemand capability capability
+  | any {producer} :
+      CapabilityDemand producer .any
+  | con {name producers consumers} :
+      CapabilityDemands producers consumers →
+      CapabilityDemand (.con name producers) (.con name consumers)
+  | prod {producers consumers} :
+      CapabilityDemands producers consumers →
+      CapabilityDemand (.prod producers) (.prod consumers)
+
+/-- Pointwise runtime demand compatibility with exact order and arity. -/
+inductive CapabilityDemands : List Cap → List Cap → Prop where
+  | nil : CapabilityDemands [] []
+  | cons {producer consumer producers consumers} :
+      CapabilityDemand producer consumer →
+      CapabilityDemands producers consumers →
+      CapabilityDemands (producer :: producers) (consumer :: consumers)
+
+end
+
+/-- Reflexive pointwise demand evidence. -/
+def CapabilityDemand.equalList : (capabilities : List Cap) →
+    CapabilityDemands capabilities capabilities
+  | [] => .nil
+  | _ :: capabilities => .cons .equal (equalList capabilities)
+
+/-- Runtime demand lists retain exact arity. -/
+theorem CapabilityDemands.length :
+    ∀ {producers consumers : List Cap},
+      CapabilityDemands producers consumers →
+      producers.length = consumers.length
+  | [], [], .nil => rfl
+  | _ :: _, _ :: _, .cons _ tail =>
+      congrArg Nat.succ (CapabilityDemands.length tail)
+
+/-- Direct inversion when both product endpoints are already exposed. -/
+theorem CapabilityDemand.prod_children
+    {producers consumers : List Cap}
+    (demand : CapabilityDemand (.prod producers) (.prod consumers)) :
+    CapabilityDemands producers consumers := by
+  cases demand with
+  | equal => exact CapabilityDemand.equalList producers
+  | prod children => exact children
+
+/-- Direct inversion when both constructor endpoints are already exposed. -/
+theorem CapabilityDemand.con_children
+    {name : String} {producers consumers : List Cap}
+    (demand : CapabilityDemand (.con name producers) (.con name consumers)) :
+    CapabilityDemands producers consumers := by
+  cases demand with
+  | equal => exact CapabilityDemand.equalList producers
+  | con children => exact children
+
+/--
+A usable matcher retains its hidden producer capability together with the
+normalized endpoint evidence by which the requested consumer capability may
+use it.  Thus a checked `Slot any a` need not originate from `Matcher any a`.
+This runtime abstraction does not retain the raw consumer syntax or the
+matcher-to-slot certificate that produced the endpoint evidence.
+-/
 def MatcherUsable
     (signature : FrozenSig) (matcher : Value)
     (capability : Cap) (target : Ty) : Prop :=
-  ValueTy signature matcher (.matcher capability target) ∨
-    ValueTy signature matcher (.slot capability target)
+  ∃ producerCapability,
+    ValueTy signature matcher (.matcher producerCapability target) ∧
+    CapabilityDemand producerCapability capability
+
+/-- An exact producer matcher is usable at its own capability. -/
+def MatcherUsable.ofMatcher
+    {signature : FrozenSig} {matcher : Value} {capability : Cap} {target : Ty}
+    (typing : ValueTy signature matcher (.matcher capability target)) :
+    MatcherUsable signature matcher capability target :=
+  ⟨capability, typing, .equal⟩
 
 /--
 A primitive or catch-all pattern observes only the matched target.  Its

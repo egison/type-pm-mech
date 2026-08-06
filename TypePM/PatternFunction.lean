@@ -158,6 +158,52 @@ def patternParameterDuals
   (parameters.zip capabilities).map fun entry =>
     ⟨entry.2, entry.1.2⟩
 
+/-- The canonical core payload of a pattern-function definition.  The
+definition being checked is removed before generalization, and singleton
+local capabilities are defaulted by `FrozenSig.generalizeDual`. -/
+def PatternDef.coreScheme
+    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (capabilities : List Cap) (result : Dual) : DualScheme :=
+  ({ signature with
+      patternFuns := signature.patternFuns.filter
+        fun named => named.1 != definition.name }).generalizeDual context
+    (patternParameterDuals definition.parameters capabilities) result
+
+/-- The canonical singleton-default action that normalizes raw argument/result
+indices into the canonical core payload.  It is not identified with the
+prevailing substitution stored by `ResolvedPatternTy`. -/
+def PatternDef.coreCapSubst
+    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (capabilities : List Cap) (result : Dual) : CapSubst :=
+  singletonDefaultSubst
+    (({ signature with
+        patternFuns := signature.patternFuns.filter
+          fun named => named.1 != definition.name }).fcv ++ context.fcv)
+    (patternParameterDuals definition.parameters capabilities) result
+
+/-- The core payload is exactly the raw argument/result payload after the
+single canonical defaulting action; no later value-flow instance performs
+this structural `Any` replacement. -/
+theorem PatternDef.coreScheme_payload
+    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (capabilities : List Cap) (result : Dual) :
+    let C := definition.coreCapSubst signature context capabilities result
+    (definition.coreScheme signature context capabilities result).args =
+        (patternParameterDuals definition.parameters capabilities).map
+          (Dual.apply C TySubst.id) ∧
+      (definition.coreScheme signature context capabilities result).result =
+        result.apply C TySubst.id := by
+  dsimp only [PatternDef.coreScheme, PatternDef.coreCapSubst,
+    FrozenSig.generalizeDual, normalizeDualSingletons]
+  exact ⟨rfl, rfl⟩
+
+/-- Fixed parameter context of the normalized pattern-function core. -/
+def PatternDef.coreParameters
+    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (capabilities : List Cap) (result : Dual) : PatternCtx :=
+  definition.parameterNames.zip
+    (definition.coreScheme signature context capabilities result).args
+
 /--
 Two frozen dual schemes are observationally the same declaration when they
 admit exactly the same safe value-flow instances.  This is the alpha-insensitive
@@ -183,7 +229,7 @@ theorem DualScheme.ValueFlowEquivalent.refl (scheme : DualScheme) :
 inductive PatternDefTy (signature : FrozenSig) (context : Context) :
     PatternDef → DualScheme → Prop where
   | mk
-      {definition capabilities result resultBindings scheme} :
+      {definition capabilities result resultBindings scheme bodyPrevailing} :
       signature.findPatternFun definition.name = some scheme →
       NonrecursivePatternDef definition →
       definition.parameters.length = capabilities.length →
@@ -192,15 +238,15 @@ inductive PatternDefTy (signature : FrozenSig) (context : Context) :
         ∃ varId, capability = .var varId ∧
           FreshCap signature context [] [] varId) →
       capabilities.Nodup →
-      PatternTy signature context
-        (patternParameterContext definition.parameters capabilities)
-        [] definition.body result.cap result.target resultBindings →
+      ResolvedPatternTy signature bodyPrevailing context
+        (definition.coreParameters signature context capabilities result)
+        [] definition.body
+        (definition.coreScheme signature context capabilities result).result.cap
+        (definition.coreScheme signature context capabilities result).result.target
+        resultBindings →
       LinearPatternParameters definition.parameterNames definition.body →
       scheme.ValueFlowEquivalent
-        (({ signature with
-            patternFuns := signature.patternFuns.filter
-              fun named => named.1 != definition.name }).generalizeDual context
-            (patternParameterDuals definition.parameters capabilities) result) →
+        (definition.coreScheme signature context capabilities result) →
       PatternDefTy signature context definition scheme
 
 /-- Runtime erasure of a checked pattern-function definition. -/

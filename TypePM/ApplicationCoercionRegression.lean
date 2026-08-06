@@ -48,7 +48,7 @@ private theorem pairOfMatchers_product_typed
       (ExprsTy.cons (HasTy.something (target := .int))
         (ExprsTy.cons (HasTy.something (target := .int)) ExprsTy.nil)) :
       HasTy emptySignature context (.tuple [.something, .something])
-        (.prod [.matcher .none .int, .matcher .none .int]))
+        (.prod [.matcher .any .int, .matcher .any .int]))
 
 private theorem pairOfMatchers_matcher_typed
     (context : Context) :
@@ -56,7 +56,7 @@ private theorem pairOfMatchers_matcher_typed
       concretePairMatcherType := by
   simpa [concretePairProductType, concretePairMatcherType] using
     (HasTy.coerceProductMatcher
-      (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
+      (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
       (pairOfMatchers_product_typed context))
 
 /-- A product of matcher-valued components is lifted to a product matcher at
@@ -69,7 +69,7 @@ theorem productMatcherArgumentApplication_surface_typed :
 
 private theorem concretePairMatcher_toSlot_raw :
     MatcherToSlotRawCert
-      (.prod [.none, .none]) (.prod [.none, .none])
+      (.prod [.any, .any]) (.prod [.any, .any])
       (.prod [.int, .int]) (.prod [.int, .int])
       [] CapSubst.id TySubst.id := by
   refine
@@ -91,7 +91,7 @@ def pairProductToSlotNormalPlan
       concretePairSlotType := by
   apply CanonicalCoercion.NormalPlan.coerce
   apply CanonicalCoercion.Spine.productMatcherToSlot
-    (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
+    (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
   simpa [concretePairMatcherType, concretePairSlotType, Cap.apply_id] using
     (CanonicalCoercion.Step.matcherToSlot
       (signature := emptySignature) (context := context)
@@ -152,9 +152,9 @@ theorem productSlotArgumentApplication_surface_typed :
 private theorem slotVariable_typed
     (name : String)
     (lookup : slotTupleConsumerContext.find? name =
-      some (Scheme.mono (.slot .none .int))) :
+      some (Scheme.mono (.slot .any .int))) :
     HasTy emptySignature slotTupleConsumerContext (.var name)
-      (.slot .none .int) :=
+      (.slot .any .int) :=
   HasTy.var lookup (Scheme.mono_valueFlowInst _)
 
 private theorem pairOfSlots_product_typed :
@@ -173,7 +173,7 @@ private theorem pairOfSlots_slot_typed :
       (.tuple [.var "left", .var "right"]) concretePairSlotType := by
   simpa [concretePairOfSlotsType, concretePairSlotType] using
     (HasTy.coerceSlotTuple
-      (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
+      (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
       pairOfSlots_product_typed)
 
 /-- When the children already synthesize slots, the canonical plan is the
@@ -187,7 +187,7 @@ def pairSlotsNormalPlan :
     (CanonicalCoercion.Step.slotTuple
       (signature := emptySignature) (context := slotTupleConsumerContext)
       (expression := .tuple [.var "left", .var "right"])
-      (duals := [⟨.none, .int⟩, ⟨.none, .int⟩]) (by simp))
+      (duals := [⟨.any, .int⟩, ⟨.any, .int⟩]) (by simp))
 
 @[simp] theorem pairSlotsNormalPlan_kinds :
     pairSlotsNormalPlan.kinds = [.slotTuple] := by

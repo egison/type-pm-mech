@@ -134,7 +134,7 @@ theorem Cap.apply_eq_self_of_fcv_fixed (C : CapSubst) :
     ∀ capability : Cap,
       (∀ varId, varId ∈ capability.fcv → C varId = .var varId) →
       capability.apply C = capability
-  | .none, _ => rfl
+  | .any, _ => rfl
   | .var varId, fixed => fixed varId (by simp [Cap.fcv])
   | .skolem _, _ => rfl
   | .con name children, fixed => by
@@ -321,7 +321,7 @@ theorem Cap.apply_eq_of_fcv_agree (left right : CapSubst) :
       (∀ varId, varId ∈ capability.fcv →
         left varId = right varId) →
       capability.apply left = capability.apply right
-  | .none, _ => rfl
+  | .any, _ => rfl
   | .var varId, agree => agree varId (by simp [Cap.fcv])
   | .skolem _, _ => rfl
   | .con name children, agree => by

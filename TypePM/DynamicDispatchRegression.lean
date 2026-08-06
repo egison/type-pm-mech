@@ -834,7 +834,9 @@ theorem initial_atom_typed :
       have matcherValueTyping := safetyPackage.evalPreservation
         matcher_evaluation_mirror EnvPristine.nil
         empty_environment_typed matcherTyping
-      exact ⟨_, .mk patternTyping (.inr matcherValueTyping) targetValueTyping⟩
+      exact ⟨_, .mk patternTyping
+        (matcherValueTyping.toMatcherUsable signature_wf)
+        targetValueTyping⟩
 
 theorem program_value_typed :
     ValueTy signature decompositionValue programResult :=

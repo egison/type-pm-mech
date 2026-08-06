@@ -100,7 +100,7 @@ theorem Cap.agree_of_apply_eq {left right : CapSubst} :
     ∀ capability : Cap,
       capability.apply left = capability.apply right →
       ∀ varId ∈ capability.fcv, left varId = right varId
-  | .none, _, varId, membership => by
+  | .any, _, varId, membership => by
       simp [Cap.fcv] at membership
   | .var name, equal, varId, membership => by
       simp only [Cap.fcv, List.mem_singleton] at membership
@@ -301,7 +301,7 @@ mutual
 /-- The evidence embedding of capabilities is injective. -/
 theorem ofCap_injective :
     ∀ {left right : Cap}, ofCap left = ofCap right → left = right
-  | .none, right, equal => by
+  | .any, right, equal => by
       cases right <;> simp_all [ofCap]
   | .var _, right, equal => by
       cases right <;> simp_all [ofCap]
@@ -333,7 +333,7 @@ theorem merge_ofCap_eq :
     ∀ {left right : Cap} {merged : Evidence},
       merge (ofCap left) (ofCap right) = some merged →
       left = right ∧ merged = ofCap left
-  | .none, right, merged, success => by
+  | .any, right, merged, success => by
       cases right <;> simp_all [ofCap, merge]
   | .var _, right, merged, success => by
       cases right <;> simp_all [ofCap, merge]
@@ -358,7 +358,7 @@ theorem merge_ofCap_eq :
                 exact ⟨by rw [childrenEq], by
                   simp [ofCap, mergedEq]⟩
           · simp [if_neg nameEq] at success
-      | none => simp [ofCap] at success
+      | any => simp [ofCap] at success
       | var _ => simp [ofCap] at success
       | skolem _ => simp [ofCap] at success
       | prod _ => simp [ofCap] at success
@@ -376,7 +376,7 @@ theorem merge_ofCap_eq :
                 mergeList_ofCap_eq listSuccess
               cases success
               exact ⟨by rw [componentsEq], by simp [ofCap, mergedEq]⟩
-      | none => simp [ofCap] at success
+      | any => simp [ofCap] at success
       | var _ => simp [ofCap] at success
       | skolem _ => simp [ofCap] at success
       | con _ _ => simp [ofCap] at success
@@ -599,8 +599,8 @@ theorem collectAssignments_family_data
     ∃ inner, child = .con former [inner] ∧
       chunk = [(t, Shape.ofCap inner)] := by
   cases child with
-  | none =>
-      rw [show Shape.ofCap Cap.none = Shape.Evidence.known .none by
+  | any =>
+      rw [show Shape.ofCap Cap.any = Shape.Evidence.known .any by
           simp [Shape.ofCap],
         collectAssignments_data_known tMem maskOK] at success
       cases success
@@ -778,8 +778,8 @@ theorem merge_family_root
     ∃ elem, outer = .con former [elem] ∧
       merge slot (ofCap elem) = some (ofCap elem) := by
   cases outer with
-  | none =>
-      rw [show ofCap Cap.none = Evidence.known .none by simp [ofCap],
+  | any =>
+      rw [show ofCap Cap.any = Evidence.known .any by simp [ofCap],
         merge.eq_def] at success
       cases success
   | var varId =>
@@ -1414,6 +1414,34 @@ theorem family_ftvList_mem {former : String} {t : TypePM.TyVar} :
           (fun candidate mem => argsOK candidate (by simp [mem]))
           varId tailMem
 
+/-- A demand between collection element capabilities lifts pointwise through
+the canonical family-field projection. -/
+theorem familyChild_demands
+    {former : String} {t : TypePM.TyVar}
+    {producer consumer : Cap} {args : List Ty}
+    (argsOK : ∀ arg ∈ args,
+      arg = .var t ∨ arg = .data former [.var t])
+    (demand : CapabilityDemand producer consumer) :
+    CapabilityDemands
+      (args.map (familyChild former t producer))
+      (args.map (familyChild former t consumer)) := by
+  induction args with
+  | nil => exact .nil
+  | cons arg args induction =>
+      have tailOK : ∀ candidate ∈ args,
+          candidate = .var t ∨ candidate = .data former [.var t] :=
+        fun candidate membership =>
+          argsOK candidate (List.mem_cons_of_mem arg membership)
+      have tailDemand := induction tailOK
+      rcases argsOK arg (by simp) with rfl | rfl
+      · simpa [familyChild] using
+          CapabilityDemands.cons demand tailDemand
+      · simpa [familyChild] using
+          CapabilityDemands.cons
+            (CapabilityDemand.con
+              (CapabilityDemands.cons demand CapabilityDemands.nil))
+            tailDemand
+
 /-- A positive executable check establishes every dynamic obligation. -/
 theorem frozenSigWFCheck_sound
     {signature : FrozenSig}
@@ -1434,6 +1462,7 @@ theorem frozenSigWFCheck_sound
       dataInstArgsUnique := ?_
       patternInstArgsUnique := ?_
       patternCapArgsUnique := ?_
+      patternCapDemands := ?_
       patternCtorIndexed := ?_
       primEvalTyped := ?_ }
   · intro name scheme targets result found instanceTyping
@@ -1473,6 +1502,26 @@ theorem frozenSigWFCheck_sound
       have outerEq := leftOuter.symm.trans rightOuter
       simpa using outerEq
     rw [leftChildren, rightChildren, elemEq]
+  · intro name entry producerCaps consumerCaps producerResult consumerResult
+      found producerCompatible consumerCompatible demand
+    have entryChecked := patternChecked _ (findPatternCtor_mem found)
+    obtain ⟨former, t, resultShape, maskOK, argsOK, _⟩ :=
+      patternCtorCheck_sound entryChecked
+    obtain ⟨producerElem, producerOuter, producerChildren⟩ :=
+      PatternCtorScheme.capCompatible_family_inversion resultShape maskOK
+        argsOK producerCompatible
+    obtain ⟨consumerElem, consumerOuter, consumerChildren⟩ :=
+      PatternCtorScheme.capCompatible_family_inversion resultShape maskOK
+        argsOK consumerCompatible
+    rw [producerOuter, consumerOuter] at demand
+    have elementDemand : CapabilityDemand producerElem consumerElem := by
+      have childrenDemand := demand.con_children
+      cases childrenDemand with
+      | cons head tail =>
+          cases tail
+          exact head
+    rw [producerChildren, consumerChildren]
+    exact familyChild_demands argsOK elementDemand
   · intro name entry childCaps capability found compatible
     have entryChecked := patternChecked _ (findPatternCtor_mem found)
     obtain ⟨former, t, resultShape, maskOK, argsOK,

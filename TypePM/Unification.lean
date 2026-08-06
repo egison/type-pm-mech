@@ -52,7 +52,7 @@ theorem Cap.apply_single_of_not_mem
     ∀ (capability : Cap),
       varId ∉ capability.fcv →
         capability.apply (CapSubst.single varId replacement) = capability
-  | .none, _ => rfl
+  | .any, _ => rfl
   | .var candidate, hnotmem => by
       simp only [Cap.fcv, List.mem_singleton] at hnotmem
       simp [Cap.apply, CapSubst.single, hnotmem]
@@ -136,7 +136,7 @@ mutual
 
 /-- A positive structural weight for a capability. -/
 def Cap.unificationWeight : Cap → Nat
-  | .none => 1
+  | .any => 1
   | .var _ => 1
   | .skolem _ => 1
   | .con _ children => 1 + Cap.unificationWeightList children
@@ -641,7 +641,7 @@ theorem mguTyList_sound
 theorem mguCap_composition_regression :
     (mguCap
       (.prod [.var 0, .var 1])
-      (.prod [.con "List" [.none], .var 0])).isSome = true := by
+      (.prod [.con "List" [.any], .var 0])).isSome = true := by
   rfl
 
 /-- Target unification propagates the domain solution into the codomain. -/
@@ -673,12 +673,12 @@ theorem mguTy_skolem_regression :
 
 /-- Capability constructor heads are checked before their arguments. -/
 theorem mguCap_constructor_regression :
-    mguCap (.con "List" [.none]) (.con "Tree" [.none]) = none := by
+    mguCap (.con "List" [.any]) (.con "Tree" [.any]) = none := by
   rfl
 
 /-- Capability constructor arity mismatches are rejected. -/
 theorem mguCap_arity_regression :
-    mguCap (.con "List" [.none]) (.con "List" [.none, .none]) = none := by
+    mguCap (.con "List" [.any]) (.con "List" [.any, .any]) = none := by
   rfl
 
 /-- Target constructor heads are checked before their arguments. -/
@@ -693,7 +693,17 @@ theorem mguTy_arity_regression :
 
 /-- Capability annotations are rigid inputs to the target-sort solver. -/
 theorem mguTy_capability_annotation_regression :
-    mguTy (.matcher (.var 0) .int) (.matcher .none .int) = none := by
+    mguTy (.matcher (.var 0) .int) (.matcher .any .int) = none := by
+  rfl
+
+/-- `Any` is a rigid ground constructor for symmetric capability MGU. -/
+example : mguCap .any .any = some CapSubst.id := by
+  rfl
+
+example : mguCap .any (.con "K" []) = none := by
+  rfl
+
+example : mguCap (.var 0) .any = some (CapSubst.single 0 .any) := by
   rfl
 
 end Unification

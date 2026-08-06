@@ -32,8 +32,8 @@ inductive CapTargetOK (Ξ : List (Cap × Ty)) : Cap → Ty → Prop where
   | assumption {cap target} :
       (cap, target) ∈ Ξ →
       CapTargetOK Ξ cap target
-  | none {target} :
-      CapTargetOK Ξ .none target
+  | any {target} :
+      CapTargetOK Ξ .any target
   | con {name caps targets} :
       CapTargetOKList Ξ caps targets →
       CapTargetOK Ξ (.con name caps) (.data name targets)
@@ -98,8 +98,8 @@ theorem CapTargetOK.subst
   cases h with
   | assumption hmem =>
       exact hcoupled _ _ hmem
-  | none =>
-      exact CapTargetOK.none (Ξ := Ξ')
+  | any =>
+      exact CapTargetOK.any (Ξ := Ξ')
   | con hs =>
       exact CapTargetOK.con (Ξ := Ξ')
         (CapTargetOKList.subst
@@ -147,10 +147,10 @@ theorem CapTargetOK.targetSpecializeClosed
     (coupledSubstOK_nil CapSubst.id T) h
   simpa [applyBoth, Cap.apply_id, Ty.applyCapability_id] using hs
 
-/-- `none` is compatible with every target, including specialized targets. -/
-theorem capTargetOK_none (Ξ : List (Cap × Ty)) (target : Ty) :
-    CapTargetOK Ξ .none target :=
-  CapTargetOK.none
+/-- `Any` is compatible with every target, including specialized targets. -/
+theorem capTargetOK_any (Ξ : List (Cap × Ty)) (target : Ty) :
+    CapTargetOK Ξ .any target :=
+  CapTargetOK.any
 
 /-- A closed constructor certificate fixes the target's syntactic head. -/
 theorem CapTargetOK.closedConHead

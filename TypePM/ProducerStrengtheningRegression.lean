@@ -18,7 +18,7 @@ def protectionSignature : FrozenSig where
   dataCtors := [("consumeProducer", {
     capBinders := []
     tyBinders := []
-    args := [.matcher (.con "List" [.none]) .int]
+    args := [.matcher (.con "List" [.any]) .int]
     result := .int })]
   patternCtors := []
   patternFuns := []
@@ -32,7 +32,7 @@ def polymorphicProducer : Scheme :=
 
 /-- The control producer already has the capability required by the consumer. -/
 def concreteProducer : Scheme :=
-  Scheme.mono (.matcher (.con "List" [.none]) .int)
+  Scheme.mono (.matcher (.con "List" [.any]) .int)
 
 def consumerExpression : Expr :=
   .ctor "consumeProducer" [.var "producer"]

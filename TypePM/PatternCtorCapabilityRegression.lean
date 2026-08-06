@@ -100,7 +100,7 @@ def compatibleTailScheme : DualScheme where
   capBinders := []
   tyBinders := []
   args := []
-  result := ⟨.con "List" [.none], Ty.listT .int⟩
+  result := ⟨.con "List" [.any], Ty.listT .int⟩
 
 /-- Instantiation exposes a fresh capability producer which must remain
 protected when it appears as the tail child of `cons`. -/
@@ -121,7 +121,7 @@ def publicSignature : FrozenSig :=
 matcher inference. -/
 def publicContext : Context :=
   [("list-slot", Scheme.mono
-    (.slot (.con "List" [.none]) (Ty.listT .int)))]
+    (.slot (.con "List" [.any]) (Ty.listT .int)))]
 
 /-- All three public programs share their target, matcher, outer constructor,
 and body; only the nullary tail pattern function changes. -/
@@ -145,7 +145,7 @@ def protectedProgram : Expr :=
 `.prod []` cannot be made equal to the fallback demand `List kappa`. -/
 theorem incompatible_direct_solver_rejected :
     solvePatternCtorCapability publicSignature
-      RecursiveExamples.consPatternCtor origin [.none, .prod []] initialState =
+      RecursiveExamples.consPatternCtor origin [.any, .prod []] initialState =
         none := by
   native_decide
 
@@ -215,7 +215,7 @@ theorem protected_tail_image_recorded :
 delta; the producer-protection filter is what rejects it. -/
 def protectedStrengtheningStep : SolveStep :=
   (solveResolved protectedTailState.trace.solves.length origin
-    (.capEq protectedTailDual.cap (.con "List" [.none]))).get
+    (.capEq protectedTailDual.cap (.con "List" [.any]))).get
       (by native_decide)
 
 theorem protected_strengthening_fixes_check_fails :
@@ -225,7 +225,7 @@ theorem protected_strengthening_fixes_check_fails :
 
 theorem protected_strengthening_constraint_rejected :
     runResolvedConstraint protectedTailState origin
-      (.capEq protectedTailDual.cap (.con "List" [.none])) = none := by
+      (.capEq protectedTailDual.cap (.con "List" [.any])) = none := by
   native_decide
 
 /-- Placing that protected image in the second child makes the fallback demand
@@ -233,7 +233,7 @@ theorem protected_strengthening_constraint_rejected :
 theorem protected_child_direct_solver_rejected :
     solvePatternCtorCapability publicSignature
       RecursiveExamples.consPatternCtor origin
-      [.none, protectedTailDual.cap] protectedTailState = none := by
+      [.any, protectedTailDual.cap] protectedTailState = none := by
   native_decide
 
 /-- The same boundary is reached through an actual nullary `papp` child in the

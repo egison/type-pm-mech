@@ -209,7 +209,8 @@ theorem initial_atom_typed :
       have matcherValueTyping := safetyPackage.evalPreservation
         matcher_evaluation_mirror EnvPristine.nil empty_environment_typed
         matcherTyping
-      exact .mk patternTyping (.inr matcherValueTyping) targetValueTyping
+      exact .mk patternTyping
+        (matcherValueTyping.toMatcherUsable signature_wf) targetValueTyping
 
 theorem initial_state_typed :
     MStateTyAt signature [] [] initialState [] := by

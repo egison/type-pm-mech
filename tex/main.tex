@@ -34,6 +34,8 @@
 \newcommand{\mguTy}{\mathsf{mguTy}}
 \newcommand{\mguCap}{\mathsf{mguCap}}
 \newcommand{\matchCap}{\mathsf{matchCap}}
+\newcommand{\dmatch}{\mathsf{DemandMatches}}
+\newcommand{\Any}{\mathsf{Any}}
 \newcommand{\CoverageOK}{\mathsf{CoverageOK}}
 \newcommand{\ShapeCap}{\mathsf{ShapeCap}}
 \newcommand{\CatchAllLast}{\mathsf{CatchAllLast}}
@@ -86,7 +88,7 @@ declarative expression typing が必ず構成できることを意味する．�
 \small
 \[
 \begin{array}{rcll}
-\kappa &::=& \bullet \mid \chi \mid \hat{s}
+\kappa &::=& \Any \mid \chi \mid \hat{s}
             \mid K\,\overline{\kappa}
             \mid (\kappa_1,\ldots,\kappa_n)
   & \kappa : \CapSort \\
@@ -148,7 +150,7 @@ cl &::=& pp\ \mathtt{as}\ M\ \mathtt{with}\
 \mathit{cls} &::=& [cl_i]_{i=1}^{m} \\
 d &::=& \mathtt{def\ pattern}\ f(x_1:\tau_1,\ldots,x_n:\tau_n)
           :=p \\
-\ell &::=& \mathsf{none} \mid \chi \mid \hat{s} \\
+\ell &::=& \Any \mid \chi \mid \hat{s} \\
 ev &::=& \mathsf{unseen} \mid \mathsf{known}\;\ell
    \mid K\,\overline{ev} \mid (ev_1,\ldots,ev_n).
 \end{array}
@@ -245,12 +247,26 @@ scheme binder の局所 mapping と，その結果に対する target specializa
   &\quad \forall(\ftv(\tau)\setminus
       (\ftv(\Sighat)\cup\ftv(\Gamma)): \Ty).\,\tau,\\
 \GenDual(\Sighat,\Gamma,\delta)
-  &=\forall(\fcv(\delta)\setminus
-      (\fcv(\Sighat)\cup\fcv(\Gamma)): \CapSort).\,\\[-0.2em]
+  &=\forall\mathit{shared}(\delta;A):\CapSort.\,\\[-0.2em]
   &\quad \forall(\ftv(\delta)\setminus
-      (\ftv(\Sighat)\cup\ftv(\Gamma)): \Ty).\,\delta.
+      (\ftv(\Sighat)\cup\ftv(\Gamma)): \Ty).\,
+      D_{\mathit{single}(\delta;A)}\delta,
 \end{aligned}
 \]
+where
+\[
+ A=\fcv(\Sighat)\cup\fcv(\Gamma),\qquad
+ \mathit{single}(\delta;A)=
+   \{\chi\notin A\mid \mathsf{occ}_{\delta}(\chi)=1\},\qquad
+ \mathit{shared}(\delta;A)=
+   \{\chi\notin A\mid \mathsf{occ}_{\delta}(\chi)\ge2\},
+\]
+and $D_X\chi=\Any$ for $\chi\in X$, while $D_X$ is the identity on every
+other capability variable.  The occurrence count is taken over all argument
+and result capabilities, including capability occurrences nested in their
+target types.  Thus an ambient variable is never defaulted or quantified, an
+independent local leaf has the canonical demand $\Any$, and two or more
+occurrences keep one quantified variable and hence their sharing.
 $\ValueFlowInst$ と $\ValueFlowInstDual$ の宣言的 relation は，capability binder を flexible capability
 variable へ置換し，その結果に target binder だけを support とする $T_s$ を適用する．
 $C_v\chi$ は常に capability variable であり，$K\,\overline\kappa$ や capability product
@@ -265,7 +281,9 @@ Algorithm W はより強い allocation witness として，全 binder へ互い�
 variable を割り当て，solver が後続の target specialization を記録する．その allocation
 証拠を忘却して target substitution を合成すれば，上の宣言的 instance が得られる．
 $\ValueFlowInstDual$ は dual scheme の両 binder 列を対象にする．
-$\Gen$ と $\GenDual$ は signature と context の自由変数を量化しない．その型引数には
+$\Gen$ と $\GenDual$ は signature と context の自由変数を量化しない．$\GenDual$ はさらに，
+ambient でない capability variable を dual payload 全体の出現回数で分類し，一回だけの
+ものを $\Any$ に default して，二回以上のものだけを量化する．その型引数には
 prevailing paired substitution を適用し，
 未解決の inference placeholder を含まない finalized type/capability を用いる．
 prevailing paired substitution とは，同じ導出でそれ以前に得た全 constraint を解く
@@ -298,20 +316,33 @@ capability image を variable に限定しない．これらは value producer �
 \[
 \begin{array}{rcll}
 \mguTy(\tau,\tau')&=&T
-  & \text{target-sort MGU},\\
+  & \text{target-sort deterministic unifier},\\
 \mguCap(\kappa,\kappa')&=&C
-  & \text{capability-sort MGU},\\
+  & \text{capability-sort deterministic unifier},\\
 \matchCap(\kappa_m,\kappa_p)&=&C
   & \dom(C)\subseteq\fcv(\kappa_p),\quad
-    C\kappa_m=\kappa_m,\quad C\kappa_p=\kappa_m.
+    C\kappa_m=\kappa_m,\quad
+    \dmatch_C(\kappa_m,\kappa_p).
 \end{array}
 \]
+$\dmatch_C$ は元の consumer 構文に対して再帰的に定義する．明示的な
+$\dmatch_C(\kappa_m,\Any)$ は任意の producer について成立し，
+$\dmatch_C(\kappa_m,\chi)$ は $C\chi=\kappa_m$ を要求する．同名 constructor，
+product，skolem は同じ head／arity で子を pointwise に照合する．特に consumer
+variable が一度 $\Any$ に束縛されても，その後の同じ variable は stored value
+$\Any$ との strict equality を要求し，wildcard には変わらない．
 $\matchCap$ は producer $\kappa_m$ を rigid に読み，consumer demand
-$\kappa_p$ の変数だけを解く most-general one-way match であり，条件を満たす
+$\kappa_p$ の変数だけを解く sound で決定的な one-way matcher であり，条件を満たす
 substitution がなければ失敗する．
 $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であり，成功時は
-most-general unifier を返す．constructor／arity の不一致，occurs check の失敗，
+両端を等しくする sound な unifier を返す．constructor／arity の不一致，occurs check の失敗，
 または rigid skolem を解く必要がある場合は失敗する．
+ここで主張するのは成功結果の soundness と関数としての決定性であり，任意の別 unifier が
+成功結果を経由して factor するという置換普遍性はまだ含まない．
+$\Any$ はこの一方向 consumer relation でだけ wildcard であり，対称な $\mguCap$
+では通常の rigid ground constructor として扱う．従って $\mguCap(\Any,\Any)$ は
+成功するが，$\mguCap(\Any,K\overline\kappa)$ は失敗する（flexible variable を
+$\Any$ へ束縛することはできる）．
 
 Frozen pattern signature が提供する target instance と，capability projection の
 整合判断を次で表す．
@@ -362,7 +393,7 @@ $\mathbf{1}$ とは同一視しない（この core では $\mathbf{1}$ の runt
 Complete capability を partial evidence へ埋め込む canonical map は次である．
 \[
 \begin{array}{rclcrcl}
-\lceil\bullet\rceil_{ev}&=&\mathsf{known}\;\mathsf{none},
+\lceil\Any\rceil_{ev}&=&\mathsf{known}\;\Any,
 &\qquad&\lceil\chi\rceil_{ev}&=&\mathsf{known}\;\chi,\\
 \lceil\hat{s}\rceil_{ev}&=&\mathsf{known}\;\hat{s},
 &&\lceil K\overline\kappa\rceil_{ev}&=&
@@ -408,7 +439,7 @@ result capability へ evidence を投影しないが，$\mathtt{box}\;\$$ の ac
 capability は list head を持たなければならない．一方，generic な
 $\capcompat$／projection 自体にはこの actual-hole 検査を加えないので，
 $\mathtt{box}\;\_$ や $\mathtt{box}\;\#\$x$ は不要な hole obligation を受けない．
-$\Matcher{\bullet}{\ListTy{\mathsf{Int}}}$ という型それ自体は有効であり，却下されるのは
+$\Matcher{\Any}{\ListTy{\mathsf{Int}}}$ という型それ自体は有効であり，却下されるのは
 その matcher をこの closed list hole の actual producer として使う場合だけである．
 
 $\PPatCaps_{\Sighat}(b,pp,\overline\kappa,\kappa)$ は，$pp$ の hole 列を
@@ -455,7 +486,7 @@ $\mathsf{none}$ を返す．
 \[
 \inferShape(\mathit{Obs},\overline{ev})=
 \begin{cases}
-\mathsf{some}\;\bullet
+\mathsf{some}\;\Any
   & \mergeAll(\overline{ev})=\mathsf{some}\;\mathsf{unseen},\\
 \finalize_{\mathit{Obs}}(ev)
   & \mergeAll(\overline{ev})=\mathsf{some}\;ev,
@@ -466,9 +497,9 @@ $\mathsf{none}$ を返す．
 \]
 $\finalize_{\mathit{Obs}}$ は partial evidence を complete capability へ変換する
 決定的な部分関数である．observable な $\mathsf{unseen}$ が残れば
-$\mathsf{none}$ を返し，unobservable な constructor parameter は $\bullet$ に
-canonicalize する．$\mathsf{known}\;\mathsf{none}$，$\mathsf{known}\;\chi$，
-$\mathsf{known}\;\hat{s}$ はそれぞれ $\bullet$，$\chi$，$\hat{s}$ に戻す．
+$\mathsf{none}$ を返し，unobservable な constructor parameter は $\Any$ に
+canonicalize する．$\mathsf{known}\;\Any$，$\mathsf{known}\;\chi$，
+$\mathsf{known}\;\hat{s}$ はそれぞれ $\Any$，$\chi$，$\hat{s}$ に戻す．
 Constructor node は root former と同じ長さの frozen observability mask を用い，
 product component はすべて observable として再帰的に finalize する．未知の mask や
 arity 不一致は失敗する．
@@ -487,7 +518,7 @@ fixpoint であり，個々の matcher clause や target annotation には依存
 
 \[
 \begin{aligned}
-\CoverageOK_{\Sighat}(\mathit{cls},\bullet)
+\CoverageOK_{\Sighat}(\mathit{cls},\Any)
   &\quad\Longleftrightarrow\quad \mathsf{true},\\
 \CoverageOK_{\Sighat}(\mathit{cls},K\overline\kappa)
   &\quad\Longleftrightarrow\quad
@@ -624,7 +655,7 @@ direct-self 境界を持つ．
 }\rn{T-PRIM}
 
 \inferrule{ }{
-  \Sighat;\Gamma\vdash\mathtt{something}:\Matcher{\bullet}{\tau}
+  \Sighat;\Gamma\vdash\mathtt{something}:\Matcher{\Any}{\tau}
 }\rn{T-SOME}
 \end{mathpar}
 
@@ -733,17 +764,25 @@ direct-self 境界を持つ．
   \Sighat_F(f)=\varsigma_f \\
   f\notin\pcalls(p_{\mathit{body}}) \\
   \chi_1,\ldots,\chi_n\ \text{fresh} \\
-  \Phi'=\varnothing,x_1:\Pattern{\chi_1}{\tau_1},\ldots,
-                 x_n:\Pattern{\chi_n}{\tau_n} \\
-  \Sighat;\Gamma;\Phi';\varnothing\vdash
-    p_{\mathit{body}}:\Pattern{\kappa}{\tau};\Delta \\
-  \widetilde{x_1},\ldots,\widetilde{x_n}\ \text{occur exactly once,
-    in declaration order, outside or-alternatives} \\
-  \varsigma_f\equiv_{\mathsf{vf}}\GenDual\!\left(
-    \Sighat\setminus f,\Gamma,
+  \delta_{\mathit{raw}}=
     (\chi_1\mathbin{\triangleright}\tau_1),\ldots,
     (\chi_n\mathbin{\triangleright}\tau_n)
-    \Rightarrow(\kappa\mathbin{\triangleright}\tau)\right)
+    \Rightarrow(\kappa\mathbin{\triangleright}\tau) \\
+  \varsigma^\circ=\GenDual(\Sighat\setminus f,\Gamma,
+    \delta_{\mathit{raw}}) \\
+  \mathsf{payload}(\varsigma^\circ)=
+    ((\kappa^\circ_1\mathbin{\triangleright}\tau^\circ_1),\ldots,
+     (\kappa^\circ_n\mathbin{\triangleright}\tau^\circ_n)
+     \Rightarrow(\kappa^\circ\mathbin{\triangleright}\tau^\circ)) \\
+  \Phi^\circ=\varnothing,
+    x_1:\Pattern{\kappa^\circ_1}{\tau^\circ_1},\ldots,
+    x_n:\Pattern{\kappa^\circ_n}{\tau^\circ_n} \\
+  \exists S,\Delta.\quad
+  \Sighat;\Gamma;\Phi^\circ;\varnothing\vdash_S
+    p_{\mathit{body}}:\Pattern{\kappa^\circ}{\tau^\circ};\Delta \\
+  \widetilde{x_1},\ldots,\widetilde{x_n}\ \text{occur exactly once,
+    in declaration order, outside or-alternatives} \\
+  \varsigma_f\equiv_{\mathsf{vf}}\varsigma^\circ
 }{
   \Sighat;\Gamma\vdash
   \mathtt{def\ pattern}\ f(x_1:\tau_1,\ldots,x_n:\tau_n)
@@ -753,6 +792,14 @@ direct-self 境界を持つ．
 ここで $\Sighat\setminus f$ は，有限 map $\Sighat_F$ から一意な $f$ の entry
 だけを除いた signature である．本体は freeze 済みの完全な $\Sighat$ で検査し，
 自身の scheme だけを generalization の ambient free-variable 集合から除外する．
+$\delta_{\mathit{raw}}$ は fresh leaf を保持する inference provenance であり，
+$\varsigma^\circ$ の payload はそれに $\GenDual$ の singleton-default action を一度だけ
+適用した canonical core index である．$\vdash_S$ は，本体全体で一つの prevailing paired
+substitution $S$ を共有する resolved pattern judgment（Lean の \texttt{ResolvedPatternTy}）を表す．
+本体 derivation はこの正規化済み parameter／result payload に加えて，raw leaf から terminal
+index への輸送に用いる $S$ を保持する．この存在する $S$ を，payload を定める canonical な
+singleton-default action そのものとは同一視しない．以後の $\ValueFlowInstDual$ は共有 capability の variable-only
+rename と target specialization だけを行い，$\Any$ default を再実行しない．
 $\varsigma_1\equiv_{\mathsf{vf}}\varsigma_2$ は，両 dual scheme が同じ
 $\ValueFlowInstDual$ の引数／結果 relation を持ち，自由 capability 変数集合と自由 target
 変数集合も等しいことを表す．従って context ごとの fresh allocation に伴う alpha-renaming を
@@ -1038,7 +1085,7 @@ capability equality を protected-producer guard の下で解く．その後に 
 exact projection を再実行する．これは pattern consumer 間の制約解決であり，expected target
 や value producer capability を seed として構造化する経路ではない．
 共有 result variable に到達する field の内部では，到達しない observable subposition を
-$\mathsf{none}$ に canonicalize して field 全体を整合させる保守的な fallback とする．
+$\Any$ に canonicalize して field 全体を整合させる保守的な fallback とする．
 その位置だけを無視する partial/path-wise alignment と W の completeness は主張しない．
 
 executable boundary regression は，独立な child consumer $[?0,?1]$ に対して旧 exact
@@ -1163,6 +1210,13 @@ suffix cursor は一つの $\mathsf{MAtom}$ 導出内だけで使い，successor
 matching state typing は atom ごとの prevailing substitution，pattern-function node の固定
 parameter context，残余 actual argument，内部 stack，terminal substitution の binding 順序を追跡する．
 
+runtime の $\mathsf{CapabilityDemand}$ は，raw $\dmatch$ または検査済み matcher-to-slot
+certificate から得られる，正規化済み producer／consumer endpoint compatibility の sound な
+忘却である．raw consumer 構文と一つの substitution が表す共有相関そのものは index に持たない．
+同じ raw consumer variable の二度目を wildcard として扱わない strict check は忘却前の
+$\dmatch$／raw certificate が行い，$\mathsf{CapabilityDemand}$ から exact raw origin を復元する
+converse は主張しない．
+
 Ordered clause dispatch では，original clause 列から現在位置までの失敗 prefix を
 $\mathsf{DispatchTrace}$ が保持する．freeze 済み signature は compatible な child
 capability 列の一意性と，各 compatible pattern-constructor instance の canonical former／arity 登録を
@@ -1282,14 +1336,14 @@ $\mathsf{prod}$／$\mathsf{matcher}$／$\mathsf{slot}$ に限られ，paired sub
 $\mathsf{Prop}$ 証明書として core typing を構成し，それを erase して surface typing を得る定理を
 機械化している．proof irrelevance のため，この証明書自体は観測可能な elaboration data ではない．
 現段階の分解は再帰 premise に
-surface typing を残す root factorization であり，core typing の一意性，MGU による置換普遍性，
+surface typing を残す root factorization であり，core typing の一意性，unifier の factorization（置換普遍性），
 surface typing に対する再帰的 completeness はまだ主張しない．一方，命題値の coercion reachability
 とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を持つが一般の
 trans を持たない candidate normal-plan syntax を観測可能な型として定義する．product of matchers
 から slot への指定二段経路は
 COERCE-PRODUCT-MATCHER の後に COERCE-MATCHER-TO-SLOT，product of slots から aggregate slot
 への経路は非空 product に対する COERCE-SLOT-TUPLE 一段とする．surface の slot-to-slot check は
-capability／target MGU と後置換の後で両端が等しいことを証明し，identity へ吸収する．全 observable
+capability／target の決定的 unifier と後置換の後で両端が等しいことを証明し，identity へ吸収する．全 observable
 step／spine が端点を変えること，同じ端点の plan が identity だけであること，既存 surface coercion
 および typing への sound replay を証明する．任意の surface plan の normalization，normalization の
 一意性，異なる端点に対する plan inhabitant の一意性，公開推論結果へのこの plan data の格納は
@@ -1301,7 +1355,7 @@ admissible post は逐次合成で閉じ，freeze 後に既存の variable-only 
 target component は無制約である．W state の shadow ledger は一般 fresh capability と
 constructor／primitive image を structural-flexible，scheme image と finalized producer を
 rename-only と記録するが，solver と terminal audit は従来の protected-producer 検査を維持する．
-origin-aware solver への切替には cut ごとの snapshot，MGU orientation，および raw binder でなく
+origin-aware solver への切替には cut ごとの snapshot，unifier orientation，および raw binder でなく
 局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が必要である．
 
 terminal pattern leaf の任意の actual context をまず
@@ -1323,7 +1377,7 @@ product／slot product の双方で，判明した solve cut と後続 suffix �
 なお必要である．空 product は両 recognizer に一致するため product-matcher branch を優先する．
 この先は，任意 plan から candidate syntax への normalization completeness，component-first 経路を
 含む critical pair の解消，normalization uniqueness，coercion の意味的同値，置換に対する naturality
-を確定してから，core typing の一意性，MGU 普遍性，coherent surface completeness へ進む必要がある．
+を確定してから，core typing の一意性，unifier factorization，coherent surface completeness へ進む必要がある．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

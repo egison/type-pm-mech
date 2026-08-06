@@ -253,7 +253,7 @@ general clauses, and coverage does not recurse into child capabilities.
 -/
 def CoverageOK
     (signature : FrozenMatcherSig) (clauses : List Clause) : Cap → Prop
-  | .none =>
+  | .any =>
       True
   | .con former _ =>
       ∃ constructors,
@@ -306,7 +306,7 @@ bare-hole catch-all.
 -/
 def DispatchOK
     (signature : FrozenMatcherSig) (clauses : List Clause) : Cap → Prop
-  | .none =>
+  | .any =>
       True
   | .con former _ =>
       ∃ constructors,
@@ -360,7 +360,7 @@ theorem coverageOK_catchAllLast_dispatchOK
     (hcatch : CatchAllLast clauses) :
     DispatchOK signature clauses capability := by
   cases capability with
-  | none =>
+  | any =>
       trivial
   | var capVar =>
       contradiction

@@ -25,13 +25,13 @@ def emptySignature : FrozenSig where
 /-! ## Unary product-matcher selection at a use site -/
 
 def concretePairProductType : Ty :=
-  .prod [.matcher .none .int, .matcher .none .int]
+  .prod [.matcher .any .int, .matcher .any .int]
 
 def concretePairMatcherType : Ty :=
-  .matcher (.prod [.none, .none]) (.prod [.int, .int])
+  .matcher (.prod [.any, .any]) (.prod [.int, .int])
 
 def concretePairSlotType : Ty :=
-  .slot (.prod [.none, .none]) (.prod [.int, .int])
+  .slot (.prod [.any, .any]) (.prod [.int, .int])
 
 /-- A matcher expectation selects the unary product lift before alignment. -/
 theorem productMatcher_expected_source
@@ -54,7 +54,7 @@ theorem productMatcher_slot_source
     concretePairProductType, concretePairMatcherType, concretePairSlotType]
 
 def concretePairOfSlotsType : Ty :=
-  .prod [.slot .none .int, .slot .none .int]
+  .prod [.slot .any .int, .slot .any .int]
 
 /-- A product whose components are already slots selects the unary slot-tuple
 lift when the aggregate slot is expected. -/
@@ -131,8 +131,8 @@ def productSlotArgumentApplicationSucceeds : Bool :=
 
 def slotTupleConsumerContext : Context :=
   [("consume", Scheme.mono (.fn concretePairSlotType .int)),
-   ("left", Scheme.mono (.slot .none .int)),
-   ("right", Scheme.mono (.slot .none .int))]
+   ("left", Scheme.mono (.slot .any .int)),
+   ("right", Scheme.mono (.slot .any .int))]
 
 def slotTupleArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.var "left", .var "right"])
@@ -153,7 +153,7 @@ coercions.  Only the explicit whole-product routes above are accepted. -/
 
 def componentSlotConsumerContext : Context :=
   [("consume", Scheme.mono
-    (.fn (.prod [.slot .none .int, .slot .none .int]) .int))]
+    (.fn (.prod [.slot .any .int, .slot .any .int]) .int))]
 
 def componentSlotArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
@@ -225,7 +225,7 @@ def quantifiedPatternFunction : DualScheme where
   capBinders := [0]
   tyBinders := [0]
   args := [⟨.var 0, .var 0⟩]
-  result := ⟨.none, .var 0⟩
+  result := ⟨.any, .var 0⟩
 
 def patternFunctionSignature : FrozenSig :=
   { emptySignature with
@@ -257,7 +257,7 @@ theorem quantifiedPApp_typed :
 /-! ## Slot-to-slot expected-type alignment -/
 
 def slotContext : Context :=
-  [("slot", Scheme.mono (.slot .none .int))]
+  [("slot", Scheme.mono (.slot .any .int))]
 
 def slotToSlotExpression : Expr :=
   .matchAll (.lit 0) (.var "slot") .wild (.lit 1)

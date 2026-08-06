@@ -175,21 +175,7 @@ theorem matchCap_restricted_sound
     (hmatch : CapMatch.matchCap producer consumer = some bindings) :
     OneWayAt
       (bindings.toSubstWithin consumer.fcv) producer consumer := by
-  let restricted := bindings.toSubstWithin consumer.fcv
-  have hchecked :=
-    (CapMatch.matchCap_eq_some_iff producer consumer bindings).mp hmatch
-  rcases CapMatch.matchCap_sound hmatch with ⟨witness, hwitness⟩
-  refine ⟨CapMatch.Bindings.toSubstWithin_support consumer.fcv bindings,
-    hchecked.2, ?_⟩
-  calc
-    consumer.apply restricted = consumer.apply witness := by
-      apply CapMatch.apply_congr_on_fcv
-      intro varId hmem
-      have hagrees :=
-        CapMatch.matchCap_toSubst_unique_on_consumer hmatch hwitness
-          varId hmem
-      simpa [restricted, CapMatch.Bindings.toSubstWithin, hmem] using hagrees
-    _ = producer := hwitness.2.2
+  exact CapMatch.matchCap_restricted_sound hmatch
 
 /--
 Solve an already-resolved primitive constraint.  Every success contains the
@@ -975,12 +961,12 @@ theorem constructorsCovered_complete
 Decide the formal core's shallow `CoverageOK` requirement.
 
 This checker is mandatory at every matcher-literal finalization.  Flexible or
-skolem roots fail closed; `none`, constructor, and product roots follow the
+skolem roots fail closed; `Any`, constructor, and product roots follow the
 declarative definition exactly.
 -/
 def coverageCheck
     (signature : FrozenMatcherSig) (clauses : List Clause) : Cap -> Bool
-  | .none => true
+  | .any => true
   | .con former _ =>
       match signature.constructorsFor? former with
       | none => false
@@ -995,7 +981,7 @@ theorem coverageCheck_sound
     (hcheck : coverageCheck signature clauses capability = true) :
     CoverageOK signature clauses capability := by
   cases capability with
-  | none => trivial
+  | any => trivial
   | var varId => simp [coverageCheck] at hcheck
   | skolem skolemId => simp [coverageCheck] at hcheck
   | con former children =>
@@ -1013,7 +999,7 @@ theorem coverageCheck_complete
     (hcoverage : CoverageOK signature clauses capability) :
     coverageCheck signature clauses capability = true := by
   cases capability with
-  | none => rfl
+  | any => rfl
   | var varId => contradiction
   | skolem skolemId => contradiction
   | con former children =>
@@ -1193,7 +1179,7 @@ mutual
 
 /-- Executable check of the exact `PPatCapsAt` judgment.  Constructor child
 capabilities are searched only in the finite set consisting of the outer
-capability, the concrete hole capabilities, and `none`; success is always
+capability, the concrete hole capabilities, and `Any`; success is always
 rechecked by `CapCompatible`, so this restriction affects completeness only. -/
 def ppatCapsAtCheck
     (signature : FrozenSig) (atRoot : Bool) :
@@ -1208,7 +1194,7 @@ def ppatCapsAtCheck
       match signature.findPatternCtor name with
       | none => false
       | some entry =>
-          let candidates := outer :: Cap.none :: holes
+          let candidates := outer :: Cap.any :: holes
           (capChoices candidates patterns.length).any fun children =>
             ppatCapsListCheck signature patterns holes children &&
             capCompatibleCheck entry children outer
@@ -2335,7 +2321,7 @@ mutual
 
 /--
 Replace an observable, structurally unknown leaf by a fresh capability meta.
-Unobservable constructor fields are canonicalized to `none`, exactly as in
+Unobservable constructor fields are canonicalized to `Any`, exactly as in
 `Shape.finalize`.
 -/
 def freshenSkeleton
@@ -2372,7 +2358,7 @@ def freshenSkeletonMasked
   | isObservable :: mask, evidence :: rest, state => do
       let (head, state) <-
         if isObservable then freshenSkeleton observable origin evidence state
-        else some (.none, state)
+        else some (.any, state)
       let (tail, state) <-
         freshenSkeletonMasked observable origin mask rest state
       pure (head :: tail, state)
@@ -2484,7 +2470,7 @@ def solvePatternCtorCapability
 
 /--
 Infer the recursive producer skeleton from actual clause syntax alone.  A
-pure catch-all remains the closed producer `none`; no consumer demand or
+  pure catch-all remains the closed producer `Any`; no consumer demand or
 target annotation is consulted.
 -/
 def recursiveMatcherTemplate
@@ -2492,7 +2478,7 @@ def recursiveMatcherTemplate
     (state : InferState) : Option (Cap × InferState) := do
   let evidence <- matcherSkeletonEvidence signature.toMatcherSig clauses
   match evidence with
-  | .unseen => pure (.none, state)
+  | .unseen => pure (.any, state)
   | evidence =>
       freshenSkeleton signature.observability
         (freshOrigin .recursiveBinder path "fix-producer-shape")
@@ -2669,7 +2655,7 @@ def inferExprFuel :
       | .something =>
           let (target, state) := state.freshTy
             (freshOrigin .expression path "something-target")
-          some (finishExpr expression path (.matcher .none target) state)
+          some (finishExpr expression path (.matcher .any target) state)
       | .matcher clauses =>
           match inferMatcherFuel fuel signature context selfEnv path clauses
               state with
@@ -4221,7 +4207,7 @@ private def protectionSignature : FrozenSig where
   dataCtors := [("consumeProducer", {
     capBinders := []
     tyBinders := []
-    args := [.matcher (.con "List" [.none]) .int]
+    args := [.matcher (.con "List" [.any]) .int]
     result := .int })]
   patternCtors := []
   patternFuns := []

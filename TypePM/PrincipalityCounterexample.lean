@@ -32,15 +32,15 @@ def pairProgram : Expr :=
 /-- Its product-of-matchers typing, by `T-TUPLE`. -/
 theorem pair_prod_typing {signature : FrozenSig} :
     HasTy signature [] pairProgram
-      (.prod [.matcher .none .int, .matcher .none .int]) :=
+      (.prod [.matcher .any .int, .matcher .any .int]) :=
   HasTy.tuple (.cons HasTy.something (.cons HasTy.something .nil))
 
 /-- Its product-matcher typing, by `COERCE-PRODUCT-MATCHER`. -/
 theorem pair_matcher_typing {signature : FrozenSig} :
     HasTy signature [] pairProgram
-      (.matcher (.prod [.none, .none]) (.prod [.int, .int])) :=
+      (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
   HasTy.coerceProductMatcher
-    (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
+    (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
     pair_prod_typing
 
 /-- Every derivable type of a tuple has a `prod`, `matcher`, or `slot` head. -/

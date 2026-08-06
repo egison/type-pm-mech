@@ -248,6 +248,20 @@ theorem ppm_generalTuplePP_not_failure
   | fail rejected =>
       simp [generalTuplePP, ppShapeOK, ppShapeOKList_replicate_hole] at rejected
 
+/-- Shallow dispatch coverage is monotone along a runtime consumer demand. -/
+theorem DispatchOK.ofCapabilityDemand
+    {signature : FrozenMatcherSig} {clauses : List Clause}
+    {producer consumer : Cap}
+    (dispatch : DispatchOK signature clauses producer)
+    (demand : CapabilityDemand producer consumer) :
+    DispatchOK signature clauses consumer := by
+  cases demand with
+  | equal => exact dispatch
+  | any => trivial
+  | con children => exact dispatch
+  | prod components =>
+      simpa [DispatchOK, components.length] using dispatch
+
 /-- A typed constructor pattern cannot first dispatch at the final catch-all. -/
 theorem DispatchTrace.pctor_not_finalCatchAll
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
@@ -1039,13 +1053,15 @@ theorem captureAdm_of_order_at
     ∀ {atRoot : Bool} {holeCapabilities : List Cap}
       {patternPrevailing : Subst} {context : Context}
       {parameters : PatternCtx} {rootInput current output : MonoCtx}
-      {pattern : Pattern} {patternCapability : Cap}
+      {pattern : Pattern}
+      {producerCapability patternCapability : Cap}
       {seen finished : Bool},
       PPatOrder seen pp finished →
       (seen = false → current = rootInput) →
-      PPatCapsAt signature atRoot pp holeCapabilities patternCapability →
+      PPatCapsAt signature atRoot pp holeCapabilities producerCapability →
       TerminalPatternResolution signature patternPrevailing context parameters
         current pattern patternCapability target output →
+      CapabilityDemand producerCapability patternCapability →
       ppShapeOK pp pattern = true →
       CaptureAdm signature context rootInput pp pattern target ppBindings ∧
         (finished = false → output = rootInput) := by
@@ -1054,13 +1070,15 @@ theorem captureAdm_of_order_at
       ∀ {atRoot : Bool} {holeCapabilities : List Cap}
         {patternPrevailing : Subst} {context : Context}
         {parameters : PatternCtx} {rootInput current output : MonoCtx}
-        {pattern : Pattern} {patternCapability : Cap}
+        {pattern : Pattern}
+        {producerCapability patternCapability : Cap}
         {seen finished : Bool},
         PPatOrder seen pp finished →
         (seen = false → current = rootInput) →
-        PPatCapsAt signature atRoot pp holeCapabilities patternCapability →
+        PPatCapsAt signature atRoot pp holeCapabilities producerCapability →
         TerminalPatternResolution signature patternPrevailing context
           parameters current pattern patternCapability target output →
+        CapabilityDemand producerCapability patternCapability →
         ppShapeOK pp pattern = true →
         CaptureAdm signature context rootInput pp pattern target ppBindings ∧
           (finished = false → output = rootInput))
@@ -1075,28 +1093,31 @@ theorem captureAdm_of_order_at
         PPatCapsList signature pps holeCapabilities childCapabilities →
         TerminalPatternResolutions signature patternPrevailing context
           parameters current patterns patternDuals output →
-        patternDuals.map Dual.cap = childCapabilities →
+        CapabilityDemands childCapabilities (patternDuals.map Dual.cap) →
         patternDuals.map Dual.target = targets →
         ppShapeOKList pps patterns = true →
         CaptureAdms signature context rootInput pps patterns targets ppBindings ∧
           (finished = false → output = rootInput))
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ppTyping
   · intro rawTarget varId fresh atRoot holeCapabilities patternPrevailing
-      context parameters rootInput current output pattern patternCapability
-      seen finished order beforeHole capTyping patternTyping shape
+      context parameters rootInput current output pattern producerCapability
+      patternCapability seen finished order beforeHole capTyping patternTyping
+      capabilityDemand shape
     cases order
     exact ⟨CaptureAdm.hole, fun impossible => by contradiction⟩
   · intro rawTarget atRoot holeCapabilities patternPrevailing context
-      parameters rootInput current output pattern patternCapability seen
-      finished order beforeHole capTyping patternTyping shape
+      parameters rootInput current output pattern producerCapability
+      patternCapability seen finished order beforeHole capTyping patternTyping
+      capabilityDemand shape
     cases order
     cases pattern <;> simp [ppShapeOK] at shape
     have outputEquality := patternTyping.wild_output
     subst output
     exact ⟨CaptureAdm.wild, fun notSeen => beforeHole notSeen⟩
   · intro name rawTarget atRoot holeCapabilities patternPrevailing context
-      parameters rootInput current output pattern patternCapability seen
-      finished order beforeHole capTyping patternTyping shape
+      parameters rootInput current output pattern producerCapability
+      patternCapability seen finished order beforeHole capTyping patternTyping
+      capabilityDemand shape
     cases order
     cases pattern <;> simp [ppShapeOK] at shape
     obtain ⟨outputEquality, expressionTyping⟩ := patternTyping.pval_parts
@@ -1110,8 +1131,9 @@ theorem captureAdm_of_order_at
       rfl
   · intro name entry pps targets result holes bindings ppFind ppsTyping
       ppInstance childrenIH atRoot holeCapabilities patternPrevailing context
-      parameters rootInput current output pattern patternCapability seen
-      finished order beforeHole capTyping patternTyping shape
+      parameters rootInput current output pattern producerCapability
+      patternCapability seen finished order beforeHole capTyping patternTyping
+      capabilityDemand shape
     cases order with
     | ctor childrenOrder =>
       cases capTyping with
@@ -1131,21 +1153,21 @@ theorem captureAdm_of_order_at
         have patternEntryEquality : patternEntry = entry :=
           Option.some.inj (patternFind.symm.trans ppFind)
         subst patternEntry
-        have capsEquality :
-            patternDuals.map Dual.cap = childCapabilities :=
-          signatureWF.patternCapArgsUnique ppFind patternCompatible
-            capCompatible
+        have childDemands : CapabilityDemands childCapabilities
+            (patternDuals.map Dual.cap) :=
+          signatureWF.patternCapDemands ppFind capCompatible
+            patternCompatible capabilityDemand
         have targetsEquality : patternDuals.map Dual.target = targets :=
           signatureWF.patternInstArgsUnique ppFind patternInstance ppInstance
         obtain ⟨childrenAdm, finishedBindings⟩ :=
           childrenIH childrenOrder beforeHole capsList patternsTyping
-            capsEquality targetsEquality childrenShape
+            childDemands targetsEquality childrenShape
         exact ⟨CaptureAdm.ctor ppFind childrenAdm ppInstance,
           finishedBindings⟩
   · intro pps targets holes bindings ppsTyping childrenIH atRoot
       holeCapabilities patternPrevailing context parameters rootInput current
-      output pattern patternCapability seen finished order beforeHole capTyping
-      patternTyping shape
+      output pattern producerCapability patternCapability seen finished order
+      beforeHole capTyping patternTyping capabilityDemand shape
     cases order with
     | tuple childrenOrder =>
       cases capTyping with
@@ -1154,17 +1176,19 @@ theorem captureAdm_of_order_at
         rename_i patterns
         obtain ⟨patternDuals, patternsTyping, capEquality, targetEquality⟩ :=
           patternTyping.tuple_parts
-        have capsEquality : patternDuals.map Dual.cap = _ :=
-          (Cap.prod.inj capEquality).symm
+        rw [capEquality] at capabilityDemand
+        have childDemands : CapabilityDemands _
+            (patternDuals.map Dual.cap) :=
+          capabilityDemand.prod_children
         have targetsEquality : patternDuals.map Dual.target = targets :=
           (Ty.prod.inj targetEquality).symm
         obtain ⟨childrenAdm, finishedBindings⟩ :=
           childrenIH childrenOrder beforeHole capsList patternsTyping
-            capsEquality targetsEquality shape
+            childDemands targetsEquality shape
         exact ⟨CaptureAdm.tuple childrenAdm, finishedBindings⟩
   · intro holeCapabilities childCapabilities patternPrevailing context
       parameters rootInput current output patterns patternDuals seen finished
-      order beforeHole capsTyping patternsTyping capsEquality targetsEquality
+      order beforeHole capsTyping patternsTyping capDemands targetsEquality
       shape
     cases order
     cases capsTyping
@@ -1176,7 +1200,7 @@ theorem captureAdm_of_order_at
       childCapabilities
       patternPrevailing context parameters rootInput current output patterns
       patternDuals seen finished order beforeHole capsTyping patternsTyping
-      capsEquality targetsEquality shape
+      capDemands targetsEquality shape
     cases order with
     | cons headOrder tailOrder =>
       cases capsTyping with
@@ -1187,19 +1211,21 @@ theorem captureAdm_of_order_at
         | cons pattern patterns =>
           obtain ⟨patternCap, patternTarget, patternDualsTail, middle, rfl,
               patternHead, patternTail⟩ := patternsTyping.cons_parts
-          simp only [List.map_cons, List.cons.injEq] at capsEquality
+          simp only [List.map_cons] at capDemands
           simp only [List.map_cons, List.cons.injEq] at targetsEquality
-          obtain ⟨headCapEquality, tailCapsEquality⟩ := capsEquality
-          obtain ⟨headTargetEquality, tailTargetsEquality⟩ :=
-            targetsEquality
-          rw [headCapEquality, headTargetEquality] at patternHead
-          simp only [ppShapeOKList, Bool.and_eq_true] at shape
-          obtain ⟨headAdm, middleBeforeHole⟩ :=
-            headIH headOrder beforeHole headCaps patternHead shape.1
-          obtain ⟨tailAdm, finishedBindings⟩ :=
-            tailIH tailOrder middleBeforeHole tailCaps patternTail
-              tailCapsEquality tailTargetsEquality shape.2
-          exact ⟨CaptureAdms.cons headAdm tailAdm, finishedBindings⟩
+          cases capDemands with
+          | cons headDemand tailDemands =>
+              obtain ⟨headTargetEquality, tailTargetsEquality⟩ :=
+                targetsEquality
+              rw [headTargetEquality] at patternHead
+              simp only [ppShapeOKList, Bool.and_eq_true] at shape
+              obtain ⟨headAdm, middleBeforeHole⟩ :=
+                headIH headOrder beforeHole headCaps patternHead headDemand
+                  shape.1
+              obtain ⟨tailAdm, finishedBindings⟩ :=
+                tailIH tailOrder middleBeforeHole tailCaps patternTail
+                  tailDemands tailTargetsEquality shape.2
+              exact ⟨CaptureAdms.cons headAdm tailAdm, finishedBindings⟩
 
 /-- Core-ordered successful PPM sites have no external capture premise. -/
 theorem captureAdm_of_coreOrder
@@ -1207,22 +1233,26 @@ theorem captureAdm_of_coreOrder
     {SF : RuntimeSigF} {environment : Env}
     {ppPrevailing patternPrevailing : Subst} {context : Context}
     {parameters : PatternCtx} {input output : MonoCtx}
-    {pp : PPat} {pattern : Pattern} {capability : Cap} {target : Ty}
+    {pp : PPat} {pattern : Pattern}
+    {producerCapability patternCapability : Cap} {target : Ty}
     {holes : List Dual} {ppBindings : MonoCtx}
     {captures : List Pattern} {ppEnvironment : Env}
     (order : PPatCoreOrder pp)
     (ppTyping : ResolvedPPatTy signature ppPrevailing pp target holes
       ppBindings)
-    (capTyping : PPatCapsAt signature true pp (holes.map Dual.cap) capability)
+    (capTyping : PPatCapsAt signature true pp (holes.map Dual.cap)
+      producerCapability)
     (patternTyping : ResolvedPatternTy signature patternPrevailing context
-      parameters input pattern capability target output)
+      parameters input pattern patternCapability target output)
+    (capabilityDemand :
+      CapabilityDemand producerCapability patternCapability)
     (matching : PPM SF environment pp pattern
       (some (captures, ppEnvironment))) :
     CaptureAdm signature context input pp pattern target ppBindings := by
   obtain ⟨finished, ordered⟩ := order
   have shape := matching.success_shape
   exact (captureAdm_of_order_at signatureWF ppTyping.terminal ordered
-    (fun _ => rfl) capTyping patternTyping.terminal shape).1
+    (fun _ => rfl) capTyping patternTyping.terminal capabilityDemand shape).1
 
 /--
 PPM's value environment is typed when its narrow `#$x` evaluations preserve
@@ -2613,12 +2643,12 @@ def MAtomTypedOutput
         StackTy signature context parameters nextInput
           (atoms.map Tree.atom) output
 
-/-- `something` is usable at every target through its fixed `none`
+/-- `something` is usable at every target through its fixed `any`
 capability. -/
 theorem MatcherAtTarget.something
     {signature : FrozenSig} {target : Ty} :
     MatcherAtTarget signature .something target :=
-  ⟨.none, .inl ValueTy.something⟩
+  ⟨.any, MatcherUsable.ofMatcher ValueTy.something⟩
 
 /-- A resolved tuple atom decomposes into the exactly typed component stack. -/
 theorem ResolvedPatternTy.tuple_atomStack
@@ -2808,7 +2838,7 @@ theorem matcher_success_continuations_typed
     {patternPrevailing ppPrevailing : Subst}
     {context : Context} {parameters : PatternCtx}
     {input output : MonoCtx} {pattern : Pattern}
-    {patternCapability : Cap} {target : Ty}
+    {producerCapability patternCapability : Cap} {target : Ty}
     {pp : PPat} {holes : List Dual} {ppBindings : MonoCtx}
     {captures : List Pattern}
     {ppEnvironment : Env} {matchers : List Value}
@@ -2818,7 +2848,9 @@ theorem matcher_success_continuations_typed
     (ppResolution : TerminalPPatResolution signature ppPrevailing pp target
       holes ppBindings)
     (capTyping : PPatCapsAt signature true pp
-      (holes.map Dual.cap) patternCapability)
+      (holes.map Dual.cap) producerCapability)
+    (capabilityDemand :
+      CapabilityDemand producerCapability patternCapability)
     (matching : PPM SF environment pp pattern
       (some (captures, ppEnvironment)))
     (dispatchKind : pp ≠ .hole ∨ pattern.isPrimForm = true)
@@ -2851,20 +2883,17 @@ theorem matcher_success_continuations_typed
             cases valueTail
             exact .cons
               (.atom (.primitive (.ofTerminal patternResolution) primitive
-                ⟨_, .inr matcherHead⟩ valueHead))
+                ⟨_, matcherHead.toMatcherUsable signatureWF⟩ valueHead))
               .nil
-  · obtain ⟨capturedDuals, capturedResolution, capEquality,
+  · obtain ⟨capturedDuals, capturedResolution, capDemands,
         targetEquality⟩ :=
       ppm_captures_terminal_parts signatureWF ppResolution capTyping
-        patternResolution matching ppIsHole
-    have actualEquality : capturedDuals = holes :=
-      Dual.list_eq_of_maps_eq capEquality targetEquality
-    have actualMatcherTyping := matcherTyping
-    rw [← actualEquality] at actualMatcherTyping
-    have matcherUsable := actualMatcherTyping.slotUsables
+        patternResolution capabilityDemand matching ppIsHole
+    have matcherUsable := (matcherTyping.slotUsables signatureWF).weaken
+      capDemands targetEquality.symm
     intro values valuesMember
     have valuesTyping := valueListsTyping values valuesMember
-    rw [← actualEquality] at valuesTyping
+    rw [← targetEquality] at valuesTyping
     exact capturedResolution.atomStack matcherUsable valuesTyping
 
 /-- A primitive source pattern may be checked by a matcher whose capability
@@ -2872,7 +2901,8 @@ is unrelated to the pattern's producer capability.  In that target-only
 case, a PP hole returns the primitive atom itself and every non-hole PP
 returns the empty continuation. -/
 theorem matcher_success_primitive_continuations_typed
-    {signature : FrozenSig} {SF : RuntimeSigF} {environment : Env}
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {SF : RuntimeSigF} {environment : Env}
     {prevailing clausePrevailing : Subst} {context : Context}
     {parameters : PatternCtx} {input output : MonoCtx} {pattern : Pattern}
     {patternCapability : Cap} {target : Ty} {pp : PPat}
@@ -2909,7 +2939,8 @@ theorem matcher_success_primitive_continuations_typed
               cases valueTail
               exact .cons
                 (.atom (.primitive patternTyping primitive
-                  ⟨holeCapability, .inr matcherHead⟩ valueHead)) .nil
+                  ⟨holeCapability, matcherHead.toMatcherUsable signatureWF⟩
+                    valueHead)) .nil
   | wild =>
       obtain ⟨holesEquality, bindingsEquality⟩ := ppTyping.wild_inversion
       subst holes
@@ -3021,9 +3052,10 @@ theorem matom_matcher_success_typed
       (valueLists.map fun values =>
         (captures.zip (matchers.zip values)).map fun entry =>
           ⟨entry.1, entry.2.1, entry.2.2⟩) [] := by
-  obtain ⟨matcherContext, evidence, matcherEnvironmentTyped, cursor,
-      sourceTyping, clausesTyped, shape, catchAll, armsExhaustive, ppNodup,
-      armNodup, coverage⟩ :=
+  obtain ⟨producerCapability,
+      ⟨matcherContext, evidence, matcherEnvironmentTyped, cursor,
+        sourceTyping, clausesTyped, shape, catchAll, armsExhaustive, ppNodup,
+        armNodup, coverage⟩, capabilityDemand⟩ :=
     ValueTy.coveredMatcherUsable_inversion matcherTyping
   obtain ⟨originalClause, clausePrevailing, clauseEvidence, typedPP,
       clauseHoles, ppBindings, nextMatchers, result, typedDP, typedBody,
@@ -3051,7 +3083,7 @@ theorem matom_matcher_success_typed
     rw [headerPP]
     exact clauseTyping.coreOrder
   have ppAdmissible := captureAdm_of_coreOrder signatureWF
-    ppOrder ppTyping ppCaps patternTyping ppSuccess
+    ppOrder ppTyping ppCaps patternTyping capabilityDemand ppSuccess
   have ppEnvironmentTyping := ppPreserve ppAdmissible
   have dataEnvironmentTyping :=
     pdMatch_typed signatureWF dataPatternTyping valueTyping dataSuccess
@@ -3089,16 +3121,20 @@ theorem matom_matcher_success_typed
   have valueListsTyping :=
     decodeTuple_mapM_typed signatureWF tuplesTyping (by
       simpa only [List.length_map] using tupleDecodes')
-  have dispatch : DispatchOK signature.toMatcherSig original capability :=
+  have dispatch :
+      DispatchOK signature.toMatcherSig original producerCapability :=
     coverageOK_catchAllLast_dispatchOK signature.toMatcherSig original
-      capability coverage catchAll
+      producerCapability coverage catchAll
+  have patternDispatch :
+      DispatchOK signature.toMatcherSig original capability :=
+    dispatch.ofCapabilityDemand capabilityDemand
   have patternResolution := patternTyping.terminal
   have ppResolution := ppTyping.terminal
   have dispatchKind := trace.nonCatchAll_or_primitive signatureWF
-    patternResolution dispatchable dispatch catchAll
+    patternResolution dispatchable patternDispatch catchAll
   have continuationsTyped :=
     matcher_success_continuations_typed signatureWF patternResolution
-      ppResolution ppCaps ppSuccess dispatchKind matchersTyping
+      ppResolution ppCaps capabilityDemand ppSuccess dispatchKind matchersTyping
       valueListsTyping
   intro substitution substitutionTyping
   refine ⟨input, by simpa using substitutionTyping, ?_⟩
@@ -3166,9 +3202,10 @@ theorem matom_matcher_success_primitive_typed
         (captures.zip (matchers.zip values)).map fun entry =>
           ⟨entry.1, entry.2.1, entry.2.2⟩) [] := by
   obtain ⟨matcherCapability, matcherUsable⟩ := matcherTyping
-  obtain ⟨matcherContext, evidence, matcherEnvironmentTyped, cursor,
-      sourceTyping, clausesTyped, shape, catchAll, armsExhaustive, ppNodup,
-      armNodup, coverage⟩ :=
+  obtain ⟨producerCapability,
+      ⟨matcherContext, evidence, matcherEnvironmentTyped, cursor,
+        sourceTyping, clausesTyped, shape, catchAll, armsExhaustive, ppNodup,
+        armNodup, coverage⟩, capabilityDemand⟩ :=
     ValueTy.coveredMatcherUsable_inversion matcherUsable
   obtain ⟨originalClause, clausePrevailing, clauseEvidence, typedPP,
       clauseHoles, ppBindings, nextMatchers, result, typedDP, typedBody,
@@ -3231,8 +3268,8 @@ theorem matom_matcher_success_primitive_typed
     decodeTuple_mapM_typed signatureWF tuplesTyping (by
       simpa only [List.length_map] using tupleDecodes')
   have continuationsTyped :=
-    matcher_success_primitive_continuations_typed patternTyping primitive
-      ppTyping ppSuccess matchersTyping valueListsTyping
+    matcher_success_primitive_continuations_typed signatureWF patternTyping
+      primitive ppTyping ppSuccess matchersTyping valueListsTyping
   intro substitution substitutionTyping
   refine ⟨input, by simpa using substitutionTyping, ?_⟩
   intro atoms member
@@ -3253,13 +3290,9 @@ theorem MatcherUsable.matcher_nextClause
       capability target) :
     MatcherUsable signature (.matcherV environment original clauses)
       capability target := by
-  obtain ⟨context, environmentTyping, cursor, sourceTyping⟩ :=
-    (ValueTy.matcherUsable_asMatcher typing).matcherLiteral_inversion
-  exact .inl (.matcherLiteral context
-    (fun name value found => environmentTyping.domain found)
-    (fun name value scheme actual found sourceFound instantiation =>
-      environmentTyping.lookup found sourceFound instantiation)
-    sourceTyping (.nextClause cursor))
+  obtain ⟨producerCapability, producerTyping, demand⟩ := typing
+  exact ⟨producerCapability,
+    producerTyping.matcher_nextClause, demand⟩
 
 /-- Advancing past a failed data arm preserves exact matcher usability. -/
 theorem MatcherUsable.matcher_nextArm
@@ -3272,13 +3305,9 @@ theorem MatcherUsable.matcher_nextArm
     MatcherUsable signature
       (.matcherV environment original (.mk pp next arms :: clauses))
       capability target := by
-  obtain ⟨context, environmentTyping, cursor, sourceTyping⟩ :=
-    (ValueTy.matcherUsable_asMatcher typing).matcherLiteral_inversion
-  exact .inl (.matcherLiteral context
-    (fun name value found => environmentTyping.domain found)
-    (fun name value scheme actual found sourceFound instantiation =>
-      environmentTyping.lookup found sourceFound instantiation)
-    sourceTyping (.nextArm cursor))
+  obtain ⟨producerCapability, producerTyping, demand⟩ := typing
+  exact ⟨producerCapability,
+    producerTyping.matcher_nextArm, demand⟩
 
 /-- Target-only matcher evidence is stable under a failed clause. -/
 theorem MatcherAtTarget.matcher_nextClause
@@ -5206,7 +5235,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
                     runtimeEnvironment, []⟩ _ :=
                 ⟨initialPristine, initialNoEmbed, terminalEnvironment, [],
                   emptySubstitution,
-                  .cons (.atom (.mk patternTyping (.inr matcherValueTyping)
+                  .cons (.atom (.mk patternTyping
+                    (matcherValueTyping.toMatcherUsable signatureWF)
                     targetValueTyping)) .nil⟩
               have runtimeAgreement :=
                 localAgreement terminalEnvironment

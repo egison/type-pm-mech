@@ -36,7 +36,9 @@ instance (n : Nat) : OfNat CapVar n where
 
 /-- Structural capabilities carried by matcher producers and consumer slots. -/
 inductive Cap where
-  | none
+  /-- Minimal consumer demand.  It is rigid for symmetric equality and
+  accepts every producer only in the producer-to-consumer relation. -/
+  | any
   | var    : CapVar → Cap
   | skolem : Nat → Cap
   | con    : String → List Cap → Cap
@@ -47,7 +49,7 @@ mutual
 
 /-- Executable structural equality for capabilities. -/
 def Cap.eqb : Cap → Cap → Bool
-  | .none,        .none         => true
+  | .any,         .any          => true
   | .var a,       .var b        => a == b
   | .skolem a,    .skolem b     => a == b
   | .con n caps,  .con m caps'  => n == m && Cap.eqbList caps caps'
@@ -65,7 +67,7 @@ end
 mutual
 
 theorem Cap.eqb_eq_true : ∀ c c', Cap.eqb c c' = true ↔ c = c'
-  | .none, c' => by
+  | .any, c' => by
       cases c' <;> simp [Cap.eqb]
   | .var a, c' => by
       cases c' <;> simp [Cap.eqb]

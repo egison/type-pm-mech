@@ -48,14 +48,14 @@ def signature : FrozenSig :=
 theorem unit_definition_typed (context : Context) :
     PatternDefTy signature context unitDefinition unitScheme := by
   refine @PatternDefTy.mk signature context unitDefinition [] unitResult []
-    unitScheme find_unit ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    unitScheme Subst.id find_unit ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
   · decide
   · rfl
   · simp [PatternDef.parameterNames, unitDefinition]
   · intro capability member
     simp at member
   · simp
-  · exact PatternTy.tuple PatternTys.nil
+  · exact (PatternTy.tuple PatternTys.nil).resolve_id
   · rfl
   · exact DualScheme.ValueFlowEquivalent.refl unitScheme
 
@@ -209,8 +209,25 @@ private theorem unary_definition_typed (context : Context) :
     PatternDefTy unarySignature context unaryDefinition unaryScheme := by
   let fresh := definitionFreshCap context
   let result := unaryDual fresh
+  have localScheme :
+      unaryDefinition.coreScheme unarySignature context [.var fresh] result =
+        unarySchemeAt fresh := by
+    have freshNotContext : definitionFreshCap context ∉ context.fcv :=
+      (definitionFreshCap_fresh context).2.1
+    have dualApplyId (dual : Dual) :
+        dual.apply (fun varId => Cap.var varId) TySubst.id = dual := by
+      change dual.apply CapSubst.id TySubst.id = dual
+      simpa only [Dual.applySubst, Subst.id] using
+        Dual.applySubst_id dual
+    simp [PatternDef.coreScheme, unarySignature, unaryDefinition,
+      patternParameterDuals, FrozenSig.generalizeDual,
+      normalizeDualSingletons, singletonDefaultSubst, dualSingletonCaps,
+      dualSharedCaps, dualCapOccurrences, FrozenSig.fcv, FrozenSig.ftv,
+      result, unaryDual, unarySchemeAt, fresh, DualScheme.fcv, Dual.fcv,
+      Dual.ftv, Cap.fcv, Ty.fcv, Ty.ftv, uniqueVars, freshNotContext,
+      dualApplyId]
   refine @PatternDefTy.mk unarySignature context unaryDefinition [.var fresh]
-    result [] unaryScheme find_unary ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    result [] unaryScheme Subst.id find_unary ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
   · decide
   · rfl
   · simp [PatternDef.parameterNames, unaryDefinition]
@@ -219,23 +236,13 @@ private theorem unary_definition_typed (context : Context) :
     subst capability
     exact ⟨fresh, rfl, definitionFreshCap_fresh context⟩
   · simp
-  · apply PatternTy.embed
+  · apply PatternTy.resolve_id
+    apply PatternTy.embed
+    unfold PatternDef.coreParameters
+    rw [localScheme]
     rfl
   · rfl
-  · have localScheme :
-        ({ unarySignature with
-          patternFuns := unarySignature.patternFuns.filter
-            fun named => named.1 != unaryDefinition.name }).generalizeDual context
-          (patternParameterDuals unaryDefinition.parameters [.var fresh]) result =
-            unarySchemeAt fresh := by
-      have freshNotContext : definitionFreshCap context ∉ context.fcv :=
-        (definitionFreshCap_fresh context).2.1
-      simp [unarySignature, unaryDefinition, patternParameterDuals,
-        FrozenSig.generalizeDual, FrozenSig.fcv, FrozenSig.ftv, result,
-        unaryDual, fresh, DualScheme.fcv, Dual.fcv, Dual.ftv, Cap.fcv,
-        Ty.fcv, Ty.ftv, uniqueVars, freshNotContext]
-      rfl
-    rw [localScheme]
+  · rw [localScheme]
     exact unarySchemeAt_equivalent unaryBinder fresh
 
 private def unaryRuntimeSignature : RuntimeSigF :=
@@ -286,6 +293,123 @@ theorem unary_pattern_function_step_mirror :
       unary_pattern_function_step :=
   StepRuntimeSigAgrees.of_global unary_global_runtime_agreement
     unary_pattern_function_step
+
+/-! ## Singleton-default core regression -/
+
+private def singletonCap : CapVar := ⟨0⟩
+
+private def singletonTy : TypePM.TyVar := 0
+
+private def singletonRawResult : Dual :=
+  ⟨.var singletonCap, .var singletonTy⟩
+
+private def singletonScheme : DualScheme where
+  capBinders := []
+  tyBinders := [singletonTy]
+  args := []
+  result := ⟨.any, .var singletonTy⟩
+
+private def singletonDefinition : PatternDef where
+  name := "wildDefault"
+  parameters := []
+  body := .wild
+
+private def singletonSignature : FrozenSig where
+  observability := fun _ => none
+  dataCtors := []
+  patternCtors := []
+  patternFuns := [("wildDefault", singletonScheme)]
+  primitives := []
+  constructorsByFormer := []
+  armExhaustive := basicArmExhaustive
+
+@[simp] private theorem find_singleton :
+    singletonSignature.findPatternFun "wildDefault" =
+      some singletonScheme := by
+  rfl
+
+/-- The sole raw capability occurrence is defaulted in the core payload;
+the ordinary target variable remains quantified. -/
+private theorem singleton_coreScheme_shape :
+    singletonDefinition.coreScheme singletonSignature [] []
+        singletonRawResult = singletonScheme := by
+  rfl
+
+/-- The body is resolved by exactly the canonical defaulting action recorded
+by `PatternDef.coreCapSubst`, rather than by an identity post. -/
+private def singletonPrevailing : Subst where
+  cap := singletonDefinition.coreCapSubst singletonSignature [] []
+    singletonRawResult
+  target := TySubst.id
+
+@[simp] private theorem singletonPrevailing_cap :
+    singletonPrevailing.cap singletonCap = .any := by
+  rfl
+
+@[simp] private theorem singletonPrevailing_ty :
+    singletonPrevailing.apply (.var singletonTy) = .var singletonTy := by
+  rfl
+
+private theorem singletonPrevailing_nonidentity :
+    singletonPrevailing ≠ Subst.id := by
+  intro equality
+  have capEquality :=
+    congrArg (fun post : Subst => post.cap singletonCap) equality
+  simp only [singletonPrevailing_cap, Subst.id, CapSubst.id] at capEquality
+  simp at capEquality
+
+private theorem singletonCap_fresh :
+    FreshCap singletonSignature [] [] [] singletonCap := by
+  simp [FreshCap, singletonSignature, FrozenSig.fcv, DualScheme.fcv,
+    singletonScheme, Context.fcv, PatternCtx.fcv, MonoCtx.fcv, Dual.fcv,
+    Cap.fcv, Ty.fcv]
+
+private theorem singletonTy_fresh :
+    FreshTy singletonSignature [] [] [] singletonTy := by
+  simp [FreshTy, singletonSignature, FrozenSig.ftv, DualScheme.ftv,
+    singletonScheme, Context.ftv, PatternCtx.ftv, MonoCtx.ftv, Dual.ftv,
+    Ty.ftv]
+
+/-- A raw `PAT-WILD` leaf reaches the normalized `Any` core index through the
+nonidentity canonical prevailing substitution. -/
+private theorem singleton_body_resolved :
+    ResolvedPatternTy singletonSignature singletonPrevailing [] [] [] .wild
+      .any (.var singletonTy) [] := by
+  apply ResolvedPatternTy.ofTerminal
+  simpa only [PatternCtx.applySubst, MonoCtx.applySubst, List.map_nil,
+      Cap.apply, singletonPrevailing_cap, singletonPrevailing_ty] using
+    (TerminalPatternResolution.wild
+      (signature := singletonSignature)
+      (prevailing := singletonPrevailing)
+      (actualContext := ([] : Context))
+      singletonCap_fresh singletonTy_fresh)
+
+/-- Singleton defaulting is part of the checked definition core, not a later
+structural value-flow instantiation. -/
+private theorem singleton_definition_typed :
+    PatternDefTy singletonSignature [] singletonDefinition singletonScheme := by
+  refine @PatternDefTy.mk singletonSignature [] singletonDefinition []
+    singletonRawResult [] singletonScheme singletonPrevailing find_singleton
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · decide
+  · rfl
+  · simp [PatternDef.parameterNames, singletonDefinition]
+  · intro capability membership
+    simp at membership
+  · simp
+  · unfold PatternDef.coreParameters
+    rw [singleton_coreScheme_shape]
+    exact singleton_body_resolved
+  · rfl
+  · rw [singleton_coreScheme_shape]
+    exact DualScheme.ValueFlowEquivalent.refl singletonScheme
+
+/-- The general use-site bridge consumes the singleton-normalized definition. -/
+private theorem singleton_instantiated_body :
+    singleton_definition_typed.InstantiatedBody := by
+  apply PatternDefTy.instantiatedBody singleton_definition_typed
+  · rfl
+  · simp [singletonSignature]
 
 /-! ## Concrete execution through a pattern-function node -/
 
@@ -478,7 +602,7 @@ theorem target_value_typed :
 
 theorem initial_atom_typed :
     AtomTy signature programContext [] [] initialAtom [] := by
-  exact .mk initial_pattern_typed (.inl matcher_value_typed)
+  exact .mk initial_pattern_typed (.ofMatcher matcher_value_typed)
     target_value_typed
 
 theorem empty_environment_typed : EnvTyped signature [] [] := by

@@ -49,7 +49,7 @@ mutual
 
 /-- A capability is closed when it contains no inference variables or skolems. -/
 def Cap.Closed : Cap → Prop
-  | .none       => True
+  | .any        => True
   | .var _      => False
   | .skolem _   => False
   | .con _ caps => Cap.ClosedList caps
@@ -94,7 +94,7 @@ Capabilities are never normalized by `reprNF`; this predicate is therefore a
 required property of frozen alias ranges and other normalized inputs.
 -/
 def Cap.AliasFree (aliases : AliasEnv) : Cap → Prop
-  | .none       => True
+  | .any        => True
   | .var _      => True
   | .skolem _   => True
   | .con name caps =>

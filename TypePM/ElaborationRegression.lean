@@ -17,36 +17,36 @@ open PrincipalityCounterexample
 open Elaboration
 
 def pairProductType : Ty :=
-  .prod [.matcher .none .int, .matcher .none .int]
+  .prod [.matcher .any .int, .matcher .any .int]
 
 def pairMatcherType : Ty :=
-  .matcher (.prod [.none, .none]) (.prod [.int, .int])
+  .matcher (.prod [.any, .any]) (.prod [.int, .int])
 
 def letPairProgram : Expr :=
   .letE "pairMatcher" pairProgram (.var "pairMatcher")
 
 theorem pair_synthesizes_product {signature : FrozenSig} :
     SynthHead signature [] pairProgram
-      (.prod [.matcher .none .int, .matcher .none .int]) :=
+      (.prod [.matcher .any .int, .matcher .any .int]) :=
   .tuple (.cons HasTy.something (.cons HasTy.something .nil))
 
 theorem pair_product_matcher_plan {signature : FrozenSig} :
     CoercionPlan signature [] pairProgram
-      (.prod [.matcher .none .int, .matcher .none .int])
-      (.matcher (.prod [.none, .none]) (.prod [.int, .int])) :=
+      (.prod [.matcher .any .int, .matcher .any .int])
+      (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
   .productMatcher
-    (duals := [⟨.none, .int⟩, ⟨.none, .int⟩])
+    (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
 
 theorem pair_product_matcher_replays {signature : FrozenSig} :
     HasTy signature [] pairProgram
-      (.matcher (.prod [.none, .none]) (.prod [.int, .int])) :=
+      (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
   pair_product_matcher_plan.toHasTy pair_synthesizes_product.toHasTy
 
 theorem pair_surface_factor_exists {signature : FrozenSig} :
     ∃ source,
       SynthHead signature [] pairProgram source ∧
       CoercionPlan signature [] pairProgram source
-        (.matcher (.prod [.none, .none]) (.prod [.int, .int])) :=
+        (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
   HasTy.factorHead pair_matcher_typing
 
 /-- The generalized unary product lift can be inserted at a variable use,
@@ -72,7 +72,7 @@ theorem let_bound_pair_checks_as_product_matcher {signature : FrozenSig} :
   simpa [letPairProgram, pairProductType, pairMatcherType] using
     HasTy.letE (pair_prod_typing (signature := signature))
       (HasTy.coerceProductMatcher
-        (duals := [⟨.none, .int⟩, ⟨.none, .int⟩]) variableTyping)
+        (duals := [⟨.any, .int⟩, ⟨.any, .int⟩]) variableTyping)
 
 end ElaborationRegression
 end TypePM

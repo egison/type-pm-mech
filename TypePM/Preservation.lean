@@ -80,6 +80,18 @@ structure FrozenSigWF (signature : FrozenSig) : Prop where
       entry.CapCompatible rightCaps result →
       leftCaps = rightCaps
   /--
+  One-way compatibility of constructor results descends pointwise to their
+  field capabilities.  This is the demand-aware replacement for using
+  `patternCapArgsUnique` when a consumer contains an explicit `any`.
+  -/
+  patternCapDemands :
+    ∀ {name entry producerCaps consumerCaps producerResult consumerResult},
+      signature.findPatternCtor name = some entry →
+      entry.CapCompatible producerCaps producerResult →
+      entry.CapCompatible consumerCaps consumerResult →
+      CapabilityDemand producerResult consumerResult →
+      CapabilityDemands producerCaps consumerCaps
+  /--
   Every compatible pattern-constructor instance has a canonical data-former
   capability and occurs at its exact arity in the frozen coverage index for
   that former.

@@ -76,16 +76,19 @@ theorem FrozenSig.generalize_valueFlowInst
 /-- Dual counterpart of `FrozenSig.generalize_valueFlowInst`. -/
 theorem FrozenSig.generalizeDual_valueFlowInst
     {signature : FrozenSig} {context : Context}
-    {sourceArgs : List Dual} {sourceResult : Dual} {S : Subst}
+    {rawArgs : List Dual} {rawResult : Dual} {S : Subst}
     (capFixed : ∀ varId,
       varId ∈ signature.fcv ++ context.fcv → S.cap varId = .var varId)
     (tyFixed : ∀ varId,
       varId ∈ signature.ftv ++ context.ftv → S.target varId = .var varId)
     (capVariable : ∀ varId, ∃ image, S.cap varId = .var image) :
-    (signature.generalizeDual context sourceArgs sourceResult).ValueFlowInst
-      (sourceArgs.map (Dual.applySubst S))
-      (sourceResult.applySubst S) := by
-  let scheme := signature.generalizeDual context sourceArgs sourceResult
+    let scheme := signature.generalizeDual context rawArgs rawResult
+    scheme.ValueFlowInst
+      (scheme.args.map (Dual.applySubst S))
+      (scheme.result.applySubst S) := by
+  let scheme := signature.generalizeDual context rawArgs rawResult
+  let sourceArgs := scheme.args
+  let sourceResult := scheme.result
   let C : CapSubst := fun varId =>
     if varId ∈ scheme.capBinders then S.cap varId else .var varId
   let T : TySubst := fun varId =>
@@ -95,28 +98,39 @@ theorem FrozenSig.generalizeDual_valueFlowInst
       varId ∉ signature.fcv ++ context.fcv →
       varId ∈ scheme.capBinders := by
     intro varId sourceMembership environment
+    change varId ∈ uniqueVars
+      ((sourceArgs.flatMap Dual.fcv ++ sourceResult.fcv).filter
+        fun candidate => candidate ∉ signature.fcv ++ context.fcv)
     exact mem_uniqueVars.mpr
       (List.mem_filter.mpr ⟨sourceMembership, by simp [environment]⟩)
   have capBinderNotEnv : ∀ {varId},
       varId ∈ scheme.capBinders →
       varId ∉ signature.fcv ++ context.fcv := by
     intro varId binder environment
-    have binder' : varId ∈
-        (signature.generalizeDual context sourceArgs sourceResult).capBinders := by
-      simpa [scheme] using binder
-    have filtered : varId ∈
-        (sourceArgs.flatMap Dual.fcv ++ sourceResult.fcv).filter
-          fun candidate => candidate ∉ signature.fcv ++ context.fcv := by
-      exact mem_uniqueVars.mp (by
-        simpa only [FrozenSig.generalizeDual] using binder')
+    change varId ∈ uniqueVars
+      ((sourceArgs.flatMap Dual.fcv ++ sourceResult.fcv).filter
+        fun candidate => candidate ∉ signature.fcv ++ context.fcv) at binder
+    have filtered := mem_uniqueVars.mp binder
     exact (of_decide_eq_true (List.mem_filter.mp filtered).2) environment
   have tyBinderOf : ∀ {varId},
       varId ∈ sourceArgs.flatMap Dual.ftv ++ sourceResult.ftv →
       varId ∉ signature.ftv ++ context.ftv →
       varId ∈ scheme.tyBinders := by
     intro varId sourceMembership environment
+    change varId ∈ uniqueVars
+      ((sourceArgs.flatMap Dual.ftv ++ sourceResult.ftv).filter
+        fun candidate => candidate ∉ signature.ftv ++ context.ftv)
     exact mem_uniqueVars.mpr
       (List.mem_filter.mpr ⟨sourceMembership, by simp [environment]⟩)
+  have tyBinderNotEnv : ∀ {varId},
+      varId ∈ scheme.tyBinders →
+      varId ∉ signature.ftv ++ context.ftv := by
+    intro varId binder environment
+    change varId ∈ uniqueVars
+      ((sourceArgs.flatMap Dual.ftv ++ sourceResult.ftv).filter
+        fun candidate => candidate ∉ signature.ftv ++ context.ftv) at binder
+    have filtered := mem_uniqueVars.mp binder
+    exact (of_decide_eq_true (List.mem_filter.mp filtered).2) environment
   have dualEquation : ∀ dual ∈ sourceArgs,
       dual.apply C T = dual.applySubst S := by
     intro dual dualMembership
@@ -184,55 +198,51 @@ theorem FrozenSig.generalizeDual_valueFlowInst
               simp [T, binder]
   have resultEquation : sourceResult.apply C T =
       sourceResult.applySubst S := by
-    cases sourceResult with
-    | mk capability target =>
-        simp only [Dual.apply, Dual.applySubst]
-        congr 1
-        · apply Cap.apply_eq_of_fcv_agree
-          intro varId membership
-          by_cases environment : varId ∈ signature.fcv ++ context.fcv
-          · have outside : varId ∉ scheme.capBinders := by
-              intro binder
-              exact (capBinderNotEnv binder) environment
-            simp [C, outside, capFixed varId environment]
-          · have sourceMembership :
-                varId ∈ sourceArgs.flatMap Dual.fcv ++
-                  (Dual.mk capability target).fcv :=
-              List.mem_append_right _ (by
-                simpa [Dual.fcv] using (Or.inl membership))
-            have binder := capBinderOf sourceMembership environment
-            simp [C, binder]
-        · apply Subst.apply_eq_of_free_agree
-          · intro varId membership
-            by_cases environment : varId ∈ signature.fcv ++ context.fcv
-            · have outside : varId ∉ scheme.capBinders := by
-                intro binder
-                exact (capBinderNotEnv binder) environment
-              simp [C, outside, capFixed varId environment]
-            · have sourceMembership :
-                  varId ∈ sourceArgs.flatMap Dual.fcv ++
-                    (Dual.mk capability target).fcv :=
-                List.mem_append_right _ (by
-                  simpa [Dual.fcv] using (Or.inr membership))
-              have binder := capBinderOf sourceMembership environment
-              simp [C, binder]
-          · intro varId membership
-            by_cases environment : varId ∈ signature.ftv ++ context.ftv
-            · have outside : varId ∉ scheme.tyBinders := by
-                intro binder
-                change varId ∈ uniqueVars
-                  ((sourceArgs.flatMap Dual.ftv ++ target.ftv).filter
-                    fun candidate =>
-                      candidate ∉ signature.ftv ++ context.ftv) at binder
-                exact (of_decide_eq_true
-                  (List.mem_filter.mp (mem_uniqueVars.mp binder)).2) environment
-              simp [T, outside, tyFixed varId environment]
-            · have sourceMembership :
-                  varId ∈ sourceArgs.flatMap Dual.ftv ++
-                    (Dual.mk capability target).ftv :=
-                List.mem_append_right _ membership
-              have binder := tyBinderOf sourceMembership environment
-              simp [T, binder]
+    change
+      Dual.mk (sourceResult.cap.apply C)
+          ((Subst.mk C T).apply sourceResult.target) =
+        Dual.mk (sourceResult.cap.apply S.cap)
+          (S.apply sourceResult.target)
+    congr 1
+    · change sourceResult.cap.apply C = sourceResult.cap.apply S.cap
+      apply Cap.apply_eq_of_fcv_agree
+      intro varId membership
+      by_cases environment : varId ∈ signature.fcv ++ context.fcv
+      · have outside : varId ∉ scheme.capBinders := by
+          intro binder
+          exact (capBinderNotEnv binder) environment
+        simp [C, outside, capFixed varId environment]
+      · have sourceMembership :
+            varId ∈ sourceArgs.flatMap Dual.fcv ++ sourceResult.fcv :=
+          List.mem_append_right _ (List.mem_append_left _ membership)
+        have binder := capBinderOf sourceMembership environment
+        simp [C, binder]
+    · change (Subst.mk C T).apply sourceResult.target =
+          S.apply sourceResult.target
+      apply Subst.apply_eq_of_free_agree
+      · intro varId membership
+        by_cases environment : varId ∈ signature.fcv ++ context.fcv
+        · have outside : varId ∉ scheme.capBinders := by
+            intro binder
+            exact (capBinderNotEnv binder) environment
+          simp [C, outside, capFixed varId environment]
+        · have sourceMembership :
+              varId ∈ sourceArgs.flatMap Dual.fcv ++ sourceResult.fcv :=
+            List.mem_append_right _ (List.mem_append_right _ membership)
+          have binder := capBinderOf sourceMembership environment
+          simp [C, binder]
+      · intro varId membership
+        by_cases environment : varId ∈ signature.ftv ++ context.ftv
+        · have outside : varId ∉ scheme.tyBinders := by
+            intro binder
+            exact (tyBinderNotEnv binder) environment
+          simp [T, outside, tyFixed varId environment]
+        · have sourceMembership :
+              varId ∈ sourceArgs.flatMap Dual.ftv ++ sourceResult.ftv :=
+            List.mem_append_right _ (by
+              simpa only [Dual.ftv] using membership)
+          have binder := tyBinderOf sourceMembership environment
+          simp [T, binder]
   refine ⟨C, T, ?_⟩
   refine
     { capSupport := ?_
@@ -2212,8 +2222,11 @@ theorem FrozenSig.generalizeDual_fcv_mem_environment
     have binder : varId ∈
         (signature.generalizeDual context args result).capBinders := by
       change varId ∈ uniqueVars
-        ((args.flatMap Dual.fcv ++ result.fcv).filter fun candidate =>
-          candidate ∉ signature.fcv ++ context.fcv)
+        ((((normalizeDualSingletons (signature.fcv ++ context.fcv)
+            args result).1.flatMap Dual.fcv ++
+          (normalizeDualSingletons (signature.fcv ++ context.fcv)
+            args result).2.fcv).filter fun candidate =>
+              candidate ∉ signature.fcv ++ context.fcv))
       exact mem_uniqueVars.mpr
         (List.mem_filter.mpr ⟨parts.1, by simp [outside]⟩)
     exact (of_decide_eq_true parts.2) binder
@@ -2232,8 +2245,11 @@ theorem FrozenSig.generalizeDual_ftv_mem_environment
     have binder : varId ∈
         (signature.generalizeDual context args result).tyBinders := by
       change varId ∈ uniqueVars
-        ((args.flatMap Dual.ftv ++ result.ftv).filter fun candidate =>
-          candidate ∉ signature.ftv ++ context.ftv)
+        ((((normalizeDualSingletons (signature.fcv ++ context.fcv)
+            args result).1.flatMap Dual.ftv ++
+          (normalizeDualSingletons (signature.fcv ++ context.fcv)
+            args result).2.ftv).filter fun candidate =>
+              candidate ∉ signature.ftv ++ context.ftv))
       exact mem_uniqueVars.mpr
         (List.mem_filter.mpr ⟨parts.1, by simp [outside]⟩)
     exact (of_decide_eq_true parts.2) binder
@@ -2246,8 +2262,11 @@ theorem FrozenSig.mem_generalizeDual_capBinders_not_environment
       varId ∈ (signature.generalizeDual context args result).capBinders) :
     varId ∉ signature.fcv ++ context.fcv := by
   change varId ∈ uniqueVars
-    ((args.flatMap Dual.fcv ++ result.fcv).filter fun candidate =>
-      candidate ∉ signature.fcv ++ context.fcv) at membership
+    ((((normalizeDualSingletons (signature.fcv ++ context.fcv)
+        args result).1.flatMap Dual.fcv ++
+      (normalizeDualSingletons (signature.fcv ++ context.fcv)
+        args result).2.fcv).filter fun candidate =>
+          candidate ∉ signature.fcv ++ context.fcv)) at membership
   exact of_decide_eq_true
     (List.mem_filter.mp (mem_uniqueVars.mp membership)).2
 
@@ -2259,8 +2278,11 @@ theorem FrozenSig.mem_generalizeDual_tyBinders_not_environment
       varId ∈ (signature.generalizeDual context args result).tyBinders) :
     varId ∉ signature.ftv ++ context.ftv := by
   change varId ∈ uniqueVars
-    ((args.flatMap Dual.ftv ++ result.ftv).filter fun candidate =>
-      candidate ∉ signature.ftv ++ context.ftv) at membership
+    ((((normalizeDualSingletons (signature.fcv ++ context.fcv)
+        args result).1.flatMap Dual.ftv ++
+      (normalizeDualSingletons (signature.fcv ++ context.fcv)
+        args result).2.ftv).filter fun candidate =>
+          candidate ∉ signature.ftv ++ context.ftv)) at membership
   exact of_decide_eq_true
     (List.mem_filter.mp (mem_uniqueVars.mp membership)).2
 
@@ -2292,6 +2314,29 @@ theorem patternParameterContext_applySubst
                   ((patternParameterDuals parameters capabilities).map
                     (Dual.applySubst S))
           rw [induction capabilities lengths]
+
+/-- Paired substitution commutes with a name/dual parameter context. -/
+theorem patternCoreParameters_applySubst
+    (names : List String) (duals : List Dual) (S : Subst)
+    (lengths : names.length = duals.length) :
+    PatternCtx.applySubst S (names.zip duals) =
+      names.zip (duals.map (Dual.applySubst S)) := by
+  induction names generalizing duals with
+  | nil =>
+      cases duals with
+      | nil => rfl
+      | cons dual duals => simp at lengths
+  | cons name names induction =>
+      cases duals with
+      | nil => simp at lengths
+      | cons dual duals =>
+          simp only [List.length_cons, Nat.succ.injEq] at lengths
+          change
+            (name, dual.applySubst S) ::
+                PatternCtx.applySubst S (names.zip duals) =
+              (name, dual.applySubst S) ::
+                names.zip (duals.map (Dual.applySubst S))
+          rw [induction duals lengths]
 
 /-- A full-signature capability free remains ambient after self filtering. -/
 theorem FrozenSig.fcv_mem_filtered_or_context
@@ -2422,7 +2467,7 @@ theorem PatternDefTy.instantiatedBody
     typing.InstantiatedBody := by
   intro actualArgs actualResult requested
   cases typing with
-  | @mk capabilities result resultBindings _ lookup nonrecursive
+  | @mk capabilities result resultBindings _ _ lookup nonrecursive
       parameterLength parameterNamesNodup freshCapabilities capabilitiesNodup
       bodyTyping linear schemeEquation =>
       let filteredSignature : FrozenSig :=
@@ -2431,9 +2476,10 @@ theorem PatternDefTy.instantiatedBody
             fun entry => entry.1 != definition.name }
       let sourceArgs :=
         patternParameterDuals definition.parameters capabilities
+      let coreScheme :=
+        definition.coreScheme signature context capabilities result
       have requestedLocal :
-          (filteredSignature.generalizeDual context sourceArgs result).ValueFlowInst
-            actualArgs actualResult := by
+          coreScheme.ValueFlowInst actualArgs actualResult := by
         exact (schemeEquation.instances actualArgs actualResult).mp requested
       rcases requestedLocal with ⟨C, T, instanceTyping⟩
       let S := Subst.mk C T
@@ -2447,7 +2493,7 @@ theorem PatternDefTy.instantiatedBody
         intro binder
         have binder' : varId ∈
             (filteredSignature.generalizeDual context sourceArgs result).capBinders := by
-          exact binder
+          simpa [coreScheme, PatternDef.coreScheme, filteredSignature] using binder
         exact (filteredSignature.mem_generalizeDual_capBinders_not_environment
           context sourceArgs result binder') membership
       have targetFixedFilteredEnvironment : ∀ varId,
@@ -2458,7 +2504,7 @@ theorem PatternDefTy.instantiatedBody
         intro binder
         have binder' : varId ∈
             (filteredSignature.generalizeDual context sourceArgs result).tyBinders := by
-          exact binder
+          simpa [coreScheme, PatternDef.coreScheme, filteredSignature] using binder
         exact (filteredSignature.mem_generalizeDual_tyBinders_not_environment
           context sourceArgs result binder') membership
       have capFixedSignature : ∀ varId, varId ∈ signature.fcv →
@@ -2484,29 +2530,41 @@ theorem PatternDefTy.instantiatedBody
       have moved := bodyTyping.transportFlows basic postVariable
         capFixedSignature targetFixedSignature contextFlow
       have argsEquation :
-          sourceArgs.map (Dual.applySubst S) = actualArgs := by
-        change sourceArgs.map (Dual.apply C T) = actualArgs
-        have equation := instanceTyping.argsResult
-        simpa only [FrozenSig.generalizeDual, sourceArgs] using equation
-      have resultEquation : result.applySubst S = actualResult := by
-        change result.apply C T = actualResult
-        have equation := instanceTyping.resultResult
-        simpa only [FrozenSig.generalizeDual] using equation
+          coreScheme.args.map (Dual.applySubst S) = actualArgs := by
+        exact instanceTyping.argsResult
+      have resultEquation :
+          coreScheme.result.applySubst S = actualResult := by
+        exact instanceTyping.resultResult
+      have coreArity :
+          definition.parameterNames.length = coreScheme.args.length := by
+        have normalizedArity : coreScheme.args.length = sourceArgs.length := by
+          change
+            (filteredSignature.generalizeDual context sourceArgs result).args.length =
+              sourceArgs.length
+          exact FrozenSig.generalizeDual_args_length filteredSignature context
+            sourceArgs result
+        have rawArity :
+            sourceArgs.length = definition.parameterNames.length := by
+          simp [sourceArgs, patternParameterDuals, PatternDef.parameterNames,
+            parameterLength]
+        exact rawArity.symm.trans normalizedArity.symm
       have parameterContextEquation :
-          (patternParameterContext definition.parameters capabilities).applySubst S =
+          PatternCtx.applySubst S
+              (definition.coreParameters signature context capabilities result) =
             definition.parameterNames.zip actualArgs := by
-        have equation := patternParameterContext_applySubst
-          definition.parameters capabilities S parameterLength
+        have equation := patternCoreParameters_applySubst
+          definition.parameterNames coreScheme.args S coreArity
         rw [argsEquation] at equation
-        simpa only [PatternDef.parameterNames] using equation
+        simpa [PatternDef.coreParameters, coreScheme] using equation
       have capabilityEquation :
-          result.cap.apply S.cap = actualResult.cap := by
+          coreScheme.result.cap.apply S.cap = actualResult.cap := by
         simpa only [Dual.applySubst, Dual.apply] using
           congrArg Dual.cap resultEquation
-      have targetEquation : S.apply result.target = actualResult.target := by
+      have targetEquation :
+          S.apply coreScheme.result.target = actualResult.target := by
         simpa only [Dual.applySubst, Dual.apply] using
           congrArg Dual.target resultEquation
       rw [parameterContextEquation, capabilityEquation, targetEquation] at moved
-      exact ⟨S, resultBindings.applySubst S, .ofTerminal moved⟩
+      exact ⟨_, resultBindings.applySubst S, moved⟩
 
 end TypePM

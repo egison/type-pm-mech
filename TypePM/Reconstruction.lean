@@ -62,7 +62,7 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       ExprsDeriv signature context expressions targets ->
       ExprDeriv signature context (.prim op expressions) result
   | something {context target} :
-      ExprDeriv signature context .something (.matcher .none target)
+      ExprDeriv signature context .something (.matcher .any target)
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :

@@ -18,7 +18,7 @@ mutual
 
 /-- Capability-skolem identifiers occurring in one capability. -/
 def capSkolemIds : Cap → List Nat
-  | .none        => []
+  | .any         => []
   | .var _       => []
   | .skolem id   => [id]
   | .con _ caps  => capSkolemIdsList caps
@@ -221,13 +221,13 @@ theorem ChecksScheme.fresh
     FreshSkolemsFor scope inferred scheme capBase targetBase :=
   h.2.2.1
 
-/-- A `none` producer cannot be strengthened to a rigid capability skolem. -/
+/-- An `Any` producer cannot be strengthened to a rigid capability skolem. -/
 theorem none_producer_rejects_capability_skolem
     (localCaps : List CapVar)
     (localTargets : List TypePM.TyVar)
     (inferredTarget expectedTarget : Ty) (skolemId : Nat) :
     ¬ ChecksRigid localCaps localTargets
-      (.matcher .none inferredTarget)
+      (.matcher .any inferredTarget)
       (.matcher (.skolem skolemId) expectedTarget) := by
   rintro ⟨C, T, _, _, _, equality⟩
   simp [Subst.apply, Ty.applyTarget, Ty.applyCapability, Cap.apply] at equality
@@ -328,7 +328,7 @@ capability annotation, although its ordinary target variable may specialize.
 -/
 theorem something_rejects_badCapabilityScheme :
     ¬ ChecksRigid [] [1]
-      (.matcher .none (.var 1))
+      (.matcher .any (.var 1))
       (skolemizeScheme badCapabilityScheme 0 0) := by
   rw [badCapabilityScheme_skolemize]
   exact
@@ -341,7 +341,7 @@ environment-locality and skolem-freshness checks.
 -/
 theorem something_rejects_badCapabilityAnnotation :
     ¬ ChecksScheme CheckScope.empty [] [1]
-      (.matcher .none (.var 1)) badCapabilityScheme 0 0 := by
+      (.matcher .any (.var 1)) badCapabilityScheme 0 0 := by
   intro checks
   exact something_rejects_badCapabilityScheme checks.rigid
 

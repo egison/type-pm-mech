@@ -65,10 +65,10 @@ mutual
 
 /-- Match a producer capability against a consumer capability. -/
 def matchCapAcc : Cap → Cap → Bindings → Option Bindings
+  | _, .any, bindings =>
+      some bindings
   | producer, .var varId, bindings =>
       bindVar varId producer bindings
-  | .none, .none, bindings =>
-      some bindings
   | .skolem producerId, .skolem consumerId, bindings =>
       if producerId = consumerId then some bindings else none
   | .con producerName producerChildren,
@@ -256,14 +256,13 @@ theorem matchCapAcc_extends :
     ∀ (producer consumer : Cap) (bindings updated : Bindings),
       matchCapAcc producer consumer bindings = some updated →
       updated.Extends bindings
+  | producer, .any, bindings, updated, hmatch => by
+      simp only [matchCapAcc, Option.some.injEq] at hmatch
+      subst updated
+      exact Bindings.extends_refl bindings
   | producer, .var varId, bindings, updated, hmatch =>
       (bindVar_extends_and_lookup
         (by simpa only [matchCapAcc] using hmatch)).1
-  | producer, .none, bindings, updated, hmatch => by
-      cases producer <;> simp [matchCapAcc] at hmatch
-      case none =>
-        subst updated
-        exact Bindings.extends_refl bindings
   | producer, .skolem consumerId, bindings, updated, hmatch => by
       cases producer <;> simp [matchCapAcc] at hmatch
       case skolem producerId =>
@@ -312,49 +311,48 @@ mutual
 Every successful capability match is respected by any total substitution that
 agrees with the returned finite bindings.
 -/
-theorem matchCapAcc_apply_eq :
+theorem matchCapAcc_demandMatches :
     ∀ (producer consumer : Cap) (bindings updated : Bindings),
       matchCapAcc producer consumer bindings = some updated →
       ∀ (S : CapSubst), updated.Agrees S →
-        consumer.apply S = producer
+        DemandMatches S producer consumer
+  | producer, .any, bindings, updated, hmatch, S, hagrees => by
+      cases producer <;> trivial
   | producer, .var varId, bindings, updated, hmatch, S, hagrees => by
       have hbind :
           bindVar varId producer bindings = some updated := by
         simpa only [matchCapAcc] using hmatch
       have hlookup := (bindVar_extends_and_lookup hbind).2
-      simpa only [Cap.apply] using hagrees varId producer hlookup
-  | producer, .none, bindings, updated, hmatch, _, _ => by
-      cases producer <;> simp [matchCapAcc] at hmatch
-      case none =>
-        rfl
+      have equality := hagrees varId producer hlookup
+      cases producer <;> simpa [DemandMatches] using equality
   | producer, .skolem consumerId, bindings, updated, hmatch, _, _ => by
       cases producer <;> simp [matchCapAcc] at hmatch
       case skolem producerId =>
-        exact congrArg Cap.skolem hmatch.1.symm
+        change producerId = consumerId
+        exact hmatch.1
   | producer, .con consumerName consumerChildren, bindings, updated,
       hmatch, S, hagrees => by
       cases producer <;> simp [matchCapAcc] at hmatch
       case con producerName producerChildren =>
-        have hchildren :
-            Cap.applyList S consumerChildren = producerChildren :=
-          matchCapListAcc_apply_eq _ _ _ _ hmatch.2 S hagrees
-        simp only [Cap.apply, Cap.con.injEq]
-        exact ⟨hmatch.1.symm, hchildren⟩
+        change producerName = consumerName ∧
+          DemandMatchesList S producerChildren consumerChildren
+        exact ⟨hmatch.1,
+          matchCapListAcc_demandMatches _ _ _ _ hmatch.2 S hagrees⟩
   | producer, .prod consumerComponents, bindings, updated,
       hmatch, S, hagrees => by
       cases producer <;> simp [matchCapAcc] at hmatch
       case prod producerComponents =>
-        exact congrArg Cap.prod
-          (matchCapListAcc_apply_eq _ _ _ _ hmatch S hagrees)
+        change DemandMatchesList S producerComponents consumerComponents
+        exact matchCapListAcc_demandMatches _ _ _ _ hmatch S hagrees
 
-/-- List form of `matchCapAcc_apply_eq`. -/
-theorem matchCapListAcc_apply_eq :
+/-- List form of `matchCapAcc_demandMatches`. -/
+theorem matchCapListAcc_demandMatches :
     ∀ (producers consumers : List Cap) (bindings updated : Bindings),
       matchCapListAcc producers consumers bindings = some updated →
       ∀ (S : CapSubst), updated.Agrees S →
-        Cap.applyList S consumers = producers
+        DemandMatchesList S producers consumers
   | [], [], bindings, updated, hmatch, _, _ => by
-      rfl
+      trivial
   | [], _ :: _, _, _, hmatch, _, _ => by
       simp [matchCapListAcc] at hmatch
   | _ :: _, [], _, _, hmatch, _, _ => by
@@ -369,13 +367,9 @@ theorem matchCapListAcc_apply_eq :
           matchCapListAcc_extends _ _ _ _ hmatch
         have hagreesIntermediate : intermediate.Agrees S :=
           Bindings.agrees_of_extends hextends hagrees
-        have hheadApply :
-            consumer.apply S = producer :=
-          matchCapAcc_apply_eq _ _ _ _ hhead S hagreesIntermediate
-        have htailApply :
-            Cap.applyList S consumers = producers :=
-          matchCapListAcc_apply_eq _ _ _ _ hmatch S hagrees
-        simp [Cap.applyList, hheadApply, htailApply]
+        exact ⟨
+          matchCapAcc_demandMatches _ _ _ _ hhead S hagreesIntermediate,
+          matchCapListAcc_demandMatches _ _ _ _ hmatch S hagrees⟩
       next _ =>
         cases hmatch
 
@@ -391,7 +385,7 @@ theorem apply_congr_on_fcv (S₁ S₂ : CapSubst) :
     ∀ (capability : Cap),
       (∀ varId ∈ capability.fcv, S₁ varId = S₂ varId) →
       capability.apply S₁ = capability.apply S₂
-  | .none, _ =>
+  | .any, _ =>
       rfl
   | .var varId, hagrees => by
       simpa only [Cap.apply] using
@@ -436,6 +430,71 @@ theorem applyList_congr_on_fcv (S₁ S₂ : CapSubst) :
 
 end
 
+/-- Demand matching depends only on substitution values visible in the
+original consumer syntax. -/
+theorem demandMatches_congr_on_consumer (S₁ S₂ : CapSubst) :
+    ∀ (producer consumer : Cap),
+      DemandMatches S₁ producer consumer →
+      (∀ varId ∈ consumer.fcv, S₁ varId = S₂ varId) →
+      DemandMatches S₂ producer consumer := by
+  intro currentProducer currentConsumer
+  exact Cap.rec
+    (motive_1 := fun consumer => ∀ producer,
+      DemandMatches S₁ producer consumer →
+      (∀ varId ∈ consumer.fcv, S₁ varId = S₂ varId) →
+      DemandMatches S₂ producer consumer)
+    (motive_2 := fun consumers => ∀ producers,
+      DemandMatchesList S₁ producers consumers →
+      (∀ varId ∈ Cap.fcvList consumers, S₁ varId = S₂ varId) →
+      DemandMatchesList S₂ producers consumers)
+    (by
+      intro producer _ _
+      cases producer <;> trivial)
+    (fun _ => by
+      intro producer matching agrees
+      cases producer <;> simp_all [DemandMatches, Cap.fcv])
+    (fun _ => by
+      intro producer matching _
+      cases producer <;> exact matching)
+    (fun consumerName consumers consumersIH => by
+      intro producer matching agrees
+      cases producer <;> try contradiction
+      rename_i producerName producers
+      change producerName = consumerName ∧
+        DemandMatchesList S₁ producers consumers at matching
+      change producerName = consumerName ∧
+        DemandMatchesList S₂ producers consumers
+      exact ⟨matching.1, consumersIH _ matching.2 (by
+        intro varId membership
+        exact agrees varId (by simpa [Cap.fcv] using membership))⟩)
+    (fun consumers consumersIH => by
+      intro producer matching agrees
+      cases producer <;> try contradiction
+      rename_i producers
+      change DemandMatchesList S₁ producers consumers at matching
+      change DemandMatchesList S₂ producers consumers
+      exact consumersIH _ matching (by
+        intro varId membership
+        exact agrees varId (by simpa [Cap.fcv] using membership)))
+    (by
+      intro producers matching _
+      cases producers <;> try contradiction
+      trivial)
+    (fun _ _ consumerIH consumersIH => by
+      intro producers matching agrees
+      cases producers with
+      | nil => contradiction
+      | cons producer producers =>
+          simp only [DemandMatchesList] at matching ⊢
+          exact ⟨
+            consumerIH producer matching.1 (by
+              intro varId membership
+              exact agrees varId (by simp [Cap.fcvList, membership])),
+            consumersIH producers matching.2 (by
+              intro varId membership
+              exact agrees varId (by simp [Cap.fcvList, membership]))⟩)
+    currentConsumer currentProducer
+
 /-- Algorithmic success is sound for the declarative one-way relation. -/
 theorem matchCap_sound
     {producer consumer : Cap} {bindings : Bindings}
@@ -449,70 +508,105 @@ theorem matchCap_sound
       matchCapAcc producer consumer [] = some bindings := by
     exact hchecked.1
   have hunrestricted :
-      consumer.apply unrestricted = producer :=
-    matchCapAcc_apply_eq producer consumer [] bindings hacc
+      DemandMatches unrestricted producer consumer :=
+    matchCapAcc_demandMatches producer consumer [] bindings hacc
       unrestricted bindings.toSubst_agrees
   refine ⟨restricted,
     Bindings.toSubstWithin_support consumer.fcv bindings,
     hchecked.2, ?_⟩
-  calc
-    consumer.apply restricted =
-        consumer.apply unrestricted := by
-      apply apply_congr_on_fcv
-      intro varId hmem
-      simp [restricted, unrestricted, Bindings.toSubstWithin, hmem]
-    _ = producer := hunrestricted
+  exact demandMatches_congr_on_consumer unrestricted restricted
+    producer consumer hunrestricted (by
+      intro varId membership
+      simp [restricted, unrestricted, Bindings.toSubstWithin, membership])
+
+/-- Soundness at the exact support-restricted substitution returned by the
+executable matcher. -/
+theorem matchCap_restricted_sound
+    {producer consumer : Cap} {bindings : Bindings}
+    (hmatch : matchCap producer consumer = some bindings) :
+    OneWayAt (bindings.toSubstWithin consumer.fcv) producer consumer := by
+  let unrestricted := bindings.toSubst
+  let restricted := bindings.toSubstWithin consumer.fcv
+  have checked :=
+    (matchCap_eq_some_iff producer consumer bindings).mp hmatch
+  have rawMatching : DemandMatches unrestricted producer consumer :=
+    matchCapAcc_demandMatches producer consumer [] bindings checked.1
+      unrestricted bindings.toSubst_agrees
+  refine ⟨Bindings.toSubstWithin_support consumer.fcv bindings,
+    checked.2, ?_⟩
+  exact demandMatches_congr_on_consumer unrestricted restricted
+    producer consumer rawMatching (by
+      intro varId membership
+      simp [restricted, unrestricted, Bindings.toSubstWithin, membership])
 
 mutual
 
-/--
-Matching a capability obtained by applying `S` always succeeds when the
-incoming finite bindings already agree with `S`.
--/
-theorem matchCapAcc_apply_complete (S : CapSubst) :
-    ∀ (consumer : Cap) (bindings : Bindings),
-      bindings.Agrees S →
+/-- Declarative demand matching is complete for the accumulator matcher. -/
+theorem matchCapAcc_complete (S : CapSubst) :
+    ∀ (producer consumer : Cap) (bindings : Bindings),
+      bindings.Agrees S → DemandMatches S producer consumer →
       ∃ updated,
-        matchCapAcc (consumer.apply S) consumer bindings = some updated ∧
+        matchCapAcc producer consumer bindings = some updated ∧
         updated.Agrees S
-  | .none, bindings, hagrees =>
-      ⟨bindings, rfl, hagrees⟩
-  | .var varId, bindings, hagrees => by
+  | producer, .any, bindings, hagrees, matching => by
+      cases producer <;> exact ⟨bindings, rfl, hagrees⟩
+  | producer, .var varId, bindings, hagrees, matching => by
+      have matchingEq : S varId = producer := by
+        cases producer <;> simpa [DemandMatches] using matching
       rcases bindVar_complete S hagrees with
         ⟨updated, hbind, hagreesUpdated⟩
       refine ⟨updated, ?_, hagreesUpdated⟩
-      simpa only [Cap.apply, matchCapAcc] using hbind
-  | .skolem _, bindings, hagrees =>
-      ⟨bindings, by simp [Cap.apply, matchCapAcc], hagrees⟩
-  | .con name children, bindings, hagrees => by
-      rcases matchCapListAcc_apply_complete S children bindings hagrees with
+      rw [matchingEq] at hbind
+      simpa only [matchCapAcc] using hbind
+  | producer, .skolem consumerId, bindings, hagrees, matching => by
+      cases producer <;> try contradiction
+      rename_i producerId
+      change producerId = consumerId at matching
+      subst consumerId
+      exact ⟨bindings, by simp [matchCapAcc], hagrees⟩
+  | producer, .con consumerName consumerChildren, bindings, hagrees,
+      matching => by
+      cases producer <;> try contradiction
+      rename_i producerName producerChildren
+      change producerName = consumerName ∧
+        DemandMatchesList S producerChildren consumerChildren at matching
+      rcases matchCapListAcc_complete S producerChildren consumerChildren
+          bindings hagrees matching.2 with
         ⟨updated, hmatch, hagreesUpdated⟩
       refine ⟨updated, ?_, hagreesUpdated⟩
-      simpa [Cap.apply, matchCapAcc] using hmatch
-  | .prod components, bindings, hagrees => by
-      rcases matchCapListAcc_apply_complete S components bindings hagrees with
+      rw [matching.1]
+      simpa [matchCapAcc] using hmatch
+  | producer, .prod consumerComponents, bindings, hagrees, matching => by
+      cases producer <;> try contradiction
+      rename_i producerComponents
+      change DemandMatchesList S producerComponents consumerComponents at matching
+      rcases matchCapListAcc_complete S producerComponents consumerComponents
+          bindings hagrees matching with
         ⟨updated, hmatch, hagreesUpdated⟩
-      exact ⟨updated, by simpa only [Cap.apply, matchCapAcc] using hmatch,
+      exact ⟨updated, by simpa only [matchCapAcc] using hmatch,
         hagreesUpdated⟩
 
-/-- List form of `matchCapAcc_apply_complete`. -/
-theorem matchCapListAcc_apply_complete (S : CapSubst) :
-    ∀ (consumers : List Cap) (bindings : Bindings),
-      bindings.Agrees S →
+/-- List form of `matchCapAcc_complete`. -/
+theorem matchCapListAcc_complete (S : CapSubst) :
+    ∀ (producers consumers : List Cap) (bindings : Bindings),
+      bindings.Agrees S → DemandMatchesList S producers consumers →
       ∃ updated,
-        matchCapListAcc (Cap.applyList S consumers) consumers bindings =
-          some updated ∧
+        matchCapListAcc producers consumers bindings = some updated ∧
         updated.Agrees S
-  | [], bindings, hagrees =>
+  | [], [], bindings, hagrees, matching =>
       ⟨bindings, rfl, hagrees⟩
-  | consumer :: consumers, bindings, hagrees => by
-      rcases matchCapAcc_apply_complete S consumer bindings hagrees with
+  | [], _ :: _, bindings, hagrees, matching => by contradiction
+  | _ :: _, [], bindings, hagrees, matching => by contradiction
+  | producer :: producers, consumer :: consumers, bindings, hagrees,
+      matching => by
+      rcases matchCapAcc_complete S producer consumer bindings hagrees
+          matching.1 with
         ⟨intermediate, hhead, hagreesIntermediate⟩
-      rcases matchCapListAcc_apply_complete S consumers intermediate
-          hagreesIntermediate with
+      rcases matchCapListAcc_complete S producers consumers intermediate
+          hagreesIntermediate matching.2 with
         ⟨updated, htail, hagreesUpdated⟩
       refine ⟨updated, ?_, hagreesUpdated⟩
-      simp only [Cap.applyList, matchCapListAcc]
+      simp only [matchCapListAcc]
       rw [hhead]
       exact htail
 
@@ -523,24 +617,20 @@ theorem matchCap_complete
     {producer consumer : Cap} (hmatch : OneWay producer consumer) :
     ∃ bindings, matchCap producer consumer = some bindings := by
   rcases hmatch with
-    ⟨S, hsupport, hproducerStable, hconsumerApply⟩
+    ⟨S, hsupport, hproducerStable, hdemand⟩
   have hempty : Bindings.Agrees S [] := by
     intro varId capability hlookup
     simp [Bindings.lookup] at hlookup
-  rcases matchCapAcc_apply_complete S consumer [] hempty with
-    ⟨bindings, halgorithm, _⟩
-  have hraw :
-      matchCapAcc producer consumer [] = some bindings := by
-    rw [← hconsumerApply]
-    exact halgorithm
-  have hfiniteApply :
-      consumer.apply bindings.toSubst = producer :=
-    matchCapAcc_apply_eq producer consumer [] bindings hraw
+  rcases matchCapAcc_complete S producer consumer [] hempty hdemand with
+    ⟨bindings, hraw, _⟩
+  have hfiniteDemand :
+      DemandMatches bindings.toSubst producer consumer :=
+    matchCapAcc_demandMatches producer consumer [] bindings hraw
       bindings.toSubst bindings.toSubst_agrees
   have hagreesOnConsumer :
       ∀ varId ∈ consumer.fcv, bindings.toSubst varId = S varId :=
-    Cap.apply_eq_on_fcv bindings.toSubst S consumer
-      (hfiniteApply.trans hconsumerApply.symm)
+    demandMatches_unique_on_consumer bindings.toSubst S producer consumer
+      hfiniteDemand hdemand
   have hrestrictedStable :
       producer.apply (bindings.toSubstWithin consumer.fcv) = producer := by
     calc
@@ -581,31 +671,31 @@ theorem matchCap_toSubst_unique_on_consumer
     exact
       ((matchCap_eq_some_iff producer consumer bindings).mp
         halgorithm).1
-  have happly :
-      consumer.apply bindings.toSubst = producer :=
-    matchCapAcc_apply_eq producer consumer [] bindings hacc
+  have hfinite :
+      DemandMatches bindings.toSubst producer consumer :=
+    matchCapAcc_demandMatches producer consumer [] bindings hacc
       bindings.toSubst bindings.toSubst_agrees
-  exact Cap.apply_eq_on_fcv bindings.toSubst S consumer
-    (happly.trans hdeclarative.2.2.symm)
+  exact demandMatches_unique_on_consumer bindings.toSubst S producer consumer
+    hfinite hdeclarative.2.2
 
 /-! ## Executable regressions -/
 
 example :
-    matchCap (.con "List" [.none]) (.var 0) =
-      some [(0, .con "List" [.none])] := by
+    matchCap (.con "List" [.any]) (.var 0) =
+      some [(0, .con "List" [.any])] := by
   rfl
 
 example :
-    matchCap .none (.con "List" [.none]) = none := by
+    matchCap .any (.con "List" [.any]) = none := by
   rfl
 
 example :
-    matchCap (.con "List" [.none]) .none = none := by
+    matchCap (.con "List" [.any]) .any = some [] := by
   rfl
 
 example :
     matchCap
-      (.prod [.none, .con "K" []])
+      (.prod [.any, .con "K" []])
       (.prod [.var 0, .var 0]) =
       none := by
   rfl
@@ -631,6 +721,33 @@ example :
 
 example :
     matchCap (.var 7) (.con "K" []) = none := by
+  rfl
+
+/-- An explicit nested `Any` ignores exactly its producer subtree. -/
+example :
+    matchCap
+      (.prod [.con "Ignored" [.skolem 9], .con "K" []])
+      (.prod [.any, .var 0]) =
+      some [(0, .con "K" [])] := by
+  rfl
+
+/-- A consumer variable may bind to the ground `Any` producer. -/
+example : matchCap .any (.var 0) = some [(0, .any)] := by
+  rfl
+
+/-- Binding a repeated variable to `Any` does not make its next occurrence a
+wildcard. -/
+example :
+    matchCap (.prod [.any, .con "K" []])
+      (.prod [.var 0, .var 0]) = none := by
+  rfl
+
+/-- Explicit `Any` remains independent of repeated-variable sharing. -/
+example :
+    matchCap
+      (.prod [.con "Ignored" [], .con "K" [], .con "K" []])
+      (.prod [.any, .var 0, .var 0]) =
+      some [(0, .con "K" [])] := by
   rfl
 
 end CapMatch

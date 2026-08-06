@@ -70,7 +70,7 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       ExprsTy signature context expressions targets ->
       SynthHead signature context (.prim op expressions) result
   | something {context target} :
-      SynthHead signature context .something (.matcher .none target)
+      SynthHead signature context .something (.matcher .any target)
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :

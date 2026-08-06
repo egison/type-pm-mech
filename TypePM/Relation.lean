@@ -5,8 +5,8 @@ import TypePM.Substitution
 
 This file keeps structural matcher capabilities separate from ordinary target
 types.  In particular, one-way capability matching may instantiate only
-variables occurring in the consumer capability.  `none`, skolems, constructor
-heads, and product heads are rigid.
+variables occurring in the consumer capability.  `Any` is a wildcard only at
+an explicit consumer node; all other ground heads are rigid.
 -/
 
 namespace TypePM
@@ -17,7 +17,7 @@ mutual
 
 /-- Flexible capability variables occurring in a capability. -/
 def Cap.fcv : Cap → List CapVar
-  | .none         => []
+  | .any          => []
   | .var a        => [a]
   | .skolem _     => []
   | .con _ caps   => Cap.fcvList caps
@@ -96,7 +96,7 @@ mutual
 
 /-- Rename flexible capability variables; rigid nodes are unchanged. -/
 def Cap.applyRen (r : CapVar → CapVar) : Cap → Cap
-  | .none         => .none
+  | .any          => .any
   | .var a        => .var (r a)
   | .skolem a     => .skolem a
   | .con n caps   => .con n (Cap.applyRenList r caps)
@@ -118,7 +118,7 @@ mutual
 
 /-- The identity renaming changes no capability. -/
 theorem Cap.applyRen_id : ∀ cap : Cap, cap.applyRen id = cap
-  | .none         => rfl
+  | .any          => rfl
   | .var _        => rfl
   | .skolem _     => rfl
   | .con n caps   => by
@@ -188,6 +188,39 @@ theorem TySubst.SupportWithin.comp
 
 /-! ## One-way capability matching -/
 
+mutual
+
+/--
+Match a producer against the original consumer syntax under `S`.
+
+Only an explicit consumer `Any` is a wildcard.  Consumer variables use strict
+equality with their substitution image.  Consequently, if the same variable
+occurs twice, binding it to `Any` at the first occurrence does not turn its
+second occurrence into a wildcard.
+-/
+def DemandMatches (S : CapSubst) : Cap → Cap → Prop
+  | _, .any => True
+  | producer, .var varId => S varId = producer
+  | .skolem producerId, .skolem consumerId =>
+      producerId = consumerId
+  | .con producerName producerChildren,
+      .con consumerName consumerChildren =>
+      producerName = consumerName ∧
+        DemandMatchesList S producerChildren consumerChildren
+  | .prod producerComponents, .prod consumerComponents =>
+      DemandMatchesList S producerComponents consumerComponents
+  | _, _ => False
+
+/-- Pointwise list form of `DemandMatches`. -/
+def DemandMatchesList (S : CapSubst) : List Cap → List Cap → Prop
+  | [], [] => True
+  | producer :: producers, consumer :: consumers =>
+      DemandMatches S producer consumer ∧
+        DemandMatchesList S producers consumers
+  | _, _ => False
+
+end
+
 /--
 `OneWayAt S producer consumer` means that the consumer can accept the producer
 after instantiating only flexible variables of the consumer.
@@ -199,7 +232,7 @@ producer unchanged.
 def OneWayAt (S : CapSubst) (producer consumer : Cap) : Prop :=
   S.SupportWithin consumer.fcv ∧
   producer.apply S = producer ∧
-  consumer.apply S = producer
+  DemandMatches S producer consumer
 
 /-- Existential one-way capability matching. -/
 def OneWay (producer consumer : Cap) : Prop :=
@@ -209,7 +242,15 @@ def OneWay (producer consumer : Cap) : Prop :=
 theorem oneWay_refl (cap : Cap) : OneWay cap cap := by
   refine ⟨CapSubst.id, CapSubst.id_supportWithin cap.fcv, ?_, ?_⟩
   · exact Cap.apply_id cap
-  · exact Cap.apply_id cap
+  · induction cap using Cap.rec
+      (motive_2 := fun caps => DemandMatchesList CapSubst.id caps caps) with
+    | any => trivial
+    | var varId => rfl
+    | skolem name => rfl
+    | con name children childrenIH => exact ⟨rfl, childrenIH⟩
+    | prod components componentsIH => exact componentsIH
+    | nil => trivial
+    | cons cap caps capIH capsIH => exact ⟨capIH, capsIH⟩
 
 mutual
 
@@ -221,7 +262,7 @@ theorem Cap.apply_eq_on_fcv (S₁ S₂ : CapSubst) (cap : Cap)
     (h : cap.apply S₁ = cap.apply S₂) :
     ∀ a ∈ cap.fcv, S₁ a = S₂ a := by
   cases cap with
-  | none =>
+  | any =>
       intro a ha
       simp [Cap.fcv] at ha
   | var b =>
@@ -265,6 +306,56 @@ theorem Cap.applyList_eq_on_fcv (S₁ S₂ : CapSubst) (caps : List Cap)
 
 end
 
+/-- Two demand witnesses agree on every variable in the original consumer. -/
+theorem demandMatches_unique_on_consumer
+    (S₁ S₂ : CapSubst) : ∀ (producer consumer : Cap),
+      DemandMatches S₁ producer consumer →
+      DemandMatches S₂ producer consumer →
+      ∀ a ∈ consumer.fcv, S₁ a = S₂ a := by
+  intro currentProducer currentConsumer
+  exact Cap.rec
+    (motive_1 := fun consumer => ∀ producer,
+      DemandMatches S₁ producer consumer →
+      DemandMatches S₂ producer consumer →
+      ∀ a ∈ consumer.fcv, S₁ a = S₂ a)
+    (motive_2 := fun consumers => ∀ producers,
+      DemandMatchesList S₁ producers consumers →
+      DemandMatchesList S₂ producers consumers →
+      ∀ a ∈ Cap.fcvList consumers, S₁ a = S₂ a)
+    (by
+      intro _ _ _ a membership
+      simp [Cap.fcv] at membership)
+    (fun varId => by
+      intro producer first second a membership
+      cases producer <;> simp_all [DemandMatches, Cap.fcv])
+    (fun _ => by
+      intro _ _ _ a membership
+      simp [Cap.fcv] at membership)
+    (fun _ _ consumersIH => by
+      intro producer first second a membership
+      cases producer <;> try contradiction
+      exact consumersIH _ first.2 second.2 a
+        (by simpa [Cap.fcv] using membership))
+    (fun _ consumersIH => by
+      intro producer first second a membership
+      cases producer <;> try contradiction
+      exact consumersIH _ first second a
+        (by simpa [Cap.fcv] using membership))
+    (by
+      intro _ _ _ a membership
+      simp [Cap.fcvList] at membership)
+    (fun _ _ consumerIH consumersIH => by
+      intro producers first second a membership
+      cases producers with
+      | nil => contradiction
+      | cons producer producers =>
+          simp only [DemandMatchesList] at first second
+          simp only [Cap.fcvList, List.mem_append] at membership
+          rcases membership with head | tail
+          · exact consumerIH producer first.1 second.1 a head
+          · exact consumersIH producers first.2 second.2 a tail)
+    currentConsumer currentProducer
+
 /--
 One-way witnesses are pointwise unique on every free consumer variable.
 
@@ -275,31 +366,19 @@ theorem oneWayAt_unique {S₁ S₂ : CapSubst} {producer consumer : Cap}
     (h₁ : OneWayAt S₁ producer consumer)
     (h₂ : OneWayAt S₂ producer consumer) :
     ∀ a ∈ consumer.fcv, S₁ a = S₂ a :=
-  Cap.apply_eq_on_fcv S₁ S₂ consumer
-    (h₁.2.2.trans h₂.2.2.symm)
+  demandMatches_unique_on_consumer S₁ S₂ producer consumer
+    h₁.2.2 h₂.2.2
 
-/-- A rigid `none` consumer accepts only a `none` producer. -/
-theorem oneWay_consumer_none_iff (producer : Cap) :
-    OneWay producer .none ↔ producer = .none := by
-  constructor
-  · rintro ⟨S, _, _, h⟩
-    simpa [Cap.apply] using h.symm
-  · intro h
-    subst producer
-    exact oneWay_refl .none
+/-- The minimal consumer demand accepts every stable producer. -/
+theorem oneWay_consumer_any (producer : Cap) : OneWay producer .any := by
+  refine ⟨CapSubst.id, CapSubst.id_supportWithin [], Cap.apply_id producer, ?_⟩
+  cases producer <;> trivial
 
-/-- A known constructor producer cannot match a rigid `none` consumer. -/
-theorem not_oneWay_con_none (name : String) (caps : List Cap) :
-    ¬ OneWay (.con name caps) .none := by
-  rw [oneWay_consumer_none_iff]
-  intro h
-  cases h
-
-/-- A `none` producer cannot satisfy a known constructor consumer. -/
-theorem not_oneWay_none_con (name : String) (caps : List Cap) :
-    ¬ OneWay .none (.con name caps) := by
-  rintro ⟨S, _, _, h⟩
-  simp [Cap.apply] at h
+/-- `Any` is not a wildcard in producer position. -/
+theorem not_oneWay_any_con (name : String) (caps : List Cap) :
+    ¬ OneWay .any (.con name caps) := by
+  rintro ⟨S, _, _, matching⟩
+  exact matching
 
 /-- Matching two known constructor capabilities preserves their head name. -/
 theorem oneWay_con_head_eq {producerCaps consumerCaps : List Cap}
@@ -307,9 +386,8 @@ theorem oneWay_con_head_eq {producerCaps consumerCaps : List Cap}
     (h : OneWay (.con producerName producerCaps)
       (.con consumerName consumerCaps)) :
     producerName = consumerName := by
-  rcases h with ⟨S, _, _, happly⟩
-  simp only [Cap.apply, Cap.con.injEq] at happly
-  exact happly.1.symm
+  rcases h with ⟨S, _, _, matching⟩
+  exact matching.1
 
 /-! ## Two-sorted scheme instantiation -/
 
@@ -378,38 +456,38 @@ theorem targetSubst_preserves_matcher_cap (T : TySubst)
 
 /-- The principal scheme for `something`. -/
 def somethingScheme : Scheme :=
-  ⟨[], [0], .matcher .none (.var 0)⟩
+  ⟨[], [0], .matcher .any (.var 0)⟩
 
 /--
-Every instance of `∀a. Matcher none a` retains `none`, independently of its
+Every instance of `∀a. Matcher Any a` retains `Any`, independently of its
 ordinary target instance.
 -/
-theorem somethingScheme_instance_retains_none {τ : Ty}
+theorem somethingScheme_instance_retains_any {τ : Ty}
     (h : somethingScheme.Inst τ) :
-    ∃ target, τ = .matcher .none target := by
+    ∃ target, τ = .matcher .any target := by
   rcases h with ⟨C, T, _, _, _, hbody⟩
   refine ⟨T 0, ?_⟩
   have hshape :
-      Ty.matcher .none (T 0) = τ := by
+      Ty.matcher .any (T 0) = τ := by
     simpa [somethingScheme, Subst.apply, Ty.applyTarget,
       Ty.applyCapability, Cap.apply] using hbody
   exact hshape.symm
 
-/-- The shared-target-variable scheme `∀a. a -> Matcher none a`. -/
+/-- The shared-target-variable scheme `∀a. a -> Matcher Any a`. -/
 def sharedSomethingFunctionScheme : Scheme :=
-  ⟨[], [0], .fn (.var 0) (.matcher .none (.var 0))⟩
+  ⟨[], [0], .fn (.var 0) (.matcher .any (.var 0))⟩
 
 /--
-Every instance of `∀a. a -> Matcher none a` keeps both occurrences of the
-ordinary target equal while retaining the `none` capability.
+Every instance of `∀a. a -> Matcher Any a` keeps both occurrences of the
+ordinary target equal while retaining the `Any` capability.
 -/
-theorem sharedSomethingFunctionScheme_instance_retains_none {τ : Ty}
+theorem sharedSomethingFunctionScheme_instance_retains_any {τ : Ty}
     (h : sharedSomethingFunctionScheme.Inst τ) :
-    ∃ target, τ = .fn target (.matcher .none target) := by
+    ∃ target, τ = .fn target (.matcher .any target) := by
   rcases h with ⟨C, T, _, _, _, hbody⟩
   refine ⟨T 0, ?_⟩
   have hshape :
-      Ty.fn (T 0) (.matcher .none (T 0)) = τ := by
+      Ty.fn (T 0) (.matcher .any (T 0)) = τ := by
     simpa [sharedSomethingFunctionScheme, Subst.apply, Ty.applyTarget,
       Ty.applyCapability, Cap.apply] using hbody
   exact hshape.symm

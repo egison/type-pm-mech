@@ -29,7 +29,7 @@ mutual
 
 /-- Apply a capability substitution to a capability. -/
 def Cap.apply (S : CapSubst) : Cap → Cap
-  | .none        => .none
+  | .any         => .any
   | .var a       => S a
   | .skolem a    => .skolem a
   | .con n caps  => .con n (Cap.applyList S caps)
@@ -105,8 +105,8 @@ def Ty.eraseCap : Ty → Ty
   | .data n tys   => .data n (Ty.eraseCapList tys)
   | .prod tys     => .prod (Ty.eraseCapList tys)
   | .fn dom cod   => .fn dom.eraseCap cod.eraseCap
-  | .matcher _ τ  => .matcher .none τ.eraseCap
-  | .slot _ τ     => .slot .none τ.eraseCap
+  | .matcher _ τ  => .matcher .any τ.eraseCap
+  | .slot _ τ     => .slot .any τ.eraseCap
 
 /-- Erase capability information from a list of types. -/
 def Ty.eraseCapList : List Ty → List Ty
@@ -163,7 +163,7 @@ mutual
 
 /-- Applying the identity capability substitution changes no capability. -/
 theorem Cap.apply_id : ∀ (cap : Cap), cap.apply CapSubst.id = cap
-  | .none       => rfl
+  | .any        => rfl
   | .var _      => rfl
   | .skolem _   => rfl
   | .con n caps => by
@@ -189,7 +189,7 @@ mutual
 theorem Cap.apply_comp (S₂ S₁ : CapSubst) :
     ∀ (cap : Cap),
       cap.apply (CapSubst.comp S₂ S₁) = (cap.apply S₁).apply S₂
-  | .none       => rfl
+  | .any        => rfl
   | .var _      => rfl
   | .skolem _   => rfl
   | .con n caps => by
@@ -500,7 +500,7 @@ commutation equation.
 -/
 
 private def commuteCounterCapSubst : CapSubst :=
-  fun a => if a = 0 then .none else .var a
+  fun a => if a = 0 then .any else .var a
 
 private def commuteCounterTySubst : TySubst :=
   fun a =>
