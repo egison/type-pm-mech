@@ -1207,6 +1207,18 @@ $\ListTy{\mathsf{Int}}$ に固定する．従って六つの conclusion は個�
 
 公開 composition の境界には $\mathsf{FrozenSigWF}$ と適切な runtime agreement が残るが，
 局所的な実行証拠として caller が与えるのは $\mathsf{StepReady}$ だけである．
+さらに $\mathsf{FrozenSigWF}$ は裸の仮定ではなく，有限の実行可能検査
+$\mathsf{frozenSigWFCheck}$ の成功から定理
+$\mathsf{frozenSigWFCheck\_sound}$ が構成する．検査は fail closed であり，canonical な
+$\mathtt{nil}$／$\mathtt{cons}$ 宣言，data constructor の構文的 data root と binder
+被覆（instantiation の一意性は substitution-agreement の逆補題から従う），単一パラメータ
+collection family に限定した pattern constructor（capability projection の明示的
+inversion が uniqueness と coverage-index coherence を与える），canonical scheme に一致する
+primitive（delta preservation は operation ごとに一度証明する），非重複な
+pattern-function 名前空間を検査する．関数値 field
+$\mathsf{armExhaustive} = \mathsf{basicArmExhaustive}$ だけは signature 構成時の
+定義等式として受け取る．空でない pattern-constructor 表を持つ
+list／multiset signature の $\mathsf{FrozenSigWF}$ もこの checker の一回の実行で立つ．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

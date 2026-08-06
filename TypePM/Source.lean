@@ -241,7 +241,7 @@ structure CtorScheme where
   tyBinders : List TypePM.TyVar
   args : List Ty
   result : Ty
-deriving Repr
+deriving Repr, DecidableEq
 
 /-- Two-sorted instantiation of one constructor/primitive scheme. -/
 def CtorScheme.Inst

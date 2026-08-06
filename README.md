@@ -190,6 +190,21 @@ mirror を，その導出の構造に沿って構成する．従って mirror fa
 5. 成功した terminal match substitution の型付け
 6. 上の終端性質としての matcher consistency
 
+[`TypePM/SignatureChecker.lean`](TypePM/SignatureChecker.lean) は，動的定理の唯一の
+global 条件である `FrozenSigWF` を，有限の実行可能検査 `frozenSigWFCheck` の成功から
+構成する（`frozenSigWFCheck_sound`）．検査は保守的で fail closed である．canonical な
+`nil`／`cons` 宣言が `ListSigWF` を witness し，data constructor は構文的 data root と
+binder 被覆を検査して（instantiation の一意性は substitution-agreement の逆補題から
+従う），pattern constructor は単一パラメータ collection family（`nil`／`cons`／`join` 型）
+に限定して capability projection の明示的 inversion から uniqueness と index coherence を
+導出し，primitive は canonical scheme との一致を検査して delta preservation を
+operation ごと（`append`，`splits`）に一度証明する．関数値 field
+`armExhaustive = basicArmExhaustive` だけは signature 構成時の定義等式として受け取る．
+`DynamicSafetyRegression`／`PatternFunctionSafetyRegression` の `signature_wf` は
+この checker の一回の実行（`by decide`）で立ち，`RecursiveExamples` の
+`listSignature`／`multisetSignature` には非空 pattern-constructor 表に対する初の
+非空虚な `FrozenSigWF`（`listSignature_wf`／`multisetSignature_wf`）が立つ．
+
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
 context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，
 user-pattern typing，成功した `PPM` から `captureAdm_of_coreOrder` が導く．したがって

@@ -1,4 +1,5 @@
 import TypePM.CertifiedInference
+import TypePM.SignatureChecker
 
 /-!
 # End-to-end recursive matcher regressions
@@ -98,6 +99,20 @@ def multisetSignature : FrozenSig where
   constructorsByFormer :=
     [("List", [("nil", 0), ("cons", 2), ("join", 2)])]
   armExhaustive := basicArmExhaustive
+
+/--
+The generic list signature—with its non-empty pattern-constructor table and
+coverage index—satisfies every dynamic frozen-signature obligation.  Unlike
+the earlier empty-table regressions, the pattern-constructor uniqueness and
+index-coherence fields of `FrozenSigWF` are discharged non-vacuously here,
+by one run of the executable signature checker.
+-/
+theorem listSignature_wf : FrozenSigWF listSignature :=
+  frozenSigWFCheck_sound (by decide) rfl
+
+/-- The multiset signature, including `join`, passes the same checker. -/
+theorem multisetSignature_wf : FrozenSigWF multisetSignature :=
+  frozenSigWFCheck_sound (by decide) rfl
 
 /-! ## Complete recursive List and paper multiset terms -/
 

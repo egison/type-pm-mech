@@ -59,53 +59,10 @@ theorem unit_definition_typed (context : Context) :
   · rfl
   · rfl
 
-private theorem find_data_ctor_eq (name : String) :
-    signature.findDataCtor name =
-      DynamicSafetyRegression.signature.findDataCtor name := by
-  rfl
-
-/-- Adding a pattern-function table leaves the concrete data/primitive
-obligations unchanged and gives a singleton, unshadowed function namespace. -/
-theorem signature_wf : FrozenSigWF signature where
-  listSigWF := by
-    rcases DynamicSafetyRegression.signature_wf.listSigWF with
-      ⟨⟨nilScheme, nilFound, nilInstances⟩,
-        ⟨consScheme, consFound, consInstances⟩⟩
-    exact
-      ⟨⟨nilScheme, by simpa only [find_data_ctor_eq] using nilFound,
-          nilInstances⟩,
-        ⟨consScheme, by simpa only [find_data_ctor_eq] using consFound,
-          consInstances⟩⟩
-  patternFunNamesNodup := by
-    simp [signature]
-  dataResult := by
-    intro name scheme targets result found instantiated
-    apply DynamicSafetyRegression.signature_wf.dataResult
-      (name := name) (scheme := scheme) (targets := targets)
-      (result := result)
-      (by simpa only [find_data_ctor_eq] using found) instantiated
-  dataInstArgsUnique := by
-    intro name scheme leftTargets rightTargets result found left right
-    apply DynamicSafetyRegression.signature_wf.dataInstArgsUnique
-      (name := name) (scheme := scheme) (result := result)
-      (by simpa only [find_data_ctor_eq] using found) left right
-  patternInstArgsUnique := by
-    intro name entry leftTargets rightTargets result found
-    simp [signature, DynamicSafetyRegression.signature,
-      FrozenSig.findPatternCtor] at found
-  patternCapArgsUnique := by
-    intro name entry leftCaps rightCaps result found
-    simp [signature, DynamicSafetyRegression.signature,
-      FrozenSig.findPatternCtor] at found
-  patternCtorIndexed := by
-    intro name entry childCaps capability found
-    simp [signature, DynamicSafetyRegression.signature,
-      FrozenSig.findPatternCtor] at found
-  primEvalTyped := by
-    intro operation scheme values targets result value found
-    simp [signature, DynamicSafetyRegression.signature,
-      FrozenSig.findPrimitive] at found
-  armExhaustiveBasic := rfl
+/-- Adding a pattern-function table leaves the concrete data obligations
+unchanged; the executable signature checker re-establishes all of them. -/
+theorem signature_wf : FrozenSigWF signature :=
+  frozenSigWFCheck_sound (by decide) rfl
 
 def runtimeSignature : RuntimeSigF :=
   [("unit", unitDefinition.runtime)]

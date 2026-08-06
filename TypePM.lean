@@ -23,6 +23,7 @@ import TypePM.SourceGeneralization
 import TypePM.GeneralizationRegression
 import TypePM.Dynamic
 import TypePM.Preservation
+import TypePM.SignatureChecker
 import TypePM.DynamicMetatheory
 import TypePM.Reachability
 import TypePM.Safety

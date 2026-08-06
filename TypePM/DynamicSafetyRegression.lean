@@ -1,5 +1,6 @@
 import TypePM.RuntimeAgreementBridge
 import TypePM.CertifiedInference
+import TypePM.SignatureChecker
 
 /-!
 # End-to-end dynamic-safety regression
@@ -37,28 +38,6 @@ def signature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
-private theorem nil_inst (target : Ty) :
-    nilScheme.Inst [] (Ty.listT target) := by
-  refine ⟨CapSubst.id, Unification.TySubst.single 0 target,
-    CapSubst.id_supportWithin [],
-    Unification.TySubst.single_supportWithin 0 target, ?_, ?_⟩
-  · rfl
-  · simp [nilScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList,
-      Unification.TySubst.single]
-
-private theorem cons_inst (target : Ty) :
-    consScheme.Inst [target, Ty.listT target] (Ty.listT target) := by
-  refine ⟨CapSubst.id, Unification.TySubst.single 0 target,
-    CapSubst.id_supportWithin [],
-    Unification.TySubst.single_supportWithin 0 target, ?_, ?_⟩
-  · simp [consScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList,
-      Unification.TySubst.single]
-  · simp [consScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList,
-      Unification.TySubst.single]
-
 @[simp] theorem find_nil :
     signature.findDataCtor "nil" = some nilScheme := by
   rfl
@@ -67,101 +46,10 @@ private theorem cons_inst (target : Ty) :
     signature.findDataCtor "cons" = some consScheme := by
   rfl
 
-private theorem find_data_cases
-    {name : String} {scheme : CtorScheme}
-    (found : signature.findDataCtor name = some scheme) :
-    (name = "nil" ∧ scheme = nilScheme) ∨
-      (name = "cons" ∧ scheme = consScheme) := by
-  by_cases nilName : name = "nil"
-  · subst name
-    have equality : nilScheme = scheme := by
-      simpa using found
-    exact .inl ⟨rfl, equality.symm⟩
-  by_cases consName : name = "cons"
-  · subst name
-    have equality : consScheme = scheme := by
-      simpa using found
-    exact .inr ⟨rfl, equality.symm⟩
-  · have notNil : "nil" ≠ name := fun equality => nilName equality.symm
-    have notCons : "cons" ≠ name := fun equality => consName equality.symm
-    simp [signature, FrozenSig.findDataCtor, notNil, notCons] at found
-
-private theorem nil_inst_result
-    {targets : List Ty} {result : Ty}
-    (instanceTyping : nilScheme.Inst targets result) :
-    ∃ target, targets = [] ∧ result = Ty.listT target := by
-  rcases instanceTyping with
-    ⟨capSubst, targetSubst, capSupport, targetSupport, argsEquality,
-      resultEquality⟩
-  refine ⟨targetSubst 0, ?_, ?_⟩
-  · simpa [nilScheme] using argsEquality.symm
-  · simpa [nilScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] using
-      resultEquality.symm
-
-private theorem cons_inst_result
-    {targets : List Ty} {result : Ty}
-    (instanceTyping : consScheme.Inst targets result) :
-    ∃ target,
-      targets = [target, Ty.listT target] ∧ result = Ty.listT target := by
-  rcases instanceTyping with
-    ⟨capSubst, targetSubst, capSupport, targetSupport, argsEquality,
-      resultEquality⟩
-  refine ⟨targetSubst 0, ?_, ?_⟩
-  · simpa [consScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] using
-      argsEquality.symm
-  · simpa [consScheme, Ty.listT, Subst.apply, Ty.applyCapability,
-      Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] using
-      resultEquality.symm
-
-/-- All dynamic frozen-signature obligations are inhabited by this concrete
-`nil`/`cons` table. -/
-theorem signature_wf : FrozenSigWF signature where
-  listSigWF :=
-    { nilDeclared := ⟨nilScheme, find_nil, nil_inst⟩
-      consDeclared := ⟨consScheme, find_cons, cons_inst⟩ }
-  patternFunNamesNodup := by simp [signature]
-  dataResult := by
-    intro name scheme targets result found instanceTyping
-    rcases find_data_cases found with
-      ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · obtain ⟨target, targetsEquality, resultEquality⟩ :=
-        nil_inst_result instanceTyping
-      exact ⟨"List", [target], resultEquality⟩
-    · obtain ⟨target, targetsEquality, resultEquality⟩ :=
-        cons_inst_result instanceTyping
-      exact ⟨"List", [target], resultEquality⟩
-  dataInstArgsUnique := by
-    intro name scheme leftTargets rightTargets result found left right
-    rcases find_data_cases found with
-      ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-    · obtain ⟨leftTarget, leftTargetsEquality, leftResult⟩ :=
-        nil_inst_result left
-      obtain ⟨rightTarget, rightTargetsEquality, rightResult⟩ :=
-        nil_inst_result right
-      exact leftTargetsEquality.trans rightTargetsEquality.symm
-    · obtain ⟨leftTarget, leftTargetsEquality, leftResult⟩ :=
-        cons_inst_result left
-      obtain ⟨rightTarget, rightTargetsEquality, rightResult⟩ :=
-        cons_inst_result right
-      have targetEquality : leftTarget = rightTarget := by
-        simpa [Ty.listT] using leftResult.symm.trans rightResult
-      subst rightTarget
-      exact leftTargetsEquality.trans rightTargetsEquality.symm
-  patternInstArgsUnique := by
-    intro name entry leftTargets rightTargets result found
-    simp [signature, FrozenSig.findPatternCtor] at found
-  patternCapArgsUnique := by
-    intro name entry leftCaps rightCaps result found
-    simp [signature, FrozenSig.findPatternCtor] at found
-  patternCtorIndexed := by
-    intro name entry childCaps capability found
-    simp [signature, FrozenSig.findPatternCtor] at found
-  primEvalTyped := by
-    intro operation scheme values targets result value found
-    simp [signature, FrozenSig.findPrimitive] at found
-  armExhaustiveBasic := rfl
+/-- All dynamic frozen-signature obligations are discharged by one run of
+the executable signature checker. -/
+theorem signature_wf : FrozenSigWF signature :=
+  frozenSigWFCheck_sound (by decide) rfl
 
 /-! ## One concrete matcher run -/
 
