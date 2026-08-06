@@ -1,6 +1,7 @@
 import TypePM.InferenceBase
 import TypePM.Recursion
 import TypePM.SourceSubstitution
+import TypePM.CapabilityOrigin
 
 /-!
 # Executable inference trace foundation
@@ -496,12 +497,16 @@ structure InferState where
   /-- Inference-owned capability variables exported by value-producing
   instantiations or finalized matcher producers. -/
   protectedCaps : List CapVar
+  /-- Shadow metadata for the future origin-sensitive solver.  The current
+  producer guard remains `protectedCaps`; this ledger does not yet affect
+  constraint acceptance or terminal trace validation. -/
+  capabilityOrigins : CapabilityOriginLedger
 
 /-- Empty state at caller-supplied fresh lower bounds. -/
 def InferState.empty
     (supply : InferenceBase.FreshSupply :=
       InferenceBase.FreshSupply.empty) : InferState :=
-  ⟨supply, ⟨[], []⟩, [], []⟩
+  ⟨supply, ⟨[], []⟩, [], [], []⟩
 
 /--
 The inference-owned variables that remain visible in a finalized matcher
@@ -528,7 +533,9 @@ def InferState.protectMatcherCapability
     (state : InferState) (capability : Cap) : InferState :=
   { state with
     protectedCaps :=
-      state.protectedCaps ++ matcherProducerVars state capability }
+      state.protectedCaps ++ matcherProducerVars state capability
+    capabilityOrigins := state.capabilityOrigins.setOrigins
+      (matcherProducerVars state capability) .renameOnly }
 
 @[simp] theorem InferState.protectMatcherCapability_trace
     (state : InferState) (capability : Cap) :
@@ -548,6 +555,15 @@ def InferState.protectMatcherCapability
       state.protectedCaps ++
         matcherProducerVars state capability :=
   rfl
+
+theorem InferState.protectMatcherCapability_origin_of_mem
+    (state : InferState) (capability : Cap) (varId : CapVar)
+    (membership : varId ∈ matcherProducerVars state capability) :
+    (state.protectMatcherCapability capability).capabilityOrigins.originOf
+        varId = .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    state.capabilityOrigins (matcherProducerVars state capability) varId
+      .renameOnly membership
 
 @[simp] theorem InferState.mem_protectMatcherCapability_protectedCaps
     (state : InferState) (capability : Cap) (varId : CapVar) :
@@ -824,7 +840,12 @@ def InferState.freshCap
     (state : InferState) (origin : ConstraintOrigin) : Cap × InferState :=
   let (capability, supply) := InferenceBase.freshCapMeta state.supply
   let event := TraceEvent.freshCap origin ⟨state.supply.nextCap⟩
-  (capability, ({ state with supply := supply }).recordEvent event)
+  let state :=
+    { state with
+      supply := supply
+      capabilityOrigins := state.capabilityOrigins.setOrigin
+        ⟨state.supply.nextCap⟩ .structuralFlexible }
+  (capability, state.recordEvent event)
 
 @[simp] theorem InferState.freshTy_advances
     (state : InferState) (origin : ConstraintOrigin) :
@@ -835,6 +856,12 @@ def InferState.freshCap
     (state : InferState) (origin : ConstraintOrigin) :
     (state.freshCap origin).2.supply.nextCap = state.supply.nextCap + 1 :=
   rfl
+
+@[simp] theorem InferState.freshCap_capabilityOrigin
+    (state : InferState) (origin : ConstraintOrigin) :
+    ((state.freshCap origin).2.capabilityOrigins.originOf
+      ⟨state.supply.nextCap⟩) = .structuralFlexible := by
+  simp [InferState.freshCap, InferState.recordEvent]
 
 /-! ## Executable mandatory coverage -/
 
@@ -1834,26 +1861,88 @@ theorem productMatcherDuals?_sound
               simp only [List.map_cons, List.cons.injEq, true_and]
               exact induction tailView
 
+/-- Read one slot component as the dual carried by that slot. -/
+def slotDual? : Ty -> Option Dual
+  | .slot capability target => some ⟨capability, target⟩
+  | _ => none
+
+/-- Recognize a raw product whose every component is already a slot. -/
+def productSlotDuals? : Ty -> Option (List Dual)
+  | .prod targets => targets.mapM slotDual?
+  | _ => none
+
+/-- A successful product-slot view recovers the exact raw product type. -/
+theorem productSlotDuals?_sound
+    {target : Ty} {duals : List Dual}
+    (success : productSlotDuals? target = some duals) :
+    target = .prod (duals.map fun dual =>
+      .slot dual.cap dual.target) := by
+  cases target <;> try simp [productSlotDuals?] at success
+  case prod targets =>
+    congr 1
+    induction targets generalizing duals with
+    | nil => simpa [productSlotDuals?] using success
+    | cons head tail induction =>
+        simp only [List.mapM_cons] at success
+        cases head <;> try simp [slotDual?] at success
+        case slot capability componentTarget =>
+          cases tailView : List.mapM slotDual? tail with
+          | none => simp [tailView] at success
+          | some tailDuals =>
+              simp [tailView] at success
+              subst duals
+              simp only [List.map_cons, List.cons.injEq, true_and]
+              exact induction tailView
+
 /-- Build the unary product-matcher coercion target for raw component duals. -/
 def productMatcherTarget (duals : List Dual) : Ty :=
   .matcher (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
+
+/-- Build the unary slot-tuple coercion target for raw component duals. -/
+def slotTupleTarget (duals : List Dual) : Ty :=
+  .slot (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
 
 /--
 Choose the raw type presented to expected-type alignment.  Ordinary product
 uses retain their synthesized product type.  At a matcher or slot use site, a
 raw product of matchers is first lifted by the explicit unary
 `coerceProductMatcher` rule; `alignAtSlot` can then perform either equality or
-the existing producer-stable matcher-to-slot conversion.
+the existing producer-stable matcher-to-slot conversion.  At a slot use site,
+a raw product of slots is lifted by `coerceSlotTuple`.  Matcher-product lifting
+has precedence for the empty product, whose two component recognizers both
+succeed vacuously.
 
 Keeping this choice in a non-recursive helper leaves the Algorithm W traversal
 and its fuel argument unchanged.
 -/
 def expectedCoercionSource
     (state : InferState) (inferred expected : Ty) : Ty :=
-  match productMatcherDuals? inferred, state.prevailing.apply expected with
-  | some duals, .matcher _ _ => productMatcherTarget duals
-  | some duals, .slot _ _ => productMatcherTarget duals
-  | _, _ => inferred
+  match productMatcherDuals? inferred, productSlotDuals? inferred,
+      state.prevailing.apply expected with
+  | some duals, _, .matcher _ _ => productMatcherTarget duals
+  | some duals, _, .slot _ _ => productMatcherTarget duals
+  | _, some duals, .slot _ _ => slotTupleTarget duals
+  | _, _, _ => inferred
+
+/--
+Align an already-synthesized expression result with an expected type and
+record the complete slot-alignment event.  Keeping this non-recursive boundary
+shared lets ordinary checking and domain-directed application use exactly the
+same coercion selection without changing the mutual recursion graph.
+-/
+def alignExprResultAtExpected
+    (path : SyntaxPath) (result : ExprResult) (expected : Ty) :
+    Option InferState :=
+  let source := expectedCoercionSource result.state result.target expected
+  let inferred := result.state.prevailing.apply source
+  let requested := result.state.prevailing.apply expected
+  match alignAtSlot result.state
+      (freshOrigin .expression path "expected-type") source expected with
+  | none => none
+  | some aligned =>
+      some (aligned.recordEvent (.slotAlignment
+        result.state.trace.solves.length aligned.trace.solves.length
+        inferred requested))
 
 /-- Fresh capability images allocated for a binder batch. -/
 def freshCapImages
@@ -2027,7 +2116,9 @@ def instantiateSchemeInState
   let state :=
     { state with
       supply := instantiation.supply
-      protectedCaps := state.protectedCaps ++ protectedIds }
+      protectedCaps := state.protectedCaps ++ protectedIds
+      capabilityOrigins := state.capabilityOrigins.setOrigins protectedIds
+        .renameOnly }
   (instantiation.value,
     state.recordEvent (.schemeInstantiation state.trace.solves.length
       incomingSupply scheme name rawContext normalizedContext fixedCaps fixedTys
@@ -2043,7 +2134,9 @@ def instantiateCtorInState
   let state :=
     { state with
       supply := instantiation.supply
-      protectedCaps := state.protectedCaps ++ protectedIds }
+      protectedCaps := state.protectedCaps ++ protectedIds
+      capabilityOrigins := state.capabilityOrigins.setOrigins protectedIds
+        .structuralFlexible }
   (instantiation.value,
     state.recordEvent (.ctorInstantiation state.trace.solves.length incomingSupply
       scheme instantiation.value.1 instantiation.value.2 protectedIds))
@@ -2071,7 +2164,9 @@ def instantiateDualInState
   let state :=
     { state with
       supply := instantiation.supply
-      protectedCaps := state.protectedCaps ++ protectedIds }
+      protectedCaps := state.protectedCaps ++ protectedIds
+      capabilityOrigins := state.capabilityOrigins.setOrigins protectedIds
+        .renameOnly }
   (instantiation.value,
     state.recordEvent (.dualInstantiation state.trace.solves.length incomingSupply
       scheme rawContext rawParameters rawBindings context parameters bindings
@@ -2502,19 +2597,24 @@ def inferExprFuel :
               (0 :: path) function state with
           | none => none
           | some functionResult =>
-              match inferExprFuel fuel signature context selfEnv
-                  (1 :: path) argument functionResult.state with
+              let (domain, state) := functionResult.state.freshTy
+                (freshOrigin .expression path "application-domain")
+              let (resultTarget, state) := state.freshTy
+                (freshOrigin .expression path "application-result")
+              match alignTypes state
+                  (freshOrigin .expression path "application-function")
+                  functionResult.target (.fn domain resultTarget) with
               | none => none
-              | some argumentResult =>
-                  let (resultTarget, state) := argumentResult.state.freshTy
-                    (freshOrigin .expression path "application-result")
-                  match alignTypes state
-                      (freshOrigin .expression path "application")
-                      functionResult.target
-                      (.fn argumentResult.target resultTarget) with
+              | some state =>
+                  match inferExprFuel fuel signature context selfEnv
+                      (1 :: path) argument state with
                   | none => none
-                  | some state =>
-                      some (finishExpr expression path resultTarget state)
+                  | some argumentResult =>
+                      match alignExprResultAtExpected (1 :: path)
+                          argumentResult domain with
+                      | none => none
+                      | some state =>
+                          some (finishExpr expression path resultTarget state)
       | .lit _ => some (finishExpr expression path .int state)
       | .tuple expressions =>
           match inferExprsFuel fuel signature context selfEnv path 0
@@ -2630,18 +2730,7 @@ def checkExprFuel :
   | fuel + 1, signature, context, selfEnv, path, expression, expected, state =>
       match inferExprFuel fuel signature context selfEnv path expression state with
       | none => none
-      | some result =>
-          let source := expectedCoercionSource result.state result.target expected
-          let inferred := result.state.prevailing.apply source
-          let requested := result.state.prevailing.apply expected
-          match alignAtSlot result.state
-              (freshOrigin .expression path "expected-type")
-              source expected with
-          | none => none
-          | some aligned =>
-              some (aligned.recordEvent (.slotAlignment
-                result.state.trace.solves.length aligned.trace.solves.length
-                inferred requested))
+      | some result => alignExprResultAtExpected path result expected
 
 /-- Check equal-length expression/type lists. -/
 def checkExprsFuel :
@@ -3265,7 +3354,10 @@ theorem InferState.historyPrefix_freshCap
     (state : InferState) (origin : ConstraintOrigin) :
     state.HistoryPrefix (state.freshCap origin).2 := by
   let middle : InferState :=
-    { state with supply := (InferenceBase.freshCapMeta state.supply).2 }
+    { state with
+      supply := (InferenceBase.freshCapMeta state.supply).2
+      capabilityOrigins := state.capabilityOrigins.setOrigin
+        ⟨state.supply.nextCap⟩ .structuralFlexible }
   have first : state.HistoryPrefix middle :=
     InferState.HistoryPrefix.of_same_trace rfl
   have second : middle.HistoryPrefix
@@ -3614,6 +3706,25 @@ theorem alignAtSlot_historyPrefix
       runResolvedConstraint_historyPrefix restSuccess
     exact first.trans second
   · exact alignTypes_historyPrefix success
+
+/-- Expected-type alignment extends the synthesized expression history. -/
+theorem alignExprResultAtExpected_historyPrefix
+    {path : SyntaxPath} {expressionResult : ExprResult}
+    {expected : Ty} {result : InferState}
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some result) :
+    expressionResult.state.HistoryPrefix result := by
+  unfold alignExprResultAtExpected at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type")
+      (expectedCoercionSource expressionResult.state expressionResult.target
+        expected) expected with
+  | none => simp [alignmentEq] at success
+  | some aligned =>
+      simp only [alignmentEq, Option.some.injEq] at success
+      subst result
+      exact (alignAtSlot_historyPrefix alignmentEq).trans
+        (aligned.historyPrefix_recordEvent _)
 
 theorem alignDuals_historyPrefix
     {state result : InferState} {origin : ConstraintOrigin}
@@ -4026,6 +4137,9 @@ theorem inferExprFuel_historyPrefix
   all_goals try
     have slotAlignmentHistory := alignAtSlot_historyPrefix (by assumption)
   all_goals try
+    have expectedAlignmentHistory :=
+      alignExprResultAtExpected_historyPrefix (by assumption)
+  all_goals try
     have dualAlignmentHistory := alignDuals_historyPrefix (by assumption)
   all_goals try
     have dualListHistory := alignDualLists_historyPrefix (by assumption)
@@ -4065,6 +4179,7 @@ theorem inferExprFuel_historyPrefix
         InferState.historyPrefix_recordSource,
         alignTypes_historyPrefix,
         alignAtSlot_historyPrefix,
+        alignExprResultAtExpected_historyPrefix,
         alignDuals_historyPrefix,
         alignDualLists_historyPrefix,
         alignPatternTargets_historyPrefix,

@@ -178,31 +178,80 @@ elaboration 層を追加した．[`TypePM/Elaboration.lean`](TypePM/Elaboration.
 復元することを証明している．ただし `SynthHead` の再帰 premise はまだ `HasTy` であり，
 これは **root factorization** であって再帰的な principal-core theorem ではない．
 
-[`TypePM/CoreTyping.lean`](TypePM/CoreTyping.lean) は，既存の proof-relevant な
-`Reconstruction.ExprDeriv` を `CoreTyping` として公開し，公開 `infer` の成功から
-推論が選んだ coercion constructor を含む oracle-free な core evidence が得られ，その
-erase が surface soundness を与えることを固定する．これは現段階では `Prop` 値の
-elaboration certificate であり，実行時に返す core AST ではない．
+[`TypePM/CoreTyping.lean`](TypePM/CoreTyping.lean) は，既存の derivation-structured な
+`Prop` 証明書 `Reconstruction.ExprDeriv` を `CoreTyping` として公開し，公開 `infer` の成功から
+推論が選んだ coercion constructor に沿う oracle-free な core evidence が得られ，その
+erase が surface soundness を与えることを固定する．Lean の proof irrelevance により，これは
+観測可能な elaboration data ではなく，実行時に返す core AST でもない．
+[`TypePM/CanonicalCoercion.lean`](TypePM/CanonicalCoercion.lean) はこの `Prop` 値の
+`CoercionPlan` とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を含む `NormalPlan` を
+観測可能な `Type` 値の候補 normal-plan syntax として定義する．これは一般の `trans` を持たず，
+product matcher から slot への二段経路を `productMatcher; matcherToSlot` と固定する．product of
+slots から一致する aggregate slot へは `slotTuple` 一段である．surface の slot-to-slot check は
+capability／target MGU と後置換の後で両端が等しいことを証明し，`NormalPlan.refl` へ吸収する．
+全 `Step`／`Spine` が端点を変えることと，同じ端点の `NormalPlan` は `refl` だけであることも
+証明済みである．空 product の `slotTuple` は constructor 側で禁止し，matcher-product precedence
+を syntax にも反映する．既存 surface plan／`HasTy` への replay soundness は証明済みである．
+一方，任意 plan の normalization，normalization の一意性，および異なる端点に対する plan
+inhabitant の一意性は未証明である．公開推論がこのデータを直接返すことも次段階である．
+
 product-of-matchers から product matcher への規則は
 tuple literal 専用ではなく unary な `COERCE-PRODUCT-MATCHER` とした．このため coercion は
 `let` の束縛時ではなく変数利用位置にも挿入できる．
-`checkExprFuel` は matcher／slot が要求されたとき，raw synthesized type が
-product-of-matchers なら `expectedCoercionSource` でこの lift を一意に選び，その後は既存の
-type equality または matcher-to-slot alignment を使う．terminal reconstruction の
-`expectedCoercionSource_deriv` は同じ選択から `ExprDeriv.coerceProductMatcher` を構成するため，
-solver trace に型付け oracle を追加しない．現段階の selector は raw type の頭を検査するので，
-raw metavariable が prevailing substitution 後に初めて product-of-matchers になる場合は
-completeness の今後の課題として残る．
+`expectedCoercionSource` は matcher／slot が要求されたとき，raw synthesized type が
+product-of-matchers なら product-matcher lift，slot が要求され raw type が product-of-slots
+なら slot-tuple lift という branch を決定的に選び，`alignExprResultAtExpected` がその後の
+type equality または slot alignment を行う．空 product は両 recognizer に一致するため，
+coherence policy として product-matcher branch を先に選ぶ．これは selector の決定性であって，
+surface coercion 全体の一意性をまだ意味しない．
+`checkExprFuel` と通常の関数適用はこの非再帰 helper を共有する．関数適用は function を推論し，
+fresh domain／codomain へ整合してから argument を domain に対して check するため，ordinary
+application の引数位置でも product matcher／matcher-to-slot／slot-tuple coercion を挿入できる．
+terminal reconstruction は同じ選択から `ExprDeriv.coerceProductMatcher` または
+`ExprDeriv.coerceSlotTuple` を構成し，solver trace に型付け oracle を追加しない．現段階の
+selector は raw type の頭を検査するので，raw metavariable が prevailing substitution 後に初めて
+product-of-matchers または product-of-slots になる場合（component metavariable が初めて matcher／
+slot になる場合を含む）は completeness の今後の課題として残る．
 
-今後必要なのは，この root 境界を再帰的な canonical core judgment へ強化し，W が生成する
-core typing の一意性（binder の alpha 同値を除く），MGU による置換普遍性，および任意の
-coherent surface typing がその置換と明示的 coercion から得られる completeness を証明する
-ことである．現行 `TerminalPatternResolution` の leaf は freshness 用 `rawContext` と
+[`TypePM/CapabilityOrigin.lean`](TypePM/CapabilityOrigin.lean) は capability metavariable を
+`rigid`，`renameOnly`，`structuralFlexible` に分ける有限 ledger と，ledger に対する admissible
+paired post を定義する．identity と cross-sort-aware な `Subst.seq` による合成閉性，変数単位／
+ledger 全体の freeze，freeze 後に既存 `VariablePost` 境界へ入る bridge を証明している．さらに
+`PhasedPost` は局所 structural post と frozen residual post を分離し，後者だけを既存
+`VariablePost` へ接続する．現段階の `AdmissiblePost` が制約するのは capability component だけで，
+target component は意図的に制約していない．これは
+constructor／primitive の局所 structural instantiation と既存 producer の非強化を区別する
+代数的基礎である．W の `InferState.capabilityOrigins` はこの ledger を shadow metadata として保持し，
+一般 fresh capability と constructor／primitive image を `structuralFlexible`，context scheme／
+pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．ただし
+constraint acceptance と terminal audit は従来の `protectedCaps` をそのまま使うため，受理挙動はまだ
+変えていない．origin-aware solver へ切り替えるには，solve cut ごとの ledger snapshot，MGU の
+origin-aware orientation，および raw binder ではなく局所 solve 後に外へ生存する prevailing image の
+leaf を freeze する export event が必要である．
+
+今後必要なのは，この root 境界と observable plan syntax を再帰的な canonical core judgment
+へ強化することである．その前提として，algorithmic／surface plan から `NormalPlan` への
+normalization completeness，component-first 経路を含む critical pair の解消と normalization
+uniqueness，coercion の意味的同値，置換に対する naturality，および normalized product が判明した
+solve cut を保存する cut-indexed evidence が必要になる．その上で W が生成する core typing の
+一意性（binder の alpha 同値を除く），MGU による置換普遍性，および任意の coherent surface
+typing がその置換と明示的 coercion から得られる completeness を証明する．現行
+`TerminalPatternResolution` の leaf は freshness 用 `rawContext` と
 `actualContext` を独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も
-含まれる．従って再帰的 completeness の前に，両者を
-`actualContext = rawContext.applySubst prevailing` で結ぶ coherent surface 境界を定義するか，
-source judgment 自体を同条件へ tighten する必要がある．現時点ではこれらを principality として
-主張しない．
+含まれる．[`TypePM/CoherentSurface.lean`](TypePM/CoherentSurface.lean) は第一段階として，
+各 terminal pattern leaf の actual context を definitionally
+`rawContext.applySubst prevailing` に固定する indices-only な
+`CoherentTerminalPatternResolution(s)` と `CoherentResolvedPatternTy` を追加する．coherent
+evidence から既存 surface judgment への forgetful map と，inference reconstruction の
+`PatternResolutionDeriv(s)`／`ResolvedPatternDeriv` がこの leaf-local 境界へ入る bridge も証明する．
+さらに `ThreadedPatternResolution(s)` は一つの raw `Context`／`PatternCtx` を全 child で共有し，
+raw `MonoCtx` だけを binder 導入順に threadする．この強い judgment から leaf-local 境界への
+forgetful map は証明済みである．一方，既存 `PatternResolutionDeriv` は composite node に top-level
+raw provenance を保持せず，置換も非単射なので，そこからの一般 bridge は意図的に置かない．次は W の
+pattern reconstruction motive 自体から threaded evidence を同時生成する必要がある．また `pval` 内の
+式 typing はまだ通常の `HasTy` なので，いずれも pattern-local provenance coherence に限られ，full
+recursive coherent surface judgment ではない．その後 expression，arm，clause まで相互再帰的に同じ
+境界を広げる．現時点ではこれらを principality として主張しない．
 
 ### Runtime safety
 
@@ -284,7 +333,14 @@ product 型を canonical な root synthesis として固定し，product matcher
 利用位置で適用できることを宣言的に証明する．
 [`TypePM/CertifiedInferenceRegression.lean`](TypePM/CertifiedInferenceRegression.lean) は，
 executable checker の selector が matcher 期待時に product matcher を，slot 期待時にも
-matcher-to-slot の入力となる同じ product matcher を一意に選ぶことを固定する．
+matcher-to-slot の入力となる同じ product matcher branch を決定的に選ぶことに加え，product-of-slots の
+slot-tuple 選択と，三種類の coercion を必要とする domain-directed application が公開 inference
+で成功することを `#guard` で固定する．各結果が `Int` で，terminal substitution 後の alignment
+端点が期待どおりであることも検査し，component ごとの matcher-to-slot を暗黙に挿入する負例は拒否する．
+[`TypePM/ApplicationCoercionRegression.lean`](TypePM/ApplicationCoercionRegression.lean) は，対応する
+三つの application について，product-matcher，matcher-to-slot，slot-tuple を明示的に使う
+surface `HasTy` 導出を与える．さらに空 product の競合を matcher-first の二段 `NormalPlan` へ
+固定する．
 
 正当な match failure（後続 state が空）は stuck ではない．値パターン式が原子入力の
 context で型付くことを表す局所 `CaptureAdm` は，clause の `PPatCoreOrder`，PP typing，
@@ -373,9 +429,10 @@ producer へ置き換えた control twin が成功することを対で検査す
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface` | root factorization，暫定 core evidence，observable coercion-plan syntax，origin-sensitive phased post，pattern-local coherent surface 境界 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．
 
@@ -396,5 +453,6 @@ make
 ```
 
 出力は `tex/type-pm-mech.pdf` である．`sorry`，`admit`，project-defined `axiom` は
-使用しない．主定理と一般補題は kernel が検査する．一方，具体的な実行回帰の
-`native_decide` は Lean の native compiler を信頼するため，この二層を区別する．
+使用しない．主定理，一般補題，および `#guard`／kernel reduction で評価する小さな回帰は kernel が
+検査する．一部の大きな具体的実行回帰で用いる `native_decide` だけは Lean の native compiler を
+追加で信頼するため，この二層を区別する．

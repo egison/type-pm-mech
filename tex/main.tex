@@ -1129,12 +1129,16 @@ raw traversal と validator はともに停止する executable function であ�
 には caller-supplied bridge，型付け oracle，completeness，full principal-type theorem を
 含めない．
 
-式 checking では，raw synthesized type が matcher の product で，期待型が matcher または
-matcher slot である場合に限り，まず COERCE-PRODUCT-MATCHER を利用位置で一意に選ぶ．その後は
-通常の type equality または既存の producer-stable な matcher-to-slot alignment を行う．
-terminal reconstruction は同じ raw type と期待型から unary coercion node を再構成するため，
-trace に型付け oracle を追加しない．raw metavariable が prevailing substitution 後に初めて
-matcher の product になる場合の completeness は現段階では主張しない．
+式 checking と application の引数 checking は同じ期待型整合 helper を使う．raw synthesized
+type が matcher の product で期待型が matcher または matcher slot なら
+COERCE-PRODUCT-MATCHER を，raw type が slot の product で期待型が matcher slot なら
+COERCE-SLOT-TUPLE を決定的な branch として選び，その後に通常の type equality または
+producer-stable な slot alignment を行う．空 product は両 recognizer に一致するため，
+product-matcher branch を優先する．これは executable selector の決定性であり，surface coercion
+全体の一意性ではない．terminal reconstruction は同じ raw type と期待型から unary coercion node を
+再構成するため，trace に型付け oracle を追加しない．raw metavariable が prevailing substitution
+後に初めて product head または matcher／slot component を持つ場合の completeness は，matcher
+product と slot product の双方について現段階では主張しない．
 
 この公開境界には positive／negative control twin を置く．同じ structured consumer に
 対して polymorphic value producer を用いる項は $\mathsf{infer}$ が拒否し，あらかじめ
@@ -1274,21 +1278,57 @@ $\mathsf{prod}$／$\mathsf{matcher}$／$\mathsf{slot}$ に限られ，paired sub
 これらの頭を保存する．従って両方の型付けを instance に持つ導出可能型は存在しない．この
 反例は機械化済みであり，原因は coercion の重なりそのものであって capability evidence とは
 独立である．一方，surface typing を非 coercion root と明示的な外側 coercion spine へ
-分解する定理，および公開 inference の成功から proof-relevant な core typing を構成し，
-それを erase して surface typing を得る定理を機械化している．現段階の分解は再帰 premise に
+分解する定理，および公開 inference の成功から derivation-structured な
+$\mathsf{Prop}$ 証明書として core typing を構成し，それを erase して surface typing を得る定理を
+機械化している．proof irrelevance のため，この証明書自体は観測可能な elaboration data ではない．
+現段階の分解は再帰 premise に
 surface typing を残す root factorization であり，core typing の一意性，MGU による置換普遍性，
-surface typing に対する再帰的 completeness はまだ主張しない．現行の terminal pattern leaf は
-freshness 用 raw context と任意の actual context を独立に持てるため，後者はまず
-$\mathsf{actualContext}=S\,\mathsf{rawContext}$ を満たす coherent surface derivation に限定するか，
-source judgment 自体をこの条件へ tighten して述べる必要がある．
+surface typing に対する再帰的 completeness はまだ主張しない．一方，命題値の coercion reachability
+とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を持つが一般の
+trans を持たない candidate normal-plan syntax を観測可能な型として定義する．product of matchers
+から slot への指定二段経路は
+COERCE-PRODUCT-MATCHER の後に COERCE-MATCHER-TO-SLOT，product of slots から aggregate slot
+への経路は非空 product に対する COERCE-SLOT-TUPLE 一段とする．surface の slot-to-slot check は
+capability／target MGU と後置換の後で両端が等しいことを証明し，identity へ吸収する．全 observable
+step／spine が端点を変えること，同じ端点の plan が identity だけであること，既存 surface coercion
+および typing への sound replay を証明する．任意の surface plan の normalization，normalization の
+一意性，異なる端点に対する plan inhabitant の一意性，公開推論結果へのこの plan data の格納は
+まだ主張しない．
+
+capability 後置換には rigid／rename-only／structural-flexible を区別する有限 ledger を用いる．
+admissible post は逐次合成で閉じ，freeze 後に既存の variable-only 境界へ接続できる．phased post は
+局所 structural phase と frozen residual phase を分離する．制約対象は capability component だけで，
+target component は無制約である．W state の shadow ledger は一般 fresh capability と
+constructor／primitive image を structural-flexible，scheme image と finalized producer を
+rename-only と記録するが，solver と terminal audit は従来の protected-producer 検査を維持する．
+origin-aware solver への切替には cut ごとの snapshot，MGU orientation，および raw binder でなく
+局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が必要である．
+
+terminal pattern leaf の任意の actual context をまず
+$\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface
+への忘却，reconstruction bridge を機械化する．さらに一つの raw expression／parameter context を
+全 child で共有し，raw binding context だけを左から右へ threadする強い judgment と忘却写像を与える．
+既存 reconstruction の composite node は top-level raw provenance を保持せず，置換も非単射なので，
+そこからの generic bridge は置かない．次は W の reconstruction motive からこの evidence を直接
+生成する．value-pattern 内の式 typing はなお surface typing であり，full coherence には expression，
+arm，clause まで含む相互帰納的拡張が必要である．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
-unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．
+unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
+整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として
+使う場合には COERCE-SLOT-TUPLE を選ぶ．通常の application も function を fresh domain／codomain
+へ先に整合してから argument をその domain に対して check するため，関数引数位置で
+product-matcher lift，matcher-to-slot，slot-tuple を挿入できる．ただし raw metavariable が prevailing
+substitution 後に初めて product head または matcher／slot component を持つ場合には，matcher
+product／slot product の双方で，判明した solve cut と後続 suffix を記録する cut-indexed event が
+なお必要である．空 product は両 recognizer に一致するため product-matcher branch を優先する．
+この先は，任意 plan から candidate syntax への normalization completeness，component-first 経路を
+含む critical pair の解消，normalization uniqueness，coercion の意味的同値，置換に対する naturality
+を確定してから，core typing の一意性，MGU 普遍性，coherent surface completeness へ進む必要がある．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 
-Lean の主定理と一般補題は kernel が検査し，\texttt{sorry}，\texttt{admit}，
-project-defined \texttt{axiom} を用いない．具体的な executable regression は
-\texttt{native\_decide} を用いるため，その計算結果については Lean の native compiler
-を追加で信頼する．
+Lean の主定理と一般補題は \texttt{sorry}，\texttt{admit}，project-defined \texttt{axiom} を用いず，
+kernel が検査する．\texttt{\#guard}／kernel reduction で評価する小さな回帰も同様である．一部の大きな executable regression で用いる
+\texttt{native\_decide} だけは，その計算結果について Lean の native compiler を追加で信頼する．
 
 \end{document}

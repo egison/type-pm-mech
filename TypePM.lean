@@ -15,7 +15,9 @@ import TypePM.ClauseEvidenceExamples
 import TypePM.DirectSelf
 import TypePM.Unification
 import TypePM.Source
+import TypePM.CapabilityOrigin
 import TypePM.Elaboration
+import TypePM.CanonicalCoercion
 import TypePM.DamasMilner
 import TypePM.PrincipalityCounterexample
 import TypePM.ElaborationRegression
@@ -37,10 +39,12 @@ import TypePM.Inference
 import TypePM.InferenceInput
 import TypePM.InferenceHistory
 import TypePM.Reconstruction
+import TypePM.CoherentSurface
 import TypePM.BridgeChecks
 import TypePM.CertifiedInference
 import TypePM.CoreTyping
 import TypePM.CertifiedInferenceRegression
+import TypePM.ApplicationCoercionRegression
 import TypePM.DynamicSafetyRegression
 import TypePM.DynamicCaptureRegression
 import TypePM.DynamicDispatchRegression

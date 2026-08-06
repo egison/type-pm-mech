@@ -41,19 +41,52 @@ commit／push はその都度の明示指示がある場合に限るという規
   無証明で復活させない．`Elaboration.SynthHead`／`CoercionPlan`／`CheckHead` と
   `HasTy.factorHead` が証明するのは surface typing の **root factorization** であり，
   再帰 premise がまだ `HasTy` である間は full core principality と呼ばない．
-  `Elaboration.CoreTyping` は公開 inference が構成する proof-relevant な
-  `Reconstruction.ExprDeriv` の別名であり，明示的 coercion を erase して `HasTy` を得る
-  soundness 境界である．一意性／MGU 普遍性／surface completeness は open として扱う．
+  `Elaboration.CoreTyping` は公開 inference が構成する derivation-structured な `Prop` 証明書
+  `Reconstruction.ExprDeriv` の別名であり，明示的 coercion に沿う証明を erase して `HasTy` を得る
+  soundness 境界である．proof irrelevance のため観測可能な core data とは呼ばない．
+  一意性／MGU 普遍性／surface completeness は open として扱う．
   特に `TerminalPatternResolution` の leaf は `rawContext` と任意の `actualContext` を
   独立に持てるため，無条件の `HasTy → ExprDeriv` は主張しない．再帰的 completeness は
   `actualContext = rawContext.applySubst prevailing` を満たす coherent surface subset
-  （または同条件へ tighten した source judgment）を対象にする．
+  を対象にする．`CoherentSurface.lean` の indices-only
+  `CoherentTerminalPatternResolution(s)`／`CoherentResolvedPatternTy` と reconstruction
+  bridge は leaf-local な第一境界である．`ThreadedPatternResolution(s)` は raw
+  `Context`／`PatternCtx` を全 child で共有し，raw `MonoCtx` を左から右へ threadする強い第二境界で，
+  第一境界への forgetful map までを持つ．置換の非単射性により既存 `PatternResolutionDeriv` からの
+  generic bridge は主張せず，W reconstruction motive から直接同時生成することを次段階とする．
+  `pval` premise が plain `HasTy` の間は full recursive coherence と呼ばず，その後
+  expression／arm／clause を含む独立した mutual coherent judgment へ拡張する．proof-indexed な
+  derivation property や
+  `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない．
+  `CanonicalCoercion.lean` の `Step`／`Spine`／`NormalPlan` は observable な `Type` 値の
+  candidate coercion-plan syntax であり，identity と一般 `trans` を分離し，whole-product-first
+  の二段経路を固定する．observable step は型の頭を変える3規則だけとし，product-of-slots は
+  非空の場合に限り一致する aggregate slot へ `slotTuple` 一段で移す．surface の slot-to-slot
+  check は MGU 後の端点等式により `refl` へ吸収する．全 spine の端点非等式と，同じ端点の plan が
+  `refl` だけであることは証明済みである．現段階で証明するのは既存
+  `CoercionPlan`／`HasTy` への sound replay までであり，任意 plan の normalization，normalization
+  uniqueness，異なる端点に対する inhabitant の一意性，推論器による plan data の直接生成は主張しない．
+  `CapabilityOrigin.lean` は `rigid`／`renameOnly`／`structuralFlexible` ledger，capability component
+  に対する admissible post，局所 structural／frozen residual を分ける `PhasedPost`，`Subst.seq`
+  閉性，freeze bridge の代数的基礎である．target component は現段階では制約しない．
+  `InferState.capabilityOrigins` は fresh／instance／finalized producer の origin を shadow metadata
+  として記録するが，constraint acceptance と terminal audit は既存 `protectedCaps` のままなので
+  挙動不変である．origin-aware solver への切替前に solve-cut ごとの ledger snapshot，MGU orientation，
+  prevailing image leaf を対象とする export freeze event を設計する．constructor／primitive の local
+  flexible instance が export 時に freeze される completeness はなお非主張とする．
   product-of-matchers の lift は tuple literal 専用へ戻さず，`let` 後の変数利用位置でも
-  挿入できる unary `COERCE-PRODUCT-MATCHER` を維持する．`checkExprFuel` の
+  挿入できる unary `COERCE-PRODUCT-MATCHER` を維持する．sibling helper
   `expectedCoercionSource` は raw synthesized type が product-of-matchers と見える
-  matcher／slot 利用位置だけでこの lift を選び，terminal reconstruction は
-  `expectedCoercionSource_deriv` から明示的 node を構成する．prevailing substitution 後に
-  初めて product head が現れる raw metavariable の completeness は非主張とする．
+  matcher／slot 利用位置でこの lift を，product-of-slots と見える slot 利用位置で
+  `COERCE-SLOT-TUPLE` branch を決定的に選び，`alignExprResultAtExpected` が整合を行い，terminal
+  reconstruction は明示的 node を構成する．空 product は matcher-product branch を優先する．通常の
+  application は function を fresh domain／codomain へ先に整合し，argument を同じ helper で
+  domain-directed に check する．prevailing substitution 後に
+  初めて product head または matcher／slot component が現れる raw metavariable の completeness は
+  product-of-matchers／product-of-slots の双方について非主張とする．
+  この gap は normalized image から raw indices を逆算したり prevailing substitution の
+  冪等性を仮定したりせず，solve cut で得た normalized product と後続 suffix を明示する
+  cut-indexed coercion event として将来扱う．
 - pattern を含まない `λ`/`let`/`fix` 断片の Damas–Milner 一致は，宣言側の埋め込み
   `DM.HasTy.emb`（`DamasMilner.lean`，閉じた signature 上）だけが証明済みである．
   逆方向（conservativity）と algorithmic acceptance（公開 `infer` が DM program を
@@ -104,5 +137,12 @@ commit／push はその都度の明示指示がある場合に限るという規
     `no_principal_type`．
   - `TypePM/ElaborationRegression.lean`: product の root synthesis と明示的
     `COERCE-PRODUCT-MATCHER` plan，および `let` 後の変数利用位置での unary lift．
+  - `TypePM/CoherentSurface.lean`: pattern leaf の raw/actual context を結ぶ indices-only
+    coherent judgment，surface forgetful map，reconstruction bridge．
+  - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
+    matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
+    `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal
+    alignment 端点，componentwise coercion を行わない負例，empty-product matcher precedence も
+    検査する．
 - Lean の規則と `tex/main.tex` の仕様を同期する．過去の進捗日誌，解決済み問題メモ，
   旧 calculus の説明は現行 README へ残さない．

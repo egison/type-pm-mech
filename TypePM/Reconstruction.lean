@@ -1313,11 +1313,12 @@ theorem history_terminal_apply_eq
   simpa only [replay] using sequential
 
 /--
-Reconstruct the explicit unary product-matcher node selected by
+Reconstruct the explicit unary product node selected by
 `expectedCoercionSource`.  The executable selector only changes the source at
 a matcher/slot use site and only when the raw inferred target itself exposes a
-product of matchers.  Consequently no normalized component is substituted a
-second time at the terminal cut.
+product of matchers or, for a slot expectation, a product of slots.
+Consequently no normalized component is substituted a second time at the
+terminal cut.
 -/
 theorem expectedCoercionSource_deriv
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -1327,14 +1328,13 @@ theorem expectedCoercionSource_deriv
     ExprDeriv signature context expression
       (terminalSubst.apply
         (expectedCoercionSource state inferred expected)) := by
-  unfold expectedCoercionSource
-  cases view : productMatcherDuals? inferred with
-  | none => exact derivation
+  cases matcherView : productMatcherDuals? inferred with
   | some duals =>
       cases requested : state.prevailing.apply expected
-      all_goals try exact derivation
+      all_goals try
+        simpa [expectedCoercionSource, matcherView, requested] using derivation
       all_goals
-        have rawShape := productMatcherDuals?_sound view
+        have rawShape := productMatcherDuals?_sound matcherView
         have productDerivation : ExprDeriv signature context expression
             (.prod ((duals.map (Dual.applySubst terminalSubst)).map fun dual =>
               .matcher dual.cap dual.target)) := by
@@ -1342,9 +1342,102 @@ theorem expectedCoercionSource_deriv
           simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
             Function.comp_def] using derivation
         have lifted := ExprDeriv.coerceProductMatcher productDerivation
-        simpa [productMatcherTarget, Subst.apply_matcher,
-          Cap.apply_prod, Subst.apply_prod, List.map_map,
-          Dual.applySubst, Dual.apply, Function.comp_def] using lifted
+        simpa [expectedCoercionSource, matcherView, requested,
+          productMatcherTarget, Subst.apply_matcher, Cap.apply_prod,
+          Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+          Function.comp_def] using lifted
+  | none =>
+      cases slotView : productSlotDuals? inferred with
+      | none =>
+          simp [expectedCoercionSource, matcherView, slotView]
+          exact derivation
+      | some duals =>
+          cases requested : state.prevailing.apply expected
+          all_goals try
+            simpa [expectedCoercionSource, matcherView, slotView, requested]
+              using derivation
+          case slot =>
+            have rawShape := productSlotDuals?_sound slotView
+            have productDerivation : ExprDeriv signature context expression
+                (.prod ((duals.map (Dual.applySubst terminalSubst)).map
+                  fun dual => .slot dual.cap dual.target)) := by
+              rw [rawShape] at derivation
+              simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+                Function.comp_def] using derivation
+            have lifted := ExprDeriv.coerceSlotTuple productDerivation
+            simpa [expectedCoercionSource, matcherView, slotView, requested,
+              slotTupleTarget, Subst.apply_slot, Cap.apply_prod,
+              Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+              Function.comp_def] using lifted
+
+/--
+Reconstruct checking for one already-synthesized expression result.  Both the
+ordinary checking traversal and domain-directed application use this same
+boundary, so product lifts and their terminal slot certificates are replayed
+uniformly.
+-/
+theorem alignExprResultAtExpected_deriv
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {aligned terminal : InferState}
+    (bridge : WBridgeWF signature terminal)
+    (derivation : ExprDeriv signature context expression
+      (terminal.prevailing.apply expressionResult.target))
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some aligned)
+    (history : aligned.HistoryPrefix terminal) :
+    ExprDeriv signature context expression
+      (terminal.prevailing.apply expected) := by
+  let source := expectedCoercionSource expressionResult.state
+    expressionResult.target expected
+  let localInferred := expressionResult.state.prevailing.apply source
+  let localRequested := expressionResult.state.prevailing.apply expected
+  change (match alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type") source expected with
+    | none => none
+    | some result => some (result.recordEvent (.slotAlignment
+        expressionResult.state.trace.solves.length result.trace.solves.length
+        localInferred localRequested))) = some aligned at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type") source expected with
+  | none => simp [alignmentEq] at success
+  | some localAligned =>
+      simp only [alignmentEq, Option.some.injEq] at success
+      subst aligned
+      let slotEvent := TraceEvent.slotAlignment
+        expressionResult.state.trace.solves.length
+        localAligned.trace.solves.length localInferred localRequested
+      have alignedHistory : localAligned.HistoryPrefix terminal :=
+        (InferState.historyPrefix_recordEvent localAligned slotEvent).trans history
+      have expressionHistory : expressionResult.state.HistoryPrefix terminal :=
+        (alignAtSlot_historyPrefix alignmentEq).trans alignedHistory
+      have sourceDerivation : ExprDeriv signature context expression
+          (terminal.prevailing.apply source) := by
+        exact expectedCoercionSource_deriv derivation
+      have localMembership : slotEvent ∈
+          (localAligned.recordEvent slotEvent).trace.events := by
+        simp [slotEvent, InferState.recordEvent]
+      have finalMembership := history.event_mem localMembership
+      have slotCertificate := bridge.slotAlignments.final finalMembership
+      have inferredTerminal := history_terminal_apply_eq expressionHistory source
+      have requestedTerminal :=
+        history_terminal_apply_eq expressionHistory expected
+      cases slotCertificate with
+      | equal alignedEq =>
+          have finalEq : terminal.prevailing.apply source =
+              terminal.prevailing.apply expected := by
+            rw [inferredTerminal, requestedTerminal]
+            exact alignedEq
+          rw [← finalEq]
+          exact sourceDerivation
+      | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
+          postVariable producerResult consumerResult =>
+          rw [inferredTerminal, producerResult] at sourceDerivation
+          have coerced := ExprDeriv.coerceMatcherToSlot
+            (by simpa only [Subst.apply_matcher] using sourceDerivation)
+            raw postVariable
+          rw [requestedTerminal, consumerResult]
+          simpa only [Subst.apply_slot] using coerced
 
 /-- Successful pointwise pattern-target alignment identifies every child
 target at an enclosing terminal cut. -/
@@ -1893,33 +1986,44 @@ theorem inferExprFuel_reconstructAt
       exact (DirectSelf.fix_gate_eq_true self argument body).mp direct
     simpa [finishExpr, Subst.apply_fn] using
       ExprDeriv.fixE directParts.1 directParts.2 bodyDeriv'
-  case case14 =>
+  case case15 =>
     rename_i fuel' signature' context' selfEnv' path' initial function argument
-      functionResult argumentResult argumentEq resultTarget freshState freshEq
-      alignedState alignEq visited terminal functionEq functionIH argumentIH
-      bridge' terminalHistory
-    have alignedHistory : alignedState.HistoryPrefix terminal :=
+      functionResult domain domainState domainEq resultTarget resultState resultEq
+      functionAligned functionAlignEq argumentResult argumentEq checkedState
+      argumentAlignEq visited terminal functionEq functionIH argumentIH bridge'
+      terminalHistory
+    have checkedHistory : checkedState.HistoryPrefix terminal :=
       (finishExpr_historyPrefix (.app function argument) path' resultTarget
-        alignedState).trans terminalHistory
-    have freshHistory : argumentResult.state.HistoryPrefix freshState :=
-      InferState.HistoryPrefix.snd_of_eq
-        (InferState.historyPrefix_freshTy argumentResult.state
-          (freshOrigin .expression path' "application-result")) freshEq
+        checkedState).trans terminalHistory
     have argumentHistory : argumentResult.state.HistoryPrefix terminal :=
-      freshHistory.trans
-        ((alignTypes_historyPrefix alignEq).trans alignedHistory)
-    have functionHistory : functionResult.state.HistoryPrefix terminal :=
+      (alignExprResultAtExpected_historyPrefix argumentAlignEq).trans
+        checkedHistory
+    have functionAlignedHistory : functionAligned.HistoryPrefix terminal :=
       (inferExprFuel_historyPrefix argumentEq).trans argumentHistory
+    have resultFreshHistory : resultState.HistoryPrefix terminal :=
+      (alignTypes_historyPrefix functionAlignEq).trans functionAlignedHistory
+    have domainFreshHistory : domainState.HistoryPrefix terminal :=
+      InferState.HistoryPrefix.snd_of_eq
+        (InferState.historyPrefix_freshTy domainState
+          (freshOrigin .expression path' "application-result")) resultEq
+        |>.trans resultFreshHistory
+    have functionHistory : functionResult.state.HistoryPrefix terminal :=
+      InferState.HistoryPrefix.snd_of_eq
+        (InferState.historyPrefix_freshTy functionResult.state
+          (freshOrigin .expression path' "application-domain")) domainEq
+        |>.trans domainFreshHistory
     have functionDeriv := functionIH functionResult rfl terminal bridge'
       functionHistory
-    have argumentDeriv := argumentIH argumentResult rfl terminal bridge'
+    have rawArgumentDeriv := argumentIH argumentResult rfl terminal bridge'
       argumentHistory
-    have localAlignment := alignTypes_event_mem alignEq
-    have finalAlignment := alignedHistory.event_mem localAlignment
+    have argumentDeriv := alignExprResultAtExpected_deriv bridge'
+      rawArgumentDeriv argumentAlignEq checkedHistory
+    have localAlignment := alignTypes_event_mem functionAlignEq
+    have finalAlignment := functionAlignedHistory.event_mem localAlignment
     have aligned := bridge'.typeAlignments.final_eq finalAlignment
     rw [aligned] at functionDeriv
     exact ExprDeriv.app functionDeriv argumentDeriv
-  case case17 =>
+  case case18 =>
     rename_i fuel' signature' context' selfEnv' path' initial expressions
       results visited terminal listEq listIH bridge' terminalHistory
     have listHistory : results.state.HistoryPrefix terminal :=
@@ -1927,7 +2031,7 @@ theorem inferExprFuel_reconstructAt
         (.prod results.targets) results.state).trans terminalHistory
     have listDeriv := listIH results rfl terminal bridge' listHistory
     simpa [finishExpr, Subst.apply_prod] using ExprDeriv.tuple listDeriv
-  case case20 =>
+  case case21 =>
     rename_i fuel' signature' context' selfEnv' path' initial name expressions
       scheme lookup expecteds resultTarget instState checkedState checkEq visited
       terminal instEq listIH bridge' terminalHistory
@@ -1942,7 +2046,7 @@ theorem inferExprFuel_reconstructAt
       (instHistory.event_mem localMembership)
     exact ExprDeriv.ctor lookup
       instantiated (listIH checkedState rfl terminal bridge' checkedHistory)
-  case case23 =>
+  case case24 =>
     rename_i fuel' signature' context' selfEnv' path' initial op expressions
       scheme lookup expecteds resultTarget instState checkedState checkEq visited
       terminal instEq listIH bridge' terminalHistory
@@ -1957,7 +2061,7 @@ theorem inferExprFuel_reconstructAt
       (instHistory.event_mem localMembership)
     exact ExprDeriv.prim lookup
       instantiated (listIH checkedState rfl terminal bridge' checkedHistory)
-  case case26 =>
+  case case27 =>
     rename_i fuel' signature' context' selfEnv' path' initial name value body
       valueResult normalizedContext normalizedValue scheme generalizedState
       bodyResult visited terminal bodyEq valueEq valueIH bodyIH bridge'
@@ -1999,20 +2103,20 @@ theorem inferExprFuel_reconstructAt
         schemeAtTerminal
     rw [bodyContextEq] at bodyDeriv
     simpa [finishExpr] using ExprDeriv.letE valueDeriv bodyDeriv
-  case case27 =>
+  case case28 =>
     rename_i fuel' signature' context' selfEnv' path' initial target freshState
       visited terminal freshEq bridge' terminalHistory
     simpa [finishExpr, Subst.apply_matcher, Cap.apply] using
       (ExprDeriv.something (signature := signature')
         (context := context'.applySubst terminal.prevailing)
         (target := terminal.prevailing.apply target))
-  case case29 =>
+  case case30 =>
     rename_i fuel' signature' context' selfEnv' path' initial clauses
       matcherResult visited terminal matcherEq matcherIH bridge' terminalHistory
     exact matcherIH matcherResult rfl terminal bridge'
       ((finishExpr_historyPrefix (.matcher clauses) path' matcherResult.target
         matcherResult.state).trans terminalHistory)
-  case case35 =>
+  case case36 =>
     rename_i fuel' signature' context' selfEnv' path' initial target matcher
       pattern body targetResult patternResult patternEq alignedState alignEq
       matcherState matcherEq bodyContext bodyEnv bodyResult visited terminal
@@ -2073,46 +2177,14 @@ theorem inferExprFuel_reconstructAt
         (ResolvedPatternDeriv.ofTerminal patternDeriv') matcherDeriv'
         bodyDeriv')
   case case39 =>
-    rename_i signature' context' selfEnv' path' expression expected initial
-      bodyResult bodyEq sourceTarget alignedState terminal alignEq bodyIH bridge'
+    rename_i fuel' signature' context' selfEnv' path' expression expected initial
+      bodyResult bodyEq alignedState terminal bodyIH alignEq bridge'
       terminalHistory
-    let slotEvent := TraceEvent.slotAlignment
-      bodyResult.state.trace.solves.length alignedState.trace.solves.length
-      (bodyResult.state.prevailing.apply sourceTarget)
-      (bodyResult.state.prevailing.apply expected)
-    have alignedHistory : alignedState.HistoryPrefix terminal :=
-      (InferState.historyPrefix_recordEvent alignedState slotEvent).trans
-        terminalHistory
     have bodyHistory : bodyResult.state.HistoryPrefix terminal :=
-      (alignAtSlot_historyPrefix alignEq).trans alignedHistory
+      (alignExprResultAtExpected_historyPrefix alignEq).trans terminalHistory
     have rawInferredDeriv := bodyIH bodyResult rfl terminal bridge' bodyHistory
-    have inferredDeriv : ExprDeriv signature'
-        (context'.applySubst terminal.prevailing) expression
-        (terminal.prevailing.apply sourceTarget) := by
-      exact expectedCoercionSource_deriv rawInferredDeriv
-    have localMembership : slotEvent ∈
-        (alignedState.recordEvent slotEvent).trace.events := by
-      simp [slotEvent, InferState.recordEvent]
-    have finalMembership := terminalHistory.event_mem localMembership
-    have slotCertificate := bridge'.slotAlignments.final finalMembership
-    have inferredTerminal := history_terminal_apply_eq bodyHistory sourceTarget
-    have requestedTerminal := history_terminal_apply_eq bodyHistory expected
-    cases slotCertificate with
-    | equal aligned =>
-        have finalEq : terminal.prevailing.apply sourceTarget =
-            terminal.prevailing.apply expected := by
-          rw [inferredTerminal, requestedTerminal]
-          exact aligned
-        rw [← finalEq]
-        exact inferredDeriv
-    | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
-        postVariable producerResult consumerResult =>
-        rw [inferredTerminal, producerResult] at inferredDeriv
-        have coerced := ExprDeriv.coerceMatcherToSlot
-          (by simpa only [Subst.apply_matcher] using inferredDeriv)
-          raw postVariable
-        rw [requestedTerminal, consumerResult]
-        simpa only [Subst.apply_slot] using coerced
+    exact alignExprResultAtExpected_deriv bridge' rawInferredDeriv alignEq
+      terminalHistory
   case case42 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial name absent capability capState capEq target targetState targetEq

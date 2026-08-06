@@ -14,17 +14,9 @@ theorem checkExprFuel_historyPrefix
           expression state with
       | none => simp [inferredEq] at success
       | some inferred =>
-          cases alignmentEq : alignAtSlot inferred.state
-              (freshOrigin .expression path "expected-type")
-              (expectedCoercionSource inferred.state inferred.target expected)
-              expected with
-          | none => simp [inferredEq, alignmentEq] at success
-          | some aligned =>
-              simp [inferredEq, alignmentEq] at success
-              subst result
-              exact (inferExprFuel_historyPrefix inferredEq).trans
-                ((alignAtSlot_historyPrefix alignmentEq).trans
-                  (InferState.historyPrefix_recordEvent _ _))
+          simp only [inferredEq] at success
+          exact (inferExprFuel_historyPrefix inferredEq).trans
+            (alignExprResultAtExpected_historyPrefix success)
 
 theorem checkExprsFuel_historyPrefix
     {fuel signature context selfEnv path index expressions expecteds state result}

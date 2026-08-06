@@ -49,8 +49,117 @@ theorem productMatcher_slot_source
     Inference.expectedCoercionSource state concretePairProductType
       concretePairSlotType = concretePairMatcherType := by
   simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
-    Inference.matcherDual?, Inference.productMatcherTarget,
+    Inference.productSlotDuals?, Inference.matcherDual?,
+    Inference.productMatcherTarget,
     concretePairProductType, concretePairMatcherType, concretePairSlotType]
+
+def concretePairOfSlotsType : Ty :=
+  .prod [.slot .none .int, .slot .none .int]
+
+/-- A product whose components are already slots selects the unary slot-tuple
+lift when the aggregate slot is expected. -/
+theorem productSlot_slot_source
+    (state : Inference.InferState) :
+    Inference.expectedCoercionSource state concretePairOfSlotsType
+      concretePairSlotType = concretePairSlotType := by
+  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.productSlotDuals?, Inference.matcherDual?, Inference.slotDual?,
+    Inference.slotTupleTarget, concretePairOfSlotsType, concretePairSlotType]
+
+/-- Both component recognizers accept the empty product.  The executable
+selector resolves that overlap by choosing the matcher-product branch. -/
+theorem emptyProduct_prefers_productMatcher
+    (state : Inference.InferState) :
+    Inference.expectedCoercionSource state (.prod [])
+      (.slot (.prod []) (.prod [])) =
+        .matcher (.prod []) (.prod []) := by
+  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.productSlotDuals?, Inference.productMatcherTarget]
+
+/-! ## Domain-directed application checking -/
+
+/-- Check both the terminal type and the exact expected-type alignment
+observed in a successful public run. -/
+def inferenceHasAlignment
+    (context : Context) (expression : Expr)
+    (inferred requested resultTarget : Ty) : Bool :=
+  match Inference.infer emptySignature context expression with
+  | none => false
+  | some result =>
+      decide (result.resolvedTarget = resultTarget) &&
+        result.state.trace.events.any fun
+          | .slotAlignment _ _ actualInferred actualRequested =>
+              decide (result.state.prevailing.apply actualInferred = inferred) &&
+                decide (result.state.prevailing.apply actualRequested = requested)
+          | _ => false
+
+def productMatcherConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairMatcherType .int))]
+
+def productMatcherArgumentApplication : Expr :=
+  .app (.var "consume") (.tuple [.something, .something])
+
+/-- Function application checks its argument against the synthesized domain,
+so a product of matchers receives the whole-product lift at that use site. -/
+def productMatcherArgumentApplicationSucceeds : Bool :=
+  Inference.inferenceSucceeds emptySignature productMatcherConsumerContext
+    productMatcherArgumentApplication
+
+#guard productMatcherArgumentApplicationSucceeds
+
+#guard inferenceHasAlignment productMatcherConsumerContext
+  productMatcherArgumentApplication concretePairMatcherType
+  concretePairMatcherType .int
+
+def productSlotConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairSlotType .int))]
+
+def productSlotArgumentApplication : Expr :=
+  .app (.var "consume") (.tuple [.something, .something])
+
+/-- The same domain-directed path composes the product-matcher lift with the
+producer-stable matcher-to-slot conversion. -/
+def productSlotArgumentApplicationSucceeds : Bool :=
+  Inference.inferenceSucceeds emptySignature productSlotConsumerContext
+    productSlotArgumentApplication
+
+#guard productSlotArgumentApplicationSucceeds
+
+#guard inferenceHasAlignment productSlotConsumerContext
+  productSlotArgumentApplication concretePairMatcherType
+  concretePairSlotType .int
+
+def slotTupleConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairSlotType .int)),
+   ("left", Scheme.mono (.slot .none .int)),
+   ("right", Scheme.mono (.slot .none .int))]
+
+def slotTupleArgumentApplication : Expr :=
+  .app (.var "consume") (.tuple [.var "left", .var "right"])
+
+/-- A product of already-slot-valued expressions uses `coerceSlotTuple` at an
+ordinary application argument. -/
+def slotTupleArgumentApplicationSucceeds : Bool :=
+  Inference.inferenceSucceeds emptySignature slotTupleConsumerContext
+    slotTupleArgumentApplication
+
+#guard slotTupleArgumentApplicationSucceeds
+
+#guard inferenceHasAlignment slotTupleConsumerContext
+  slotTupleArgumentApplication concretePairSlotType concretePairSlotType .int
+
+/-! A product expectation does not trigger componentwise matcher-to-slot
+coercions.  Only the explicit whole-product routes above are accepted. -/
+
+def componentSlotConsumerContext : Context :=
+  [("consume", Scheme.mono
+    (.fn (.prod [.slot .none .int, .slot .none .int]) .int))]
+
+def componentSlotArgumentApplication : Expr :=
+  .app (.var "consume") (.tuple [.something, .something])
+
+#guard !Inference.inferenceSucceeds emptySignature componentSlotConsumerContext
+  componentSlotArgumentApplication
 
 /-! ## A generalized `let` whose ambient lambda variable is solved later -/
 

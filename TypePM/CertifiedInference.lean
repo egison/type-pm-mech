@@ -82,7 +82,7 @@ private theorem infer_success_bridge
   Reconstruction.wBridgeCheck_sound
     (infer_success_raw_and_checked success).2
 
-/-- Successful executable inference reconstructs proof-relevant source typing. -/
+/-- Successful executable inference reconstructs a structured source-typing certificate. -/
 theorem infer_success_reconstruct
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
