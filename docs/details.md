@@ -353,7 +353,14 @@ MGU witness（`PairedMGU.refl`／`varLeft`／`varRight`，`CapMGU.varLeft`／`va
 `Ty.applyTarget_eq_of_ftv_agree`），空 binder scheme の instantiation 計算
 （`instantiateScheme_noBinder_value`／`instantiateScheme_monoApplySubst_value`），
 exact witness（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` の
-`refl`／`varLeft`／`varRight`／`fnDiagonal`）．
+`refl`／`varLeft`／`varRight`／`fnDiagonal`，および解決済み成分対 fresh 変数の
+`fnFresh`と共有変数つき `fnSharedFresh`），**freshness 第一層**（供給有界性
+`Cap.BoundedBy`／`Ty.BoundedBy`／`Subst.BoundedBy`＝counter 以上で恒等＋像有界，
+`SupplyExtends` に沿う単調性，恒等の有界性，有界代入の apply／seq 閉包，exact delta の
+`fixedAbove`＝有界制約の bound 以上で恒等；基盤に `Ty.ftv_applyCapability`＝等式・
+`Ty.fcv_applyCapability`＝flatMap 等式・`Ty.mem_fcv_applyTarget`＝membership 形）．
+freshness の残り＝exact delta の像有界性（solver range certificate からの導出か
+exactness 条項追加かの設計選択）と判断レベルの保存 sweep．
 非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
 `capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，freshness
 不変量，受理定理（段階 3-2／3-3）．

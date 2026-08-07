@@ -242,7 +242,12 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    instance の variable-only 条件が同じ型を拒否する（`capFreeze_forgetting_gap`）．
    よって任意文脈の無条件忘却は偽であり，忘却定理は freeze 側対応条件
    （段階 3-3 の `FreezeCompatible` に対応）を持つ形が最終形である．
-   残: freshness 不変量・`HasTy` への忘却（freeze 側条件つき）・`CoherentExpr` への変換．
+   freshness 不変量は第一層まで済: 供給有界性述語（`Cap`／`Ty`／`Subst` の
+   `BoundedBy`）・supply extension に沿う単調性・恒等／apply／seq の閉包・exact delta が
+   有界制約の bound 以上で恒等であること（`fixedAbove`）．残: exact delta の像有界性
+   （最汎性から solver range certificate 経由で導出するか，exactness 条項に加えるかの
+   選択）と判断レベルの有界性保存 sweep・`HasTy` への忘却（freeze 側条件つき）・
+   `CoherentExpr` への変換．
 3. 未: 現行実装に対する最初の受理定理 —
    `DDTyping + RawSourceVisible + FreezeCompatible → infer 受理`．二条件は demand の
    由来を定義する条件ではなく，現行実装との対応条件である．
