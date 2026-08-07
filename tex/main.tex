@@ -77,9 +77,14 @@ $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq 
 うち，入れ子 matcher capability の rigid 比較は機械化済みの反例で固定した：wildcard
 slot 域の単相 consumer に bare `something` と product lift を順に渡すプログラムは宣言的に
 型付くが，推論器は第一用法で域を raw な matcher 型に固定し，第二用法の lift された
-capability を注釈として等値比較して拒否する（逆順も raw-head 死角で拒否）．この反例は
-現行推論器に対する注釈不要性を反証し，instance capability の producer guard による固定
-（概念例 `Pack something`）とともに origin-aware な paired unifier で解消させる．
+capability を注釈として等値比較して拒否する（逆順も raw-head 死角で拒否）．instance
+capability の producer guard による固定も機械化済みで固定した：
+$\mathsf{Pack} : \forall\kappa\,\alpha.\ \mathsf{Matcher}\,\kappa\,\alpha \to
+\mathsf{Packed}$ に対する $\mathsf{Pack\ something}$ は宣言的には
+$\kappa := \Any$ の instance で型付くが，推論器は fresh instance capability を
+protected producer として記録し，guard がその束縛を拒否する（capability を scheme 側で
+$\Any$ に固定した control は受理される）．両反例は現行推論器に対する注釈不要性を反証し，
+origin-aware な paired unifier で解消させる．
 達成済みの主柱は次である．
 
 \begin{quote}

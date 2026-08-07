@@ -23,12 +23,13 @@
 等価から binder 名の照合＋型の単一化（`alignBindings`）へ改めたことで解消し，
 受理側の regression として固定した
 （[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean)）．
-残る既知の受理ギャップのうち，型内部に入れ子の matcher capability の rigid 比較は
-機械化済みの反例（`nestedCapProgram`：宣言的に型付き・推論器は拒否・
-`annotationFree_current_refuted` が現行推論器への反証を固定）で pin 済みであり，
-constructor／primitive instance capability の producer guard による固定
-（概念例 `Pack something`）が概念例のまま残る．いずれも origin-aware paired unifier で
-解消予定である．principality と異なり，この目標は
+残る既知の受理ギャップは両方とも機械化済みの反例で pin 済みである：型内部に入れ子の
+matcher capability の rigid 比較（`nestedCapProgram`）と，constructor instance
+capability の producer guard による固定（`packProgram` = `Pack something`，
+`∀κ α. Matcher κ α → Packed` の宣言的 `κ := Any` instance を guard が拒否）．
+それぞれ現行推論器への反証（`annotationFree_current_refuted`／
+`annotationFree_current_refuted_by_freeze`）を伴い，いずれも origin-aware paired
+unifier で解消予定である．principality と異なり，この目標は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
 利用位置での明示的 coercion 挿入が引き受ける．
@@ -83,15 +84,18 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    proof-carrying kernel が `universal` certificate を構成し，
    `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として
    公開する．
-2. **一部済** 受理ギャップの regression 固定 — or pattern は
+2. **済** 受理ギャップの regression 固定 — 既知の三系統をすべて
    [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
-   宣言的型付けと（修正後の）受理を機械化済み．nested matcher capability も同所で
-   pin 済み：wildcard slot 域の単相 consumer に bare `something` と product lift を
-   順に渡す `nestedCapProgram`（と逆順の swapped 版）は宣言的に型付くが，推論器は
-   第一用法で域を raw matcher 型に固定し第二用法の capability を注釈として rigid
-   比較して拒否する（`annotationFree_current_refuted` が現行推論器への反証）．
-   残るは capability freeze（概念例 `Pack something`）で，signature fixture が
-   言明可能になり次第固定する．
+   機械化済み．or pattern は宣言的型付けと（修正後の）受理．nested matcher
+   capability は `nestedCapProgram`（と逆順の swapped 版）：宣言的に型付くが，
+   推論器は第一用法で域を raw matcher 型に固定し第二用法の capability を注釈として
+   rigid 比較して拒否する．capability freeze は `packProgram`
+   （`Pack : ∀κ α. Matcher κ α → Packed` に `Pack something`）：宣言的には
+   `κ := Any` の instance で型付くが，fresh instance capability が protected
+   producer として記録され guard が束縛を拒否する（capability を scheme 側で
+   `Any` に固定した control は受理）．両ギャップとも現行推論器への反証
+   （`annotationFree_current_refuted`／`annotationFree_current_refuted_by_freeze`）
+   を伴う．
 3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
