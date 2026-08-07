@@ -1377,7 +1377,10 @@ pattern 層は threaded 形のみ，value-pattern／arm body／clause next-match
 再帰する．この judgment は reconstruction certificate と相互に変換でき，surface typing への忘却と，
 公開 inference の成功から coherent typing を得る系を持つ．product lift の構成子は将来の raw-head 可視
 fragment を言明するための raw-source provenance 添字を保持する（恒等 witness が常に取れるため判断を
-制限しない）．最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
+制限しない）．coherence が制限するのは pattern の provenance だけなので，$\mathtt{matchAll}$ と matcher literal を
+含まない match-free 断片では任意の surface typing が coherent であり，Damas–Milner 断片の宣言的
+型付けはすべて埋め込みを経て coherent judgment に入る（DM 受理目標の宣言側）．
+最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
 $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ であり，
 命題としての言明のみを固定した未証明の目標として扱う．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への

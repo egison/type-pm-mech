@@ -165,7 +165,9 @@ commit／push はその都度の明示指示がある場合に限るという規
     coherent judgment，surface forgetful map，reconstruction bridge．
   - `TypePM/CoherentTyping.lean`: 10 family の mutual coherent surface typing と
     `Reconstruction` certificate の相互変換，`CoherentExpr.toHasTy`，
-    `infer_success_coherent`，および目標命題 `AnnotationFree`（言明のみ・未証明）．
+    `infer_success_coherent`，match-free 断片の全 coherence
+    （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
+    および目標命題 `AnnotationFree`（言明のみ・未証明）．
   - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
     matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
     `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal

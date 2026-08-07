@@ -318,6 +318,12 @@ clause まで含む 10 family の相互帰納的 coherent surface typing（`Cohe
 忘却 `CoherentExpr.toHasTy`，推論成功から coherent typing を得る `infer_success_coherent`，standalone
 threaded 境界への忘却 `toThreadedSurface` を証明する．pattern 層は threaded-only で，product lift
 構成子は raw-source provenance 添字を持つ（恒等 witness が常に取れるため判断を制限しない）．
+さらに coherence が制限するのは pattern の provenance だけであることを反映して，
+`matchAll` と matcher literal を含まない **match-free 断片では任意の surface typing が
+coherent** である（`coherent_of_matchFree`／`certified_of_matchFree`）．その系として，
+Damas–Milner 断片のすべての宣言的型付けは埋め込みを経て coherent judgment に入る
+（`dm_coherent`）．これは段階 2（DM 全受理）の宣言側の半分であり，算法側
+（公開 `infer` の成功）は未主張のまま残る．
 最上位目標の注釈不要性 `Coherent.AnnotationFree` は言明のみを固定した未証明の目標である．
 現時点ではこの進展を algorithmic completeness や principality として主張しない．
 
