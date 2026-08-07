@@ -242,11 +242,15 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    instance の variable-only 条件が同じ型を拒否する（`capFreeze_forgetting_gap`）．
    よって任意文脈の無条件忘却は偽であり，忘却定理は freeze 側対応条件
    （段階 3-3 の `FreezeCompatible` に対応）を持つ形が最終形である．
-   freshness 不変量は第一層まで済: 供給有界性述語（`Cap`／`Ty`／`Subst` の
-   `BoundedBy`）・supply extension に沿う単調性・恒等／apply／seq の閉包・exact delta が
-   有界制約の bound 以上で恒等であること（`fixedAbove`）．残: exact delta の像有界性
-   （最汎性から solver range certificate 経由で導出するか，exactness 条項に加えるかの
-   選択）と判断レベルの有界性保存 sweep・`HasTy` への忘却（freeze 側条件つき）・
+   freshness 不変量は solve 層まで済: 供給有界性述語（`Cap`／`Ty`／`Dual`／`Subst` の
+   `BoundedBy`）・supply extension に沿う単調性・恒等／apply／seq の閉包・**exact delta の
+   有界性**（像有界性は exactness の条項に採用: 制約内変数の像は制約内 —
+   `RangeWithin`／`CapRangeWithin`; paired 仕様の canonical solver 完全性が未整備のため
+   導出でなく条項追加を選択）・one-way 解の有界性（`matchCap` の binding 像は producer
+   変数内）・**checking cut と全整列関係の有界性**（`DDAlign`／`DDAlignTypes`／dual・
+   target-list・binding・ctor-caps 整列が prevailing substitution の有界性を保存）．
+   残: pattern 層 supply-twin の有界性（`freshenSkeletonSupply` 等，署名閉性込み）・
+   9-family judgment の有界性 sweep・`HasTy` への忘却（freeze 側条件つき）・
    `CoherentExpr` への変換．
 3. 未: 現行実装に対する最初の受理定理 —
    `DDTyping + RawSourceVisible + FreezeCompatible → infer 受理`．二条件は demand の

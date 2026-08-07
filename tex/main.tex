@@ -1323,7 +1323,8 @@ $\mathtt{something}$ が one-way に満たす delegating matcher literal
 通常 solve の $\delta$ はその位置の constraint に対する proof-carrying MGU，one-way solve の
 $\delta$ は対応する producer-stable solution とし，constraint に無関係な metavariable を同時に
 束縛する transition は許さない．この exactness／relevance が no-guess 条件であり，機械化では
-各 solve delta を exact MGU（最汎かつ constraint の変数の外では恒等）として要求する．一度
+各 solve delta を exact MGU（最汎・constraint の変数の外では恒等・constraint 内変数の像も
+constraint の変数の内）として要求する．一度
 $S\rho$ に matcher／slot の外側構成子が露出すれば，任意の後続 state extension でもその頭が保存される
 ことは substitution の構成子保存と MGU factorization から別補題として示す．no-guess の核は
 MGU 性そのものから定理として従うことも機械化済みである：MGU の普遍性だけから，ある unifier が

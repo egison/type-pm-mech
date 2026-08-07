@@ -359,8 +359,15 @@ exact witness（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` の
 `SupplyExtends` に沿う単調性，恒等の有界性，有界代入の apply／seq 閉包，exact delta の
 `fixedAbove`＝有界制約の bound 以上で恒等；基盤に `Ty.ftv_applyCapability`＝等式・
 `Ty.fcv_applyCapability`＝flatMap 等式・`Ty.mem_fcv_applyTarget`＝membership 形）．
-freshness の残り＝exact delta の像有界性（solver range certificate からの導出か
-exactness 条項追加かの設計選択）と判断レベルの保存 sweep．
+像有界性は exactness の条項に採用した（`CapSubst.RangeWithin`／
+`TySubst.RangeWithin`／`TySubst.CapRangeWithin` を `Exact*` に追加；paired 仕様の
+canonical solver 完全性が未整備のため導出でなく条項）．その上に solve 層の有界性:
+`Exact*.boundedBy`（有界制約の exact delta は `Subst.BoundedBy`），
+`OneWayDelta.boundedBy`（`matchCapAcc_imagesWithin`＝binding 像は producer 変数内，
+mutual・全 12 mismatch 行込み），`DDAlignTypes.boundedBy`／`DDAlign.boundedBy`
+（recognizer は `productMatcherDuals?_sound` 系で成分へ分解），dual／dual-list／
+target-list／binding／ctor-caps 整列の有界性．freshness の残り＝pattern 層
+supply-twin の有界性（署名閉性込み）と 9-family judgment の保存 sweep．
 非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
 `capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，freshness
 不変量，受理定理（段階 3-2／3-3）．
