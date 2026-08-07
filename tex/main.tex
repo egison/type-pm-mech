@@ -1322,7 +1322,8 @@ $\mathtt{something}$ が one-way に満たす delegating matcher literal
 単調に進み，substitution にはある局所 delta について $S'=\delta\circ S$ という因子化を要求する．
 通常 solve の $\delta$ はその位置の constraint に対する proof-carrying MGU，one-way solve の
 $\delta$ は対応する producer-stable solution とし，constraint に無関係な metavariable を同時に
-束縛する transition は許さない．この exactness／relevance が no-guess 条件である．一度
+束縛する transition は許さない．この exactness／relevance が no-guess 条件であり，機械化では
+各 solve delta を exact MGU（最汎かつ constraint の変数の外では恒等）として要求する．一度
 $S\rho$ に matcher／slot の外側構成子が露出すれば，任意の後続 state extension でもその頭が保存される
 ことは substitution の構成子保存と MGU factorization から別補題として示す．no-guess の核は
 MGU 性そのものから定理として従うことも機械化済みである：MGU の普遍性だけから，ある unifier が
@@ -1330,7 +1331,12 @@ MGU 性そのものから定理として従うことも機械化済みである�
 （構造化されず），相異なる外部変数が一つの像へ衝突することもない（capability／target／paired の
 各 sort）．特に occurs-free な variable-versus-type constraint では，型側に現れる他の変数も
 必ず変数像を持つ．これが fresh domain／codomain alignment が fresh metavariable を高々
-リネームしかできないことの根拠である．
+リネームしかできないことの根拠である．exactness 条項が最汎性へ付け加えるのは，この残余の
+リネーム自由度の除去だけである．その必要性は境界定理として固定してある：$?_1\doteq\mathsf{Int}$ の
+最汎解でありながら無関係な $?_3$／$?_9$ を交換する delta は，部分一般化 scheme
+$\forall 9.\,9\to 3$ の束縛子を capture して $\forall 9.\,9\to 9$ に変え，輸送した
+instance $\mathsf{Int}\to ?_9$ はもはや instance でない．bare 最汎性だけでは宣言的
+value flow が delta に沿って輸送できない．
 
 $\mathsf{DDCheck}$ は syntax／signature ごとの coercion 規則を持たず，必ず次の一つの
 一般 checking schema を使う．まず同じ $q,S$ から $e$ を synthesize して

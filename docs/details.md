@@ -321,11 +321,13 @@ demand し，`DDSynth.matcher` は共有 target を確保して全 clause を走
 消費して finalize する．`DDSynth.fixMatcher` は非 matcher template の `fix` 規則と
 `NonMatcherBody` で排他になる．
 
-solve delta は実行ソルバに言及しない関係的仕様で制約する：`CapMGU`／`TargetMGU`／
-`PairedMGU`（soundness＋全 unifier の因子化＝kernel certificate と同形）と，exact
-one-way 解 `OneWayDelta`（`matchCap` の制限付き binding substitution＋capability
-適用後 target の MGU）．各規則の出力 substitution は `Subst.seq` による局所 delta の
-chronological 合成である．
+solve delta は実行ソルバに言及しない関係的仕様で制約する：**exact MGU**
+`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU`（= bare MGU ∧ `SupportWithin`
+制約変数＝制約の外では恒等）と，exact one-way 解 `OneWayDelta`（`matchCap` の
+制限付き binding substitution＋capability 適用後 target の exact MGU）．bare 形
+`CapMGU`／`TargetMGU`／`PairedMGU`（soundness＋全 unifier の因子化＝kernel
+certificate と同形）は no-guess 定理と transport 境界の主語として残す．各規則の
+出力 substitution は `Subst.seq` による局所 delta の chronological 合成である．
 
 checking cut の分岐は cut-resolved view（`S₁ τraw` と `S₁ τexpected`）上の決定的
 classifier `demandClass`（product-matcher lift／slot-tuple lift／matcher-to-slot／
@@ -349,7 +351,9 @@ MGU witness（`PairedMGU.refl`／`varLeft`／`varRight`，`CapMGU.varLeft`／`va
 変数は必ず変数像，対称性 `symm` 三種；補助に変数像からの逆進
 `Cap.eq_var_of_apply_var`／`Ty.eq_var_of_applyTarget_var`／`Ty.eq_var_of_apply_var` と
 `Ty.applyTarget_eq_of_ftv_agree`），空 binder scheme の instantiation 計算
-（`instantiateScheme_noBinder_value`／`instantiateScheme_monoApplySubst_value`）．
+（`instantiateScheme_noBinder_value`／`instantiateScheme_monoApplySubst_value`），
+exact witness（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` の
+`refl`／`varLeft`／`varRight`／`fnDiagonal`）．
 非主張：`HasTy` への忘却，`CoherentExpr` への変換，freshness 不変量，受理定理
 （段階 3-2／3-3）．
 
@@ -663,7 +667,13 @@ executable regression とその正負境界．削るときは対応する設計�
   solve・実行 raw result shape と同じ型で閉じる）と，`nestedCapProgram` の不在
   inversion `nestedCapProgram_no_ddTyping`（no-guess 定理で第一引数 check の coercion
   分岐を除外し，強制された matcher 頭期待への `prod`／`matcher` 構成子衝突で全分岐を
-  閉じる；delta 選択に依存しない）．
+  閉じる；delta 選択に依存しない）．value-flow transport 境界
+  `valueFlow_transport_needs_exactness`：`?1 ≐ Int` の最汎解でありながら無関係な
+  `?3`／`?9` を交換する `swappingDelta` は正真の `PairedMGU`（un-swap で全 unifier が
+  因子化）で，部分一般化 scheme `∀9. 9 → 3`（`capturedScheme`）の instance
+  `Int → ?3` を，capture した `∀9. 9 → 9` の非 instance `Int → ?9` へ写す —
+  bare 最汎性では宣言的 value flow が輸送できないことの固定で，判断の exactness
+  強化の根拠．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の

@@ -92,10 +92,11 @@ coercion の対象ではなく，意図された拒否である．
   の順で state を thread し，list 構文も左から右へ進める．
 - 要求が未確定なら source は raw synthesized type のままである．通常 alignment が期待
   meta をその raw 型へ固定できるが，coercion を成立させるために slot head を発明しない．
-  各 solve delta はその時点で解く constraint に対する MGU または one-way solution に
-  限定し，無関係な meta を同時に構造化しない（no-guess）．この no-guess は MGU 仕様の
-  普遍性だけから定理として従う: 制約外の変数はどの最汎解でも高々リネームされ，
-  構造化も衝突もしない．
+  各 solve delta はその時点で解く constraint に対する **exact MGU**（最汎かつ制約変数の
+  外では恒等）または one-way solution に限定し，無関係な meta には触れない（no-guess）．
+  このうち「構造化も衝突もしない」は MGU 仕様の普遍性だけから定理として従い，exactness
+  条項が除くのは残余のリネーム自由度だけである．そのリネームを許すと scheme binder を
+  capture して value-flow instance の輸送が壊れることは境界定理として固定してある．
 - coercion 可否を semantic entailment で定義せず，通常の unification が失敗してから
   coercion branch を試す方式（負前提）も採らない．branch は unification 前に visible な
   slot head から決定し，その branch の solve が失敗すればその check は失敗する．
@@ -222,11 +223,17 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    同時に済．solve delta の no-guess 定理も済: MGU 仕様の普遍性だけから，ある unifier が
    固定する変数は最汎解で必ず変数像を持ち（fixing-unifier 形），制約外の変数は高々
    リネームされ（構造化されず），相異なる制約外変数は衝突しない（`CapMGU`／
-   `TargetMGU`／`PairedMGU` の各 sort）．境界例も固定済み: `nestedCapLetProgram` の
-   `DDTyping` 導出は実行 raw result shape と同じ型で閉じ，`nestedCapProgram` には任意の
-   published type・任意の最汎 delta 選択に対して導出が存在しない
-   （`nestedCapProgram_no_ddTyping`；swapped 版は未）．残: freshness 不変量・
-   `HasTy` への忘却・`CoherentExpr` への変換．
+   `TargetMGU`／`PairedMGU` の各 sort）．その残余のリネーム自由度が有害であることは
+   **value-flow transport 境界**として固定した: `?1 ≐ Int` の最汎解が無関係な
+   `?3`／`?9` を交換でき，部分一般化 scheme `∀9. 9 → 3` を capture して instance の
+   輸送を壊す（`valueFlow_transport_needs_exactness`）．これを受け，判断の全 solve
+   premise は **exact MGU**（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` =
+   最汎 ∧ 制約変数外は恒等）へ強化済み（具体 witness は全部 exact）．境界例も固定済み:
+   `nestedCapLetProgram` の `DDTyping` 導出は実行 raw result shape と同じ型で閉じ，
+   `nestedCapProgram` には任意の published type・任意の最汎 delta 選択に対して導出が
+   存在しない（`nestedCapProgram_no_ddTyping`；swapped 版は未）．残: freshness 不変量・
+   `HasTy` への忘却（capability sort では freeze 軸の対応条件が忘却側にも要るかの
+   見極めを含む）・`CoherentExpr` への変換．
 3. 未: 現行実装に対する最初の受理定理 —
    `DDTyping + RawSourceVisible + FreezeCompatible → infer 受理`．二条件は demand の
    由来を定義する条件ではなく，現行実装との対応条件である．
