@@ -221,6 +221,87 @@ theorem dmLet_ddTyping :
     (.mk .lit (.ordinary rfl (.ordinary rfl
       (PairedMGU.varRight .int 5 (by decide)))))
 
+/-! ## `let` polymorphism across the two matcher producers
+
+The accepted idiom for the nested-capability boundary pair: `let`
+polymorphism gives each use of the shared consumer its own instance of the
+generalized domain, so no demand-free coercion is needed.  The
+demand-directed derivation closes at exactly the executable raw result
+shape pinned by
+`AcceptanceGapRegression.nestedCapLetProgram_raw_target_shape`: a bare
+matcher in the first component and an unlifted product of two bare
+matchers in the second, at pairwise-distinct targets.  Both argument
+alignments are ordinary demand-free solves against a variable expectation
+— no branch of `DDAlign` invents a slot head for either producer. -/
+
+/-- Prevailing substitution after the first-use function alignment
+`fn ?1 ?1 ≐ fn ?2 ?3`. -/
+def nestedCapLetAlign1 : Subst :=
+  Subst.seq ⟨CapSubst.id, fnDiagonalDelta 1 2 3⟩ Subst.id
+
+/-- Prevailing substitution after the first argument check resolves the
+first instance domain to the bare matcher producer. -/
+def nestedCapLetCheck1 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 2 (.matcher .any (.var 4))⟩ nestedCapLetAlign1
+
+/-- Prevailing substitution after the second-use function alignment
+`fn ?5 ?5 ≐ fn ?6 ?7`. -/
+def nestedCapLetAlign2 : Subst :=
+  Subst.seq ⟨CapSubst.id, fnDiagonalDelta 5 6 7⟩ nestedCapLetCheck1
+
+/-- Terminal substitution: the second argument check resolves the second
+instance domain to the raw, unlifted product of matcher producers. -/
+def nestedCapLetTerminal : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 6
+      (.prod [.matcher .any (.var 8), .matcher .any (.var 9)])⟩
+    nestedCapLetAlign2
+
+/-- The first use: a fresh instance `fn ?2 ?3` whose domain receives the
+bare matcher producer by an ordinary demand-free alignment. -/
+theorem nestedCapLetFirstApp_ddSynth :
+    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
+      (.app (.var "f") .something) (.var 3) ⟨0, 5⟩ nestedCapLetCheck1 := by
+  exact DDSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id)
+    (S₂ := nestedCapLetAlign1)
+    (functionTarget := .fn (.var 1) (.var 1))
+    (DDSynth.var (scheme := dmIdScheme) rfl)
+    (.ordinary rfl
+      (PairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
+    (.mk .something (.ordinary rfl (.ordinary rfl
+      (PairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide)))))
+
+/-- The second use: its own fresh instance `fn ?6 ?7` whose domain receives
+the raw product of matcher producers unlifted — a variable expectation is
+no slot demand. -/
+theorem nestedCapLetSecondApp_ddSynth :
+    DDSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
+      (.app (.var "f") (.tuple [.something, .something])) (.var 7) ⟨0, 10⟩
+      nestedCapLetTerminal := by
+  exact DDSynth.app (q₁ := ⟨0, 6⟩) (S₁ := nestedCapLetCheck1)
+    (S₂ := nestedCapLetAlign2)
+    (functionTarget := .fn (.var 5) (.var 5))
+    (DDSynth.var (scheme := dmIdScheme) rfl)
+    (.ordinary rfl
+      (PairedMGU.fnDiagonal 5 6 7 (by decide) (by decide) (by decide)))
+    (.mk (.tuple (.cons .something (.cons .something .nil)))
+      (.ordinary rfl (.ordinary rfl
+        (PairedMGU.varRight
+          (.prod [.matcher .any (.var 8), .matcher .any (.var 9)]) 6
+          (by decide)))))
+
+/-- The `let`-polymorphic pairing of the two producers closes in the
+demand-directed judgment at exactly the executable raw result shape. -/
+theorem nestedCapLetProgram_ddTyping :
+    DDTyping emptySignature [] AcceptanceGapRegression.nestedCapLetProgram
+      (.prod [.matcher .any (.var 4),
+        .prod [.matcher .any (.var 8), .matcher .any (.var 9)]]) := by
+  refine ⟨.prod [.var 3, .var 7], ⟨0, 10⟩, nestedCapLetTerminal, ?_, rfl⟩
+  exact .letE (.lam (DDSynth.var (scheme := Scheme.mono (.var 0)) rfl))
+    (.tuple (.cons nestedCapLetFirstApp_ddSynth
+      (.cons nestedCapLetSecondApp_ddSynth .nil)))
+
 /-! ## Pattern layer: the or-pattern `matchAll` program
 
 The same or-pattern program whose executable acceptance is pinned by
