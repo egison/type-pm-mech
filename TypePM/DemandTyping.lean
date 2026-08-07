@@ -4974,6 +4974,12 @@ theorem Ty.BoundedBy.slotOf {q : InferenceBase.FreshSupply}
     simp only [Ty.ftv] at hw
     exact targetBounded.targets w hw
 
+/-- Dual boundedness is monotone along supply extension. -/
+theorem Dual.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {dual : Dual} (extends_ : SupplyExtends q q')
+    (bounded : Dual.BoundedBy q dual) : Dual.BoundedBy q' dual :=
+  ⟨bounded.1.mono extends_, bounded.2.mono extends_⟩
+
 /-- The canonical tuple type of bounded components is bounded. -/
 theorem prodTy_boundedBy {q : InferenceBase.FreshSupply} :
     ∀ {targets : List Ty},
@@ -5146,6 +5152,438 @@ theorem DDPPats.boundedBy {signature : FrozenSig} :
       · exact ⟨(headHoles dual h).1.mono tail.supplyExtends,
           (headHoles dual h).2.mono tail.supplyExtends⟩
       · exact tailHoles dual h
+
+end
+
+mutual
+
+/-- Synthesis preserves boundedness and publishes a bounded raw type. -/
+theorem DDSynth.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
+      {τ : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDSynth signature q S Γ e τ q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      S'.BoundedBy q' ∧ τ.BoundedBy q'
+  | q, _, _, _, _, _, _, .var (scheme := scheme) hfind, _, Sb, Γb => by
+      exact ⟨Sb.mono (SupplyExtends.instantiateScheme q scheme),
+        instantiateScheme_boundedBy
+          (Context.BoundedBy.find? (Γb.applySubst Sb) hfind)⟩
+  | q, _, _, _, _, _, _, .lam body, closed, Sb, Γb => by
+      have qb := SupplyExtends.bumpTy q 1
+      have domB : Ty.BoundedBy { q with nextTy := q.nextTy + 1 }
+          (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
+      obtain ⟨S'b, bodyB⟩ := body.boundedBy closed (Sb.mono qb)
+        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+          (Γb.mono qb))
+      exact ⟨S'b, Ty.BoundedBy.fnOf (domB.mono body.supplyExtends) bodyB⟩
+  | q, _, _, _, _, _, _, .fix hne hself hnonmatcher body aligned, closed,
+      Sb, Γb => by
+      have qb := SupplyExtends.bumpTy q 2
+      have domB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
+          (.var q.nextTy) :=
+        Ty.BoundedBy.varOf (show q.nextTy < q.nextTy + 2 by omega)
+      have codB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
+          (.var (q.nextTy + 1)) :=
+        Ty.BoundedBy.varOf (show q.nextTy + 1 < q.nextTy + 2 by omega)
+      obtain ⟨S₁b, bodyB⟩ := body.boundedBy closed (Sb.mono qb)
+        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+          (Context.BoundedBy.cons
+            (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
+            (Γb.mono qb)))
+      have ext := body.supplyExtends
+      exact ⟨aligned.boundedBy S₁b bodyB (codB.mono ext),
+        Ty.BoundedBy.fnOf (domB.mono ext) (codB.mono ext)⟩
+  | q, _, _, _, _, _, _,
+      .app (q₁ := q₁) function aligned argument, closed, Sb, Γb => by
+      obtain ⟨S₁b, fnB⟩ := function.boundedBy closed Sb Γb
+      have qb := SupplyExtends.bumpTy q₁ 2
+      have domB : Ty.BoundedBy { q₁ with nextTy := q₁.nextTy + 2 }
+          (.var q₁.nextTy) :=
+        Ty.BoundedBy.varOf (show q₁.nextTy < q₁.nextTy + 2 by omega)
+      have codB : Ty.BoundedBy { q₁ with nextTy := q₁.nextTy + 2 }
+          (.var (q₁.nextTy + 1)) :=
+        Ty.BoundedBy.varOf (show q₁.nextTy + 1 < q₁.nextTy + 2 by omega)
+      have S₂b := aligned.boundedBy (S₁b.mono qb) (fnB.mono qb)
+        (Ty.BoundedBy.fnOf domB codB)
+      have S₃b := argument.boundedBy closed S₂b
+        (Γb.mono ((function.supplyExtends).trans qb)) domB
+      exact ⟨S₃b, codB.mono argument.supplyExtends⟩
+  | _, _, _, _, _, _, _, .lit, _, Sb, _ => ⟨Sb, Ty.BoundedBy.int⟩
+  | _, _, _, _, _, _, _, .tuple expressions, closed, Sb, Γb => by
+      obtain ⟨S'b, targetsB⟩ := expressions.boundedBy closed Sb Γb
+      exact ⟨S'b, Ty.BoundedBy.prodOfForall targetsB⟩
+  | q, _, _, _, _, _, _, .ctor (scheme := scheme) hfind arguments, closed,
+      Sb, Γb => by
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.dataCtors hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateCtorScheme q scheme
+      have S'b := arguments.boundedBy closed (Sb.mono extendsInst)
+        (Γb.mono extendsInst) instBounded.1
+      exact ⟨S'b, instBounded.2.mono arguments.supplyExtends⟩
+  | q, _, _, _, _, _, _, .prim (scheme := scheme) hfind arguments, closed,
+      Sb, Γb => by
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.primitives hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateCtorScheme q scheme
+      have S'b := arguments.boundedBy closed (Sb.mono extendsInst)
+        (Γb.mono extendsInst) instBounded.1
+      exact ⟨S'b, instBounded.2.mono arguments.supplyExtends⟩
+  | q, _, Γ, _, _, _, _,
+      .letE (valueTarget := valueTarget) (S₁ := S₁) value body, closed,
+      Sb, Γb => by
+      obtain ⟨S₁b, valueB⟩ := value.boundedBy closed Sb Γb
+      have ext₁ := value.supplyExtends
+      obtain ⟨S'b, bodyB⟩ := body.boundedBy closed S₁b
+        (Context.BoundedBy.cons
+          (FrozenSig.generalize_boundedBy (S₁b.apply valueB))
+          (Γb.mono ext₁))
+      exact ⟨S'b, bodyB⟩
+  | q, _, _, _, _, _, _, .something, _, Sb, _ => by
+      refine ⟨Sb.mono (SupplyExtends.bumpTy q 1),
+        Ty.BoundedBy.matcherOf ?_
+          (Ty.BoundedBy.varOf (Nat.lt_succ_self _))⟩
+      intro w hw
+      simp only [Cap.fcv] at hw
+      exact nomatch hw
+  | q, _, _, _, _, q', S',
+      .matcher (rawHoleLists := rawHoleLists) (capability := capability)
+        clausesD hcollect hshape hcaps hcatch hbind harm hcover,
+      closed, Sb, Γb => by
+      have qb := SupplyExtends.bumpTy q 1
+      obtain ⟨S'b, holesB⟩ := clausesD.boundedBy closed (Sb.mono qb)
+        (Γb.mono qb) (Ty.BoundedBy.varOf (Nat.lt_succ_self _))
+      have capB : capability.BoundedBy q' := by
+        intro varId varMem
+        obtain ⟨holeCaps, holeCapsMem, varIn⟩ :=
+          Inference.collectClauseEvidence_fcv hcollect varId
+            (Shape.inferShape_fcv hshape varMem)
+        obtain ⟨rawHoles, rawMem, rfl⟩ := List.mem_map.mp holeCapsMem
+        obtain ⟨resolvedCap, resolvedMem, varInCap⟩ :=
+          Cap.mem_fcvList_split varIn
+        obtain ⟨resolvedDual, resolvedDualMem, rfl⟩ :=
+          List.mem_map.mp resolvedMem
+        obtain ⟨rawDual, rawDualMem, rfl⟩ :=
+          List.mem_map.mp resolvedDualMem
+        exact (S'b.applyCap
+          (holesB rawHoles rawMem rawDual rawDualMem).1) varId varInCap
+      exact ⟨S'b, Ty.BoundedBy.matcherOf capB
+        (Ty.BoundedBy.varOf
+          (Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+            clausesD.supplyExtends.2))⟩
+  | _, _, Γ, _, _, _, _,
+      .matchAll (dual := dual) (Δ := Δ) target pattern aligned matcher
+        body,
+      closed, Sb, Γb => by
+      obtain ⟨S₁b, targetB⟩ := target.boundedBy closed Sb Γb
+      have ext₁ := target.supplyExtends
+      obtain ⟨S₂b, dualB, ΔB⟩ := pattern.boundedBy closed S₁b
+        (Γb.mono ext₁) (fun entry mem => nomatch mem)
+        (fun entry mem => nomatch mem)
+      have ext₂ := pattern.supplyExtends
+      have S₃b := aligned.boundedBy S₂b dualB.2 (targetB.mono ext₂)
+      have S₄b := matcher.boundedBy closed S₃b
+        (Γb.mono (ext₁.trans ext₂))
+        (Ty.BoundedBy.slotOf dualB.1 (targetB.mono ext₂))
+      have ext₃ := matcher.supplyExtends
+      obtain ⟨S'b, bodyB⟩ := body.boundedBy closed S₄b
+        (Context.BoundedBy.append ((ΔB.mono ext₃).toContext)
+          (Γb.mono ((ext₁.trans ext₂).trans ext₃)))
+      exact ⟨S'b, listT_boundedBy bodyB⟩
+  | q, _, _, _, _, _, _,
+      .fixMatcher (domain := domain) (codomain := codomain) (q₀ := q₀)
+        hne hself built body aligned,
+      closed, Sb, Γb => by
+      obtain ⟨domB, codB⟩ := fixMatcherPlaceholderSupply_boundedBy built
+      have ext₀ := SupplyExtends.fixMatcherPlaceholder built
+      obtain ⟨S₁b, bodyB⟩ := body.boundedBy closed (Sb.mono ext₀)
+        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+          (Context.BoundedBy.cons
+            (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
+            (Γb.mono ext₀)))
+      have ext₁ := body.supplyExtends
+      exact ⟨aligned.boundedBy S₁b bodyB (codB.mono ext₁),
+        Ty.BoundedBy.fnOf (domB.mono ext₁) (codB.mono ext₁)⟩
+
+/-- List synthesis preserves boundedness. -/
+theorem DDSynths.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {es : List Expr} {τs : List Ty} {q' : InferenceBase.FreshSupply}
+      {S' : Subst},
+      DDSynths signature q S Γ es τs q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      S'.BoundedBy q' ∧ ∀ τ ∈ τs, τ.BoundedBy q'
+  | _, _, _, _, _, _, _, .nil, _, Sb, _ => by
+      refine ⟨Sb, ?_⟩
+      intro τ mem
+      exact nomatch mem
+  | _, _, _, _, _, _, _, .cons head tail, closed, Sb, Γb => by
+      obtain ⟨S₁b, headB⟩ := head.boundedBy closed Sb Γb
+      obtain ⟨S'b, tailB⟩ := tail.boundedBy closed S₁b
+        (Γb.mono head.supplyExtends)
+      refine ⟨S'b, ?_⟩
+      intro τ mem
+      rcases List.mem_cons.mp mem with rfl | h
+      · exact headB.mono tail.supplyExtends
+      · exact tailB τ h
+
+/-- Checking preserves boundedness. -/
+theorem DDCheck.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
+      {expected : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDCheck signature q S Γ e expected q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      expected.BoundedBy q → S'.BoundedBy q'
+  | _, _, _, _, _, _, _, .mk synthesized aligned, closed, Sb, Γb,
+      expectedB => by
+      obtain ⟨S₁b, rawB⟩ := synthesized.boundedBy closed Sb Γb
+      exact aligned.boundedBy S₁b rawB
+        (expectedB.mono synthesized.supplyExtends)
+
+/-- List checking preserves boundedness. -/
+theorem DDChecks.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {es : List Expr} {expecteds : List Ty}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDChecks signature q S Γ es expecteds q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      (∀ expected ∈ expecteds, expected.BoundedBy q) → S'.BoundedBy q'
+  | _, _, _, _, _, _, _, .nil, _, Sb, _, _ => Sb
+  | _, _, _, _, _, _, _, .cons head tail, closed, Sb, Γb, expectedsB => by
+      have S₁b := head.boundedBy closed Sb Γb (expectedsB _ (by simp))
+      exact tail.boundedBy closed S₁b (Γb.mono head.supplyExtends)
+        (fun expected mem => (expectedsB expected (by simp [mem])).mono
+          head.supplyExtends)
+
+/-- Pattern synthesis preserves boundedness and publishes a bounded dual
+and binding context. -/
+theorem DDPattern.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {pattern : Pattern} {dual : Dual}
+      {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDPattern signature q S Γ Φ Δ pattern dual Δ' q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      PatternCtx.BoundedBy q Φ → MonoCtx.BoundedBy q Δ →
+      S'.BoundedBy q' ∧ Dual.BoundedBy q' dual ∧
+        MonoCtx.BoundedBy q' Δ'
+  | q, _, _, _, _, _, _, _, _, _, .pvar hfresh, _, Sb, _, _, Δb => by
+      have qb : SupplyExtends q
+          { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } :=
+        SupplyExtends.bumpBoth q 1 1
+      refine ⟨Sb.mono qb,
+        ⟨Cap.BoundedBy.varOf (Nat.lt_succ_self _),
+          Ty.BoundedBy.varOf (Nat.lt_succ_self _)⟩, ?_⟩
+      refine MonoCtx.BoundedBy.append (Δb.mono qb) ?_
+      intro entry mem
+      rcases List.mem_cons.mp mem with rfl | h
+      · exact Ty.BoundedBy.varOf (Nat.lt_succ_self _)
+      · exact nomatch h
+  | q, _, _, _, _, _, _, _, _, _, .wild, _, Sb, _, _, Δb => by
+      have qb : SupplyExtends q
+          { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } :=
+        SupplyExtends.bumpBoth q 1 1
+      exact ⟨Sb.mono qb,
+        ⟨Cap.BoundedBy.varOf (Nat.lt_succ_self _),
+          Ty.BoundedBy.varOf (Nat.lt_succ_self _)⟩, Δb.mono qb⟩
+  | _, _, _, _, _, _, _, _, _, _, .pval (q₁ := q₁) value, closed, Sb, Γb,
+      _, Δb => by
+      obtain ⟨S₁b, targetB⟩ := value.boundedBy closed Sb
+        (Context.BoundedBy.append (Δb.toContext) Γb)
+      have ext₁ := value.supplyExtends
+      have qb := SupplyExtends.bumpCap q₁ 1
+      exact ⟨S₁b.mono qb,
+        ⟨Cap.BoundedBy.varOf (Nat.lt_succ_self _), targetB.mono qb⟩,
+        (Δb.mono (ext₁.trans qb))⟩
+  | _, _, _, _, _, _, _, _, _, _, .embed hfind, _, Sb, _, Φb, Δb =>
+      ⟨Sb, Φb.find? hfind, Δb⟩
+  | _, _, _, _, _, _, _, _, _, _, .ptuple patterns, closed, Sb, Γb, Φb,
+      Δb => by
+      obtain ⟨S'b, dualsB, Δ'b⟩ := patterns.boundedBy closed Sb Γb Φb Δb
+      refine ⟨S'b, ⟨?_, ?_⟩, Δ'b⟩
+      · apply Cap.BoundedBy.prodOfForall
+        intro capability mem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp mem
+        exact (dualsB dual dualMem).1
+      · apply Ty.BoundedBy.prodOfForall
+        intro target mem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp mem
+        exact (dualsB dual dualMem).2
+  | q, _, _, _, _, _, _, _, _, _,
+      .pctor (entry := entry) (capability := capability) hfind patterns
+        alignedTargets ctorCap hcompatible,
+      closed, Sb, Γb, Φb, Δb => by
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.patternCtors hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateCtorScheme q
+        entry.scheme
+      obtain ⟨S₁b, dualsB, Δ'b⟩ := patterns.boundedBy closed
+        (Sb.mono extendsInst) (Γb.mono extendsInst) (Φb.mono extendsInst)
+        (Δb.mono extendsInst)
+      have ext₁ := patterns.supplyExtends
+      have S₂b := alignedTargets.boundedBy S₁b dualsB
+        (fun expected mem => (instBounded.1 expected mem).mono ext₁)
+      obtain ⟨capB, S₃b⟩ := ctorCap.boundedBy S₂b
+        (fun child mem => by
+          obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp mem
+          exact (dualsB dual dualMem).1)
+      have ext₂ := ctorCap.supplyExtends
+      exact ⟨S₃b, ⟨capB, (instBounded.2.mono (ext₁.trans ext₂))⟩,
+        Δ'b.mono ext₂⟩
+  | _, _, _, _, _, _, _, _, _, _, .pand left right aligned, closed, Sb,
+      Γb, Φb, Δb => by
+      obtain ⟨S₁b, leftDualB, Δₗb⟩ := left.boundedBy closed Sb Γb Φb Δb
+      have ext₁ := left.supplyExtends
+      obtain ⟨S₂b, rightDualB, Δ'b⟩ := right.boundedBy closed S₁b
+        (Γb.mono ext₁) (Φb.mono ext₁) Δₗb
+      have ext₂ := right.supplyExtends
+      have S'b := aligned.boundedBy S₂b
+        (Dual.BoundedBy.mono ext₂ leftDualB) rightDualB
+      exact ⟨S'b, Dual.BoundedBy.mono ext₂ leftDualB, Δ'b⟩
+  | _, _, _, _, _, _, _, _, _, _, .por left right alignedDual
+      alignedBindings, closed, Sb, Γb, Φb, Δb => by
+      obtain ⟨S₁b, leftDualB, Δₗb⟩ := left.boundedBy closed Sb Γb Φb Δb
+      have ext₁ := left.supplyExtends
+      obtain ⟨S₂b, rightDualB, Δᵣb⟩ := right.boundedBy closed S₁b
+        (Γb.mono ext₁) (Φb.mono ext₁) (Δb.mono ext₁)
+      have ext₂ := right.supplyExtends
+      have S₃b := alignedDual.boundedBy S₂b
+        (Dual.BoundedBy.mono ext₂ leftDualB) rightDualB
+      have S'b := alignedBindings.boundedBy S₃b
+        (fun entry mem => (Δₗb.mono ext₂) entry mem)
+        (fun entry mem => Δᵣb entry mem)
+      exact ⟨S'b, Dual.BoundedBy.mono ext₂ leftDualB, Δₗb.mono ext₂⟩
+  | q, _, _, _, _, _, _, _, _, _,
+      .papp (scheme := scheme) hfind patterns aligned, closed, Sb, Γb,
+      Φb, Δb => by
+      have instBounded := instantiateDualScheme_boundedBy (q := q)
+        ((closed.patternFuns hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateDualScheme q scheme
+      obtain ⟨S₁b, dualsB, Δ'b⟩ := patterns.boundedBy closed
+        (Sb.mono extendsInst) (Γb.mono extendsInst) (Φb.mono extendsInst)
+        (Δb.mono extendsInst)
+      have ext₁ := patterns.supplyExtends
+      have S'b := aligned.boundedBy S₁b dualsB
+        (fun dual mem => ⟨(instBounded.1 dual mem).1.mono ext₁,
+          (instBounded.1 dual mem).2.mono ext₁⟩)
+      exact ⟨S'b, ⟨(instBounded.2.1.mono ext₁), (instBounded.2.2.mono
+        ext₁)⟩, Δ'b⟩
+
+/-- Pattern-list synthesis preserves boundedness. -/
+theorem DDPatterns.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {patterns : List Pattern}
+      {duals : List Dual} {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply}
+      {S' : Subst},
+      DDPatterns signature q S Γ Φ Δ patterns duals Δ' q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      PatternCtx.BoundedBy q Φ → MonoCtx.BoundedBy q Δ →
+      S'.BoundedBy q' ∧ (∀ dual ∈ duals, Dual.BoundedBy q' dual) ∧
+        MonoCtx.BoundedBy q' Δ'
+  | _, _, _, _, _, _, _, _, _, _, .nil, _, Sb, _, _, Δb => by
+      refine ⟨Sb, ?_, Δb⟩
+      intro dual mem
+      exact nomatch mem
+  | _, _, _, _, _, _, _, _, _, _, .cons head tail, closed, Sb, Γb, Φb,
+      Δb => by
+      obtain ⟨S₁b, headDualB, Δ₁b⟩ := head.boundedBy closed Sb Γb Φb Δb
+      have ext₁ := head.supplyExtends
+      obtain ⟨S'b, tailDualsB, Δ'b⟩ := tail.boundedBy closed S₁b
+        (Γb.mono ext₁) (Φb.mono ext₁) Δ₁b
+      have ext₂ := tail.supplyExtends
+      refine ⟨S'b, ?_, Δ'b⟩
+      intro dual mem
+      rcases List.mem_cons.mp mem with rfl | h
+      · exact Dual.BoundedBy.mono ext₂ headDualB
+      · exact tailDualsB dual h
+
+/-- Arm checking preserves boundedness. -/
+theorem DDArms.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {ppBindings : MonoCtx} {arms : List Arm}
+      {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
+      {S' : Subst},
+      DDArms signature q S Γ ppBindings arms clauseTarget bodyTarget
+        q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      MonoCtx.BoundedBy q ppBindings → clauseTarget.BoundedBy q →
+      bodyTarget.BoundedBy q → S'.BoundedBy q'
+  | _, _, _, _, _, _, _, _, _, .nil, _, Sb, _, _, _, _ => Sb
+  | _, _, _, _, _, _, _, _, _, .cons dataPattern hdisjoint body rest,
+      closed, Sb, Γb, ppB, clauseTargetB, bodyTargetB => by
+      obtain ⟨S₁b, armBindingsB⟩ := dataPattern.boundedBy closed Sb
+        clauseTargetB
+      have ext₁ := dataPattern.supplyExtends
+      have S₂b := body.boundedBy closed S₁b
+        (Context.BoundedBy.append
+          (Context.BoundedBy.append (armBindingsB.toContext)
+            ((ppB.mono ext₁).toContext))
+          (Γb.mono ext₁))
+        (bodyTargetB.mono ext₁)
+      have ext₂ := body.supplyExtends
+      exact rest.boundedBy closed S₂b (Γb.mono (ext₁.trans ext₂))
+        (ppB.mono (ext₁.trans ext₂))
+        (clauseTargetB.mono (ext₁.trans ext₂))
+        (bodyTargetB.mono (ext₁.trans ext₂))
+
+/-- Clause inference preserves boundedness and publishes bounded holes. -/
+theorem DDClause.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {clause : Clause} {sharedTarget : Ty} {holes : List Dual}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDClause signature q S Γ clause sharedTarget holes q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      sharedTarget.BoundedBy q →
+      S'.BoundedBy q' ∧ ∀ dual ∈ holes, Dual.BoundedBy q' dual
+  | _, _, _, _, _, _, _, _, .mk pp hdecompose nextMatchers arms, closed,
+      Sb, Γb, sharedB => by
+      obtain ⟨S₁b, holesB, ppBindB⟩ := pp.boundedBy closed Sb sharedB
+      have ext₁ := pp.supplyExtends
+      have S₂b := nextMatchers.boundedBy closed S₁b (Γb.mono ext₁)
+        (fun expected mem => by
+          obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp mem
+          exact Ty.BoundedBy.slotOf (holesB dual dualMem).1
+            (holesB dual dualMem).2)
+      have ext₂ := nextMatchers.supplyExtends
+      have S'b := arms.boundedBy closed S₂b
+        (Γb.mono (ext₁.trans ext₂)) (ppBindB.mono ext₂)
+        (sharedB.mono (ext₁.trans ext₂))
+        (listT_boundedBy (prodTy_boundedBy (fun target mem => by
+          obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp mem
+          exact ((holesB dual dualMem).2.mono ext₂))))
+      have ext₃ := arms.supplyExtends
+      refine ⟨S'b, ?_⟩
+      intro dual mem
+      exact ⟨(holesB dual mem).1.mono (ext₂.trans ext₃),
+        (holesB dual mem).2.mono (ext₂.trans ext₃)⟩
+
+/-- Clause-list inference preserves boundedness and publishes bounded hole
+ledgers. -/
+theorem DDClauses.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {clauses : List Clause} {sharedTarget : Ty}
+      {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
+      {S' : Subst},
+      DDClauses signature q S Γ clauses sharedTarget holeLists q' S' →
+      signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
+      sharedTarget.BoundedBy q →
+      S'.BoundedBy q' ∧ ∀ holes ∈ holeLists, ∀ dual ∈ holes,
+        Dual.BoundedBy q' dual
+  | _, _, _, _, _, _, _, _, .nil, _, Sb, _, _ => by
+      refine ⟨Sb, ?_⟩
+      intro holes mem
+      exact nomatch mem
+  | _, _, _, _, _, _, _, _, .cons head tail, closed, Sb, Γb, sharedB => by
+      obtain ⟨S₁b, headHolesB⟩ := head.boundedBy closed Sb Γb sharedB
+      have ext₁ := head.supplyExtends
+      obtain ⟨S'b, tailHolesB⟩ := tail.boundedBy closed S₁b
+        (Γb.mono ext₁) (sharedB.mono ext₁)
+      have ext₂ := tail.supplyExtends
+      refine ⟨S'b, ?_⟩
+      intro holes mem
+      rcases List.mem_cons.mp mem with rfl | h
+      · intro dual dualMem
+        exact ⟨(headHolesB dual dualMem).1.mono ext₂,
+          (headHolesB dual dualMem).2.mono ext₂⟩
+      · exact tailHolesB holes h
 
 end
 
