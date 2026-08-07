@@ -77,11 +77,14 @@ commit／push はその都度の明示指示がある場合に限るという規
   埋め込みは縮退 witness を供給する．surface への忘却 `CoherentExpr.toHasTy` と推論成功からの
   `infer_success_coherent` を持ち，pattern 層の standalone threaded 境界への忘却は既存の
   `PatternResolutionDeriv.toThreadedSurface`（`CoherentSurface.lean`）が与える．これを algorithmic
-  completeness や principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として言明を固定する．現行推論器に
-  対しては or-pattern 反例（両分岐が同名を束縛すると raw binding context の構文的等価要求で
-  拒否される）による反証 `annotationFree_current_refuted`（`AcceptanceGapRegression.lean`）を
-  機械化済みで，**完成後の推論器で成立させる到達目標**として扱う（定理でも公理でもなく，
-  無証明で主張しない）．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
+  completeness や principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として言明を固定し，**完成後の推論器で
+  成立させる到達目標**として扱う（定理でも公理でもなく，無証明で主張しない）．最初の具体反例
+  だった or-pattern の binder 共有欠如は解消済みである：or の整合は `alignBindings`（binder 名の
+  位置照合＋束縛型の単一化）で行い，raw metavariable ID の構文的等価を要求しない．これに伴い
+  `PatternResolutionDeriv.or` と `ThreadedPatternResolution.or` は「左右の raw 結果 Δ＋
+  prevailing 像の等価 premise」へ緩和した（結論は左の raw Δ・宣言的 `TerminalPatternResolution.or`
+  は不変で，忘却 map は premise で輸送する）．残る既知ギャップは capability freeze と nested
+  matcher capability の rigid 比較（いずれも origin-aware paired unifier の対象）．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
   先に立て，一意性は canonical boundary（substitution が coercible head を導入しない等）を
   定義してから条件付きで扱う．proof-indexed な derivation
   property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない方針は維持する．
@@ -176,10 +179,11 @@ commit／push はその都度の明示指示がある場合に限るという規
     `infer_success_coherent`，match-free 断片の全 coherence
     （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
     および目標命題 `AnnotationFree`（現行推論器へは反証済みの到達目標）．
-  - `TypePM/AcceptanceGapRegression.lean`: or-pattern 受理ギャップの対
-    （宣言的 `orProgram_typed`・raw／公開拒否・単一分岐 control）と
-    現行推論器への `AnnotationFree` 反証 `annotationFree_current_refuted`．
-    or binder 修正が入ったら拒否側と反証を受理側の固定へ差し替える．
+  - `TypePM/AcceptanceGapRegression.lean`: or-pattern の宣言的型付け
+    `orProgram_typed` と，binder 整合修正後の受理固定
+    （`orProgram_accepted`・異位置束縛の `orMixedProgram_accepted`・
+    単一分岐 control）．capability freeze と nested matcher capability の
+    ギャップは仕様が言明可能になり次第ここへ固定する．
   - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
     matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
     `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal

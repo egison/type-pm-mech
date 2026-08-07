@@ -4,20 +4,19 @@ import TypePM.CoherentTyping
 /-!
 # Acceptance gap regressions
 
-`Coherent.AnnotationFree` is a target for the completed inference pipeline,
-not a property of the current one.  This module pins the first concrete
-counterexample for the shipped `infer`: an or-pattern binding the same
-variable in both alternatives.  Declaratively both alternatives may choose
-the same fresh binder pair, so the program is typed at `List Integer`; the
-executable traversal freshens each alternative separately and then demands
-syntactically equal raw binding contexts, so already the raw traversal
-fails.  `annotationFree_current_refuted` records the resulting refutation of
-the goal proposition for the current pipeline.
+This module tracks the concrete acceptance gaps between declarative typing
+and the executable pipeline.  The first gap — an or-pattern binding the same
+variable in both alternatives, previously rejected because the traversal
+compared raw binding contexts for syntactic identity — is fixed: the or case
+now aligns binder names positionally and unifies the bound types
+(`alignBindings`), so both the original program and a variant binding `x` at
+different positions of the alternatives are accepted.  The declarative
+derivation is kept alongside as the specification witness.
 
-The intended fix — sharing one binder skeleton across the alternatives, or
-aligning binders by name and emitting type constraints instead of comparing
-raw metavariable identities — is roadmap work; these regressions keep the
-gap visible (and will fail closed) until it lands.
+The remaining known gaps (constructor/primitive instance capabilities pinned
+by the producer guard, and nested matcher capabilities compared rigidly) are
+conceptual and tracked on the roadmap together with the origin-aware paired
+unifier; they will be pinned here once their signatures are expressible.
 -/
 
 namespace TypePM
@@ -36,14 +35,21 @@ theorem orControl_accepted :
       (.matchAll (.lit 0) .something (.pvar "x") (.var "x")) = true := by
   native_decide
 
-/-- The or-pattern program is rejected already by the raw traversal. -/
-theorem orProgram_raw_rejected :
-    (Inference.inferRaw emptySignature [] orProgram).isSome = false := by
+/-- The or-pattern program is accepted: both alternatives may allocate
+separate metavariables for `x`, and the or case aligns the binding contexts
+by name instead of comparing raw identities. -/
+theorem orProgram_accepted :
+    Inference.inferenceSucceeds emptySignature [] orProgram = true := by
   native_decide
 
-/-- Public inference therefore rejects it as well. -/
-theorem orProgram_rejected :
-    Inference.inferenceSucceeds emptySignature [] orProgram = false := by
+/-- Alignment also identifies binders sitting at different positions of the
+alternatives. -/
+def orMixedProgram : Expr :=
+  .matchAll (.lit 0) .something
+    (.por (.pand (.pvar "x") .wild) (.pand .wild (.pvar "x"))) (.var "x")
+
+theorem orMixedProgram_accepted :
+    Inference.inferenceSucceeds emptySignature [] orMixedProgram = true := by
   native_decide
 
 /-- The prevailing substitution of the declarative derivation below. -/
@@ -90,15 +96,6 @@ theorem orProgram_typed :
   HasTy.matchAll (prevailing := orPrevailing)
     HasTy.lit orPattern_resolved something_slot_typed
     (HasTy.var rfl (Scheme.mono_valueFlowInst _))
-
-/-- The annotation-freeness proposition is refuted for the current
-inferencer: fixing the or-pattern binder discipline is prerequisite roadmap
-work before the goal can be established. -/
-theorem annotationFree_current_refuted : ¬ Coherent.AnnotationFree := by
-  intro h
-  have accepted := h emptySignature orProgram (Ty.listT .int) orProgram_typed
-  rw [orProgram_rejected] at accepted
-  exact Bool.noConfusion accepted
 
 end AcceptanceGapRegression
 end TypePM

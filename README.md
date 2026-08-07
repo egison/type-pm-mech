@@ -18,13 +18,14 @@
 そもそも存在しないので，この定理が「ユーザーは型注釈を書く必要がない」の正確な形である．
 この命題は [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
 `Coherent.AnnotationFree` として言明を固定してある．これは**完成後の推論器に対する
-到達目標**であり，現行の `infer` に対しては偽である：or pattern が両分岐で同名を束縛する
-`matchAll 0 something ($x | $x) x` は宣言的に `List Integer` を持つが，現行の走査は
-分岐を別々に freshen した後で raw binding context の構文的等価を要求するため拒否する
-（[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) の
-`annotationFree_current_refuted` が反証を機械化）．ほかに constructor／primitive
-instance capability の producer guard による固定と，型内部に入れ子の matcher
-capability の rigid 比較が既知の受理ギャップである．principality と異なり，この目標は
+到達目標**である．最初の具体的反例だった or pattern（両分岐で同名を束縛する
+`matchAll 0 something ($x | $x) x`）は，or の整合を raw binding context の構文的
+等価から binder 名の照合＋型の単一化（`alignBindings`）へ改めたことで解消し，
+受理側の regression として固定した
+（[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean)）．
+残る既知の受理ギャップは，constructor／primitive instance capability の producer
+guard による固定と，型内部に入れ子の matcher capability の rigid 比較の二系統で，
+いずれも origin-aware paired unifier で解消予定である．principality と異なり，この目標は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
 利用位置での明示的 coercion 挿入が引き受ける．
@@ -81,12 +82,13 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    公開する．
 2. **一部済** 受理ギャップの regression 固定 — or pattern は
    [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
-   宣言的型付け・算法的拒否・現行推論器への `AnnotationFree` 反証まで機械化済み．
-   capability freeze（概念例 `Pack something`）と nested matcher capability の対は
-   origin-aware solver の仕様確定と合わせて固定する．
-3. 未: or-pattern binder の共有 — OR 全体で binder skeleton を先に共有するか，
-   binder 名を照合して対応する型を制約として整合させる．raw metavariable ID の
-   構文的等価要求をやめる．
+   宣言的型付けと（修正後の）受理を機械化済み．capability freeze（概念例
+   `Pack something`）と nested matcher capability の対は origin-aware solver の
+   仕様確定と合わせて固定する．
+3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
+   等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
+   束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
+   結果 Δ＋prevailing 像の等価 premise」へ緩和した（宣言的 Terminal or は不変）．
 4. 未: origin-aware な再帰的 paired unifier — `renameOnly` は構造化禁止・
    `structuralFlexible` は局所 solve で構造化許可・export 時点で prevailing image を
    freeze する．外側 `Matcher`／`Slot` だけでなく型構造を再帰しながら

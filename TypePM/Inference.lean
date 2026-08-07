@@ -2870,16 +2870,19 @@ def inferPatternFuel :
                   selfEnv (1 :: path) right leftResult.state with
               | none => none
               | some rightResult =>
-                  if leftResult.bindings = rightResult.bindings then
-                    match alignDuals rightResult.state
-                        (freshOrigin .pattern path "pattern-or")
-                        leftResult.dual rightResult.dual with
-                    | none => none
-                    | some state =>
-                        some ⟨leftResult.dual, leftResult.bindings,
-                          state.recordEvent (.inferredPattern pattern
-                            leftResult.dual leftResult.bindings path)⟩
-                  else none
+                  match alignDuals rightResult.state
+                      (freshOrigin .pattern path "pattern-or")
+                      leftResult.dual rightResult.dual with
+                  | none => none
+                  | some aligned =>
+                      match alignBindings aligned
+                          (freshOrigin .pattern path "pattern-or-bindings")
+                          leftResult.bindings rightResult.bindings with
+                      | none => none
+                      | some state =>
+                          some ⟨leftResult.dual, leftResult.bindings,
+                            state.recordEvent (.inferredPattern pattern
+                              leftResult.dual leftResult.bindings path)⟩
       | .papp name patterns =>
           match signature.findPatternFun name with
           | none => none
@@ -2904,6 +2907,21 @@ def inferPatternFuel :
                       some ⟨resultDual, results.bindings,
                         state.recordEvent (.inferredPattern pattern resultDual
                           results.bindings path)⟩
+
+/-- Align two monomorphic binding contexts entrywise.  Binder names must
+coincide positionally; the bound types are unified rather than compared for
+raw syntactic identity, so or-alternatives that allocated separate
+metavariables for the same binder still align. -/
+def alignBindings :
+    InferState -> ConstraintOrigin -> MonoCtx -> MonoCtx -> Option InferState
+  | state, _, [], [] => some state
+  | state, origin, left :: lefts, right :: rights =>
+      if left.1 = right.1 then do
+        let state <- alignTypes state origin left.2 right.2
+        alignBindings state origin lefts rights
+      else
+        none
+  | _, _, _, _ => none
 
 /-- Infer a pattern list while threading its monomorphic binding context. -/
 def inferPatternsFuel :
@@ -3771,6 +3789,28 @@ theorem alignPatternTargets_historyPrefix
           exact (alignTypes_historyPrefix firstSuccess).trans
             (induction restSuccess)
 
+theorem alignBindings_historyPrefix
+    {state result : InferState} {origin : ConstraintOrigin}
+    {left right : MonoCtx}
+    (success : alignBindings state origin left right = some result) :
+    state.HistoryPrefix result := by
+  induction left generalizing state right with
+  | nil =>
+      cases right <;> simp [alignBindings] at success
+      subst result
+      exact InferState.HistoryPrefix.refl state
+  | cons entry entries induction =>
+      cases right with
+      | nil => simp [alignBindings] at success
+      | cons expected expecteds =>
+          simp only [alignBindings] at success
+          split at success
+          · rcases Option.bind_eq_some_iff.mp success with
+              ⟨middle, firstSuccess, restSuccess⟩
+            exact (alignTypes_historyPrefix firstSuccess).trans
+              (induction restSuccess)
+          · exact absurd success (by simp)
+
 theorem freshPatternCtorAssignments_historyPrefix
     {origin : ConstraintOrigin} {variables : List TypePM.TyVar}
     {state result : InferState} {assignments : Projection.Assignments}
@@ -4133,6 +4173,9 @@ theorem inferExprFuel_historyPrefix
     have patternTargetsHistory := alignPatternTargets_historyPrefix
       (by assumption)
   all_goals try
+    have bindingAlignmentHistory := alignBindings_historyPrefix
+      (by assumption)
+  all_goals try
     have patternCtorCapabilityHistory :=
       solvePatternCtorCapability_historyPrefix (by assumption)
   all_goals try
@@ -4168,6 +4211,7 @@ theorem inferExprFuel_historyPrefix
         alignExprResultAtExpected_historyPrefix,
         alignDuals_historyPrefix,
         alignDualLists_historyPrefix,
+        alignBindings_historyPrefix,
         alignPatternTargets_historyPrefix,
         solvePatternCtorCapability_historyPrefix,
         runResolvedConstraint_historyPrefix,

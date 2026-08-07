@@ -239,21 +239,32 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                     bindings selfEnv (1 :: path) right leftResult.state with
                 | none => simp [leftEq, rightEq] at success
                 | some rightResult =>
-                    by_cases same : leftResult.bindings = rightResult.bindings
-                    · cases alignmentEq : alignDuals rightResult.state
-                          (freshOrigin .pattern path "pattern-or")
-                          leftResult.dual rightResult.dual with
-                      | none =>
-                          simp [leftEq, rightEq, same, alignmentEq] at success
-                      | some aligned =>
-                          simp [leftEq, rightEq, same, alignmentEq] at success
-                          subst result
-                          exact (visit_historyPrefix state .patternOr path).trans
-                            ((ih.one leftEq).trans
-                              ((ih.one rightEq).trans
-                                ((alignDuals_historyPrefix alignmentEq).trans
-                                  (InferState.historyPrefix_recordEvent _ _))))
-                    · simp [leftEq, rightEq, same] at success
+                    cases alignmentEq : alignDuals rightResult.state
+                        (freshOrigin .pattern path "pattern-or")
+                        leftResult.dual rightResult.dual with
+                    | none =>
+                        simp [leftEq, rightEq, alignmentEq] at success
+                    | some aligned =>
+                        cases bindingsEq : alignBindings aligned
+                            (freshOrigin .pattern path "pattern-or-bindings")
+                            leftResult.bindings rightResult.bindings with
+                        | none =>
+                            simp [leftEq, rightEq, alignmentEq, bindingsEq]
+                              at success
+                        | some alignedBindings =>
+                            simp [leftEq, rightEq, alignmentEq, bindingsEq]
+                              at success
+                            subst result
+                            exact (visit_historyPrefix state .patternOr
+                                path).trans
+                              ((ih.one leftEq).trans
+                                ((ih.one rightEq).trans
+                                  ((alignDuals_historyPrefix
+                                      alignmentEq).trans
+                                    ((alignBindings_historyPrefix
+                                        bindingsEq).trans
+                                      (InferState.historyPrefix_recordEvent
+                                        _ _)))))
         | papp name patterns =>
             simp only [inferPatternFuel] at success
             cases lookup : signature.findPatternFun name with

@@ -214,13 +214,15 @@ inductive ThreadedPatternResolution
         rawMiddleBindings right cap target rawResultBindings ->
       ThreadedPatternResolution signature prevailing rawContext rawParameters
         rawBindings (.pand left right) cap target rawResultBindings
-  | or {rawBindings left right cap target rawResultBindings} :
+  | or {rawBindings left right cap target rawLeftBindings rawRightBindings} :
       ThreadedPatternResolution signature prevailing rawContext rawParameters
-        rawBindings left cap target rawResultBindings ->
+        rawBindings left cap target rawLeftBindings ->
       ThreadedPatternResolution signature prevailing rawContext rawParameters
-        rawBindings right cap target rawResultBindings ->
+        rawBindings right cap target rawRightBindings ->
+      rawLeftBindings.applySubst prevailing =
+        rawRightBindings.applySubst prevailing ->
       ThreadedPatternResolution signature prevailing rawContext rawParameters
-        rawBindings (.por left right) cap target rawResultBindings
+        rawBindings (.por left right) cap target rawLeftBindings
   | app
       {rawBindings name scheme patterns duals rawResultBindings}
       {result : Dual} :
@@ -284,8 +286,8 @@ def ThreadedPatternResolution.toCoherentSurface
       .ctor lookup children.toCoherentSurface compatible instanceTyping
   | .and left right =>
       .and left.toCoherentSurface right.toCoherentSurface
-  | .or left right =>
-      .or left.toCoherentSurface right.toCoherentSurface
+  | .or left right equality =>
+      .or left.toCoherentSurface (equality.symm ▸ right.toCoherentSurface)
   | .app lookup children instanceTyping =>
       .app lookup children.toCoherentSurface instanceTyping
 
@@ -420,9 +422,9 @@ def PatternResolutionDeriv.toThreadedSurface
   | .and left right =>
       .and (PatternResolutionDeriv.toThreadedSurface left)
         (PatternResolutionDeriv.toThreadedSurface right)
-  | .or left right =>
+  | .or left right equality =>
       .or (PatternResolutionDeriv.toThreadedSurface left)
-        (PatternResolutionDeriv.toThreadedSurface right)
+        (PatternResolutionDeriv.toThreadedSurface right) equality
   | .app lookup children instanceTyping =>
       .app lookup (PatternResolutionsDeriv.toThreadedSurface children)
         instanceTyping

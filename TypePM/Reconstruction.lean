@@ -387,13 +387,15 @@ inductive PatternResolutionDeriv (signature : FrozenSig) :
         right cap target result ->
       PatternResolutionDeriv signature prevailing context parameters bindings
         (.pand left right) cap target result
-  | or {context parameters bindings left right cap target result} :
+  | or {context parameters bindings left right cap target leftResult
+        rightResult} :
       PatternResolutionDeriv signature prevailing context parameters bindings
-        left cap target result ->
+        left cap target leftResult ->
       PatternResolutionDeriv signature prevailing context parameters bindings
-        right cap target result ->
+        right cap target rightResult ->
+      leftResult.applySubst prevailing = rightResult.applySubst prevailing ->
       PatternResolutionDeriv signature prevailing context parameters bindings
-        (.por left right) cap target result
+        (.por left right) cap target leftResult
   | app
       {context parameters bindings name scheme patterns duals resultBindings}
       {result : Dual} :
@@ -603,6 +605,10 @@ macro_rules
           | apply ResolvedPPatTy.ofTerminal <;> assumption
           | apply ResolvedPatternTy.ofTerminal <;> assumption
           | apply ResolvedClausesTy.ofShared <;> assumption
+          | (constructor <;>
+              first
+                | assumption
+                | exact Eq.symm ‹_ = _› ▸ ‹_›)
           | constructor <;> assumption)
 
 /-- The combined mutual recursor discharges every recursive source premise. -/
@@ -1540,6 +1546,44 @@ theorem alignDualLists_terminal_eq
               have tailEq := induction success history
               simp only [List.map_cons, headEq, tailEq]
 
+/-- Successful entrywise binding alignment identifies both monomorphic
+contexts at an enclosing terminal cut. -/
+theorem alignBindings_terminal_eq
+    {terminal : InferState}
+    (typeAlignments : TraceTypeAlignmentConditions terminal)
+    {state result : InferState} {origin : ConstraintOrigin}
+    {left right : MonoCtx}
+    (success : alignBindings state origin left right = some result)
+    (history : result.HistoryPrefix terminal) :
+    left.applySubst terminal.prevailing =
+      right.applySubst terminal.prevailing := by
+  induction left generalizing right state with
+  | nil =>
+      cases right with
+      | nil => rfl
+      | cons _ _ => simp [alignBindings] at success
+  | cons entry entries induction =>
+      cases right with
+      | nil => simp [alignBindings] at success
+      | cons expected expecteds =>
+          simp only [alignBindings] at success
+          split at success
+          · rename_i nameEq
+            rcases Option.bind_eq_some_iff.mp success with
+              ⟨middle, firstSuccess, restSuccess⟩
+            have middleHistory : middle.HistoryPrefix result :=
+              alignBindings_historyPrefix restSuccess
+            have alignmentMembership := alignTypes_event_mem firstSuccess
+            have terminalMembership := InferState.HistoryPrefix.event_mem
+              (middleHistory.trans history) alignmentMembership
+            have headEq := typeAlignments.final_eq terminalMembership
+            have tailEq := induction restSuccess
+            simp only [MonoCtx.applySubst, List.map_cons] at tailEq ⊢
+            simp only [List.cons.injEq]
+            refine ⟨?_, by simpa using tailEq⟩
+            rw [nameEq, headEq]
+          · exact absurd success (by simp)
+
 /-- Actual primitive-pattern W reconstructed at one enclosing terminal cut.
 The certificate follows the algorithm's terminal equalities recursively. -/
 theorem inferPPatFuel_terminalAt
@@ -2393,34 +2437,34 @@ theorem inferExprFuel_reconstructAt
       rw [aligned]
       exact rightDeriv
     exact PatternResolutionDeriv.and leftDeriv rightDeriv'
-  case case63 =>
+  case case64 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
-      initial left right leftResult leftEq rightResult rightEq sameBindings
-      alignedState alignEq result terminal leftIH rightIH resultEq bridge'
+      initial left right leftResult leftEq rightResult rightEq alignedState
+      alignEq alignedBindings bindingsEq terminal leftIH rightIH bridge'
       terminalHistory
-    simp only [if_pos trivial, Option.some.injEq] at resultEq
-    subst result
-    have alignedHistory : alignedState.HistoryPrefix terminal :=
+    have alignedBindingsHistory : alignedBindings.HistoryPrefix terminal :=
       (InferState.historyPrefix_recordEvent _ _).trans terminalHistory
+    have alignedHistory : alignedState.HistoryPrefix terminal :=
+      (alignBindings_historyPrefix bindingsEq).trans alignedBindingsHistory
     have rightHistory : rightResult.state.HistoryPrefix terminal :=
       (alignDuals_historyPrefix alignEq).trans alignedHistory
     have leftHistory : leftResult.state.HistoryPrefix terminal :=
       (inferPatternFuel_historyPrefix rightEq).trans rightHistory
     have leftDeriv := leftIH leftResult rfl terminal bridge' leftHistory
     have rightDeriv := rightIH rightResult rfl terminal bridge' rightHistory
-    rw [← sameBindings] at rightDeriv
     have localAlignment := alignDuals_event_mem alignEq
-    have aligned := bridge'.dualAlignments.final_eq
+    have dualAligned := bridge'.dualAlignments.final_eq
       (alignedHistory.event_mem localAlignment)
+    have bindingsAligned := alignBindings_terminal_eq bridge'.typeAlignments
+      bindingsEq alignedBindingsHistory
     have rightDeriv' : PatternResolutionDeriv signature' terminal.prevailing
         context' parameters bindings right
         (leftResult.dual.applySubst terminal.prevailing).cap
         (leftResult.dual.applySubst terminal.prevailing).target
-        leftResult.bindings := by
-      rw [aligned]
+        rightResult.bindings := by
+      rw [dualAligned]
       exact rightDeriv
-    simpa only [sameBindings] using
-      PatternResolutionDeriv.or leftDeriv rightDeriv'
+    exact PatternResolutionDeriv.or leftDeriv rightDeriv' bindingsAligned
   case case68 =>
     rename_i fuel' signature' context' parameters bindings selfEnv' path'
       initial name patterns scheme lookup normalizedContext normalizedParameters

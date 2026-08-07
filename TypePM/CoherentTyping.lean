@@ -241,11 +241,12 @@ declaratively typed programs are accepted by public executable inference
 without any annotation.  The core syntax has no annotation form, so this
 acceptance completeness is the precise meaning of annotation-freeness.
 
-The proposition is a target for the completed pipeline, not the shipped
-one: `AcceptanceGapRegression.annotationFree_current_refuted` refutes it for
-the current inferencer via an or-pattern whose alternatives bind the same
-variable.  The staged path runs through the or-binder fix, the origin-aware
-recursive paired unifier, Damas–Milner algorithmic acceptance,
+The proposition is a target for the completed pipeline.  The first concrete
+counterexample — an or-pattern whose alternatives bind the same variable —
+is fixed (`AcceptanceGapRegression` now pins its acceptance); the known
+remaining gaps are producer-guard-pinned instance capabilities and rigidly
+compared nested matcher capabilities.  The staged path runs through the
+origin-aware recursive paired unifier, Damas–Milner algorithmic acceptance,
 fragment-restricted completeness (raw-head-visible lifts, freeze-compatible
 capability instances), and finally the removal of the selector's raw-head
 blind spot via cut-indexed coercion events.  The mechanized principality
