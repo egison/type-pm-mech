@@ -181,6 +181,10 @@ matcher-expected で product lift 単独（Matcher 終点）を選んでいた�
 宣言した署名 ctor へのタプル渡し・matcher 頭に固定された λ domain への渡し等）は
 意図された拒否であり，負の regression（`productMatcher_expected_source` の identity
 検査と `#guard !productMatcherArgumentApplicationSucceeds`）で固定する．
+slot-demand 原則自体も selector の定理として機械化済みである：
+`expectedCoercionSource_slotDemand`（selector が source を変えたなら prevailing 適用後の
+expected は slot 頭）と `expectedCoercionSource_matcherExpected`（matcher 頭の expected
+では selector は恒等）．
 
 現段階の selector は `S₁ τraw` ではなく raw `τraw` の頭を検査するので，raw
 metavariable が prevailing substitution 後に初めて product-of-matchers または

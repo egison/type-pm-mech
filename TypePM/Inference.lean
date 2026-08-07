@@ -2054,6 +2054,32 @@ def expectedCoercionSource
   | _, some duals, .slot _ _ => slotTupleTarget duals
   | _, _, _ => inferred
 
+/-- The slot-demand principle in theorem form: whenever the selector presents
+anything other than the raw synthesized type, the substituted expected type
+already exposes a slot head at this cut. -/
+theorem expectedCoercionSource_slotDemand
+    (state : InferState) (inferred expected : Ty)
+    (changed : expectedCoercionSource state inferred expected ≠ inferred) :
+    ∃ consumerCap consumerTarget,
+      state.prevailing.apply expected = .slot consumerCap consumerTarget := by
+  unfold expectedCoercionSource at changed
+  split at changed
+  all_goals first
+    | exact absurd rfl changed
+    | exact ⟨_, _, by assumption⟩
+
+/-- A matcher-headed expectation is not a coercion demand: the selector
+leaves the synthesized type untouched, so only the ordinary alignment of a
+raw matcher can succeed at such a use site. -/
+theorem expectedCoercionSource_matcherExpected
+    (state : InferState) (inferred expected : Ty)
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (matcherExpected :
+      state.prevailing.apply expected = .matcher consumerCap consumerTarget) :
+    expectedCoercionSource state inferred expected = inferred := by
+  unfold expectedCoercionSource
+  split <;> simp_all
+
 /--
 Align an already-synthesized expression result with an expected type and
 record the complete slot-alignment event.  Keeping this non-recursive boundary

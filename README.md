@@ -194,7 +194,9 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    として維持）．`HasTy`・Safety・reconstruction certificate は不変
    （`coerceProductMatcher` は slot-demand 二段の中間段として残る）．
    `nestedCapProgram` の拒否機構は「lift 後の rigid 比較」から「demand 不在による
-   head 不一致」へ変わったが，拒否自体は不変である．
+   head 不一致」へ変わったが，拒否自体は不変である．原則そのものも selector の定理
+   （`expectedCoercionSource_slotDemand`／`expectedCoercionSource_matcherExpected`）
+   として機械化した．
 1. 未: `DDTyping` の定義 — 推論器から独立な帰納的 `DDSynth`／`DDCheck`．設計原理節の
    とおり synthesis-first・slot-demand・no-guess・実行関数や
    `ElaborableHasTy := ∃ CoreTyping` を定義に含めない．
