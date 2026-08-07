@@ -155,6 +155,10 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
   した `nestedCapLetProgram` は受理される正例で，`DDTyping` 導出も持つ．
 - matcher-expected 位置への product-of-matchers 渡し — 意図された拒否
   （段階 3-0 で負の回帰として固定済み）．
+- capability freeze の忘却側境界 — 量化 matcher producer の instance capability を
+  demand 判断は構造化できるが宣言的 value flow は variable-only であり，
+  `DDTyping` と `HasTy` が分離する（`capFreeze_forgetting_gap`）．忘却定理は
+  freeze 側対応条件つきで述べる．
 - 非主張: 広い `HasTy` 前提の completeness，無制限 principality，一般 producer-flow
   解析（alias／mutual recursion／高階 origin），raw declaration からの signature
   validator，一般の評価停止性，full Egison の warning mode／module persistence／標準
@@ -231,9 +235,14 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    最汎 ∧ 制約変数外は恒等）へ強化済み（具体 witness は全部 exact）．境界例も固定済み:
    `nestedCapLetProgram` の `DDTyping` 導出は実行 raw result shape と同じ型で閉じ，
    `nestedCapProgram` には任意の published type・任意の最汎 delta 選択に対して導出が
-   存在しない（`nestedCapProgram_no_ddTyping`；swapped 版は未）．残: freshness 不変量・
-   `HasTy` への忘却（capability sort では freeze 軸の対応条件が忘却側にも要るかの
-   見極めを含む）・`CoherentExpr` への変換．
+   存在しない（`nestedCapProgram_no_ddTyping`；swapped 版は未）．**freeze 軸が忘却にも
+   要ることは判定済み**: 量化 matcher producer `m : ∀κ α. Matcher κ α` を束縛した文脈上で
+   `(λh. (h something, h m)) (λz. z)` は，`m` の fresh instance capability を ordinary
+   matcher-pair solve が `Any` へ構造化して `DDTyping` で閉じるが，宣言側は value-flow
+   instance の variable-only 条件が同じ型を拒否する（`capFreeze_forgetting_gap`）．
+   よって任意文脈の無条件忘却は偽であり，忘却定理は freeze 側対応条件
+   （段階 3-3 の `FreezeCompatible` に対応）を持つ形が最終形である．
+   残: freshness 不変量・`HasTy` への忘却（freeze 側条件つき）・`CoherentExpr` への変換．
 3. 未: 現行実装に対する最初の受理定理 —
    `DDTyping + RawSourceVisible + FreezeCompatible → infer 受理`．二条件は demand の
    由来を定義する条件ではなく，現行実装との対応条件である．

@@ -1673,8 +1673,14 @@ $\mathsf{FreezeCompatible}$ を外す．完成形は
 \]
 である．別方向の soundness は現行 $\mathsf{infer}$ について既に $\mathsf{HasTy}$ まで機械化済みで
 あり，将来は $\mathsf{DDTyping}$ 自身の $\mathsf{HasTy}$ への忘却を先に証明してから，上の
-acceptance completeness を証明する．これらを full principality や広い $\mathsf{HasTy}$ の
-completeness とは呼ばない．
+acceptance completeness を証明する．この忘却は無条件では成立しないことが機械化済みである：
+量化 matcher producer $m:\forall\kappa\,\alpha.\,\mathsf{Matcher}\;\kappa\;\alpha$ を
+束縛した文脈上の $(\lambda h.\,(h\;\mathtt{something},\,h\;m))\,(\lambda z.\,z)$ は，
+$m$ の fresh instance capability を ordinary matcher 対 solve が $\mathsf{Any}$ へ構造化して
+demand-directed には型が付くが，宣言的 value-flow instance は capability binder を変数へしか
+写せないため同じ型を拒否する．capability-freeze 軸は acceptance の対応条件であると同時に
+忘却の対応条件でもあり，忘却定理は freeze 側条件つきで述べる．これらを full principality や
+広い $\mathsf{HasTy}$ の completeness とは呼ばない．
 
 $\mathsf{nestedCapProgram}$ が $\mathsf{DDTyping}$ に導出を持たないことは inversion で
 機械化済みである：最初の function alignment は no-guess 定理により fresh domain を高々変数へ

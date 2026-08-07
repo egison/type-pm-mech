@@ -354,8 +354,9 @@ MGU witness（`PairedMGU.refl`／`varLeft`／`varRight`，`CapMGU.varLeft`／`va
 （`instantiateScheme_noBinder_value`／`instantiateScheme_monoApplySubst_value`），
 exact witness（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` の
 `refl`／`varLeft`／`varRight`／`fnDiagonal`）．
-非主張：`HasTy` への忘却，`CoherentExpr` への変換，freshness 不変量，受理定理
-（段階 3-2／3-3）．
+非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
+`capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，freshness
+不変量，受理定理（段階 3-2／3-3）．
 
 ### capability origin ledger と origin-aware paired solver
 
@@ -522,7 +523,20 @@ instance／alignment／generalization check を通す trace invariant の一般�
   （`Pack something` 等）は coercion ではなく通常単一化で従来どおり受理される．
   署名宣言済み matcher field での境界は `packProgram_accepted`（raw matcher・受理）と
   `packPairProgram_rejected`（matcher のタプル・拒否）の対で固定する．
-- **capability freeze（解消済み・正例）**: `packProgram` = `Pack something`
+- **capability freeze の忘却側境界（恒久的境界例）**: 量化 matcher producer
+  `m : ∀κ α. Matcher κ α` を束縛した文脈上の
+  `(λh. (h something, h m)) (λz. z)`．demand-directed 判断は第一利用が共有 domain を
+  `Matcher Any ?4` へ固定した後，`m` の fresh instance capability `?κ₁` を ordinary
+  matcher-pair の `ExactCapMGU` が `Any` へ構造化して
+  `(Matcher Any ?4, Matcher Any ?4)` で閉じる（`capFreezeProgram_ddTyping`；exact
+  MGU なので no-guess／exactness は全て遵守）．宣言側は同じ型を導出できない:
+  value-flow instance は capability binder を変数へしか写せず（variable-only），
+  `m` を matcher 頭で retype できる規則は T-VAR と COERCE-PRODUCT-MATCHER だけで
+  前者は cap が変数・後者は cap が prod になり `Any` と構成子衝突する
+  （`capFreezeProgram_not_hasTy`）．結合形 `capFreeze_forgetting_gap` が任意文脈の
+  無条件忘却を反証し，段階 3-2 の忘却定理が freeze 側対応条件（段階 3-3 の
+  `FreezeCompatible` の忘却版）を持つべきことを固定する．
+- **capability freeze（受理側・解消済み・正例）**: `packProgram` = `Pack something`
   （`Pack : ∀κ α. Matcher κ α → Packed`）は宣言的には `κ := Any` の instance で
   型付き，推論器も受理する．fresh instance capability は局所 solve 中だけ
   `structuralFlexible`，export 時には prevailing result に生存する image leaf だけを
@@ -673,7 +687,8 @@ executable regression とその正負境界．削るときは対応する設計�
   因子化）で，部分一般化 scheme `∀9. 9 → 3`（`capturedScheme`）の instance
   `Int → ?3` を，capture した `∀9. 9 → 9` の非 instance `Int → ?9` へ写す —
   bare 最汎性では宣言的 value flow が輸送できないことの固定で，判断の exactness
-  強化の根拠．
+  強化の根拠．capability-freeze 忘却境界（`producerScheme`／`capFreezeProgram`／
+  `capFreeze_forgetting_gap`）: 上記「受理ギャップと境界例」の項を参照．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の
