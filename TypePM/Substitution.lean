@@ -574,4 +574,35 @@ theorem Subst.RangeFixed.comp
       (S₁.target a).applyTarget S₂.target
   rw [Ty.applyCapability_comp, hC₁, hC₂]
 
+/-! ## List application as `List.map` -/
+
+/-- Applying a capability substitution to a list is `List.map`. -/
+theorem Cap.applyList_eq_map (S : CapSubst) :
+    ∀ capabilities : List Cap,
+      Cap.applyList S capabilities =
+        capabilities.map fun capability => capability.apply S
+  | [] => rfl
+  | capability :: capabilities => by
+      simp only [Cap.applyList, List.map_cons]
+      rw [Cap.applyList_eq_map S capabilities]
+
+/-- Applying a target substitution to a type list is `List.map`. -/
+theorem Ty.applyTargetList_eq_map (S : TySubst) :
+    ∀ types : List Ty,
+      Ty.applyTargetList S types = types.map fun τ => τ.applyTarget S
+  | [] => rfl
+  | τ :: types => by
+      simp only [Ty.applyTargetList, List.map_cons]
+      rw [Ty.applyTargetList_eq_map S types]
+
+/-- Applying a capability substitution throughout a type list is `List.map`. -/
+theorem Ty.applyCapabilityList_eq_map (S : CapSubst) :
+    ∀ types : List Ty,
+      Ty.applyCapabilityList S types =
+        types.map fun τ => τ.applyCapability S
+  | [] => rfl
+  | τ :: types => by
+      simp only [Ty.applyCapabilityList, List.map_cons]
+      rw [Ty.applyCapabilityList_eq_map S types]
+
 end TypePM

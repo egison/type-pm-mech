@@ -73,10 +73,18 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    proof-carrying kernel が `universal` certificate を構成し，
    `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として
    公開する．
-2. 未: MGU solvability completeness — 可解入力に対する ∃fuel 成功（変数消去測度による
-   帰納）．構造 fuel 束縛 wrapper の十分性は別問題として open に扱う．
+2. 未: fuel 単調性と MGU solvability completeness — 可解入力に対する ∃fuel 成功
+   （変数消去測度による帰納）．構造 fuel 束縛 wrapper の十分性は別問題として open に
+   扱う．単調性の前提として，kernel の重複 match（catch-all 行）が functional
+   induction に opaque-scrutinee case を生み，`fun_induction` は mutual 関数に
+   未対応（実測）のため，先に kernel を非重複 match へ再構成してから
+   `mutual_induct` で証明する．
 3. 未: `inferRaw` の状態不変量（freshness・prevailing 合成・`protectedCaps` 単調性）と，
-   DM 断片での成功＋因子化の主帰納法（段階 2 最大の作業）．
+   DM 断片での成功＋因子化の主帰納法（段階 2 最大の作業）．履歴側の語彙は
+   [`TypePM/InferenceHistory.lean`](TypePM/InferenceHistory.lean) に既設
+   （`InferState.HistoryPrefix` の refl／trans／`prevailing_eq`＝prevailing の
+   replay 因子化と，各 traversal の prefix 補題群）で，不足は supply と
+   `protectedCaps` の単調性補題のみ．
 4. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
 5. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
 
