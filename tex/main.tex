@@ -85,8 +85,9 @@ certificate から独立した，構文主導・state-threaded な関係 $\maths
   \Rightarrow \mathsf{infer}(\Sighat,\emptyset,e) \neq \mathsf{none}
 \]
 である．core の構文には型注釈の形が存在しないため，これを「要求駆動で型付く closed
-program は注釈なしで受理される」という完成目標とする．$\mathsf{DDTyping}$ とこの定理は
-まだ定義・機械化していない．
+program は注釈なしで受理される」という完成目標とする．$\mathsf{DDSynth}$／$\mathsf{DDCheck}$
+と closed wrapper $\mathsf{DDTyping}$ は式層（pattern-free 断片）に対して機械化済みであり
+（\texttt{TypePM/DemandTyping.lean}），pattern 層の規則とこの受理定理はまだ機械化していない．
 
 $\mathsf{DDTyping}$ は fresh supply と prevailing paired substitution だけを state の
 input／output として thread する．$\lambda$ domain は任意の型として選ばず，supply から得た
@@ -1296,6 +1297,16 @@ $q_0=\mathsf{initialSupply}(\Sighat,\Gamma)$ と identity substitution から
 $\mathsf{DDSynth}$ が成功し，終端 result
 $S'\tau_{\mathit{raw}}$ が $\tau$ であることをいう．これは executable
 $\mathsf{infer}$ の成功や reconstruction certificate の存在を定義に含めない．
+
+この二判断と closed wrapper は，式層（pattern-free 断片）に対して
+\texttt{TypePM/DemandTyping.lean} に定義済みである．solve delta は関係的 MGU 仕様（soundness と全
+unifier の因子化）または exact one-way 解として制約し，checking cut の分岐は
+cut-resolved view 上の決定的 classifier で行う．prevailing replay（chronological delta
+列への因子化）と supply 単調性，判断レベルの slot-demand 境界（非 identity 分岐は slot
+頭の expected を要求し，matcher 頭の expectation は ordinary alignment へ退化する），
+product-of-matchers の slot 期待での受理と matcher 期待での checking-cut 不在の正負対
+まで機械化済みである．$\mathtt{matcher}$ literal・$\mathtt{matchAll}$・matcher-bodied
+$\mathtt{fix}$ の規則は pattern 層 family とともに残る．
 
 各規則の出力 state は入力 state の chronological extension でなければならない．すなわち supply は
 単調に進み，substitution にはある局所 delta について $S'=\delta\circ S$ という因子化を要求する．

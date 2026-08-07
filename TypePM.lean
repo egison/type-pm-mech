@@ -68,6 +68,8 @@ import TypePM.InferenceRegression
 import TypePM.Soundness
 import TypePM.RecursiveExamples
 import TypePM.PatternCtorCapabilityRegression
+import TypePM.DemandTyping
+import TypePM.DemandTypingRegression
 
 /-!
 # Egison core with two-index matcher types

@@ -290,6 +290,39 @@ matcher literal を含まない **match-free 断片では任意の surface typin
 型付けは埋め込みを経て coherent judgment に入る（`dm_coherent`）．これらを
 algorithmic completeness や principality とは呼ばない．
 
+### demand-directed judgment（式層）
+
+[`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) は，README の設計原理節が
+固定した demand-directed judgment を式層（pattern-free 断片）に対して定義する．
+mutual family は `DDSynth`／`DDSynths`／`DDCheck`／`DDChecks` の 4 judgment で，
+fresh supply と prevailing paired substitution を入出力で thread する．`DDCheck` の
+規則は一つ（synthesize してから出力 cut で `DDAlign`）であり，`matcher` literal・
+`matchAll`・matcher-bodied `fix` には規則がない（pattern 層 family はロードマップ
+段階 3-1 の残り）．capability freeze／export ledger の軸は判断に含めない（段階 3-3
+の `FreezeCompatible` 対応条件）．
+
+solve delta は実行ソルバに言及しない関係的仕様で制約する：`CapMGU`／`TargetMGU`／
+`PairedMGU`（soundness＋全 unifier の因子化＝kernel certificate と同形）と，exact
+one-way 解 `OneWayDelta`（`matchCap` の制限付き binding substitution＋capability
+適用後 target の MGU）．各規則の出力 substitution は `Subst.seq` による局所 delta の
+chronological 合成である．
+
+checking cut の分岐は cut-resolved view（`S₁ τraw` と `S₁ τexpected`）上の決定的
+classifier `demandClass`（product-matcher lift／slot-tuple lift／matcher-to-slot／
+slot-to-slot／ordinary；空 product は matcher-first）で行い，raw view による分岐は
+持たない（現行 selector との raw-source visibility 差は `RawSourceVisible` として
+段階 3-3 で扱う）．ordinary 等式整合 `DDAlignTypes` は，同 head の matcher／slot 対で
+capability を先に解いてから capability 適用後の target を解き，それ以外は resolved 対
+の一回の paired solve である．
+
+証明済み：`demandClass_slotDemand`／`demandClass_matcherExpected`（非 ordinary 分岐は
+slot 頭の expected を要求する），`DDAlign.slotDemand`／`DDAlign.matcherExpected`
+（判断レベルの slot-demand 境界），prevailing replay（`ReplayExtends`＝chronological
+delta 列による因子化，全 judgment），supply 単調性（`SupplyExtends`，全 judgment），
+反射・単一束縛の MGU witness（`PairedMGU.refl`／`varLeft`／`varRight` ほか）．
+非主張：pattern 層の規則，`HasTy` への忘却，`CoherentExpr` への変換，freshness／solve
+relevance の不変量，受理定理（段階 3-2／3-3）．
+
 ### capability origin ledger と origin-aware paired solver
 
 [`TypePM/CapabilityOrigin.lean`](../TypePM/CapabilityOrigin.lean) は capability
@@ -572,6 +605,12 @@ executable regression とその正負境界．削るときは対応する設計�
   domain-directed application の matcher product／matcher-to-slot／slot-tuple の明示
   surface 導出と，空 product の matcher-first 二段 `NormalPlan`．product-matcher
   application の宣言導出は wide 包絡の意図された受理ギャップ（公開 inference は拒否）．
+- [`TypePM/DemandTypingRegression.lean`](../TypePM/DemandTypingRegression.lean):
+  demand-directed judgment の具体導出と境界対．solve-free な `λx.x` の synthesis と
+  wrapper，domain 整合＋引数 solve を伴う `(λx.x) 1 : Int` の `DDTyping`，
+  `(something, something)` を aggregate slot 期待で検査する product-matcher lift の
+  正例（lift が両 `something` target を `Int` へ解決することも固定），同じ raw product
+  に対する matcher 頭期待の checking cut 不在（`DDAlign` の全分岐反証）．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の
