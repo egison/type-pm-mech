@@ -872,6 +872,12 @@ theorem dm_coherent {signature : FrozenSig} (sigFtv : signature.ftv = [])
   coherent_of_matchFree (DM.HasTy.emb sigFtv typing)
     (matchFree_of_dm typing)
 
+/-- The polymorphic-identity witness is coherent over any closed signature. -/
+theorem idProgram_coherent {signature : FrozenSig}
+    (sigFtv : signature.ftv = []) :
+    CoherentExpr signature [] DM.idProgram .int :=
+  dm_coherent sigFtv DM.idProgram_dm_typed
+
 /-! ## The annotation-freeness goal -/
 
 /--
