@@ -387,6 +387,19 @@ theorem packProgram_accepted :
     Inference.inferenceSucceeds packSignature [] packProgram = true := by
   native_decide
 
+/-- A tuple of matchers offered to the same matcher-headed constructor
+field. -/
+def packPairProgram : Expr := .ctor "Pack" [.tuple [.something, .something]]
+
+/-- A matcher-headed constructor field is not a slot demand: the raw product
+of matchers is not lifted there, so `Pack (something, something)` is
+rejected while the raw matcher argument of `packProgram` is accepted by
+ordinary alignment.  This pins the intended boundary of the slot-demand
+principle at a signature-declared matcher position. -/
+theorem packPairProgram_rejected :
+    Inference.inferenceSucceeds packSignature [] packPairProgram = false := by
+  native_decide
+
 /-- The concrete successful public result, extracted from the executable
 acceptance check. -/
 def packResult : Inference.ExprResult :=

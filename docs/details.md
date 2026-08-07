@@ -444,6 +444,8 @@ instance／alignment／generalization check を通す trace invariant の一般�
   `productMatcherArgumentApplication_surface_typed`）は wide 包絡の意図された受理
   ギャップとして維持する．なお raw `Matcher` を matcher-expected 位置へ渡す形
   （`Pack something` 等）は coercion ではなく通常単一化で従来どおり受理される．
+  署名宣言済み matcher field での境界は `packProgram_accepted`（raw matcher・受理）と
+  `packPairProgram_rejected`（matcher のタプル・拒否）の対で固定する．
 - **capability freeze（解消済み・正例）**: `packProgram` = `Pack something`
   （`Pack : ∀κ α. Matcher κ α → Packed`）は宣言的には `κ := Any` の instance で
   型付き，推論器も受理する．fresh instance capability は局所 solve 中だけ
