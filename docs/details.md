@@ -374,7 +374,18 @@ solved form（identity・occurs 条件つき single・diagonal／fresh／shared-
 関数整合 delta；pointwise 持ち上げ `CapSubst.idempotent_of_pointwise`／
 `TySubst.idempotent_of_pointwise`／`Subst.idempotent_of_capId`），合成側は
 `Subst.seq_idempotent`（solved-form delta の合成像を prevailing が固定するとき
-composite も solved form）を用意した．その上に solve 層の有界性:
+composite も solved form）を用意した．その fixedness 前提は ordinary alignment に
+対して**放電済み**である：逆向き固定補題（`Cap.fixed_of_apply_self`／
+`Subst.target_fixed_of_apply_self`／`Subst.cap_fixed_of_apply_self`＝apply が型を
+再生するなら両 sort の自由変数は pointwise 固定，list 版込み）から solved-form
+prevailing は自身の像の自由変数を固定し（`Subst.Idempotent.image_target_fixed`／
+`image_cap_fixed`），exact delta の support／range は prevailing 像上に住むので，
+prevailing は composite 像全体を固定する（`ExactPairedMGU.prevailing_fixed`；
+両 sort 固定なら型全体が固定される `Subst.apply_eq_self_of_fixed` 経由）．系として
+prevailing-resolved constraint 上の ordinary exact solve は composite prevailing を
+solved form に保つ（`ExactPairedMGU.seq_idempotent`）．残る合成保存は
+matcherPair／slotPair の二段 seq（capability 先行 delta＋target delta）と one-way
+delta 側である．その上に solve 層の有界性:
 `Exact*.boundedBy`（有界制約の exact delta は `Subst.BoundedBy`），
 `OneWayDelta.boundedBy`（`matchCapAcc_imagesWithin`＝binding 像は producer 変数内，
 mutual・全 12 mismatch 行込み），`DDAlignTypes.boundedBy`／`DDAlign.boundedBy`
