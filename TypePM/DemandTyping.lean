@@ -109,6 +109,73 @@ theorem TargetMGU.refl (target : Ty) :
   show (TySubst.id candidate).applyTarget U = U candidate
   rfl
 
+/-- Binding one absent capability variable is a most general solution of a
+variable-versus-capability constraint. -/
+theorem CapMGU.varLeft (varId : CapVar) (capability : Cap)
+    (notMem : varId ∉ capability.fcv) :
+    CapMGU (.var varId) capability
+      (Unification.CapSubst.single varId capability) := by
+  constructor
+  · show (Cap.var varId).apply (Unification.CapSubst.single varId capability) =
+      capability.apply (Unification.CapSubst.single varId capability)
+    rw [Unification.Cap.apply_single_of_not_mem varId capability capability
+      notMem]
+    show Unification.CapSubst.single varId capability varId = capability
+    simp [Unification.CapSubst.single]
+  · intro U unifies
+    refine ⟨U, ?_⟩
+    funext candidate
+    show U candidate =
+      (Unification.CapSubst.single varId capability candidate).apply U
+    by_cases hcase : varId = candidate
+    · subst hcase
+      simp only [Unification.CapSubst.single]
+      exact unifies
+    · simp only [Unification.CapSubst.single, if_neg hcase]
+      rfl
+
+/-- Symmetric form of `CapMGU.varLeft`. -/
+theorem CapMGU.varRight (capability : Cap) (varId : CapVar)
+    (notMem : varId ∉ capability.fcv) :
+    CapMGU capability (.var varId)
+      (Unification.CapSubst.single varId capability) := by
+  obtain ⟨sound, universal⟩ := CapMGU.varLeft varId capability notMem
+  exact ⟨sound.symm, fun U unifies => universal U unifies.symm⟩
+
+/-- Binding one absent target variable is a most general solution of a
+variable-versus-target constraint. -/
+theorem TargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
+    (notMem : varId ∉ target.ftv) :
+    TargetMGU (.var varId) target
+      (Unification.TySubst.single varId target) := by
+  constructor
+  · show (Ty.var varId).applyTarget
+        (Unification.TySubst.single varId target) =
+      target.applyTarget (Unification.TySubst.single varId target)
+    rw [Unification.Ty.applyTarget_single_of_not_mem varId target target
+      notMem]
+    show Unification.TySubst.single varId target varId = target
+    simp [Unification.TySubst.single]
+  · intro U unifies
+    refine ⟨U, ?_⟩
+    funext candidate
+    show U candidate =
+      (Unification.TySubst.single varId target candidate).applyTarget U
+    by_cases hcase : varId = candidate
+    · subst hcase
+      simp only [Unification.TySubst.single]
+      exact unifies
+    · simp only [Unification.TySubst.single, if_neg hcase]
+      rfl
+
+/-- Symmetric form of `TargetMGU.varLeft`. -/
+theorem TargetMGU.varRight (target : Ty) (varId : TypePM.TyVar)
+    (notMem : varId ∉ target.ftv) :
+    TargetMGU target (.var varId)
+      (Unification.TySubst.single varId target) := by
+  obtain ⟨sound, universal⟩ := TargetMGU.varLeft varId target notMem
+  exact ⟨sound.symm, fun U unifies => universal U unifies.symm⟩
+
 /-- Identity is a most general paired unifier of syntactically equal types. -/
 theorem PairedMGU.refl (target : Ty) :
     PairedMGU target target Subst.id :=

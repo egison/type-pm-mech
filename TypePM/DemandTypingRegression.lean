@@ -1,17 +1,26 @@
 import TypePM.DemandTyping
 import TypePM.CertifiedInferenceRegression
+import TypePM.AcceptanceGapRegression
 
 /-!
 # Demand-directed judgment regressions
 
-Concrete inhabitants and refutations for the expression-layer `DDSynth`/
-`DDCheck` judgments: a solve-free synthesis, an application whose domain
-alignment and argument check each perform one paired solve, a positive
-slot-demand coercion of a product of matchers at a slot-headed expectation,
-and the align-level refutation showing that the same product admits no
-checking cut against a matcher-headed expectation.  The positive/negative
-pair pins the slot-demand boundary for the judgment itself, mirroring the
-selector-level regressions of `CertifiedInferenceRegression`.
+Concrete inhabitants and refutations for the `DDSynth`/`DDCheck` judgments:
+a solve-free synthesis, an application whose domain alignment and argument
+check each perform one paired solve, a positive slot-demand coercion of a
+product of matchers at a slot-headed expectation, and the align-level
+refutation showing that the same product admits no checking cut against a
+matcher-headed expectation.  The positive/negative pair pins the slot-demand
+boundary for the judgment itself, mirroring the selector-level regressions
+of `CertifiedInferenceRegression`.
+
+The pattern layer is exercised end to end by two flagship derivations: the
+or-pattern program of `AcceptanceGapRegression` (a `matchAll` whose pattern
+aligns two independently allocated binder metas by name), and a delegating
+matcher literal (one catch-all clause whose hole slot is fed by `something`
+one-way and whose arm body is an inner `matchAll`), which closes at
+`Matcher Any Int` through the same executable finalization checks consumed
+by the executable traversal.
 -/
 
 namespace TypePM
@@ -211,6 +220,198 @@ theorem dmLet_ddTyping :
       (PairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
     (.mk .lit (.ordinary rfl (.ordinary rfl
       (PairedMGU.varRight .int 5 (by decide)))))
+
+/-! ## Pattern layer: the or-pattern `matchAll` program
+
+The same or-pattern program whose executable acceptance is pinned by
+`AcceptanceGapRegression.orProgram_accepted` carries a demand-directed
+derivation: both alternatives allocate independent capability/target metas
+for `x`, dual alignment unifies them, binding alignment matches the binder
+by name, the match-target alignment resolves the shared binder target to
+`Int`, and the `something` matcher expression meets the pattern's slot
+expectation through the one-way producer-to-slot solution. -/
+
+/-- Prevailing substitution after the or-alternative capability alignment. -/
+def orCapAlign : Subst :=
+  Subst.seq ⟨Unification.CapSubst.single ⟨0⟩ (.var ⟨1⟩), TySubst.id⟩ Subst.id
+
+/-- Prevailing substitution after the or-alternative target alignment. -/
+def orDualAlign : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 0 (.var 1)⟩ orCapAlign
+
+/-- Prevailing substitution after the or binding alignment: the binder types
+are already shared, so the delta is an identity solve. -/
+def orBindingsAlign : Subst := Subst.seq Subst.id orDualAlign
+
+/-- Prevailing substitution after the match-target alignment. -/
+def orTargetAlign : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 1 .int⟩ orBindingsAlign
+
+/-- One-way capability component of the producer-to-slot solution: the
+pattern's capability meta receives the `something` producer `Any`. -/
+def orOneWayCap : CapSubst :=
+  CapMatch.Bindings.toSubstWithin (Cap.var ⟨1⟩).fcv [(⟨1⟩, Cap.any)]
+
+/-- Terminal substitution of the or-pattern program. -/
+def orTerminal : Subst :=
+  Subst.seq ⟨orOneWayCap, Unification.TySubst.single 2 .int⟩ orTargetAlign
+
+/-- The or pattern synthesizes the left alternative's dual: independent
+fresh metas per alternative, dual alignment across the alternatives, and
+positional binding alignment on the shared binder name. -/
+theorem orPattern_ddPattern :
+    DDPattern emptySignature ⟨0, 0⟩ Subst.id [] [] []
+      (.por (.pvar "x") (.pvar "x")) ⟨.var ⟨0⟩, .var 0⟩ [("x", .var 0)]
+      ⟨2, 2⟩ orBindingsAlign := by
+  refine DDPattern.por (S₃ := orDualAlign)
+    (.pvar (by simp [MonoCtx.names]))
+    (.pvar (by simp [MonoCtx.names])) ?_ ?_
+  · exact .mk (CapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide))
+      (.ordinary rfl (PairedMGU.varLeft 0 (.var 1) (by decide)))
+  · exact .cons rfl (.ordinary rfl (PairedMGU.refl (.var 1))) .nil
+
+/-- Raw synthesis of the or-pattern program at the initial supply. -/
+theorem orProgram_ddSynth :
+    DDSynth emptySignature ⟨0, 0⟩ Subst.id []
+      AcceptanceGapRegression.orProgram (Ty.listT .int) ⟨2, 3⟩ orTerminal := by
+  refine DDSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 3⟩)
+    (S₄ := orTerminal) .lit orPattern_ddPattern ?_ ?_ ?_
+  · exact .ordinary rfl (PairedMGU.varLeft 1 .int (by decide))
+  · exact .mk .something (.matcherToSlot rfl rfl
+      ⟨[(⟨1⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 2 .int (by decide)⟩)
+  · exact DDSynth.var (scheme := Scheme.mono .int) rfl
+
+/-- The or-pattern program closes at `List Int` in the demand-directed
+judgment, mirroring its executable acceptance. -/
+theorem orProgram_ddTyping :
+    DDTyping emptySignature [] AcceptanceGapRegression.orProgram
+      (Ty.listT .int) :=
+  ⟨Ty.listT .int, ⟨2, 3⟩, orTerminal, orProgram_ddSynth, rfl⟩
+
+/-! ## Pattern layer: a delegating matcher literal
+
+One catch-all clause `[$ something [(v → matchAll 0 something $y y)]]`: the
+primitive hole allocates a fresh hole capability against the shared matcher
+target, `something` feeds the hole slot one-way, and the variable arm's body
+— itself a `matchAll` — aligns `List Int` with the decomposition-result type
+`List ?0`, resolving the shared target to `Int`.  Finalization consumes the
+same executable coverage checks as the executable traversal, and the literal
+closes at `Matcher Any Int`. -/
+
+/-- The inner arm body `matchAll 0 something $y y`. -/
+def delegatingBody : Expr :=
+  .matchAll (.lit 0) .something (.pvar "y") (.var "y")
+
+/-- The delegating matcher literal. -/
+def delegatingMatcher : Expr :=
+  .matcher [.mk .hole .something [.mk (.var "v") delegatingBody]]
+
+/-- One-way capability component feeding the hole slot from `something`. -/
+def delegatingHoleCap : CapSubst :=
+  CapMatch.Bindings.toSubstWithin (Cap.var ⟨0⟩).fcv [(⟨0⟩, Cap.any)]
+
+/-- Prevailing substitution after the next-matcher slot check. -/
+def delegatingCheck1 : Subst :=
+  Subst.seq ⟨delegatingHoleCap, Unification.TySubst.single 1 (.var 0)⟩
+    Subst.id
+
+/-- Prevailing substitution after the inner match-target alignment. -/
+def delegatingInner1 : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 2 .int⟩ delegatingCheck1
+
+/-- One-way capability component of the inner `something` check. -/
+def delegatingInnerCap : CapSubst :=
+  CapMatch.Bindings.toSubstWithin (Cap.var ⟨1⟩).fcv [(⟨1⟩, Cap.any)]
+
+/-- Prevailing substitution after the inner slot check. -/
+def delegatingInner2 : Subst :=
+  Subst.seq ⟨delegatingInnerCap, Unification.TySubst.single 3 .int⟩
+    delegatingInner1
+
+/-- Terminal substitution of the delegating matcher: the arm-body alignment
+resolves the shared matcher target to `Int`. -/
+def delegatingTerminal : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 0 .int⟩ delegatingInner2
+
+/-- Most general paired solution of the arm-body alignment
+`List Int ≐ List ?0`. -/
+theorem delegating_bodyMGU :
+    PairedMGU (Ty.listT .int) (Ty.listT (.var 0))
+      ⟨CapSubst.id, Unification.TySubst.single 0 .int⟩ := by
+  constructor
+  · rfl
+  · intro U unifies
+    have components :
+        Ty.data "List" [Ty.int] =
+          Ty.data "List" [((Ty.var 0).applyCapability U.cap).applyTarget
+            U.target] := unifies
+    have listEq :
+        [Ty.int] = [((Ty.var 0).applyCapability U.cap).applyTarget
+          U.target] := by
+      injection components
+    have headEq : Ty.int =
+        ((Ty.var 0).applyCapability U.cap).applyTarget U.target := by
+      injection listEq
+    have targetEq : U.target = fun candidate =>
+        U.apply (Unification.TySubst.single 0 .int candidate) := by
+      funext candidate
+      by_cases hcase : (0 : TypePM.TyVar) = candidate
+      · cases hcase
+        simp only [Unification.TySubst.single]
+        exact headEq.symm
+      · simp only [Unification.TySubst.single, if_neg hcase]
+        rfl
+    exact ⟨U, congrArg (Subst.mk U.cap) targetEq⟩
+
+/-- The next-matcher check: `something` delivers the hole slot one-way. -/
+theorem delegatingNext_ddChecks :
+    DDChecks emptySignature ⟨1, 1⟩ Subst.id [] [.something]
+      [.slot (.var ⟨0⟩) (.var 0)] ⟨1, 2⟩ delegatingCheck1 := by
+  refine .cons (.mk .something ?_) .nil
+  exact .matcherToSlot rfl rfl
+    ⟨[(⟨0⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 1 (.var 0) (by decide)⟩
+
+/-- The delegating arm body: the inner `matchAll` synthesizes `List Int` and
+aligns with the decomposition-result type `List ?0`. -/
+theorem delegatingBody_ddCheck :
+    DDCheck emptySignature ⟨1, 2⟩ delegatingCheck1
+      [("v", Scheme.mono (.var 0))] delegatingBody (Ty.listT (.var 0))
+      ⟨2, 4⟩ delegatingTerminal := by
+  refine .mk (raw := Ty.listT .int) (q₁ := ⟨2, 4⟩)
+    (S₁ := delegatingInner2) ?_ ?_
+  · refine DDSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
+      (S₄ := delegatingInner2) .lit
+      (.pvar (by simp [MonoCtx.names])) ?_ ?_ ?_
+    · exact .ordinary rfl (PairedMGU.varLeft 2 .int (by decide))
+    · exact .mk .something (.matcherToSlot rfl rfl
+        ⟨[(⟨1⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 3 .int (by decide)⟩)
+    · exact DDSynth.var (scheme := Scheme.mono .int) rfl
+  · exact .ordinary rfl (.ordinary rfl delegating_bodyMGU)
+
+/-- The single delegating clause: hole against the shared target, one
+next-matcher slot check, and one variable arm. -/
+theorem delegatingClause_ddClause :
+    DDClause emptySignature ⟨0, 1⟩ Subst.id []
+      (.mk .hole .something [.mk (.var "v") delegatingBody]) (.var 0)
+      [⟨.var ⟨0⟩, .var 0⟩] ⟨2, 4⟩ delegatingTerminal := by
+  refine .mk .hole rfl delegatingNext_ddChecks ?_
+  exact .cons .var (fun name _ => by simp [MonoCtx.names])
+    delegatingBody_ddCheck .nil
+
+/-- The delegating matcher literal closes at `Matcher Any Int` through the
+demand-directed judgment, its finalization discharged by the same executable
+coverage checks the executable traversal consumes. -/
+theorem delegatingMatcher_ddTyping :
+    DDTyping emptySignature [] delegatingMatcher (.matcher .any .int) := by
+  refine ⟨.matcher .any (.var 0), ⟨2, 4⟩, delegatingTerminal, ?_, rfl⟩
+  exact DDSynth.matcher (evidence := [.unseen]) (capability := .any)
+    (.cons delegatingClause_ddClause .nil) rfl rfl rfl rfl rfl rfl rfl
+
+/-- The executable pipeline accepts the delegating matcher as well: the
+demand-directed derivation mirrors an actually accepted program. -/
+theorem delegatingMatcher_accepted :
+    Inference.inferenceSucceeds emptySignature [] delegatingMatcher = true := by
+  native_decide
 
 end DemandTypingRegression
 end TypePM
