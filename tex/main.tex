@@ -1339,6 +1339,24 @@ $\forall 9.\,9\to 3$ の束縛子を capture して $\forall 9.\,9\to 9$ に変�
 instance $\mathsf{Int}\to ?_9$ はもはや instance でない．bare 最汎性だけでは宣言的
 value flow が delta に沿って輸送できない．
 
+この chronological extension の上に freshness 不変量を層として証明してある．supply $q$ に
+対する有界性を，capability／type は counter 未満の変数のみを含むこと，substitution は
+counter 以上で恒等かつ counter 未満の像が再び有界であることと定義する
+（\texttt{Cap.BoundedBy}／\texttt{Ty.BoundedBy}／\texttt{Subst.BoundedBy}；scheme と
+context の各種にも同型に拡張する）．各 solve delta の有界性（exact MGU の恒等条項と
+像条項，one-way 解の producer 変数限定），supply twin の有界性（fresh 割当は消費区間内に
+落ち，signature skeleton の freshening は evidence 射影パイプライン — exact merge・
+finalization・certified projection・clause evidence 収集・shape 推論 — が flexible
+変数を発明しないことに載る），そして全 9 judgment の保存 sweep が成り立つ：署名の全
+scheme が binder の外に自由変数を持たない（署名閉性 \texttt{FrozenSig.SchemesClosed}）
+とき，有界な入力 state からのどの導出も，出力 substitution・公開型・dual・binding・
+hole ledger を出力 supply で有界に返す．特に matcher literal の root capability は，
+terminal hole capability の有界性が clause evidence 収集と shape 推論の変数保存を通って
+伝わることで有界になる．closed wrapper への系として，$\mathsf{DDTyping}$ が公開する型は
+initial supply を拡張する終端 supply で有界である（\texttt{DDTyping.published\_boundedBy}）．
+この不変量は，実行走査の fresh 割当と judgment の状態が同じ番地空間を衝突なく共有する
+ことの核であり，受理定理で supply 対応を取る土台になる．
+
 $\mathsf{DDCheck}$ は syntax／signature ごとの coercion 規則を持たず，必ず次の一つの
 一般 checking schema を使う．まず同じ $q,S$ から $e$ を synthesize して
 $q_1,S_1,\tau_{\mathit{raw}}$ を得る．次に，その直後の cut で

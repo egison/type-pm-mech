@@ -366,11 +366,44 @@ canonical solver 完全性が未整備のため導出でなく条項）．その
 `OneWayDelta.boundedBy`（`matchCapAcc_imagesWithin`＝binding 像は producer 変数内，
 mutual・全 12 mismatch 行込み），`DDAlignTypes.boundedBy`／`DDAlign.boundedBy`
 （recognizer は `productMatcherDuals?_sound` 系で成分へ分解），dual／dual-list／
-target-list／binding／ctor-caps 整列の有界性．freshness の残り＝pattern 層
-supply-twin の有界性（署名閉性込み）と 9-family judgment の保存 sweep．
+target-list／binding／ctor-caps 整列の有界性．
+
+その上で **freshness 不変量は完成**した．(i) evidence 射影の自由変数保存：
+`Shape.Leaf.fcv`／`Shape.Evidence.fcv` を新設し，`ofCap` 埋め込みの保存
+（`fcv_ofCap`／`fcvList_map_ofCap`）・exact merge（`merge_fcv`／`mergeAll_fcv`）・
+finalization（`finalize_fcv` 三形）・shape 推論（`inferShape_fcv`）・certified
+projection パイプライン全段（assignment 環境 `assignmentsFcv`／chunk 環境
+`chunksFcv` 上の lookup／insert／merge／collect／canonical 集約／result 再構成，
+`projectSignature_fcv`／`projectClauseSignature_fcv`）・骨格 evidence の変数自由性
+（`ppatSkeletonEvidence_fcv`＝構文由来 skeleton は `fcv = []`，
+`matcherSkeletonEvidence_fcv`）・actual clause evidence の hole 変数限定
+（`clauseEvidenceGo_fcv`＝evidence と未消費 suffix の双方，`clauseEvidence_fcv`／
+`collectClauseEvidence_fcv`）・fallback field demand の assignment 変数限定
+（`patternCtorFieldDemands_fcv`）を証明した．(ii) supply-twin の有界性：
+`freshTargetsSupply_boundedBy`・`freshenSkeletonSupply_boundedBy`（三 mutual，
+`.known` leaf は入力有界性で通し fresh meta は消費区間内）・
+`patternCtorAssignmentsSupply_fcv`・`fixMatcherPlaceholderSupply_boundedBy`
+（skeleton は変数自由なので前提が退化）・`DDPatternCtorCap.boundedBy`
+（exact-projection／shared-skeleton 両経路）．(iii) scheme／context 層：
+`Scheme.BoundedBy`／`CtorScheme.BoundedBy`／`DualScheme.BoundedBy`（binder 外
+自由変数の有界性）と instantiation の有界性（`instantiateBinders_apply_boundedBy`
+＝量化変数は消費区間内・自由変数は元 counter 未満，三 instantiator 共有；
+`instantiateScheme_boundedBy`／`instantiateCtorScheme_boundedBy`／
+`instantiateDualScheme_boundedBy`），署名閉性 `FrozenSig.SchemesClosed`（frozen
+lookup の全 scheme が binder 外自由変数を持たない；閉 scheme は任意 supply で有界），
+`Context`／`MonoCtx`／`PatternCtx` の `BoundedBy` と cons／append／find?／
+applySubst／toContext 閉包，`FrozenSig.generalize_boundedBy`．(iv) 9-family
+sweep：閉署名と有界入力 state から，synthesis は出力 substitution と公開 raw 型，
+pattern synthesis は dual と binding context，clause 層は hole ledger を，
+すべて出力 supply で有界に返す（`DDSynth.boundedBy` ほか全 judgment，
+式自由 family `DDDPat*`／`DDPPat*` 込み）．matcher 規則は terminal hole caps →
+`collectClauseEvidence_fcv` → `inferShape_fcv` の連鎖で root capability の有界性を
+閉じる．closed wrapper の系は `initialSupply_context_boundedBy`（初期 supply は
+自 context を有界化する）と `DDTyping.published_boundedBy`（公開型は initialSupply
+を拡張する終端 supply で有界）．
 非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
-`capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，freshness
-不変量，受理定理（段階 3-2／3-3）．
+`capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，受理定理
+（段階 3-2／3-3）．
 
 ### capability origin ledger と origin-aware paired solver
 
