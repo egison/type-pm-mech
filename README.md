@@ -42,15 +42,16 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 
 ### 段階 1: coherent surface typing 基盤 — 済
 
-- **済** 10 family の相互帰納 coherent surface typing（`Coherent.CoherentExpr` ほか，
-  [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean)）．pattern 層は
-  threaded-only．
-- **済** reconstruction certificate `ExprDeriv` との相互変換
-  （`toExprDeriv`／`ofExprDeriv`），surface への忘却 `CoherentExpr.toHasTy`，
-  推論成功からの `infer_success_coherent`，standalone threaded 境界への忘却
-  `toThreadedSurface`．
+- **済** coherent surface typing（`Coherent.CoherentExpr` ほか 10 family，
+  [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean)）．reconstruction
+  certificate `ExprDeriv` そのものへの定義的 abbreviation（`CoreTyping` と同じ前例）で，
+  pattern 層は threaded，式 premise は certificate 自身へ再帰する．
+- **済** surface への忘却 `CoherentExpr.toHasTy` と推論成功からの
+  `infer_success_coherent`（pattern 層の standalone threaded 境界への忘却は既存の
+  `PatternResolutionDeriv.toThreadedSurface`）．
 - **済** product lift 構成子の raw-source provenance 添字（段階 3 の可視性 fragment を
-  言明するための装置．恒等 witness が常に取れるため判断を制限しない）．
+  言明する装置）．W の reconstruction motive は selector が実際に頭を検査した raw type を
+  faithful に注入し，恒等 witness も常に取れるため判断を制限しない．
 - **済** 旗艦例の coherent instance（`listMatcherMatchAll_coherent`）．
 - 未: pval-free aligned 吸収補題（fragment 記述の精密化用，批判経路外）．
 
@@ -61,7 +62,7 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 - **済** DM 埋め込み `DM.HasTy.emb`
   （[`TypePM/DamasMilner.lean`](TypePM/DamasMilner.lean)）．
 - **済** match-free 断片の全 coherence
-  （`coherent_of_matchFree`／`certified_of_matchFree`）: `matchAll` と matcher literal を
+  （`coherent_of_matchFree`）: `matchAll` と matcher literal を
   含まない式の宣言的型付けはすべて coherent．
 - **済** その系 `dm_coherent`: DM のすべての宣言的型付けが埋め込みを経て coherent
   judgment に入る（多相 let 証人の instance `idProgram_coherent` つき）．
@@ -353,17 +354,18 @@ W の pattern reconstruction motive がこれを直接生成する．その `pva
 要求し，arm と clause も reconstruction family に閉じているため，公開 inference が返す
 `CoreTyping` は全構文部分で surface typing oracle へ戻らない．
 
-[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) はこれを expression，arm，clause まで
-拡張する：10 family の相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか）を
-独立に定式化し，`Reconstruction` certificate との相互変換（`toExprDeriv`／`ofExprDeriv`），
-surface への忘却 `CoherentExpr.toHasTy`，推論成功から coherent typing を得る
-`infer_success_coherent`，standalone threaded 境界への忘却 `toThreadedSurface` を証明する．
-pattern 層は threaded-only で，product lift 構成子は raw-source provenance 添字を持つ
-（恒等 witness が常に取れるため判断を制限しない）．coherence が制限するのは pattern の
-provenance だけなので，`matchAll` と matcher literal を含まない **match-free 断片では任意の
-surface typing が coherent** であり（`coherent_of_matchFree`／`certified_of_matchFree`），
-その系として Damas–Milner 断片のすべての宣言的型付けは埋め込みを経て coherent judgment に
-入る（`dm_coherent`）．これらを algorithmic completeness や principality とは呼ばない．
+[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) はこれを coherent surface typing として
+公開する：`CoreTyping` と同じ前例に従い，`Coherent.CoherentExpr := ExprDeriv` ほか 10 family を
+定義的 abbreviation とし（鏡写しの独立 mirror は維持しない），surface への忘却
+`CoherentExpr.toHasTy` と推論成功から coherent typing を得る `infer_success_coherent` を持つ．
+product lift 構成子は raw-source provenance 添字を certificate 本体に持ち，W の reconstruction
+motive（`expectedCoercionSource_deriv`）は selector が実際に頭を検査した raw type と terminal
+substitution を faithful に注入する（恒等 witness も常に取れるため判断は制限されない）．
+coherence が制限するのは pattern の provenance だけなので，`matchAll` と matcher literal を
+含まない **match-free 断片では任意の surface typing が coherent** であり
+（`coherent_of_matchFree`），その系として Damas–Milner 断片のすべての宣言的型付けは埋め込みを
+経て coherent judgment に入る（`dm_coherent`）．これらを algorithmic completeness や
+principality とは呼ばない．
 
 ### Runtime safety
 

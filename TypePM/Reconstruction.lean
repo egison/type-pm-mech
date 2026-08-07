@@ -107,15 +107,23 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       ExprDeriv signature context expression
         (.slot ((requestedCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply requestedTarget)))
-  | coerceProductMatcher {context expression} {duals : List Dual} :
+  | coerceProductMatcher
+      {context expression} {rawSource : Ty} {lift : Subst}
+      {duals : List Dual} :
       ExprDeriv signature context expression
         (.prod (duals.map fun dual => .matcher dual.cap dual.target)) ->
+      lift.apply rawSource
+        = .prod (duals.map fun dual => .matcher dual.cap dual.target) ->
       ExprDeriv signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
-  | coerceSlotTuple {context expression} {duals : List Dual} :
+  | coerceSlotTuple
+      {context expression} {rawSource : Ty} {lift : Subst}
+      {duals : List Dual} :
       ExprDeriv signature context expression
         (.prod (duals.map fun dual => .slot dual.cap dual.target)) ->
+      lift.apply rawSource
+        = .prod (duals.map fun dual => .slot dual.cap dual.target) ->
       ExprDeriv signature context expression
         (.slot (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
@@ -1356,7 +1364,14 @@ theorem expectedCoercionSource_deriv
           rw [rawShape] at derivation
           simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
             Function.comp_def] using derivation
-        have lifted := ExprDeriv.coerceProductMatcher productDerivation
+        have liftEq : terminalSubst.apply inferred
+            = .prod ((duals.map (Dual.applySubst terminalSubst)).map
+              fun dual => .matcher dual.cap dual.target) := by
+          rw [rawShape]
+          simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+            Function.comp_def]
+        have lifted :=
+          ExprDeriv.coerceProductMatcher productDerivation liftEq
         simpa [expectedCoercionSource, matcherView, requested,
           productMatcherTarget, Subst.apply_matcher, Cap.apply_prod,
           Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
@@ -1379,7 +1394,14 @@ theorem expectedCoercionSource_deriv
               rw [rawShape] at derivation
               simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
                 Function.comp_def] using derivation
-            have lifted := ExprDeriv.coerceSlotTuple productDerivation
+            have liftEq : terminalSubst.apply inferred
+                = .prod ((duals.map (Dual.applySubst terminalSubst)).map
+                  fun dual => .slot dual.cap dual.target) := by
+              rw [rawShape]
+              simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+                Function.comp_def]
+            have lifted :=
+              ExprDeriv.coerceSlotTuple productDerivation liftEq
             simpa [expectedCoercionSource, matcherView, slotView, requested,
               slotTupleTarget, Subst.apply_slot, Cap.apply_prod,
               Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,

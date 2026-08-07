@@ -154,8 +154,8 @@ theorem CoercionPlan.toCoreTyping
       exact .coerceMatcherToSlot typing raw post
   | checkSlotToSlot raw post =>
       exact .checkSlotToSlot typing raw post
-  | productMatcher => exact .coerceProductMatcher typing
-  | slotTuple => exact .coerceSlotTuple typing
+  | productMatcher => exact .coerceProductMatcher typing (Subst.apply_id _)
+  | slotTuple => exact .coerceSlotTuple typing (Subst.apply_id _)
   | trans _ _ firstIH secondIH => exact secondIH (firstIH typing)
 
 /-- Reassemble a checked core head. -/

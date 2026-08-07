@@ -66,15 +66,18 @@ commit／push はその都度の明示指示がある場合に限るという規
   `ExprDeriv` なので，inference-generated な `CoreTyping` は expression／pattern／arm／clause を通じて
   surface typing oracle へ戻らない recursive coherent core certificate である．一方，独立した surface
   `ThreadedPatternResolution(s)` の `pval` premise は plain `HasTy` のままである．expression／arm／clause
-  まで含む mutual coherent judgment は `CoherentTyping.lean` の `Coherent.CoherentExpr` ほか 10 family と
-  して定式化済みである．pattern 層は threaded-only（aligned twin は導入しない），式 premise
-  （pattern `pval`・arm body・clause next-matcher）は判断自身へ再帰する．この judgment は
-  `Reconstruction` certificate と相互に変換でき（`toExprDeriv`／`ofExprDeriv`），surface への忘却
-  `CoherentExpr.toHasTy`，推論成功からの `infer_success_coherent`，standalone threaded 境界への忘却
-  `toThreadedSurface` を持つ．product lift 構成子（`coerceProductMatcher`／`coerceSlotTuple`）は
-  raw-source と lift substitution の provenance 添字を持つが，恒等 witness が常に取れるため判断を
-  制限しない（`ofExprDeriv` は縮退 witness を供給する）．この相互変換を algorithmic completeness や
-  principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として**言明のみ**
+  まで含む mutual coherent judgment は `Reconstruction` certificate そのものであり，`CoherentTyping.lean`
+  は `CoreTyping` と同じ前例に従って `Coherent.CoherentExpr := ExprDeriv` ほか 10 family を定義的
+  abbreviation として公開する（鏡写しの独立 mirror は維持しない）．pattern 層は threaded，式 premise
+  （pattern `pval`・arm body・clause next-matcher）は certificate 自身へ再帰する．product lift 構成子
+  （`ExprDeriv.coerceProductMatcher`／`coerceSlotTuple`）は raw-source と lift substitution の
+  provenance 添字を本体に持ち，W の reconstruction motive（`expectedCoercionSource_deriv`）は
+  selector が実際に頭を検査した raw type と terminal substitution を faithful に注入する．恒等
+  witness が常に取れるため判断は制限されず，plan replay（`CoercionPlan.toCoreTyping`）と match-free
+  埋め込みは縮退 witness を供給する．surface への忘却 `CoherentExpr.toHasTy` と推論成功からの
+  `infer_success_coherent` を持ち，pattern 層の standalone threaded 境界への忘却は既存の
+  `PatternResolutionDeriv.toThreadedSurface`（`CoherentSurface.lean`）が与える．これを algorithmic
+  completeness や principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として**言明のみ**
   （`def` であって定理でも公理でもない）を固定し，無証明で主張しない．proof-indexed な derivation
   property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない方針は維持する．
   `CanonicalCoercion.lean` の `Step`／`Spine`／`NormalPlan` は observable な `Type` 値の
@@ -163,8 +166,8 @@ commit／push はその都度の明示指示がある場合に限るという規
     `COERCE-PRODUCT-MATCHER` plan，および `let` 後の変数利用位置での unary lift．
   - `TypePM/CoherentSurface.lean`: pattern leaf の raw/actual context を結ぶ indices-only
     coherent judgment，surface forgetful map，reconstruction bridge．
-  - `TypePM/CoherentTyping.lean`: 10 family の mutual coherent surface typing と
-    `Reconstruction` certificate の相互変換，`CoherentExpr.toHasTy`，
+  - `TypePM/CoherentTyping.lean`: coherent surface typing の定義的 abbreviation
+    （`Coherent.CoherentExpr := ExprDeriv` ほか 10 family），`CoherentExpr.toHasTy`，
     `infer_success_coherent`，match-free 断片の全 coherence
     （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
     および目標命題 `AnnotationFree`（言明のみ・未証明）．
