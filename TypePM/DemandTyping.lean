@@ -1076,6 +1076,37 @@ def fixMatcherPlaceholderSupply (signature : FrozenSig)
                     nextCap := q.nextCap + 1
                     nextTy := q.nextTy + 2 })
 
+/-- Instantiating a scheme with no binders returns its body unchanged: the
+allocated binder substitution has empty support. -/
+theorem instantiateScheme_noBinder_value (q : InferenceBase.FreshSupply)
+    (body : Ty) :
+    (InferenceBase.instantiateScheme q ⟨[], [], body⟩).value = body := by
+  refine Subst.apply_eq_self_of_free_fixed _ body ?_ ?_
+  · intro varId _
+    exact InferenceBase.instantiateBinders_cap_support q [] [] varId
+      (by simp)
+  · intro varId _
+    exact InferenceBase.instantiateBinders_ty_support q [] [] varId
+      (by simp)
+
+/-- Instantiating a substituted monomorphic scheme returns the substituted
+body: the mask at an empty binder list is the substitution itself, and the
+allocated binder substitution has empty support. -/
+theorem instantiateScheme_monoApplySubst_value
+    (q : InferenceBase.FreshSupply) (S : Subst) (body : Ty) :
+    (InferenceBase.instantiateScheme q
+      ((Scheme.mono body).applySubst S)).value = S.apply body := by
+  show (InferenceBase.instantiateBinders q [] []).subst.apply
+      ((Subst.mk (S.cap.mask []) (S.target.mask [])).apply body) =
+    S.apply body
+  rw [Subst.apply_eq_self_of_free_fixed
+      (InferenceBase.instantiateBinders q [] []).subst _
+      (fun varId _ =>
+        InferenceBase.instantiateBinders_cap_support q [] [] varId (by simp))
+      (fun varId _ =>
+        InferenceBase.instantiateBinders_ty_support q [] [] varId (by simp))]
+  exact Subst.apply_eq_of_free_agree _ S body (fun _ _ => rfl) (fun _ _ => rfl)
+
 /-- The terminal per-clause hole capabilities consumed by matcher
 finalization. -/
 def terminalHoleCaps (S : Subst) (rawHoleLists : List (List Dual)) :
