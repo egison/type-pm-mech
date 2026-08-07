@@ -274,6 +274,510 @@ theorem PairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
           .var candidate by simp [fnDiagonalDelta, hshared, hcodomain]]
         rfl
 
+/-! ### No-guess metatheory of most general solve deltas
+
+Universality alone already bounds what a most general solve delta may do to
+variables the constraint does not force.  Any variable kept fixed by some
+unifier of the constraint is mapped to a bare variable; variables outside
+the constraint are therefore at most renamed, never structured; and two
+distinct outside variables are never collapsed.  This is the no-guess
+principle as a theorem about the solve-delta specifications themselves —
+no additional relevance side condition is needed to rule out structuring an
+unrelated metavariable.
+-/
+
+/-- A capability whose substitution image is a bare variable is itself a
+bare variable. -/
+theorem Cap.eq_var_of_apply_var {capability : Cap} {R : CapSubst}
+    {image : CapVar} (applied : capability.apply R = .var image) :
+    ∃ varId, capability = .var varId := by
+  cases capability with
+  | var varId => exact ⟨varId, rfl⟩
+  | any => nomatch applied
+  | skolem varId => nomatch applied
+  | con name children => nomatch applied
+  | prod components => nomatch applied
+
+/-- A type whose target-substitution image is a bare variable is itself a
+bare variable. -/
+theorem Ty.eq_var_of_applyTarget_var {target : Ty} {T : TySubst}
+    {image : TypePM.TyVar} (applied : target.applyTarget T = .var image) :
+    ∃ varId, target = .var varId := by
+  cases target with
+  | var varId => exact ⟨varId, rfl⟩
+  | skolem varId => nomatch applied
+  | unit => nomatch applied
+  | int => nomatch applied
+  | bool => nomatch applied
+  | data name arguments => nomatch applied
+  | prod components => nomatch applied
+  | fn domain codomain => nomatch applied
+  | matcher capability inner => nomatch applied
+  | slot capability inner => nomatch applied
+
+/-- A type whose paired-substitution image is a bare variable is itself a
+bare variable. -/
+theorem Ty.eq_var_of_apply_var {target : Ty} {R : Subst}
+    {image : TypePM.TyVar} (applied : R.apply target = .var image) :
+    ∃ varId, target = .var varId := by
+  cases target with
+  | var varId => exact ⟨varId, rfl⟩
+  | skolem varId => nomatch applied
+  | unit => nomatch applied
+  | int => nomatch applied
+  | bool => nomatch applied
+  | data name arguments => nomatch applied
+  | prod components => nomatch applied
+  | fn domain codomain => nomatch applied
+  | matcher capability inner => nomatch applied
+  | slot capability inner => nomatch applied
+
+/-- Target application depends only on the free target leaves of its
+input. -/
+theorem Ty.applyTarget_eq_of_ftv_agree (left right : TySubst) (target : Ty)
+    (agree : ∀ varId, varId ∈ target.ftv → left varId = right varId) :
+    target.applyTarget left = target.applyTarget right := by
+  have paired := Subst.apply_eq_of_free_agree ⟨CapSubst.id, left⟩
+    ⟨CapSubst.id, right⟩ target (fun _ _ => rfl) agree
+  simpa [Subst.apply, Ty.applyCapability_id] using paired
+
+/-- Most general capability unification is symmetric in its constraint. -/
+theorem CapMGU.symm {left right : Cap} {subst : CapSubst}
+    (mgu : CapMGU left right subst) : CapMGU right left subst :=
+  ⟨mgu.1.symm, fun U unifies => mgu.2 U unifies.symm⟩
+
+/-- Most general target unification is symmetric in its constraint. -/
+theorem TargetMGU.symm {left right : Ty} {subst : TySubst}
+    (mgu : TargetMGU left right subst) : TargetMGU right left subst :=
+  ⟨mgu.1.symm, fun U unifies => mgu.2 U unifies.symm⟩
+
+/-- Most general paired unification is symmetric in its constraint. -/
+theorem PairedMGU.symm {left right : Ty} {subst : Subst}
+    (mgu : PairedMGU left right subst) : PairedMGU right left subst :=
+  ⟨mgu.1.symm, fun U unifies => mgu.2 U unifies.symm⟩
+
+/-- Any variable kept fixed by some unifier of the constraint is mapped to
+a bare variable by every most general capability solution. -/
+theorem CapMGU.image_var_of_fixing_unifier {left right : Cap}
+    {subst : CapSubst} (mgu : CapMGU left right subst) {U : CapSubst}
+    (unifies : left.apply U = right.apply U) {varId : CapVar}
+    (fixed : U varId = .var varId) :
+    ∃ image, subst varId = .var image := by
+  obtain ⟨R, factored⟩ := mgu.2 U unifies
+  have pointwise : U varId = (subst varId).apply R := congrFun factored varId
+  rw [fixed] at pointwise
+  exact Cap.eq_var_of_apply_var pointwise.symm
+
+/-- A most general capability solution maps every variable outside its
+constraint to a bare variable: outside variables are at most renamed. -/
+theorem CapMGU.outside_image_var {left right : Cap} {subst : CapSubst}
+    (mgu : CapMGU left right subst) {varId : CapVar}
+    (leftOutside : varId ∉ left.fcv) (rightOutside : varId ∉ right.fcv) :
+    ∃ image, subst varId = .var image := by
+  refine mgu.image_var_of_fixing_unifier
+    (U := fun candidate =>
+      if candidate = varId then .var varId else subst candidate)
+    ?_ (if_pos rfl)
+  have leftEq := Cap.apply_eq_of_fcv_agree
+    (fun candidate =>
+      if candidate = varId then .var varId else subst candidate) subst left
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => leftOutside (h ▸ membership))
+  have rightEq := Cap.apply_eq_of_fcv_agree
+    (fun candidate =>
+      if candidate = varId then .var varId else subst candidate) subst right
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => rightOutside (h ▸ membership))
+  rw [leftEq, rightEq]
+  exact mgu.1
+
+/-- A most general capability solution never collapses two distinct
+variables outside its constraint. -/
+theorem CapMGU.outside_injective {left right : Cap} {subst : CapSubst}
+    (mgu : CapMGU left right subst) {varId otherId : CapVar}
+    (varLeftOutside : varId ∉ left.fcv)
+    (varRightOutside : varId ∉ right.fcv)
+    (otherLeftOutside : otherId ∉ left.fcv)
+    (otherRightOutside : otherId ∉ right.fcv)
+    (collapsed : subst varId = subst otherId) : varId = otherId := by
+  by_cases hcase : varId = otherId
+  · exact hcase
+  exfalso
+  have hne : ¬ otherId = varId := fun h => hcase h.symm
+  have unifies :
+      left.apply (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) =
+      right.apply (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) := by
+    have leftEq := Cap.apply_eq_of_fcv_agree
+      (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) subst left
+      (fun candidate membership => by
+        rw [if_neg fun h : candidate = varId => varLeftOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherLeftOutside (h ▸ membership)])
+    have rightEq := Cap.apply_eq_of_fcv_agree
+      (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) subst right
+      (fun candidate membership => by
+        rw [if_neg fun h : candidate = varId => varRightOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherRightOutside (h ▸ membership)])
+    rw [leftEq, rightEq]
+    exact mgu.1
+  obtain ⟨R, factored⟩ := mgu.2 _ unifies
+  have varPointwise : Cap.var varId = (subst varId).apply R := by
+    simpa [CapSubst.comp] using congrFun factored varId
+  have otherPointwise : Cap.var otherId = (subst otherId).apply R := by
+    simpa [hne, CapSubst.comp] using congrFun factored otherId
+  rw [collapsed] at varPointwise
+  have images : Cap.var varId = Cap.var otherId :=
+    varPointwise.trans otherPointwise.symm
+  injection images with h
+  exact hcase h
+
+/-- Any variable kept fixed by some unifier of the constraint is mapped to
+a bare variable by every most general target solution. -/
+theorem TargetMGU.image_var_of_fixing_unifier {left right : Ty}
+    {subst : TySubst} (mgu : TargetMGU left right subst) {U : TySubst}
+    (unifies : left.applyTarget U = right.applyTarget U)
+    {varId : TypePM.TyVar} (fixed : U varId = .var varId) :
+    ∃ image, subst varId = .var image := by
+  obtain ⟨R, factored⟩ := mgu.2 U unifies
+  have pointwise : U varId = (subst varId).applyTarget R :=
+    congrFun factored varId
+  rw [fixed] at pointwise
+  exact Ty.eq_var_of_applyTarget_var pointwise.symm
+
+/-- A most general target solution maps every variable outside its
+constraint to a bare variable. -/
+theorem TargetMGU.outside_image_var {left right : Ty} {subst : TySubst}
+    (mgu : TargetMGU left right subst) {varId : TypePM.TyVar}
+    (leftOutside : varId ∉ left.ftv) (rightOutside : varId ∉ right.ftv) :
+    ∃ image, subst varId = .var image := by
+  refine mgu.image_var_of_fixing_unifier
+    (U := fun candidate =>
+      if candidate = varId then .var varId else subst candidate)
+    ?_ (if_pos rfl)
+  have leftEq := Ty.applyTarget_eq_of_ftv_agree
+    (fun candidate =>
+      if candidate = varId then .var varId else subst candidate) subst left
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => leftOutside (h ▸ membership))
+  have rightEq := Ty.applyTarget_eq_of_ftv_agree
+    (fun candidate =>
+      if candidate = varId then .var varId else subst candidate) subst right
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => rightOutside (h ▸ membership))
+  rw [leftEq, rightEq]
+  exact mgu.1
+
+/-- A most general target solution never collapses two distinct variables
+outside its constraint. -/
+theorem TargetMGU.outside_injective {left right : Ty} {subst : TySubst}
+    (mgu : TargetMGU left right subst) {varId otherId : TypePM.TyVar}
+    (varLeftOutside : varId ∉ left.ftv)
+    (varRightOutside : varId ∉ right.ftv)
+    (otherLeftOutside : otherId ∉ left.ftv)
+    (otherRightOutside : otherId ∉ right.ftv)
+    (collapsed : subst varId = subst otherId) : varId = otherId := by
+  by_cases hcase : varId = otherId
+  · exact hcase
+  exfalso
+  have hne : ¬ otherId = varId := fun h => hcase h.symm
+  have unifies :
+      left.applyTarget (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) =
+      right.applyTarget (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) := by
+    have leftEq := Ty.applyTarget_eq_of_ftv_agree
+      (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) subst left
+      (fun candidate membership => by
+        rw [if_neg fun h : candidate = varId => varLeftOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherLeftOutside (h ▸ membership)])
+    have rightEq := Ty.applyTarget_eq_of_ftv_agree
+      (fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst candidate) subst right
+      (fun candidate membership => by
+        rw [if_neg fun h : candidate = varId => varRightOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherRightOutside (h ▸ membership)])
+    rw [leftEq, rightEq]
+    exact mgu.1
+  obtain ⟨R, factored⟩ := mgu.2 _ unifies
+  have varPointwise : Ty.var varId = (subst varId).applyTarget R := by
+    simpa [TySubst.comp] using congrFun factored varId
+  have otherPointwise : Ty.var otherId = (subst otherId).applyTarget R := by
+    simpa [hne, TySubst.comp] using congrFun factored otherId
+  rw [collapsed] at varPointwise
+  have images : Ty.var varId = Ty.var otherId :=
+    varPointwise.trans otherPointwise.symm
+  injection images with h
+  exact hcase h
+
+/-- Any target variable kept fixed by some paired unifier of the constraint
+is mapped to a bare variable by every most general paired solution. -/
+theorem PairedMGU.target_image_var_of_fixing_unifier {left right : Ty}
+    {subst : Subst} (mgu : PairedMGU left right subst) {U : Subst}
+    (unifies : U.apply left = U.apply right) {varId : TypePM.TyVar}
+    (fixed : U.target varId = .var varId) :
+    ∃ image, subst.target varId = .var image := by
+  obtain ⟨R, factored⟩ := mgu.2 U unifies
+  have pointwise : U.target varId = R.apply (subst.target varId) := by
+    rw [factored]; rfl
+  rw [fixed] at pointwise
+  exact Ty.eq_var_of_apply_var pointwise.symm
+
+/-- Any capability variable kept fixed by some paired unifier of the
+constraint is mapped to a bare variable by every most general paired
+solution. -/
+theorem PairedMGU.cap_image_var_of_fixing_unifier {left right : Ty}
+    {subst : Subst} (mgu : PairedMGU left right subst) {U : Subst}
+    (unifies : U.apply left = U.apply right) {varId : CapVar}
+    (fixed : U.cap varId = .var varId) :
+    ∃ image, subst.cap varId = .var image := by
+  obtain ⟨R, factored⟩ := mgu.2 U unifies
+  have pointwise : U.cap varId = (subst.cap varId).apply R.cap := by
+    rw [factored]; rfl
+  rw [fixed] at pointwise
+  exact Cap.eq_var_of_apply_var pointwise.symm
+
+/-- A most general paired solution maps every target variable outside its
+constraint to a bare variable. -/
+theorem PairedMGU.outside_target_image_var {left right : Ty} {subst : Subst}
+    (mgu : PairedMGU left right subst) {varId : TypePM.TyVar}
+    (leftOutside : varId ∉ left.ftv) (rightOutside : varId ∉ right.ftv) :
+    ∃ image, subst.target varId = .var image := by
+  refine mgu.target_image_var_of_fixing_unifier
+    (U := ⟨subst.cap, fun candidate =>
+      if candidate = varId then .var varId else subst.target candidate⟩)
+    ?_ (if_pos rfl)
+  have leftEq := Subst.apply_eq_of_free_agree
+    ⟨subst.cap, fun candidate =>
+      if candidate = varId then .var varId else subst.target candidate⟩
+    subst left (fun _ _ => rfl)
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => leftOutside (h ▸ membership))
+  have rightEq := Subst.apply_eq_of_free_agree
+    ⟨subst.cap, fun candidate =>
+      if candidate = varId then .var varId else subst.target candidate⟩
+    subst right (fun _ _ => rfl)
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => rightOutside (h ▸ membership))
+  rw [leftEq, rightEq]
+  exact mgu.1
+
+/-- A most general paired solution maps every capability variable outside
+its constraint to a bare variable. -/
+theorem PairedMGU.outside_cap_image_var {left right : Ty} {subst : Subst}
+    (mgu : PairedMGU left right subst) {varId : CapVar}
+    (leftOutside : varId ∉ left.fcv) (rightOutside : varId ∉ right.fcv) :
+    ∃ image, subst.cap varId = .var image := by
+  refine mgu.cap_image_var_of_fixing_unifier
+    (U := ⟨fun candidate =>
+      if candidate = varId then .var varId else subst.cap candidate,
+      subst.target⟩)
+    ?_ (if_pos rfl)
+  have leftEq := Subst.apply_eq_of_free_agree
+    ⟨fun candidate =>
+      if candidate = varId then .var varId else subst.cap candidate,
+      subst.target⟩
+    subst left
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => leftOutside (h ▸ membership))
+    (fun _ _ => rfl)
+  have rightEq := Subst.apply_eq_of_free_agree
+    ⟨fun candidate =>
+      if candidate = varId then .var varId else subst.cap candidate,
+      subst.target⟩
+    subst right
+    (fun candidate membership =>
+      if_neg fun h : candidate = varId => rightOutside (h ▸ membership))
+    (fun _ _ => rfl)
+  rw [leftEq, rightEq]
+  exact mgu.1
+
+/-- A most general paired solution never collapses two distinct target
+variables outside its constraint. -/
+theorem PairedMGU.outside_target_injective {left right : Ty} {subst : Subst}
+    (mgu : PairedMGU left right subst) {varId otherId : TypePM.TyVar}
+    (varLeftOutside : varId ∉ left.ftv)
+    (varRightOutside : varId ∉ right.ftv)
+    (otherLeftOutside : otherId ∉ left.ftv)
+    (otherRightOutside : otherId ∉ right.ftv)
+    (collapsed : subst.target varId = subst.target otherId) :
+    varId = otherId := by
+  by_cases hcase : varId = otherId
+  · exact hcase
+  exfalso
+  have hne : ¬ otherId = varId := fun h => hcase h.symm
+  have unifies :
+      Subst.apply
+        ⟨subst.cap, fun candidate =>
+          if candidate = varId then .var varId
+          else if candidate = otherId then .var otherId
+          else subst.target candidate⟩ left =
+      Subst.apply
+        ⟨subst.cap, fun candidate =>
+          if candidate = varId then .var varId
+          else if candidate = otherId then .var otherId
+          else subst.target candidate⟩ right := by
+    have leftEq := Subst.apply_eq_of_free_agree
+      ⟨subst.cap, fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst.target candidate⟩
+      subst left (fun _ _ => rfl)
+      (fun candidate membership => by
+        show (if candidate = varId then Ty.var varId
+          else if candidate = otherId then Ty.var otherId
+          else subst.target candidate) = subst.target candidate
+        rw [if_neg fun h : candidate = varId => varLeftOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherLeftOutside (h ▸ membership)])
+    have rightEq := Subst.apply_eq_of_free_agree
+      ⟨subst.cap, fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst.target candidate⟩
+      subst right (fun _ _ => rfl)
+      (fun candidate membership => by
+        show (if candidate = varId then Ty.var varId
+          else if candidate = otherId then Ty.var otherId
+          else subst.target candidate) = subst.target candidate
+        rw [if_neg fun h : candidate = varId => varRightOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherRightOutside (h ▸ membership)])
+    rw [leftEq, rightEq]
+    exact mgu.1
+  obtain ⟨R, factored⟩ := mgu.2 _ unifies
+  have varPointwise : Ty.var varId = R.apply (subst.target varId) := by
+    simpa [Subst.seq] using congrArg (fun S => Subst.target S varId) factored
+  have otherPointwise : Ty.var otherId = R.apply (subst.target otherId) := by
+    simpa [hne, Subst.seq] using congrArg (fun S => Subst.target S otherId)
+      factored
+  rw [collapsed] at varPointwise
+  have images : Ty.var varId = Ty.var otherId :=
+    varPointwise.trans otherPointwise.symm
+  injection images with h
+  exact hcase h
+
+/-- A most general paired solution never collapses two distinct capability
+variables outside its constraint. -/
+theorem PairedMGU.outside_cap_injective {left right : Ty} {subst : Subst}
+    (mgu : PairedMGU left right subst) {varId otherId : CapVar}
+    (varLeftOutside : varId ∉ left.fcv)
+    (varRightOutside : varId ∉ right.fcv)
+    (otherLeftOutside : otherId ∉ left.fcv)
+    (otherRightOutside : otherId ∉ right.fcv)
+    (collapsed : subst.cap varId = subst.cap otherId) : varId = otherId := by
+  by_cases hcase : varId = otherId
+  · exact hcase
+  exfalso
+  have hne : ¬ otherId = varId := fun h => hcase h.symm
+  have unifies :
+      Subst.apply
+        ⟨fun candidate =>
+          if candidate = varId then .var varId
+          else if candidate = otherId then .var otherId
+          else subst.cap candidate, subst.target⟩ left =
+      Subst.apply
+        ⟨fun candidate =>
+          if candidate = varId then .var varId
+          else if candidate = otherId then .var otherId
+          else subst.cap candidate, subst.target⟩ right := by
+    have leftEq := Subst.apply_eq_of_free_agree
+      ⟨fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst.cap candidate, subst.target⟩
+      subst left
+      (fun candidate membership => by
+        show (if candidate = varId then Cap.var varId
+          else if candidate = otherId then Cap.var otherId
+          else subst.cap candidate) = subst.cap candidate
+        rw [if_neg fun h : candidate = varId => varLeftOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherLeftOutside (h ▸ membership)])
+      (fun _ _ => rfl)
+    have rightEq := Subst.apply_eq_of_free_agree
+      ⟨fun candidate =>
+        if candidate = varId then .var varId
+        else if candidate = otherId then .var otherId
+        else subst.cap candidate, subst.target⟩
+      subst right
+      (fun candidate membership => by
+        show (if candidate = varId then Cap.var varId
+          else if candidate = otherId then Cap.var otherId
+          else subst.cap candidate) = subst.cap candidate
+        rw [if_neg fun h : candidate = varId => varRightOutside (h ▸ membership),
+          if_neg fun h : candidate = otherId =>
+            otherRightOutside (h ▸ membership)])
+      (fun _ _ => rfl)
+    rw [leftEq, rightEq]
+    exact mgu.1
+  obtain ⟨R, factored⟩ := mgu.2 _ unifies
+  have varPointwise : Cap.var varId = (subst.cap varId).apply R.cap := by
+    simpa [Subst.seq, CapSubst.comp] using
+      congrArg (fun S => Subst.cap S varId) factored
+  have otherPointwise : Cap.var otherId = (subst.cap otherId).apply R.cap := by
+    simpa [hne, Subst.seq, CapSubst.comp] using
+      congrArg (fun S => Subst.cap S otherId) factored
+  rw [collapsed] at varPointwise
+  have images : Cap.var varId = Cap.var otherId :=
+    varPointwise.trans otherPointwise.symm
+  injection images with h
+  exact hcase h
+
+/-- Against a variable-versus-type constraint whose variable does not occur
+in the type, a most general paired solution maps every other target
+variable to a bare variable.  This is the shape of every fresh
+domain/codomain alignment: solving the constraint may rename the fresh
+variables but can never structure them. -/
+theorem PairedMGU.varConstraint_target_image_var
+    {domainVar : TypePM.TyVar} {shape : Ty} {subst : Subst}
+    (mgu : PairedMGU (.var domainVar) shape subst)
+    (occurs : domainVar ∉ shape.ftv) {varId : TypePM.TyVar}
+    (distinct : varId ≠ domainVar) :
+    ∃ image, subst.target varId = .var image := by
+  have fixesShape :
+      shape.applyTarget (fun candidate =>
+        if candidate = domainVar then shape else .var candidate) = shape :=
+    Ty.applyTarget_eq_self_of_ftv_fixed _ shape
+      (fun candidate membership =>
+        if_neg fun h : candidate = domainVar => occurs (h ▸ membership))
+  refine mgu.target_image_var_of_fixing_unifier
+    (U := ⟨CapSubst.id, fun candidate =>
+      if candidate = domainVar then shape else .var candidate⟩)
+    ?_ (if_neg distinct)
+  show ((Ty.var domainVar).applyCapability CapSubst.id).applyTarget
+      (fun candidate =>
+        if candidate = domainVar then shape else .var candidate) =
+    (shape.applyCapability CapSubst.id).applyTarget
+      (fun candidate =>
+        if candidate = domainVar then shape else .var candidate)
+  rw [Ty.applyCapability_id, Ty.applyCapability_id, fixesShape]
+  show (if domainVar = domainVar then shape else Ty.var domainVar) = shape
+  rw [if_pos rfl]
+
 /-! ## Deterministic branch classifiers
 
 Checking dispatches on cut-resolved views only.  The classifiers make the
