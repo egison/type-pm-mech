@@ -3938,4 +3938,80 @@ theorem DDAlign.boundedBy {S : Subst} {raw expected : Ty} {S' : Subst}
   | ordinary hclass aligned =>
       exact aligned.boundedBy Sb rawBounded expectedBounded
 
+
+/-- Both components of a dual lie below the supply's counters. -/
+def Dual.BoundedBy (q : InferenceBase.FreshSupply) (dual : Dual) : Prop :=
+  dual.cap.BoundedBy q ∧ dual.target.BoundedBy q
+
+/-- Dual alignment preserves boundedness of the prevailing substitution. -/
+theorem DDAlignDual.boundedBy {S : Subst} {left right : Dual} {S' : Subst}
+    {q : InferenceBase.FreshSupply} (aligned : DDAlignDual S left right S')
+    (Sb : S.BoundedBy q) (leftBounded : left.BoundedBy q)
+    (rightBounded : right.BoundedBy q) : S'.BoundedBy q := by
+  cases aligned with
+  | mk capMGU typesAligned =>
+      have capPairB := capMGU.boundedBy_pair
+        (Sb.applyCap leftBounded.1) (Sb.applyCap rightBounded.1)
+      exact typesAligned.boundedBy (capPairB.seq Sb) leftBounded.2
+        rightBounded.2
+
+/-- Dual-list alignment preserves boundedness. -/
+theorem DDAlignDualList.boundedBy {S : Subst} {lefts rights : List Dual}
+    {S' : Subst} {q : InferenceBase.FreshSupply} :
+    DDAlignDualList S lefts rights S' → S.BoundedBy q →
+    (∀ dual ∈ lefts, Dual.BoundedBy q dual) →
+    (∀ dual ∈ rights, Dual.BoundedBy q dual) → S'.BoundedBy q
+  | .nil, Sb, _, _ => Sb
+  | .cons head tail, Sb, leftsB, rightsB =>
+      tail.boundedBy
+        (head.boundedBy Sb (leftsB _ (by simp)) (rightsB _ (by simp)))
+        (fun dual mem => leftsB dual (by simp [mem]))
+        (fun dual mem => rightsB dual (by simp [mem]))
+
+/-- Target-list alignment preserves boundedness. -/
+theorem DDAlignTargetList.boundedBy {S : Subst} {duals : List Dual}
+    {expecteds : List Ty} {S' : Subst} {q : InferenceBase.FreshSupply} :
+    DDAlignTargetList S duals expecteds S' → S.BoundedBy q →
+    (∀ dual ∈ duals, Dual.BoundedBy q dual) →
+    (∀ expected ∈ expecteds, Ty.BoundedBy q expected) → S'.BoundedBy q
+  | .nil, Sb, _, _ => Sb
+  | .cons head tail, Sb, dualsB, expectedsB =>
+      tail.boundedBy
+        (head.boundedBy Sb (dualsB _ (by simp)).2 (expectedsB _ (by simp)))
+        (fun dual mem => dualsB dual (by simp [mem]))
+        (fun expected mem => expectedsB expected (by simp [mem]))
+
+/-- Binding alignment preserves boundedness. -/
+theorem DDAlignBindings.boundedBy {S : Subst} {lefts rights : MonoCtx}
+    {S' : Subst} {q : InferenceBase.FreshSupply} :
+    DDAlignBindings S lefts rights S' → S.BoundedBy q →
+    (∀ entry ∈ lefts, Ty.BoundedBy q entry.2) →
+    (∀ entry ∈ rights, Ty.BoundedBy q entry.2) → S'.BoundedBy q
+  | .nil, Sb, _, _ => Sb
+  | .cons _ head tail, Sb, leftsB, rightsB =>
+      tail.boundedBy
+        (head.boundedBy Sb (leftsB _ (by simp)) (rightsB _ (by simp)))
+        (fun entry mem => leftsB entry (by simp [mem]))
+        (fun entry mem => rightsB entry (by simp [mem]))
+
+/-- Constructor-capability demand solving preserves boundedness. -/
+theorem DDAlignCtorCaps.boundedBy {S : Subst} {children : List Cap}
+    {demands : List (Option Cap)} {S' : Subst}
+    {q : InferenceBase.FreshSupply} :
+    DDAlignCtorCaps S children demands S' → S.BoundedBy q →
+    (∀ child ∈ children, Cap.BoundedBy q child) →
+    (∀ demand ∈ demands, ∀ capability, demand = some capability →
+      Cap.BoundedBy q capability) → S'.BoundedBy q
+  | .nil, Sb, _, _ => Sb
+  | .skip rest, Sb, childrenB, demandsB =>
+      rest.boundedBy Sb (fun child mem => childrenB child (by simp [mem]))
+        (fun demand mem => demandsB demand (by simp [mem]))
+  | .solve capMGU rest, Sb, childrenB, demandsB =>
+      rest.boundedBy
+        ((capMGU.boundedBy_pair
+          (Sb.applyCap (childrenB _ (by simp)))
+          (Sb.applyCap (demandsB _ (by simp) _ rfl))).seq Sb)
+        (fun child mem => childrenB child (by simp [mem]))
+        (fun demand mem => demandsB demand (by simp [mem]))
+
 end TypePM
