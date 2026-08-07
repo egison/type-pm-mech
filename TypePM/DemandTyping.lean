@@ -25,10 +25,16 @@ Design commitments realized here:
   on the raw synthesized type.  The raw-source visibility restriction of the
   current executable selector is therefore a separate fragment condition
   (`RawSourceVisible`), not part of this judgment.
-* **No-guess solves.**  Every solve delta is required to be a most general
-  unifier of exactly the constraint resolved at its cut (`CapMGU`,
-  `TargetMGU`, `PairedMGU`), or the exact one-way producer-to-slot solution
-  (`OneWayDelta`).  λ domains are fresh metavariables; no rule structures an
+* **No-guess solves.**  Every solve delta is required to be an *exact*
+  most general unifier of the constraint resolved at its cut — most general
+  and the identity outside the constraint's variables (`ExactCapMGU`,
+  `ExactTargetMGU`, `ExactPairedMGU`) — or the exact one-way
+  producer-to-slot solution (`OneWayDelta`).  The bare forms `CapMGU`/
+  `TargetMGU`/`PairedMGU` remain as the subject of the no-guess theorems:
+  most-generality alone already forbids structuring or collapsing an
+  unrelated metavariable, and exactness removes only the residual renaming
+  freedom, which the value-flow transport boundary shows would capture
+  scheme binders.  λ domains are fresh metavariables; no rule structures an
   unrelated metavariable to enable a coercion.
 * **No executable-inference dependency.**  The rules never mention
   `inferRaw`/`infer` or reconstruction certificates.  They reuse only the
@@ -80,15 +86,36 @@ def PairedMGU (left right : Ty) (subst : Subst) : Prop :=
   ∀ U : Subst, U.apply left = U.apply right →
     ∃ R : Subst, U = Subst.seq R subst
 
+/-- An exact most general capability solution: most general, and the
+identity outside the constraint's variables.  The no-guess theorems below
+show that bare most-generality already forbids structuring or collapsing
+outside variables; exactness removes the residual renaming freedom, which
+the value-flow transport boundary shows is genuinely harmful. -/
+def ExactCapMGU (left right : Cap) (subst : CapSubst) : Prop :=
+  CapMGU left right subst ∧
+  subst.SupportWithin (left.fcv ++ right.fcv)
+
+/-- An exact most general target solution. -/
+def ExactTargetMGU (left right : Ty) (subst : TySubst) : Prop :=
+  TargetMGU left right subst ∧
+  subst.SupportWithin (left.ftv ++ right.ftv)
+
+/-- An exact most general paired solution: exact in both sorts. -/
+def ExactPairedMGU (left right : Ty) (subst : Subst) : Prop :=
+  PairedMGU left right subst ∧
+  subst.cap.SupportWithin (left.fcv ++ right.fcv) ∧
+  subst.target.SupportWithin (left.ftv ++ right.ftv)
+
 /-- The exact one-way producer-to-slot solution: the capability component is
-the restricted `matchCap` binding substitution, and the target component is a
-most general unifier of the capability-adjusted targets. -/
+the restricted `matchCap` binding substitution (exact by construction), and
+the target component is an exact most general unifier of the
+capability-adjusted targets. -/
 def OneWayDelta (producerCap : Cap) (producerTarget : Ty)
     (consumerCap : Cap) (consumerTarget : Ty) (delta : Subst) : Prop :=
   ∃ bindings,
     CapMatch.matchCap producerCap consumerCap = some bindings ∧
     delta.cap = bindings.toSubstWithin consumerCap.fcv ∧
-    TargetMGU (producerTarget.applyCapability delta.cap)
+    ExactTargetMGU (producerTarget.applyCapability delta.cap)
       (consumerTarget.applyCapability delta.cap) delta.target
 
 /-! ### Reflexive and single-binding witnesses -/
@@ -273,6 +300,119 @@ theorem PairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
       · rw [show fnDiagonalDelta shared domain codomain candidate =
           .var candidate by simp [fnDiagonalDelta, hshared, hcodomain]]
         rfl
+
+/-! ### Exact witnesses
+
+Each reflexive/single-binding/diagonal witness extends to the exact form:
+the concrete deltas are the identity outside their constraint by
+construction. -/
+
+/-- Identity is an exact most general unifier of equal capabilities. -/
+theorem ExactCapMGU.refl (capability : Cap) :
+    ExactCapMGU capability capability CapSubst.id :=
+  ⟨CapMGU.refl capability, CapSubst.id_supportWithin _⟩
+
+/-- The single binding is an exact most general capability solution. -/
+theorem ExactCapMGU.varLeft (varId : CapVar) (capability : Cap)
+    (notMem : varId ∉ capability.fcv) :
+    ExactCapMGU (.var varId) capability
+      (Unification.CapSubst.single varId capability) := by
+  refine ⟨CapMGU.varLeft varId capability notMem, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Cap.fcv])
+  simp [Unification.CapSubst.single, hne]
+
+/-- Symmetric form of `ExactCapMGU.varLeft`. -/
+theorem ExactCapMGU.varRight (capability : Cap) (varId : CapVar)
+    (notMem : varId ∉ capability.fcv) :
+    ExactCapMGU capability (.var varId)
+      (Unification.CapSubst.single varId capability) := by
+  refine ⟨CapMGU.varRight capability varId notMem, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Cap.fcv])
+  simp [Unification.CapSubst.single, hne]
+
+/-- Identity is an exact most general unifier of equal targets. -/
+theorem ExactTargetMGU.refl (target : Ty) :
+    ExactTargetMGU target target TySubst.id :=
+  ⟨TargetMGU.refl target, fun _ _ => rfl⟩
+
+/-- The single binding is an exact most general target solution. -/
+theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
+    (notMem : varId ∉ target.ftv) :
+    ExactTargetMGU (.var varId) target
+      (Unification.TySubst.single varId target) := by
+  refine ⟨TargetMGU.varLeft varId target notMem, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  simp [Unification.TySubst.single, hne]
+
+/-- Symmetric form of `ExactTargetMGU.varLeft`. -/
+theorem ExactTargetMGU.varRight (target : Ty) (varId : TypePM.TyVar)
+    (notMem : varId ∉ target.ftv) :
+    ExactTargetMGU target (.var varId)
+      (Unification.TySubst.single varId target) := by
+  refine ⟨TargetMGU.varRight target varId notMem, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  simp [Unification.TySubst.single, hne]
+
+/-- Identity is an exact most general paired unifier of equal types. -/
+theorem ExactPairedMGU.refl (target : Ty) :
+    ExactPairedMGU target target Subst.id :=
+  ⟨PairedMGU.refl target, CapSubst.id_supportWithin _, fun _ _ => rfl⟩
+
+/-- The single target binding is an exact most general paired solution. -/
+theorem ExactPairedMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
+    (notMem : varId ∉ target.ftv) :
+    ExactPairedMGU (.var varId) target
+      ⟨CapSubst.id, Unification.TySubst.single varId target⟩ := by
+  refine ⟨PairedMGU.varLeft varId target notMem,
+    CapSubst.id_supportWithin _, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  simp [Unification.TySubst.single, hne]
+
+/-- Symmetric form of `ExactPairedMGU.varLeft`. -/
+theorem ExactPairedMGU.varRight (target : Ty) (varId : TypePM.TyVar)
+    (notMem : varId ∉ target.ftv) :
+    ExactPairedMGU target (.var varId)
+      ⟨CapSubst.id, Unification.TySubst.single varId target⟩ := by
+  refine ⟨PairedMGU.varRight target varId notMem,
+    CapSubst.id_supportWithin _, ?_⟩
+  intro candidate outside
+  have hne : ¬ varId = candidate := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  simp [Unification.TySubst.single, hne]
+
+/-- The diagonal function-alignment delta is exact. -/
+theorem ExactPairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
+    (domainNeShared : domain ≠ shared) (domainNeCodomain : domain ≠ codomain)
+    (codomainNeShared : codomain ≠ shared) :
+    ExactPairedMGU (.fn (.var shared) (.var shared))
+      (.fn (.var domain) (.var codomain))
+      ⟨CapSubst.id, fnDiagonalDelta shared domain codomain⟩ := by
+  refine ⟨PairedMGU.fnDiagonal shared domain codomain domainNeShared
+    domainNeCodomain codomainNeShared, CapSubst.id_supportWithin _, ?_⟩
+  intro candidate outside
+  have hshared : ¬ candidate = shared := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  have hcodomain : ¬ candidate = codomain := fun h => outside (by
+    cases h
+    simp [Ty.ftv])
+  simp [fnDiagonalDelta, hshared, hcodomain]
 
 /-! ### No-guess metatheory of most general solve deltas
 
@@ -860,8 +1000,8 @@ inductive DDAlignTypes : Subst → Ty → Ty → Subst → Prop where
       {targetDelta : Subst} :
       S.apply left = .matcher leftCap leftTarget →
       S.apply right = .matcher rightCap rightTarget →
-      CapMGU leftCap rightCap capDelta →
-      PairedMGU (leftTarget.applyCapability capDelta)
+      ExactCapMGU leftCap rightCap capDelta →
+      ExactPairedMGU (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
       DDAlignTypes S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
@@ -870,14 +1010,14 @@ inductive DDAlignTypes : Subst → Ty → Ty → Subst → Prop where
       {targetDelta : Subst} :
       S.apply left = .slot leftCap leftTarget →
       S.apply right = .slot rightCap rightTarget →
-      CapMGU leftCap rightCap capDelta →
-      PairedMGU (leftTarget.applyCapability capDelta)
+      ExactCapMGU leftCap rightCap capDelta →
+      ExactPairedMGU (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
       DDAlignTypes S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | ordinary {S : Subst} {left right : Ty} {delta : Subst} :
       alignPairClass (S.apply left) (S.apply right) = .ordinary →
-      PairedMGU (S.apply left) (S.apply right) delta →
+      ExactPairedMGU (S.apply left) (S.apply right) delta →
       DDAlignTypes S left right (Subst.seq delta S)
 
 /-- The complete checking cut: demand-classified coercion selection and
@@ -896,8 +1036,9 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       demandClass (S.apply raw) (S.apply expected) = .slotTupleLift →
       productSlotDuals? (S.apply raw) = some duals →
       S.apply expected = .slot consumerCap consumerTarget →
-      CapMGU (.prod (duals.map Dual.cap)) consumerCap capDelta →
-      PairedMGU ((Ty.prod (duals.map Dual.target)).applyCapability capDelta)
+      ExactCapMGU (.prod (duals.map Dual.cap)) consumerCap capDelta →
+      ExactPairedMGU
+        ((Ty.prod (duals.map Dual.target)).applyCapability capDelta)
         (consumerTarget.applyCapability capDelta) targetDelta →
       DDAlign S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
@@ -915,8 +1056,8 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       {targetDelta : Subst} :
       S.apply raw = .slot sourceCap sourceTarget →
       S.apply expected = .slot requestedCap requestedTarget →
-      CapMGU sourceCap requestedCap capDelta →
-      PairedMGU (sourceTarget.applyCapability capDelta)
+      ExactCapMGU sourceCap requestedCap capDelta →
+      ExactPairedMGU (sourceTarget.applyCapability capDelta)
         (requestedTarget.applyCapability capDelta) targetDelta →
       DDAlign S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
@@ -1124,7 +1265,8 @@ most general solution of exactly the constraint resolved at its cut.
 ordinary alignment of the raw targets under the extended substitution. -/
 inductive DDAlignDual : Subst → Dual → Dual → Subst → Prop where
   | mk {S : Subst} {left right : Dual} {capDelta : CapSubst} {S' : Subst} :
-      CapMGU (left.cap.apply S.cap) (right.cap.apply S.cap) capDelta →
+      ExactCapMGU (left.cap.apply S.cap) (right.cap.apply S.cap)
+        capDelta →
       DDAlignTypes (Subst.seq ⟨capDelta, TySubst.id⟩ S)
         left.target right.target S' →
       DDAlignDual S left right S'
@@ -1171,7 +1313,7 @@ inductive DDAlignCtorCaps :
       DDAlignCtorCaps S (child :: children) (none :: demands) S'
   | solve {S : Subst} {child expected : Cap} {children : List Cap}
       {demands : List (Option Cap)} {capDelta : CapSubst} {S' : Subst} :
-      CapMGU (child.apply S.cap) (expected.apply S.cap) capDelta →
+      ExactCapMGU (child.apply S.cap) (expected.apply S.cap) capDelta →
       DDAlignCtorCaps (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands
         S' →
       DDAlignCtorCaps S (child :: children) (some expected :: demands) S'

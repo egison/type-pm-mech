@@ -53,9 +53,9 @@ theorem identity_ddTyping :
 def applicationDelta : TySubst := fnDiagonalDelta 0 1 2
 
 theorem applicationDelta_pairedMGU :
-    PairedMGU (.fn (.var 0) (.var 0)) (.fn (.var 1) (.var 2))
+    ExactPairedMGU (.fn (.var 0) (.var 0)) (.fn (.var 1) (.var 2))
       ⟨CapSubst.id, applicationDelta⟩ :=
-  PairedMGU.fnDiagonal 0 1 2 (by decide) (by decide) (by decide)
+  ExactPairedMGU.fnDiagonal 0 1 2 (by decide) (by decide) (by decide)
 
 /-- Terminal substitution of `(λx. x) 1`: the function alignment followed by
 the argument solve. -/
@@ -71,7 +71,7 @@ theorem application_ddTyping :
   exact .app identity_ddSynth
     (.ordinary rfl applicationDelta_pairedMGU)
     (.mk .lit (.ordinary rfl
-      (.ordinary rfl (PairedMGU.varRight .int 1 (by decide)))))
+      (.ordinary rfl (ExactPairedMGU.varRight .int 1 (by decide)))))
 
 /-! ## Slot demand: positive coercion and matcher-headed refutation -/
 
@@ -126,6 +126,21 @@ theorem pairTargetDelta_targetMGU :
       · simp only [TySubst.comp, pairTargetDelta, if_neg hzero, if_neg hone]
         rfl
 
+/-- The lifted-target solution is exact: it is the identity outside the
+two component targets. -/
+theorem pairTargetDelta_exact :
+    ExactTargetMGU (.prod [.var 0, .var 1]) (.prod [.int, .int])
+      pairTargetDelta := by
+  refine ⟨pairTargetDelta_targetMGU, ?_⟩
+  intro candidate outside
+  have hzero : ¬ candidate = 0 := fun h => outside (by
+    cases h
+    simp [Ty.ftv, Ty.ftvList])
+  have hone : ¬ candidate = 1 := fun h => outside (by
+    cases h
+    simp [Ty.ftv, Ty.ftvList])
+  simp [pairTargetDelta, hzero, hone]
+
 /-- Terminal substitution of the positive slot-demand coercion. -/
 def somethingPairTerminal : Subst :=
   Subst.seq ⟨pairCapDelta, pairTargetDelta⟩ Subst.id
@@ -142,7 +157,7 @@ theorem somethingPair_checks_at_slot :
   exact .productMatcherLift rfl
     (show Subst.id.apply concretePairSlotType =
       .slot (.prod [.any, .any]) (.prod [.int, .int]) from rfl)
-    ⟨[], rfl, by rfl, pairTargetDelta_targetMGU⟩
+    ⟨[], rfl, by rfl, pairTargetDelta_exact⟩
 
 /-- A matcher-headed expectation is not a demand: no checking cut exists for
 the raw product of matchers against the matcher-headed pair expectation, at
@@ -158,7 +173,7 @@ theorem somethingPairRaw_no_matcher_expected_cut :
   cases ordinary with
   | matcherPair rawView _ _ _ => nomatch rawView
   | slotPair rawView _ _ _ => nomatch rawView
-  | ordinary _ mgu => nomatch mgu.1
+  | ordinary _ mgu => nomatch mgu.1.1
 
 /-! ## Polymorphic `let`: generalization and quantified instantiation -/
 
@@ -200,10 +215,10 @@ theorem dmInnerApp_ddSynth :
     (functionTarget := .fn (.var 1) (.var 1))
     (DDSynth.var (scheme := dmIdScheme) rfl)
     (.ordinary rfl
-      (PairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
+      (ExactPairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
     (.mk (DDSynth.var (scheme := dmIdScheme) rfl)
       (.ordinary rfl (.ordinary rfl
-        (PairedMGU.varRight (.fn (.var 4) (.var 4)) 2 (by decide)))))
+        (ExactPairedMGU.varRight (.fn (.var 4) (.var 4)) 2 (by decide)))))
 
 /-- The polymorphic-`let` witness closes at `Int` through the demand-directed
 judgment: the `let` rule generalizes the value type in the substituted
@@ -217,9 +232,9 @@ theorem dmLet_ddTyping :
     (functionTarget := .var 3)
     dmInnerApp_ddSynth
     (.ordinary rfl
-      (PairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
+      (ExactPairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
     (.mk .lit (.ordinary rfl (.ordinary rfl
-      (PairedMGU.varRight .int 5 (by decide)))))
+      (ExactPairedMGU.varRight .int 5 (by decide)))))
 
 /-! ## `let` polymorphism across the two matcher producers
 
@@ -268,9 +283,9 @@ theorem nestedCapLetFirstApp_ddSynth :
     (functionTarget := .fn (.var 1) (.var 1))
     (DDSynth.var (scheme := dmIdScheme) rfl)
     (.ordinary rfl
-      (PairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
+      (ExactPairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
     (.mk .something (.ordinary rfl (.ordinary rfl
-      (PairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide)))))
+      (ExactPairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide)))))
 
 /-- The second use: its own fresh instance `fn ?6 ?7` whose domain receives
 the raw product of matcher producers unlifted — a variable expectation is
@@ -284,10 +299,10 @@ theorem nestedCapLetSecondApp_ddSynth :
     (functionTarget := .fn (.var 5) (.var 5))
     (DDSynth.var (scheme := dmIdScheme) rfl)
     (.ordinary rfl
-      (PairedMGU.fnDiagonal 5 6 7 (by decide) (by decide) (by decide)))
+      (ExactPairedMGU.fnDiagonal 5 6 7 (by decide) (by decide) (by decide)))
     (.mk (.tuple (.cons .something (.cons .something .nil)))
       (.ordinary rfl (.ordinary rfl
-        (PairedMGU.varRight
+        (ExactPairedMGU.varRight
           (.prod [.matcher .any (.var 8), .matcher .any (.var 9)]) 6
           (by decide)))))
 
@@ -350,7 +365,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   | ordinary hclass1 firstMGU =>
   rename_i delta1
   have firstMGU' : PairedMGU (Ty.var 0) (.fn (.var 1) (.var 2)) delta1 :=
-    firstMGU
+    firstMGU.1
   obtain ⟨w, hw⟩ :=
     firstMGU'.varConstraint_target_image_var (by decide)
       (varId := 1) (by decide)
@@ -380,7 +395,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
         .matcher .any
           ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
             (Ty.var 3)) :=
-    firstArgMGU.1.symm
+    firstArgMGU.1.1.symm
   have factA :
       (Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 0) =
         .fn ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 1))
@@ -415,7 +430,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   | slotPair hleft _ _ _ => nomatch hleft
   | ordinary hclassB secondMGU =>
   rename_i delta4
-  have components := secondMGU.1
+  have components := secondMGU.1.1
   injection components with hdom hcod
   -- `hdom` pins the resolved shared domain to a matcher head, for every
   -- delta choice.  The second argument check: the raw product of matchers
@@ -445,7 +460,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   | slotPair hleft _ _ _ => nomatch hleft
   | ordinary hpairC secondArgMGU =>
   rename_i delta5
-  nomatch secondArgMGU.1.trans (congrArg (Subst.apply delta5) hdom.symm)
+  nomatch secondArgMGU.1.1.trans (congrArg (Subst.apply delta5) hdom.symm)
 
 /-! ## Boundary: bare most-generality does not transport value flow
 
@@ -598,9 +613,9 @@ theorem orPattern_ddPattern :
   refine DDPattern.por (S₃ := orDualAlign)
     (.pvar (by simp [MonoCtx.names]))
     (.pvar (by simp [MonoCtx.names])) ?_ ?_
-  · exact .mk (CapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide))
-      (.ordinary rfl (PairedMGU.varLeft 0 (.var 1) (by decide)))
-  · exact .cons rfl (.ordinary rfl (PairedMGU.refl (.var 1))) .nil
+  · exact .mk (ExactCapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide))
+      (.ordinary rfl (ExactPairedMGU.varLeft 0 (.var 1) (by decide)))
+  · exact .cons rfl (.ordinary rfl (ExactPairedMGU.refl (.var 1))) .nil
 
 /-- Raw synthesis of the or-pattern program at the initial supply. -/
 theorem orProgram_ddSynth :
@@ -608,9 +623,10 @@ theorem orProgram_ddSynth :
       AcceptanceGapRegression.orProgram (Ty.listT .int) ⟨2, 3⟩ orTerminal := by
   refine DDSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 3⟩)
     (S₄ := orTerminal) .lit orPattern_ddPattern ?_ ?_ ?_
-  · exact .ordinary rfl (PairedMGU.varLeft 1 .int (by decide))
+  · exact .ordinary rfl (ExactPairedMGU.varLeft 1 .int (by decide))
   · exact .mk .something (.matcherToSlot rfl rfl
-      ⟨[(⟨1⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 2 .int (by decide)⟩)
+      ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
+        ExactTargetMGU.varLeft 2 .int (by decide)⟩)
   · exact DDSynth.var (scheme := Scheme.mono .int) rfl
 
 /-- The or-pattern program closes at `List Int` in the demand-directed
@@ -695,13 +711,25 @@ theorem delegating_bodyMGU :
         rfl
     exact ⟨U, congrArg (Subst.mk U.cap) targetEq⟩
 
+/-- The arm-body solution is exact. -/
+theorem delegating_bodyMGU_exact :
+    ExactPairedMGU (Ty.listT .int) (Ty.listT (.var 0))
+      ⟨CapSubst.id, Unification.TySubst.single 0 .int⟩ := by
+  refine ⟨delegating_bodyMGU, CapSubst.id_supportWithin _, ?_⟩
+  intro candidate outside
+  have hne : ¬ (0 : TypePM.TyVar) = candidate := fun h => outside (by
+    cases h
+    simp [Ty.listT, Ty.ftv, Ty.ftvList])
+  simp [Unification.TySubst.single, hne]
+
 /-- The next-matcher check: `something` delivers the hole slot one-way. -/
 theorem delegatingNext_ddChecks :
     DDChecks emptySignature ⟨1, 1⟩ Subst.id [] [.something]
       [.slot (.var ⟨0⟩) (.var 0)] ⟨1, 2⟩ delegatingCheck1 := by
   refine .cons (.mk .something ?_) .nil
   exact .matcherToSlot rfl rfl
-    ⟨[(⟨0⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 1 (.var 0) (by decide)⟩
+    ⟨[(⟨0⟩, Cap.any)], rfl, rfl,
+      ExactTargetMGU.varLeft 1 (.var 0) (by decide)⟩
 
 /-- The delegating arm body: the inner `matchAll` synthesizes `List Int` and
 aligns with the decomposition-result type `List ?0`. -/
@@ -714,11 +742,12 @@ theorem delegatingBody_ddCheck :
   · refine DDSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
       (S₄ := delegatingInner2) .lit
       (.pvar (by simp [MonoCtx.names])) ?_ ?_ ?_
-    · exact .ordinary rfl (PairedMGU.varLeft 2 .int (by decide))
+    · exact .ordinary rfl (ExactPairedMGU.varLeft 2 .int (by decide))
     · exact .mk .something (.matcherToSlot rfl rfl
-        ⟨[(⟨1⟩, Cap.any)], rfl, rfl, TargetMGU.varLeft 3 .int (by decide)⟩)
+        ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
+          ExactTargetMGU.varLeft 3 .int (by decide)⟩)
     · exact DDSynth.var (scheme := Scheme.mono .int) rfl
-  · exact .ordinary rfl (.ordinary rfl delegating_bodyMGU)
+  · exact .ordinary rfl (.ordinary rfl delegating_bodyMGU_exact)
 
 /-- The single delegating clause: hole against the shared target, one
 next-matcher slot check, and one variable arm. -/
