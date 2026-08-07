@@ -4014,4 +4014,382 @@ theorem DDAlignCtorCaps.boundedBy {S : Subst} {children : List Cap}
         (fun child mem => childrenB child (by simp [mem]))
         (fun demand mem => demandsB demand (by simp [mem]))
 
+/-! ### Boundedness of the pattern-layer supply twins
+
+Every supply twin returns output bounded by its successor supply.  The two
+signature-fed twins consume the flexible-variable conservation lemmas of
+the projection pipeline: freshening only allocates at or above the input
+counter, embeds already-bounded evidence leaves unchanged, and the
+recursive-matcher skeleton is variable-free.
+-/
+
+/-- Constructor form of `Cap.BoundedBy.prodOfForall`. -/
+theorem Cap.BoundedBy.conOfForall {q : InferenceBase.FreshSupply}
+    {name : String} {components : List Cap}
+    (bounded : ∀ capability ∈ components, Cap.BoundedBy q capability) :
+    (Cap.con name components).BoundedBy q := by
+  intro w hw
+  obtain ⟨inner, innerMem, hMem⟩ := Cap.mem_fcvList_split hw
+  exact bounded inner innerMem w hMem
+
+/-- Freshly allocated targets are bounded by the successor supply. -/
+theorem freshTargetsSupply_boundedBy :
+    ∀ (count : Nat) (q : InferenceBase.FreshSupply),
+      ∀ target ∈ (freshTargetsSupply count q).1,
+        Ty.BoundedBy (freshTargetsSupply count q).2 target
+  | 0, q => by
+      intro target mem
+      exact nomatch mem
+  | count + 1, q => by
+      intro target mem
+      simp only [freshTargetsSupply] at mem ⊢
+      rcases List.mem_cons.mp mem with hhead | htail
+      · subst hhead
+        refine ⟨?_, ?_⟩
+        · intro varId varMem
+          simp only [Ty.fcv] at varMem
+          exact nomatch varMem
+        · intro varId varMem
+          simp only [Ty.ftv, List.mem_singleton] at varMem
+          subst varMem
+          exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+            (SupplyExtends.freshTargets count
+              { q with nextTy := q.nextTy + 1 }).2
+      · exact freshTargetsSupply_boundedBy count _ target htail
+
+mutual
+
+/-- Freshening bounded skeleton evidence yields a bounded capability. -/
+theorem freshenSkeletonSupply_boundedBy
+    {observable : Shape.Observability} :
+    ∀ {evidence : Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capability : Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonSupply observable evidence q =
+        some (capability, q') →
+      (∀ varId ∈ evidence.fcv, varId.id < q.nextCap) →
+      capability.BoundedBy q'
+  | .unseen, q, capability, q', h, bounded => by
+      simp only [freshenSkeletonSupply] at h
+      cases h
+      intro varId mem
+      simp only [Cap.fcv, List.mem_singleton] at mem
+      subst mem
+      exact Nat.lt_succ_self _
+  | .known leaf, q, capability, q', h, bounded => by
+      simp only [freshenSkeletonSupply] at h
+      cases h
+      intro varId mem
+      rw [Shape.Leaf.fcv_toCap] at mem
+      exact bounded varId mem
+  | .con name children, q, capability, q', h, bounded => by
+      cases hobs : observable name with
+      | none => simp [freshenSkeletonSupply, hobs] at h
+      | some mask =>
+          cases hmasked : freshenSkeletonMaskedSupply observable mask
+              children q with
+          | none => simp [freshenSkeletonSupply, hobs, hmasked] at h
+          | some result =>
+              obtain ⟨capabilities, q₁⟩ := result
+              simp only [freshenSkeletonSupply, hobs, hmasked] at h
+              cases h
+              exact Cap.BoundedBy.conOfForall
+                (freshenSkeletonMaskedSupply_boundedBy hmasked bounded)
+  | .prod components, q, capability, q', h, bounded => by
+      cases hlist : freshenSkeletonListSupply observable components q with
+      | none => simp [freshenSkeletonSupply, hlist] at h
+      | some result =>
+          obtain ⟨capabilities, q₁⟩ := result
+          simp only [freshenSkeletonSupply, hlist] at h
+          cases h
+          exact Cap.BoundedBy.prodOfForall
+            (freshenSkeletonListSupply_boundedBy hlist bounded)
+
+/-- List form of `freshenSkeletonSupply_boundedBy`. -/
+theorem freshenSkeletonListSupply_boundedBy
+    {observable : Shape.Observability} :
+    ∀ {evidences : List Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capabilities : List Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonListSupply observable evidences q =
+        some (capabilities, q') →
+      (∀ varId ∈ Shape.Evidence.fcvList evidences,
+        varId.id < q.nextCap) →
+      ∀ capability ∈ capabilities, capability.BoundedBy q'
+  | [], q, capabilities, q', h, bounded => by
+      simp only [freshenSkeletonListSupply] at h
+      cases h
+      intro capability mem
+      exact nomatch mem
+  | evidence :: rest, q, capabilities, q', h, bounded => by
+      cases hhead : freshenSkeletonSupply observable evidence q with
+      | none => simp [freshenSkeletonListSupply, hhead] at h
+      | some headResult =>
+          obtain ⟨head, q₁⟩ := headResult
+          cases htail : freshenSkeletonListSupply observable rest q₁ with
+          | none => simp [freshenSkeletonListSupply, hhead, htail] at h
+          | some tailResult =>
+              obtain ⟨tail, q₂⟩ := tailResult
+              simp only [freshenSkeletonListSupply, hhead, htail] at h
+              cases h
+              have boundedHead : ∀ varId ∈ evidence.fcv,
+                  varId.id < q.nextCap := fun varId varMem =>
+                bounded varId (by
+                  simp only [Shape.Evidence.fcvList, List.mem_append]
+                  exact Or.inl varMem)
+              have boundedTail : ∀ varId ∈ Shape.Evidence.fcvList rest,
+                  varId.id < q₁.nextCap := fun varId varMem =>
+                Nat.lt_of_lt_of_le
+                  (bounded varId (by
+                    simp only [Shape.Evidence.fcvList, List.mem_append]
+                    exact Or.inr varMem))
+                  (SupplyExtends.freshenSkeleton hhead).1
+              intro capability mem
+              rcases List.mem_cons.mp mem with hh | ht
+              · subst hh
+                exact (freshenSkeletonSupply_boundedBy hhead
+                    boundedHead).mono
+                  (SupplyExtends.freshenSkeletonList htail)
+              · exact freshenSkeletonListSupply_boundedBy htail boundedTail
+                  capability ht
+
+/-- Masked form of `freshenSkeletonSupply_boundedBy`. -/
+theorem freshenSkeletonMaskedSupply_boundedBy
+    {observable : Shape.Observability} :
+    ∀ {mask : List Bool} {evidences : List Shape.Evidence}
+      {q : InferenceBase.FreshSupply} {capabilities : List Cap}
+      {q' : InferenceBase.FreshSupply},
+      freshenSkeletonMaskedSupply observable mask evidences q =
+        some (capabilities, q') →
+      (∀ varId ∈ Shape.Evidence.fcvList evidences,
+        varId.id < q.nextCap) →
+      ∀ capability ∈ capabilities, capability.BoundedBy q'
+  | [], [], q, capabilities, q', h, bounded => by
+      simp only [freshenSkeletonMaskedSupply] at h
+      cases h
+      intro capability mem
+      exact nomatch mem
+  | isObservable :: mask, evidence :: rest, q, capabilities, q', h,
+      bounded => by
+      have boundedHead : ∀ varId ∈ evidence.fcv,
+          varId.id < q.nextCap := fun varId varMem =>
+        bounded varId (by
+          simp only [Shape.Evidence.fcvList, List.mem_append]
+          exact Or.inl varMem)
+      have boundedTailAt : ∀ {qmid : InferenceBase.FreshSupply},
+          SupplyExtends q qmid →
+          ∀ varId ∈ Shape.Evidence.fcvList rest,
+            varId.id < qmid.nextCap := fun ext varId varMem =>
+        Nat.lt_of_lt_of_le
+          (bounded varId (by
+            simp only [Shape.Evidence.fcvList, List.mem_append]
+            exact Or.inr varMem))
+          ext.1
+      cases isObservable with
+      | true =>
+          cases hhead : freshenSkeletonSupply observable evidence q with
+          | none => simp [freshenSkeletonMaskedSupply, hhead] at h
+          | some headResult =>
+              obtain ⟨head, q₁⟩ := headResult
+              cases htail : freshenSkeletonMaskedSupply observable mask
+                  rest q₁ with
+              | none => simp [freshenSkeletonMaskedSupply, hhead,
+                  htail] at h
+              | some tailResult =>
+                  obtain ⟨tail, q₂⟩ := tailResult
+                  simp only [freshenSkeletonMaskedSupply, hhead, htail,
+                    reduceIte] at h
+                  cases h
+                  intro capability mem
+                  rcases List.mem_cons.mp mem with hh | ht
+                  · subst hh
+                    exact (freshenSkeletonSupply_boundedBy hhead
+                        boundedHead).mono
+                      (SupplyExtends.freshenSkeletonMasked htail)
+                  · exact freshenSkeletonMaskedSupply_boundedBy htail
+                      (boundedTailAt (SupplyExtends.freshenSkeleton hhead))
+                      capability ht
+      | false =>
+          have h' : (match freshenSkeletonMaskedSupply observable mask
+                rest q with
+              | none => none
+              | some (tail, q₂) => some ((Cap.any :: tail : List Cap), q₂))
+              = some (capabilities, q') := h
+          cases htail : freshenSkeletonMaskedSupply observable mask
+              rest q with
+          | none => rw [htail] at h'; exact nomatch h'
+          | some tailResult =>
+              obtain ⟨tail, q₂⟩ := tailResult
+              rw [htail] at h'
+              cases h'
+              intro capability mem
+              rcases List.mem_cons.mp mem with hh | ht
+              · subst hh
+                intro varId varMem
+                simp only [Cap.fcv] at varMem
+                exact nomatch varMem
+              · exact freshenSkeletonMaskedSupply_boundedBy htail
+                  (boundedTailAt (SupplyExtends.refl q)) capability ht
+  | [], _ :: _, _, _, _, h, _ => nomatch h
+  | _ :: _, [], _, _, _, h, _ => nomatch h
+
+end
+
+/-- The shared pattern-constructor assignments are bounded by the successor
+supply. -/
+theorem patternCtorAssignmentsSupply_fcv :
+    ∀ (variables : List TypePM.TyVar) (q : InferenceBase.FreshSupply),
+      ∀ varId ∈ Projection.assignmentsFcv
+          (patternCtorAssignmentsSupply variables q).1,
+        varId.id < (patternCtorAssignmentsSupply variables q).2.nextCap
+  | [], q => by
+      intro varId mem
+      simp only [patternCtorAssignmentsSupply,
+        Projection.assignmentsFcv] at mem
+      exact nomatch mem
+  | tyVar :: variables, q => by
+      intro varId mem
+      simp only [patternCtorAssignmentsSupply,
+        Projection.assignmentsFcv] at mem ⊢
+      rcases List.mem_append.mp mem with hhead | htail
+      · have : varId ∈ (Cap.var ⟨q.nextCap⟩).fcv := by
+          simpa [Shape.fcv_ofCap] using hhead
+        simp only [Cap.fcv, List.mem_singleton] at this
+        subst this
+        exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+          (SupplyExtends.patternCtorAssignments variables
+            { q with nextCap := q.nextCap + 1 }).1
+      · exact patternCtorAssignmentsSupply_fcv variables _ varId htail
+
+/-- The matcher-bodied recursive-binder placeholder is bounded by its
+successor supply. -/
+theorem fixMatcherPlaceholderSupply_boundedBy {signature : FrozenSig}
+    {clauses : List Clause} {q : InferenceBase.FreshSupply}
+    {domain codomain : Ty} {q₀ : InferenceBase.FreshSupply}
+    (h : fixMatcherPlaceholderSupply signature clauses q =
+      some (domain, codomain, q₀)) :
+    domain.BoundedBy q₀ ∧ codomain.BoundedBy q₀ := by
+  unfold fixMatcherPlaceholderSupply at h
+  split at h
+  next => exact nomatch h
+  next evidence hskeleton =>
+    have evidenceBounded : ∀ varId ∈ evidence.fcv,
+        varId.id < q.nextCap := by
+      intro varId mem
+      rw [Inference.matcherSkeletonEvidence_fcv hskeleton] at mem
+      exact nomatch mem
+    split at h
+    next => exact nomatch h
+    next capability qc heq =>
+      have capBounded : capability.BoundedBy qc := by
+        cases evidence with
+        | unseen =>
+            cases heq
+            intro varId mem
+            simp only [Cap.fcv] at mem
+            exact nomatch mem
+        | known leaf =>
+            exact freshenSkeletonSupply_boundedBy heq evidenceBounded
+        | con name children =>
+            exact freshenSkeletonSupply_boundedBy heq evidenceBounded
+        | prod components =>
+            exact freshenSkeletonSupply_boundedBy heq evidenceBounded
+      cases hfcv : capability.fcv with
+      | cons first restVars =>
+          rw [hfcv] at h
+          cases h
+          constructor
+          · refine ⟨?_, ?_⟩
+            · intro varId mem
+              simp only [Ty.fcv, Cap.fcv, List.append_nil,
+                List.mem_singleton] at mem
+              cases mem
+              exact capBounded first (by simp [hfcv])
+            · intro varId mem
+              simp only [Ty.ftv, List.mem_singleton] at mem
+              subst mem
+              exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+                (Nat.le_succ _)
+          · refine ⟨?_, ?_⟩
+            · intro varId mem
+              simp only [Ty.fcv, List.append_nil] at mem
+              exact capBounded varId mem
+            · intro varId mem
+              simp only [Ty.ftv, List.mem_singleton] at mem
+              subst mem
+              exact Nat.lt_succ_self _
+      | nil =>
+          rw [hfcv] at h
+          cases h
+          constructor
+          · refine ⟨?_, ?_⟩
+            · intro varId mem
+              simp only [Ty.fcv, Cap.fcv, List.append_nil,
+                List.mem_singleton] at mem
+              subst mem
+              exact Nat.lt_succ_self _
+            · intro varId mem
+              simp only [Ty.ftv, List.mem_singleton] at mem
+              subst mem
+              exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+                (Nat.le_succ _)
+          · refine ⟨?_, ?_⟩
+            · intro varId mem
+              simp only [Ty.fcv, List.append_nil] at mem
+              exact Nat.lt_succ_of_lt (capBounded varId mem)
+            · intro varId mem
+              simp only [Ty.ftv, List.mem_singleton] at mem
+              subst mem
+              exact Nat.lt_succ_self _
+
+/-- The pattern-constructor capability relation preserves boundedness and
+returns a bounded capability. -/
+theorem DDPatternCtorCap.boundedBy {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {q : InferenceBase.FreshSupply} {S : Subst} {childCaps : List Cap}
+    {capability : Cap} {q' : InferenceBase.FreshSupply} {S' : Subst}
+    (built : DDPatternCtorCap signature entry q S childCaps capability
+      q' S')
+    (Sb : S.BoundedBy q)
+    (childrenBounded : ∀ child ∈ childCaps, child.BoundedBy q) :
+    capability.BoundedBy q' ∧ S'.BoundedBy q' := by
+  cases built with
+  | project hproject freshened =>
+      constructor
+      · apply freshenSkeletonSupply_boundedBy freshened
+        intro varId mem
+        have hsub := Projection.projectSignature_fcv hproject mem
+        rw [Shape.fcvList_map_ofCap] at hsub
+        obtain ⟨resolved, resolvedMem, varMem⟩ :=
+          Cap.mem_fcvList_split hsub
+        obtain ⟨child, childMem, rfl⟩ := List.mem_map.mp resolvedMem
+        exact (Sb.applyCap (childrenBounded child childMem)) varId varMem
+      · exact Sb.mono (SupplyExtends.freshenSkeleton freshened)
+  | fallback hproject hvars hdemands aligned hprojected freshened =>
+      rename_i resultVariables demands projected
+      have extendsQA := SupplyExtends.patternCtorAssignments
+        resultVariables.eraseDups (q := q)
+      have demandsBounded : ∀ demand ∈ demands, ∀ capability,
+          demand = some capability →
+          Cap.BoundedBy (patternCtorAssignmentsSupply
+            resultVariables.eraseDups q).2 capability := by
+        intro demand mem capability heq varId varMem
+        exact patternCtorAssignmentsSupply_fcv resultVariables.eraseDups q
+          varId (Inference.patternCtorFieldDemands_fcv hdemands demand mem
+            capability heq varMem)
+      have alignedBounded : S'.BoundedBy (patternCtorAssignmentsSupply
+          resultVariables.eraseDups q).2 :=
+        aligned.boundedBy (Sb.mono extendsQA)
+          (fun child mem => (childrenBounded child mem).mono extendsQA)
+          demandsBounded
+      constructor
+      · apply freshenSkeletonSupply_boundedBy freshened
+        intro varId mem
+        have hsub := Projection.projectSignature_fcv hprojected mem
+        rw [Shape.fcvList_map_ofCap] at hsub
+        obtain ⟨resolved, resolvedMem, varMem⟩ :=
+          Cap.mem_fcvList_split hsub
+        obtain ⟨child, childMem, rfl⟩ := List.mem_map.mp resolvedMem
+        exact (alignedBounded.applyCap ((childrenBounded child childMem).mono
+          extendsQA)) varId varMem
+      · exact alignedBounded.mono (SupplyExtends.freshenSkeleton freshened)
+
 end TypePM
