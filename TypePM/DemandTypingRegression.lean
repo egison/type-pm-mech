@@ -568,6 +568,207 @@ theorem valueFlow_transport_needs_exactness :
   ⟨swappingDelta_pairedMGU, capturedScheme_instance,
     capturedScheme_transport_refuted⟩
 
+/-! ## Boundary: the capability-freeze axis reaches the forgetting map
+
+The demand-directed judgment deliberately omits the capability-freeze/export
+ledger axis.  This boundary shows the omission is visible to the forgetting
+map itself, not only to acceptance: over a context binding a quantified
+matcher producer `m : ∀κ α. Matcher κ α`, the program
+
+```
+(λh. (h something, h m)) (λz. z)
+```
+
+shares one monomorphic consumer between the `Any`-capped `something` and an
+instance of `m`.  The demand-directed derivation resolves the shared domain
+from the first use and then structures the fresh instance capability of `m`
+to `Any` by an ordinary matcher-pair solve — an exact most general solve,
+so no-guess and exactness are respected.  The published type
+`(Matcher Any ?4, Matcher Any ?4)` is nevertheless not declaratively
+derivable: the declarative value-flow instance maps a quantified capability
+binder only to a capability *variable*, and every coercion rule that could
+retype `m` either concludes at a slot head or carries the violating
+instance in its premise.  Unconditional forgetting from `DDTyping` to
+`HasTy` over an arbitrary context is therefore false, and the forgetting
+theorem of stage 3-2 must carry a freeze-side correspondence condition
+(mirroring the `FreezeCompatible` condition of stage 3-3) or the judgment
+must gain the ledger axis. -/
+
+/-- A quantified matcher producer: `∀κ α. Matcher κ α`. -/
+def producerScheme : Scheme := ⟨[⟨0⟩], [0], .matcher (.var ⟨0⟩) (.var 0)⟩
+
+/-- The seeded context binding the producer. -/
+def producerContext : Context := [("m", producerScheme)]
+
+/-- One monomorphic consumer shared between `something` and the producer. -/
+def capFreezeProgram : Expr :=
+  .app (.lam "h" (.tuple
+    [.app (.var "h") .something, .app (.var "h") (.var "m")]))
+    (.lam "z" (.var "z"))
+
+/-- The inner context of the consumer body. -/
+def capFreezeInnerContext : Context :=
+  ("h", Scheme.mono (.var 1)) :: producerContext
+
+/-- Prevailing substitution after the first-use function alignment. -/
+def capFreezeAlign1 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 1 (.fn (.var 2) (.var 3))⟩ Subst.id
+
+/-- Prevailing substitution after the first argument check resolves the
+shared domain to the `Any`-capped matcher producer. -/
+def capFreezeCheck1 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 2 (.matcher .any (.var 4))⟩ capFreezeAlign1
+
+/-- Prevailing substitution after the second-use function alignment. -/
+def capFreezeAlign2 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    fnFreshDelta (.matcher .any (.var 4)) (.var 3) 5 6⟩ capFreezeCheck1
+
+/-- Prevailing substitution after the matcher-pair solve structures the
+fresh instance capability of the producer to `Any`. -/
+def capFreezeStructure : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 7 (.var 4)⟩
+    (Subst.seq ⟨Unification.CapSubst.single ⟨1⟩ .any, TySubst.id⟩
+      capFreezeAlign2)
+
+/-- Prevailing substitution after the outer function alignment. -/
+def capFreezeAlign3 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    fnFreshDelta (.fn (.matcher .any (.var 4)) (.var 3))
+      (.prod [.var 3, .var 3]) 8 9⟩ capFreezeStructure
+
+/-- Terminal substitution: the identity argument collapses its shared
+domain/codomain onto the resolved consumer domain. -/
+def capFreezeTerminal : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    fnSharedFreshDelta 10 (.matcher .any (.var 4)) 3⟩ capFreezeAlign3
+
+/-- The first use pins the shared domain to the bare producer. -/
+theorem capFreezeFirstApp_ddSynth :
+    DDSynth emptySignature ⟨1, 2⟩ Subst.id capFreezeInnerContext
+      (.app (.var "h") .something) (.var 3) ⟨1, 5⟩ capFreezeCheck1 := by
+  exact DDSynth.app (q₁ := ⟨1, 2⟩) (S₁ := Subst.id) (S₂ := capFreezeAlign1)
+    (functionTarget := .var 1)
+    (DDSynth.var (scheme := Scheme.mono (.var 1)) rfl)
+    (.ordinary rfl (ExactPairedMGU.varLeft 1 (.fn (.var 2) (.var 3))
+      (by decide)))
+    (.mk .something (.ordinary rfl (.ordinary rfl
+      (ExactPairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide)))))
+
+/-- The second use structures the fresh instance capability of `m` to `Any`
+by an ordinary matcher-pair solve: an exact most general solve with no slot
+demand anywhere. -/
+theorem capFreezeSecondApp_ddSynth :
+    DDSynth emptySignature ⟨1, 5⟩ capFreezeCheck1 capFreezeInnerContext
+      (.app (.var "h") (.var "m")) (.var 6) ⟨2, 8⟩ capFreezeStructure := by
+  exact DDSynth.app (q₁ := ⟨1, 5⟩) (S₁ := capFreezeCheck1)
+    (S₂ := capFreezeAlign2)
+    (functionTarget := .fn (.matcher .any (.var 4)) (.var 3))
+    (DDSynth.var
+      (scheme := Scheme.mono (.fn (.matcher .any (.var 4)) (.var 3))) rfl)
+    (.ordinary rfl (ExactPairedMGU.fnFresh (.matcher .any (.var 4))
+      (.var 3) 5 6 (by decide) (by decide) (by decide) (by decide)
+      (by decide)))
+    (.mk (DDSynth.var (scheme := producerScheme) rfl)
+      (.ordinary rfl
+        (.matcherPair rfl rfl (ExactCapMGU.varLeft ⟨1⟩ .any (by decide))
+          (ExactPairedMGU.varLeft 7 (.var 4) (by decide)))))
+
+/-- The whole program closes in the demand-directed judgment at the
+`Any`-capped pair. -/
+theorem capFreezeProgram_ddTyping :
+    DDTyping emptySignature producerContext capFreezeProgram
+      (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) := by
+  refine ⟨.var 9, ⟨2, 11⟩, capFreezeTerminal, ?_, rfl⟩
+  exact DDSynth.app (q₁ := ⟨2, 8⟩) (S₁ := capFreezeStructure)
+    (S₂ := capFreezeAlign3)
+    (functionTarget := .fn (.var 1) (.prod [.var 3, .var 6]))
+    (.lam (.tuple (.cons capFreezeFirstApp_ddSynth
+      (.cons capFreezeSecondApp_ddSynth .nil))))
+    (.ordinary rfl (ExactPairedMGU.fnFresh
+      (.fn (.matcher .any (.var 4)) (.var 3)) (.prod [.var 3, .var 3]) 8 9
+      (by decide) (by decide) (by decide) (by decide) (by decide)))
+    (.mk (.lam (DDSynth.var (scheme := Scheme.mono (.var 10)) rfl))
+      (.ordinary rfl (.ordinary rfl
+        (ExactPairedMGU.fnSharedFresh 10 (.matcher .any (.var 4)) 3
+          (by decide) (by decide) (by decide)))))
+
+/-- No instance of the quantified producer is `Any`-capped: the declarative
+value flow maps the capability binder only to a variable. -/
+theorem producerScheme_no_any_instance (target : Ty) :
+    ¬ producerScheme.ValueFlowInst (.matcher .any target) := by
+  rintro ⟨C, T, inst⟩
+  have caps : Cap.apply C (Cap.var ⟨0⟩) = Cap.any := by
+    have components :
+        Ty.matcher (Cap.apply C (Cap.var ⟨0⟩))
+          (((Ty.var 0).applyCapability C).applyTarget T) =
+        Ty.matcher .any target := inst.result
+    injection components with capEq _
+  obtain ⟨image, imageEq⟩ := inst.capBinderVariable ⟨0⟩ (by decide)
+  have caps' : C ⟨0⟩ = Cap.any := caps
+  nomatch imageEq.symm.trans caps'
+
+/-- The published type is not declaratively derivable: the shared
+monomorphic consumer forces `m` to inhabit the `Any`-capped matcher type,
+which no value-flow instance provides. -/
+theorem capFreezeProgram_not_hasTy :
+    ¬ HasTy emptySignature producerContext capFreezeProgram
+      (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) := by
+  intro typing
+  cases typing with
+  | app hfun harg =>
+  cases hfun with
+  | lam hbody =>
+  cases hbody with
+  | tuple hcomponents =>
+  cases hcomponents with
+  | cons hfirst hrest =>
+  cases hrest with
+  | cons hsecond hnil =>
+  cases hsecond with
+  | app hfun2 harg2 =>
+  cases hfun2 with
+  | var hfind2 hinst2 =>
+  rename_i outerDomain innerDomain scheme2
+  have pinned2 : some scheme2 = some (Scheme.mono outerDomain) :=
+    hfind2.symm.trans rfl
+  injection pinned2 with pinnedScheme2
+  subst pinnedScheme2
+  have domainEq := hinst2.mono_eq
+  subst domainEq
+  cases harg with
+  | lam hz =>
+  cases hz with
+  | var hfindz hinstz =>
+  rename_i schemez
+  have pinnedz : some schemez = some (Scheme.mono _) :=
+    hfindz.symm.trans rfl
+  injection pinnedz with pinnedSchemez
+  subst pinnedSchemez
+  have argEq := hinstz.mono_eq
+  subst argEq
+  cases harg2 with
+  | var hfindm hinstm =>
+  rename_i schemem
+  have pinnedm : some schemem = some producerScheme :=
+    hfindm.symm.trans rfl
+  injection pinnedm with pinnedSchemem
+  subst pinnedSchemem
+  exact producerScheme_no_any_instance _ hinstm
+
+/-- The boundary in one statement: the demand-directed derivation exists,
+the declarative typing does not.  Unconditional forgetting over an
+arbitrary context is refuted; the stage 3-2 forgetting map must carry a
+freeze-side correspondence condition. -/
+theorem capFreeze_forgetting_gap :
+    DDTyping emptySignature producerContext capFreezeProgram
+        (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) ∧
+      ¬ HasTy emptySignature producerContext capFreezeProgram
+        (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) :=
+  ⟨capFreezeProgram_ddTyping, capFreezeProgram_not_hasTy⟩
+
 /-! ## Pattern layer: the or-pattern `matchAll` program
 
 The same or-pattern program whose executable acceptance is pinned by

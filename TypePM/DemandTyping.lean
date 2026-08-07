@@ -414,6 +414,207 @@ theorem ExactPairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
     simp [Ty.ftv])
   simp [fnDiagonalDelta, hshared, hcodomain]
 
+/-- The fresh function-alignment delta: substitute the two already-resolved
+components for the two fresh variables. -/
+def fnFreshDelta (domainImage codomainImage : Ty)
+    (domainVar codomainVar : TypePM.TyVar) : TySubst :=
+  fun candidate =>
+    if candidate = domainVar then domainImage
+    else if candidate = codomainVar then codomainImage
+    else .var candidate
+
+/-- Aligning a resolved function type against a fresh domain/codomain pair
+is exactly solved by substituting the components for the fresh pair. -/
+theorem ExactPairedMGU.fnFresh (domainImage codomainImage : Ty)
+    (domainVar codomainVar : TypePM.TyVar)
+    (domainVarFreshLeft : domainVar ∉ domainImage.ftv)
+    (domainVarFreshRight : domainVar ∉ codomainImage.ftv)
+    (codomainVarFreshLeft : codomainVar ∉ domainImage.ftv)
+    (codomainVarFreshRight : codomainVar ∉ codomainImage.ftv)
+    (varsDistinct : domainVar ≠ codomainVar) :
+    ExactPairedMGU (.fn domainImage codomainImage)
+      (.fn (.var domainVar) (.var codomainVar))
+      ⟨CapSubst.id,
+        fnFreshDelta domainImage codomainImage domainVar codomainVar⟩ := by
+  have fixesDomain :
+      domainImage.applyTarget
+        (fnFreshDelta domainImage codomainImage domainVar codomainVar) =
+        domainImage :=
+    Ty.applyTarget_eq_self_of_ftv_fixed _ domainImage
+      (fun candidate membership => by
+        show (if candidate = domainVar then domainImage
+          else if candidate = codomainVar then codomainImage
+          else .var candidate) = .var candidate
+        rw [if_neg (fun h : candidate = domainVar =>
+            domainVarFreshLeft (h ▸ membership)),
+          if_neg (fun h : candidate = codomainVar =>
+            codomainVarFreshLeft (h ▸ membership))])
+  have fixesCodomain :
+      codomainImage.applyTarget
+        (fnFreshDelta domainImage codomainImage domainVar codomainVar) =
+        codomainImage :=
+    Ty.applyTarget_eq_self_of_ftv_fixed _ codomainImage
+      (fun candidate membership => by
+        show (if candidate = domainVar then domainImage
+          else if candidate = codomainVar then codomainImage
+          else .var candidate) = .var candidate
+        rw [if_neg (fun h : candidate = domainVar =>
+            domainVarFreshRight (h ▸ membership)),
+          if_neg (fun h : candidate = codomainVar =>
+            codomainVarFreshRight (h ▸ membership))])
+  refine ⟨⟨?_, ?_⟩, CapSubst.id_supportWithin _, ?_⟩
+  · show Ty.fn
+        ((domainImage.applyCapability CapSubst.id).applyTarget
+          (fnFreshDelta domainImage codomainImage domainVar codomainVar))
+        ((codomainImage.applyCapability CapSubst.id).applyTarget
+          (fnFreshDelta domainImage codomainImage domainVar codomainVar)) =
+      Ty.fn
+        (if domainVar = domainVar then domainImage
+          else if domainVar = codomainVar then codomainImage
+          else .var domainVar)
+        (if codomainVar = domainVar then domainImage
+          else if codomainVar = codomainVar then codomainImage
+          else .var codomainVar)
+    rw [Ty.applyCapability_id, Ty.applyCapability_id, fixesDomain,
+      fixesCodomain, if_pos rfl,
+      if_neg (fun h : codomainVar = domainVar => varsDistinct h.symm),
+      if_pos rfl]
+  · intro U unifies
+    have components :
+        Ty.fn (U.apply domainImage) (U.apply codomainImage) =
+        Ty.fn (U.target domainVar) (U.target codomainVar) := unifies
+    injection components with domainEq codomainEq
+    refine ⟨U, ?_⟩
+    have targetEq : U.target = fun candidate =>
+        U.apply (fnFreshDelta domainImage codomainImage domainVar
+          codomainVar candidate) := by
+      funext candidate
+      by_cases hdomain : candidate = domainVar
+      · subst hdomain
+        show U.target candidate =
+          U.apply (if candidate = candidate then domainImage
+            else if candidate = codomainVar then codomainImage
+            else .var candidate)
+        rw [if_pos rfl]
+        exact domainEq.symm
+      · by_cases hcodomain : candidate = codomainVar
+        · subst hcodomain
+          show U.target candidate =
+            U.apply (if candidate = domainVar then domainImage
+              else if candidate = candidate then codomainImage
+              else .var candidate)
+          rw [if_neg hdomain, if_pos rfl]
+          exact codomainEq.symm
+        · show U.target candidate =
+            U.apply (if candidate = domainVar then domainImage
+              else if candidate = codomainVar then codomainImage
+              else .var candidate)
+          rw [if_neg hdomain, if_neg hcodomain]
+          rfl
+    exact congrArg (Subst.mk U.cap) targetEq
+  · intro candidate outside
+    have hdomain : ¬ candidate = domainVar := fun h => outside (by
+      cases h
+      simp [Ty.ftv])
+    have hcodomain : ¬ candidate = codomainVar := fun h => outside (by
+      cases h
+      simp [Ty.ftv])
+    show (if candidate = domainVar then domainImage
+      else if candidate = codomainVar then codomainImage
+      else .var candidate) = .var candidate
+    rw [if_neg hdomain, if_neg hcodomain]
+
+/-- The shared-domain function-alignment delta: both the shared variable and
+the fresh codomain variable collapse onto the resolved domain image. -/
+def fnSharedFreshDelta (sharedVar : TypePM.TyVar) (image : Ty)
+    (codomainVar : TypePM.TyVar) : TySubst :=
+  fun candidate =>
+    if candidate = sharedVar then image
+    else if candidate = codomainVar then image
+    else .var candidate
+
+/-- Aligning `fn ?s ?s` against a resolved domain with a fresh codomain is
+exactly solved by collapsing both variables onto the domain image. -/
+theorem ExactPairedMGU.fnSharedFresh (sharedVar : TypePM.TyVar) (image : Ty)
+    (codomainVar : TypePM.TyVar)
+    (sharedFresh : sharedVar ∉ image.ftv)
+    (codomainFresh : codomainVar ∉ image.ftv)
+    (varsDistinct : sharedVar ≠ codomainVar) :
+    ExactPairedMGU (.fn (.var sharedVar) (.var sharedVar))
+      (.fn image (.var codomainVar))
+      ⟨CapSubst.id, fnSharedFreshDelta sharedVar image codomainVar⟩ := by
+  have fixesImage :
+      image.applyTarget (fnSharedFreshDelta sharedVar image codomainVar) =
+        image :=
+    Ty.applyTarget_eq_self_of_ftv_fixed _ image
+      (fun candidate membership => by
+        show (if candidate = sharedVar then image
+          else if candidate = codomainVar then image
+          else .var candidate) = .var candidate
+        rw [if_neg (fun h : candidate = sharedVar =>
+            sharedFresh (h ▸ membership)),
+          if_neg (fun h : candidate = codomainVar =>
+            codomainFresh (h ▸ membership))])
+  refine ⟨⟨?_, ?_⟩, CapSubst.id_supportWithin _, ?_⟩
+  · show Ty.fn
+        (if sharedVar = sharedVar then image
+          else if sharedVar = codomainVar then image else .var sharedVar)
+        (if sharedVar = sharedVar then image
+          else if sharedVar = codomainVar then image else .var sharedVar) =
+      Ty.fn
+        ((image.applyCapability CapSubst.id).applyTarget
+          (fnSharedFreshDelta sharedVar image codomainVar))
+        (if codomainVar = sharedVar then image
+          else if codomainVar = codomainVar then image
+          else .var codomainVar)
+    rw [Ty.applyCapability_id, fixesImage, if_pos rfl,
+      if_neg (fun h : codomainVar = sharedVar => varsDistinct h.symm),
+      if_pos rfl]
+  · intro U unifies
+    have components :
+        Ty.fn (U.target sharedVar) (U.target sharedVar) =
+        Ty.fn (U.apply image) (U.target codomainVar) := unifies
+    injection components with domainEq codomainEq
+    refine ⟨U, ?_⟩
+    have targetEq : U.target = fun candidate =>
+        U.apply (fnSharedFreshDelta sharedVar image codomainVar
+          candidate) := by
+      funext candidate
+      by_cases hshared : candidate = sharedVar
+      · subst hshared
+        show U.target candidate =
+          U.apply (if candidate = candidate then image
+            else if candidate = codomainVar then image
+            else .var candidate)
+        rw [if_pos rfl]
+        exact domainEq
+      · by_cases hcodomain : candidate = codomainVar
+        · subst hcodomain
+          show U.target candidate =
+            U.apply (if candidate = sharedVar then image
+              else if candidate = candidate then image
+              else .var candidate)
+          rw [if_neg hshared, if_pos rfl]
+          exact codomainEq.symm.trans domainEq
+        · show U.target candidate =
+            U.apply (if candidate = sharedVar then image
+              else if candidate = codomainVar then image
+              else .var candidate)
+          rw [if_neg hshared, if_neg hcodomain]
+          rfl
+    exact congrArg (Subst.mk U.cap) targetEq
+  · intro candidate outside
+    have hshared : ¬ candidate = sharedVar := fun h => outside (by
+      cases h
+      simp [Ty.ftv])
+    have hcodomain : ¬ candidate = codomainVar := fun h => outside (by
+      cases h
+      simp [Ty.ftv])
+    show (if candidate = sharedVar then image
+      else if candidate = codomainVar then image
+      else .var candidate) = .var candidate
+    rw [if_neg hshared, if_neg hcodomain]
+
 /-! ### No-guess metatheory of most general solve deltas
 
 Universality alone already bounds what a most general solve delta may do to
