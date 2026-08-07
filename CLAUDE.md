@@ -184,7 +184,10 @@ commit／push はその都度の明示指示がある場合に限るという規
   - `TypePM/ElaborationRegression.lean`: product の root synthesis と明示的
     `COERCE-PRODUCT-MATCHER` plan，および `let` 後の変数利用位置での unary lift．
   - `TypePM/CoherentSurface.lean`: pattern leaf の raw/actual context を結ぶ indices-only
-    coherent judgment，surface forgetful map，reconstruction bridge．
+    coherent judgment，surface forgetful map，reconstruction bridge，および
+    pval-free 吸収（`Pattern.pvalFree` と
+    `ThreadedPatternResolution.toDeriv_of_pvalFree`：`pval` leaf のない pattern では
+    threaded surface 境界が reconstruction 証明書へそのまま昇格する）．
   - `TypePM/CoherentTyping.lean`: coherent surface typing の定義的 abbreviation
     （`Coherent.CoherentExpr := ExprDeriv` ほか 10 family），`CoherentExpr.toHasTy`，
     `infer_success_coherent`，match-free 断片の全 coherence

@@ -1399,7 +1399,9 @@ $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な co
 全 child で共有し，raw binding context だけを左から右へ threadする強い judgment と忘却写像を与える．
 reconstruction judgment 自体も同じ raw indices を保持する形へ強化し，W の reconstruction motive が
 この evidence を直接生成する．value-pattern 内の式 typing は reconstruction 側では再帰的 core evidence
-であり，surface judgment への bridge でのみ通常の typing へ忘却する．この上に，expression，arm，clause
+であり，surface judgment への bridge でのみ通常の typing へ忘却する．二 family の差はこの
+value-pattern premise だけなので，value pattern を含まない pattern では threaded surface judgment が
+reconstruction evidence へそのまま吸収される（pval-free 吸収）．この上に，expression，arm，clause
 まで含む coherent surface typing を，reconstruction certificate そのものとの定義的同一視として公開する
 （鏡写しの独立 domain は維持しない）．pattern 層は threaded 形，value-pattern／arm body／clause
 next-matcher の式 premise は certificate 自身へ再帰し，surface typing への忘却と，公開 inference の

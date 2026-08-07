@@ -64,7 +64,12 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
   言明する装置）．W の reconstruction motive は selector が実際に頭を検査した raw type を
   faithful に注入し，恒等 witness も常に取れるため判断を制限しない．
 - **済** 旗艦例の coherent instance（`listMatcherMatchAll_coherent`）．
-- 未: pval-free aligned 吸収補題（fragment 記述の精密化用，批判経路外）．
+- **済** pval-free 吸収補題（fragment 記述の精密化用）：`pval` leaf を含まない
+  pattern では threaded surface 境界と reconstruction 証明書が一致する
+  （`ThreadedPatternResolution.toDeriv_of_pvalFree`，
+  [`TypePM/CoherentSurface.lean`](TypePM/CoherentSurface.lean)）．二 family の差は
+  `pval` の式 premise（`HasTy` 対 `ExprDeriv`）だけなので，`pval`-free では
+  昇格すべき式 premise が存在しない．
 
 ### 段階 2: Damas–Milner 断片の全受理
 

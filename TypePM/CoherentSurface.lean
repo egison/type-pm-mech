@@ -488,5 +488,93 @@ def ResolvedPatternDeriv.toCoherentSurface
   | .ofThreaded terminal =>
       .ofTerminal (PatternResolutionDeriv.toCoherentSurface terminal)
 
+/-! ## Pattern-value-free absorption
+
+The threaded surface boundary differs from reconstruction evidence in one
+premise only: a `pval` leaf carries a plain `HasTy` on the surface side and
+an `ExprDeriv` certificate on the reconstruction side.  On patterns without
+any pattern-value leaf there is no expression premise to upgrade, so the
+standalone surface judgment absorbs into reconstruction evidence outright.
+This sharpens fragment descriptions: for `pval`-free patterns the threaded
+surface boundary and the coherent reconstruction family coincide. -/
+
+mutual
+
+/-- A pattern mentions no pattern-value expression. -/
+def _root_.TypePM.Pattern.pvalFree : Pattern → Bool
+  | .pvar _ => true
+  | .wild => true
+  | .pval _ => false
+  | .embed _ => true
+  | .pctor _ patterns => Pattern.pvalFreeList patterns
+  | .pand left right => left.pvalFree && right.pvalFree
+  | .por left right => left.pvalFree && right.pvalFree
+  | .papp _ patterns => Pattern.pvalFreeList patterns
+  | .ptuple patterns => Pattern.pvalFreeList patterns
+
+/-- List form of `Pattern.pvalFree`. -/
+def _root_.TypePM.Pattern.pvalFreeList : List Pattern → Bool
+  | [] => true
+  | pattern :: patterns => pattern.pvalFree && Pattern.pvalFreeList patterns
+
+end
+
+mutual
+
+/-- On a `pval`-free pattern the threaded surface resolution is already
+reconstruction evidence. -/
+def ThreadedPatternResolution.toDeriv_of_pvalFree
+    {signature prevailing rawContext rawParameters rawBindings pattern
+     capability target rawResult}
+    (resolution : ThreadedPatternResolution signature prevailing rawContext
+      rawParameters rawBindings pattern capability target rawResult)
+    (hfree : pattern.pvalFree = true) :
+    PatternResolutionDeriv signature prevailing rawContext rawParameters
+      rawBindings pattern capability target rawResult :=
+  match resolution, hfree with
+  | .pvar missing freshCap freshTy, _ =>
+      .pvar missing freshCap freshTy
+  | .wild freshCap freshTy, _ =>
+      .wild freshCap freshTy
+  | .pval _ _ _, hfree => nomatch hfree
+  | .embed rawLookup actualLookup, _ =>
+      .embed rawLookup actualLookup
+  | .tuple children, hfree =>
+      .tuple (ThreadedPatternResolutions.toDeriv_of_pvalFree children hfree)
+  | .ctor lookup children compatible instanceTyping, hfree =>
+      .ctor lookup
+        (ThreadedPatternResolutions.toDeriv_of_pvalFree children hfree)
+        compatible instanceTyping
+  | .and left right, hfree => by
+      simp only [Pattern.pvalFree, Bool.and_eq_true] at hfree
+      exact .and (left.toDeriv_of_pvalFree hfree.1)
+        (right.toDeriv_of_pvalFree hfree.2)
+  | .or left right equality, hfree => by
+      simp only [Pattern.pvalFree, Bool.and_eq_true] at hfree
+      exact .or (left.toDeriv_of_pvalFree hfree.1)
+        (right.toDeriv_of_pvalFree hfree.2) equality
+  | .app lookup children instanceTyping, hfree =>
+      .app lookup
+        (ThreadedPatternResolutions.toDeriv_of_pvalFree children hfree)
+        instanceTyping
+
+/-- List form of the `pval`-free absorption. -/
+def ThreadedPatternResolutions.toDeriv_of_pvalFree
+    {signature prevailing rawContext rawParameters rawBindings patterns duals
+     rawResult}
+    (resolutions : ThreadedPatternResolutions signature prevailing rawContext
+      rawParameters rawBindings patterns duals rawResult)
+    (hfree : Pattern.pvalFreeList patterns = true) :
+    PatternResolutionsDeriv signature prevailing rawContext rawParameters
+      rawBindings patterns duals rawResult :=
+  match resolutions, hfree with
+  | .nil, _ => .nil
+  | .cons head tail, hfree => by
+      simp only [Pattern.pvalFreeList, Bool.and_eq_true] at hfree
+      exact .cons (head.toDeriv_of_pvalFree hfree.1)
+        (tail.toDeriv_of_pvalFree hfree.2)
+
+end
+
 end CoherentSurface
 end TypePM
