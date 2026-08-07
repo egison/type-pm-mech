@@ -5587,4 +5587,46 @@ theorem DDClauses.boundedBy {signature : FrozenSig} :
 
 end
 
+
+/-! ### The closed wrapper starts bounded
+
+The initial supply reserves every variable of the signature and the
+context, the identity substitution is bounded at every supply, and the
+sweep therefore bounds every published type of the closed wrapper by the
+terminal supply of its derivation.
+-/
+
+/-- The initial supply bounds its own context. -/
+theorem initialSupply_context_boundedBy (signature : FrozenSig)
+    (context : Context) :
+    Context.BoundedBy (Inference.initialSupply signature context)
+      context := by
+  intro entry mem
+  constructor
+  · intro varId varMem
+    apply InferenceBase.mem_lt_binderSpan
+    apply List.mem_map.mpr
+    refine ⟨varId, List.mem_append.mpr (Or.inr ?_), rfl⟩
+    refine List.mem_flatMap.mpr ⟨entry, mem, ?_⟩
+    exact List.mem_append.mpr (Or.inr (List.mem_filter.mp varMem).1)
+  · intro varId varMem
+    apply InferenceBase.mem_lt_binderSpan
+    refine List.mem_append.mpr (Or.inr ?_)
+    refine List.mem_flatMap.mpr ⟨entry, mem, ?_⟩
+    exact List.mem_append.mpr (Or.inr (List.mem_filter.mp varMem).1)
+
+/-- Every published demand-directed type is bounded by the terminal supply
+of its derivation, which extends the initial supply. -/
+theorem DDTyping.published_boundedBy {signature : FrozenSig}
+    {context : Context} {expression : Expr} {target : Ty}
+    (typed : DDTyping signature context expression target)
+    (closed : signature.SchemesClosed) :
+    ∃ q', SupplyExtends (Inference.initialSupply signature context) q' ∧
+      Ty.BoundedBy q' target := by
+  obtain ⟨raw, q', S', derived, htarget⟩ := typed
+  obtain ⟨S'b, rawB⟩ := derived.boundedBy closed
+    (Subst.boundedBy_id _)
+    (initialSupply_context_boundedBy signature context)
+  exact ⟨q', derived.supplyExtends, htarget ▸ S'b.apply rawB⟩
+
 end TypePM
