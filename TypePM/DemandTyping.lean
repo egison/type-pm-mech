@@ -2727,4 +2727,361 @@ theorem DDClauses.supplyExtends {signature : FrozenSig}
 
 end
 
+/-! ## Freshness: supply-bounded variables
+
+The first layer of the freshness invariant: boundedness of both variable
+sorts by a fresh supply, monotone along supply extension, closed under
+application and sequencing of bounded substitutions, and the half of
+exact-delta boundedness that already follows from exactness — a solve
+delta of a bounded constraint is the identity at and above the bound.  The
+remaining half (images of in-constraint variables stay below the bound) is
+the recorded next step: it either follows from most-generality through the
+executable solver's range certificates, or becomes one more exactness
+conjunct.
+-/
+
+mutual
+
+/-- Capability application does not change target variables. -/
+theorem Ty.ftv_applyCapability :
+    ∀ (target : Ty) (C : CapSubst),
+      (target.applyCapability C).ftv = target.ftv
+  | .var _, _ => rfl
+  | .skolem _, _ => rfl
+  | .unit, _ => rfl
+  | .int, _ => rfl
+  | .bool, _ => rfl
+  | .data _ fields, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftvList_applyCapabilityList fields C
+  | .prod components, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftvList_applyCapabilityList components C
+  | .fn domain codomain, C => by
+      simp only [Ty.applyCapability, Ty.ftv,
+        Ty.ftv_applyCapability domain C, Ty.ftv_applyCapability codomain C]
+  | .matcher capability target, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftv_applyCapability target C
+  | .slot capability target, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftv_applyCapability target C
+
+/-- List form of `Ty.ftv_applyCapability`. -/
+theorem Ty.ftvList_applyCapabilityList :
+    ∀ (types : List Ty) (C : CapSubst),
+      Ty.ftvList (Ty.applyCapabilityList C types) = Ty.ftvList types
+  | [], _ => rfl
+  | τ :: types, C => by
+      simp only [Ty.applyCapabilityList, Ty.ftvList,
+        Ty.ftv_applyCapability τ C, Ty.ftvList_applyCapabilityList types C]
+
+end
+
+mutual
+
+/-- Capability variables of a capability-substituted type are the image
+variables of its capability variables. -/
+theorem Ty.fcv_applyCapability :
+    ∀ (target : Ty) (C : CapSubst),
+      (target.applyCapability C).fcv = target.fcv.flatMap fun x => (C x).fcv
+  | .var _, _ => rfl
+  | .skolem _, _ => rfl
+  | .unit, _ => rfl
+  | .int, _ => rfl
+  | .bool, _ => rfl
+  | .data _ fields, C => by
+      simp only [Ty.applyCapability, Ty.fcv]
+      exact Ty.fcvList_applyCapabilityList fields C
+  | .prod components, C => by
+      simp only [Ty.applyCapability, Ty.fcv]
+      exact Ty.fcvList_applyCapabilityList components C
+  | .fn domain codomain, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Ty.fcv_applyCapability domain C, Ty.fcv_applyCapability codomain C]
+  | .matcher capability target, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Unification.Cap.fcv_apply capability C,
+        Ty.fcv_applyCapability target C]
+  | .slot capability target, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Unification.Cap.fcv_apply capability C,
+        Ty.fcv_applyCapability target C]
+
+/-- List form of `Ty.fcv_applyCapability`. -/
+theorem Ty.fcvList_applyCapabilityList :
+    ∀ (types : List Ty) (C : CapSubst),
+      Ty.fcvList (Ty.applyCapabilityList C types) =
+        (Ty.fcvList types).flatMap fun x => (C x).fcv
+  | [], _ => rfl
+  | τ :: types, C => by
+      simp only [Ty.applyCapabilityList, Ty.fcvList, List.flatMap_append,
+        Ty.fcv_applyCapability τ C, Ty.fcvList_applyCapabilityList types C]
+
+end
+
+mutual
+
+/-- A capability variable of a target-substituted type is either an
+original capability variable or a capability variable of an image. -/
+theorem Ty.mem_fcv_applyTarget :
+    ∀ (target : Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ (target.applyTarget T).fcv →
+      varId ∈ target.fcv ∨
+        ∃ tyVar, tyVar ∈ target.ftv ∧ varId ∈ (T tyVar).fcv
+  | .var tyVar, _, _, mem => Or.inr ⟨tyVar, by simp [Ty.ftv], mem⟩
+  | .skolem _, _, _, mem => nomatch mem
+  | .unit, _, _, mem => nomatch mem
+  | .int, _, _, mem => nomatch mem
+  | .bool, _, _, mem => nomatch mem
+  | .data _ fields, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList fields T varId mem
+  | .prod components, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList components T varId mem
+  | .fn domain codomain, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · rcases Ty.mem_fcv_applyTarget domain T varId here with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inl own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
+      · rcases Ty.mem_fcv_applyTarget codomain T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
+  | .matcher capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact Or.inl (List.mem_append.mpr (Or.inl here))
+      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · exact Or.inr image
+  | .slot capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact Or.inl (List.mem_append.mpr (Or.inl here))
+      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · exact Or.inr image
+
+/-- List form of `Ty.mem_fcv_applyTarget`. -/
+theorem Ty.memList_fcvList_applyTargetList :
+    ∀ (types : List Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ Ty.fcvList (Ty.applyTargetList T types) →
+      varId ∈ Ty.fcvList types ∨
+        ∃ tyVar, tyVar ∈ Ty.ftvList types ∧ varId ∈ (T tyVar).fcv
+  | [], _, _, mem => nomatch mem
+  | τ :: types, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · rcases Ty.mem_fcv_applyTarget τ T varId here with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inl own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
+      · rcases Ty.memList_fcvList_applyTargetList types T varId there
+          with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
+
+end
+
+/-- All capability variables lie below the supply's capability counter. -/
+def Cap.BoundedBy (q : InferenceBase.FreshSupply) (capability : Cap) : Prop :=
+  ∀ varId ∈ capability.fcv, varId.id < q.nextCap
+
+/-- All variables of both sorts lie below the supply's counters. -/
+structure Ty.BoundedBy (q : InferenceBase.FreshSupply) (target : Ty) :
+    Prop where
+  caps : ∀ varId ∈ target.fcv, varId.id < q.nextCap
+  targets : ∀ varId ∈ target.ftv, varId < q.nextTy
+
+/-- A bounded substitution: the identity at and above the counters, with
+bounded images below them. -/
+structure Subst.BoundedBy (q : InferenceBase.FreshSupply) (S : Subst) :
+    Prop where
+  capFixedAbove : ∀ varId : CapVar, q.nextCap ≤ varId.id →
+    S.cap varId = .var varId
+  capImagesBounded : ∀ varId : CapVar, varId.id < q.nextCap →
+    Cap.BoundedBy q (S.cap varId)
+  targetFixedAbove : ∀ varId : TypePM.TyVar, q.nextTy ≤ varId →
+    S.target varId = .var varId
+  targetImagesBounded : ∀ varId : TypePM.TyVar, varId < q.nextTy →
+    Ty.BoundedBy q (S.target varId)
+
+/-- Capability boundedness is monotone along supply extension. -/
+theorem Cap.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {capability : Cap} (extends_ : SupplyExtends q q')
+    (bounded : capability.BoundedBy q) : capability.BoundedBy q' :=
+  fun varId mem => Nat.lt_of_lt_of_le (bounded varId mem) extends_.1
+
+/-- Type boundedness is monotone along supply extension. -/
+theorem Ty.BoundedBy.mono {q q' : InferenceBase.FreshSupply} {target : Ty}
+    (extends_ : SupplyExtends q q') (bounded : target.BoundedBy q) :
+    target.BoundedBy q' :=
+  ⟨fun varId mem => Nat.lt_of_lt_of_le (bounded.caps varId mem) extends_.1,
+    fun varId mem =>
+      Nat.lt_of_lt_of_le (bounded.targets varId mem) extends_.2⟩
+
+/-- Substitution boundedness is monotone along supply extension. -/
+theorem Subst.BoundedBy.mono {q q' : InferenceBase.FreshSupply} {S : Subst}
+    (extends_ : SupplyExtends q q') (bounded : S.BoundedBy q) :
+    S.BoundedBy q' := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro varId above
+    exact bounded.capFixedAbove varId (Nat.le_trans extends_.1 above)
+  · intro varId below
+    by_cases original : varId.id < q.nextCap
+    · exact (bounded.capImagesBounded varId original).mono extends_
+    · rw [bounded.capFixedAbove varId (Nat.le_of_not_lt original)]
+      intro image mem
+      have : image = varId := by
+        simpa [Cap.fcv] using mem
+      simpa [this]
+  · intro varId above
+    exact bounded.targetFixedAbove varId (Nat.le_trans extends_.2 above)
+  · intro varId below
+    by_cases original : varId < q.nextTy
+    · exact (bounded.targetImagesBounded varId original).mono extends_
+    · rw [bounded.targetFixedAbove varId (Nat.le_of_not_lt original)]
+      constructor
+      · intro image mem
+        have empty : (Ty.var varId).fcv = ([] : List CapVar) := rfl
+        rw [empty] at mem
+        nomatch mem
+      · intro image mem
+        have : image = varId := by
+          simpa [Ty.ftv] using mem
+        simpa [this]
+
+/-- The identity substitution is bounded by every supply. -/
+theorem Subst.boundedBy_id (q : InferenceBase.FreshSupply) :
+    Subst.BoundedBy q Subst.id := by
+  refine ⟨fun _ _ => rfl, ?_, fun _ _ => rfl, ?_⟩
+  · intro varId below image mem
+    have : image = varId := by
+      simpa [Subst.id, CapSubst.id, Cap.fcv] using mem
+    simpa [this]
+  · intro varId below
+    constructor
+    · intro image mem
+      have empty : (Subst.id.target varId).fcv = [] := rfl
+      rw [empty] at mem
+      nomatch mem
+    · intro image mem
+      have : image = varId := by
+        simpa [Subst.id, TySubst.id, Ty.ftv] using mem
+      simpa [this]
+
+/-- Applying a bounded substitution to a bounded capability is bounded. -/
+theorem Subst.BoundedBy.applyCap {q : InferenceBase.FreshSupply} {S : Subst}
+    (bounded : S.BoundedBy q) {capability : Cap}
+    (capBounded : capability.BoundedBy q) :
+    (capability.apply S.cap).BoundedBy q := by
+  intro varId mem
+  rw [Unification.Cap.fcv_apply] at mem
+  simp only [List.mem_flatMap] at mem
+  obtain ⟨original, originalMem, imageMem⟩ := mem
+  exact bounded.capImagesBounded original (capBounded original originalMem)
+    varId imageMem
+
+/-- Applying a bounded substitution to a bounded type is bounded. -/
+theorem Subst.BoundedBy.apply {q : InferenceBase.FreshSupply} {S : Subst}
+    (bounded : S.BoundedBy q) {target : Ty}
+    (targetBounded : target.BoundedBy q) :
+    (S.apply target).BoundedBy q := by
+  constructor
+  · intro varId mem
+    rcases Ty.mem_fcv_applyTarget _ S.target varId mem with own | image
+    · rw [Ty.fcv_applyCapability] at own
+      simp only [List.mem_flatMap] at own
+      obtain ⟨original, originalMem, imageMem⟩ := own
+      exact bounded.capImagesBounded original
+        (targetBounded.caps original originalMem) varId imageMem
+    · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+      rw [Ty.ftv_applyCapability] at tyMem
+      exact (bounded.targetImagesBounded tyVar
+        (targetBounded.targets tyVar tyMem)).caps varId imageMem
+  · intro varId mem
+    have mem' : varId ∈
+        ((target.applyCapability S.cap).applyTarget S.target).ftv := mem
+    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem'
+    simp only [List.mem_flatMap] at mem'
+    obtain ⟨original, originalMem, imageMem⟩ := mem'
+    exact (bounded.targetImagesBounded original
+      (targetBounded.targets original originalMem)).targets varId imageMem
+
+/-- Sequencing bounded substitutions is bounded. -/
+theorem Subst.BoundedBy.seq {q : InferenceBase.FreshSupply}
+    {delta S : Subst} (deltaBounded : delta.BoundedBy q)
+    (bounded : S.BoundedBy q) : (Subst.seq delta S).BoundedBy q := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro varId above
+    show (S.cap varId).apply delta.cap = .var varId
+    rw [bounded.capFixedAbove varId above]
+    show delta.cap varId = .var varId
+    exact deltaBounded.capFixedAbove varId above
+  · intro varId below
+    exact deltaBounded.applyCap (bounded.capImagesBounded varId below)
+  · intro varId above
+    show delta.apply (S.target varId) = .var varId
+    rw [bounded.targetFixedAbove varId above]
+    show (((Ty.var varId).applyCapability delta.cap).applyTarget
+      delta.target) = .var varId
+    exact deltaBounded.targetFixedAbove varId above
+  · intro varId below
+    exact deltaBounded.apply (bounded.targetImagesBounded varId below)
+
+/-- The exactness half of delta boundedness: an exact capability solution
+of a bounded constraint is the identity at and above the bound. -/
+theorem ExactCapMGU.fixedAbove {left right : Cap} {subst : CapSubst}
+    {q : InferenceBase.FreshSupply} (exact : ExactCapMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q)
+    (varId : CapVar) (above : q.nextCap ≤ varId.id) :
+    subst varId = .var varId := by
+  refine exact.2 varId ?_
+  intro mem
+  rcases List.mem_append.mp mem with here | there
+  · have := leftBounded varId here
+    omega
+  · have := rightBounded varId there
+    omega
+
+/-- The exactness half of delta boundedness for target solutions. -/
+theorem ExactTargetMGU.fixedAbove {left right : Ty} {subst : TySubst}
+    {q : InferenceBase.FreshSupply} (exact : ExactTargetMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q)
+    (varId : TypePM.TyVar) (above : q.nextTy ≤ varId) :
+    subst varId = .var varId := by
+  refine exact.2 varId ?_
+  intro mem
+  rcases List.mem_append.mp mem with here | there
+  · exact Nat.lt_irrefl _
+      (Nat.lt_of_lt_of_le (leftBounded.targets varId here) above)
+  · exact Nat.lt_irrefl _
+      (Nat.lt_of_lt_of_le (rightBounded.targets varId there) above)
+
+/-- The exactness half of delta boundedness for paired solutions, in both
+sorts. -/
+theorem ExactPairedMGU.fixedAbove {left right : Ty} {subst : Subst}
+    {q : InferenceBase.FreshSupply} (exact : ExactPairedMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
+    (∀ varId : CapVar, q.nextCap ≤ varId.id →
+      subst.cap varId = .var varId) ∧
+    (∀ varId : TypePM.TyVar, q.nextTy ≤ varId →
+      subst.target varId = .var varId) := by
+  constructor
+  · intro varId above
+    refine exact.2.1 varId ?_
+    intro mem
+    rcases List.mem_append.mp mem with here | there
+    · have := leftBounded.caps varId here
+      omega
+    · have := rightBounded.caps varId there
+      omega
+  · intro varId above
+    refine exact.2.2 varId ?_
+    intro mem
+    rcases List.mem_append.mp mem with here | there
+    · exact Nat.lt_irrefl _
+        (Nat.lt_of_lt_of_le (leftBounded.targets varId here) above)
+    · exact Nat.lt_irrefl _
+        (Nat.lt_of_lt_of_le (rightBounded.targets varId there) above)
+
 end TypePM
