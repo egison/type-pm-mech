@@ -107,10 +107,9 @@ OutsideIn(X) は guess-free solver と algorithmic completeness 条件の先例�
 が，constraint-generation／solving 分離は採らず，`DDTyping` 自身が構文走査中に state と
 solve を逐次 thread する．出典と詳細は [`tex/main.tex`](tex/main.tex)．
 
-**現行実装との差分**: 現行 `expectedCoercionSource` には expected head が `Matcher` の
-場合にも product lift 単独（Matcher 終点）を選ぶ分岐が一つ残っている．これは本原則の
-外であり，段階 3-0 で撤去して対応回帰を負例へ反転する（詳細は
-[`docs/details.md`](docs/details.md) の selector 節）．また現行 selector は product の
+**現行実装との差分**: executable selector `expectedCoercionSource` は slot-demand に
+一本化済みである（matcher-expected で product lift 単独を選んでいた旧分岐は段階 3-0 で
+撤去し，対応回帰を負例へ反転した）．残る差分は一つ：現行 selector は product の
 source view を `S₁ τraw` ではなく raw `τraw` から認識する．この **raw-source
 visibility** は demand の権威ではなく実装上の死角であり，最初の受理定理では条件
 `RawSourceVisible` として隔離し，後に cut-indexed coercion event で外す（段階 4-1）．
@@ -146,8 +145,8 @@ visibility** は demand の権威ではなく実装上の死角であり，最�
 - `nestedCapProgram`（と swapped 版）— demand の無い位置の coercion に依存する例．
   拒否が意図された挙動であり，`DDTyping` に導出を持たない（将来 inversion で固定）．
   `let` 多相化した `nestedCapLetProgram` は受理される正例．
-- matcher-expected 位置への product-of-matchers 渡し — slot-demand 一本化後の意図された
-  拒否（段階 3-0 で回帰を反転）．
+- matcher-expected 位置への product-of-matchers 渡し — 意図された拒否
+  （段階 3-0 で負の回帰として固定済み）．
 - 非主張: 広い `HasTy` 前提の completeness，無制限 principality，一般 producer-flow
   解析（alias／mutual recursion／高階 origin），raw declaration からの signature
   validator，一般の評価停止性，full Egison の warning mode／module persistence／標準
@@ -188,11 +187,14 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
 
 ### 段階 3: `DDTyping` と条件付き受理完全性
 
-0. 未: **selector の slot-demand 一本化** — `expectedCoercionSource` から
-   matcher-expected 分岐を撤去し，matcher-期待 product lift の受理回帰
-   （`CertifiedInferenceRegression`／`ApplicationCoercionRegression`）を負例へ反転する．
-   `HasTy`・Safety・reconstruction certificate は変えない（`coerceProductMatcher` は
-   slot-demand 二段の中間段として残る）．
+0. **済** selector の slot-demand 一本化 — `expectedCoercionSource` から
+   matcher-expected 分岐を撤去し，受理回帰を反転した
+   （`CertifiedInferenceRegression` の selector 検査は identity へ・application guard は
+   拒否へ；`ApplicationCoercionRegression` の宣言導出は wide 包絡の意図された受理ギャップ
+   として維持）．`HasTy`・Safety・reconstruction certificate は不変
+   （`coerceProductMatcher` は slot-demand 二段の中間段として残る）．
+   `nestedCapProgram` の拒否機構は「lift 後の rigid 比較」から「demand 不在による
+   head 不一致」へ変わったが，拒否自体は不変である．
 1. 未: `DDTyping` の定義 — 推論器から独立な帰納的 `DDSynth`／`DDCheck`．設計原理節の
    とおり synthesis-first・slot-demand・no-guess・実行関数や
    `ElaborableHasTy := ∃ CoreTyping` を定義に含めない．

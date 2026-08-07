@@ -3,8 +3,6 @@
 この文書はモジュール単位の詳細仕様・証明済み事項・非主張事項の目録である．
 大局的な目標・設計原理・ロードマップは [`README.md`](../README.md)，作業規律は
 [`CLAUDE.md`](../CLAUDE.md)，形式仕様は [`tex/main.tex`](../tex/main.tex) にある．
-ここに書く「撤去予定」「反転予定」はロードマップの slot-demand 一本化
-（README 段階 3-0）を指す．
 
 ## calculus の要点
 
@@ -178,10 +176,11 @@ branch の solve が失敗しても別 branch へ切り替えない．空 produc
 matcher-expected 位置に raw Matcher が来る場合（`Pack something` 等）は coercion では
 なく通常単一化で通る．
 
-**撤去予定**: 現行 selector には expected head が matcher の場合にも product lift
-単独（Matcher 終点）を選ぶ分岐が残っている．これは slot-demand 原則の外であり，
-README 段階 3-0 で撤去する．撤去後，matcher-expected 位置に product-of-matchers が
-来る形（matcher 引数を宣言した署名 ctor へのタプル渡し等）は意図された拒否になる．
+matcher-expected で product lift 単独（Matcher 終点）を選んでいた旧分岐は段階 3-0 で
+撤去済みである．matcher-expected 位置に product-of-matchers が来る形（matcher 引数を
+宣言した署名 ctor へのタプル渡し・matcher 頭に固定された λ domain への渡し等）は
+意図された拒否であり，負の regression（`productMatcher_expected_source` の identity
+検査と `#guard !productMatcherArgumentApplicationSucceeds`）で固定する．
 
 現段階の selector は `S₁ τraw` ではなく raw `τraw` の頭を検査するので，raw
 metavariable が prevailing substitution 後に初めて product-of-matchers または
@@ -433,12 +432,14 @@ instance／alignment／generalization check を通す trace invariant の一般�
   結果が三つの相異なる target 変数を持つ raw shape のままであること
   （`nestedCapLetProgram_raw_target_shape`）と raw solve trace に `producerToSlot` が
   無いこと（`nestedCapLetProgram_raw_has_no_producerToSlot`）も固定する．
-- **matcher-expected への product 渡し（slot-demand 一本化後の境界例・反転予定）**:
+- **matcher-expected への product 渡し（恒久的境界例・意図された拒否）**:
   matcher 引数を宣言した署名 ctor や matcher 頭 domain の関数へ product-of-matchers を
-  渡す形は，selector の matcher-expected 分岐の撤去後は意図された拒否になる．
-  現行の受理回帰（`CertifiedInferenceRegression` の matcher-期待 selector 検査と
-  対応 `#guard`，`ApplicationCoercionRegression` の product-matcher application）は
-  負例へ反転する．宣言的 `HasTy` 導出（wide 包絡）は維持できる．
+  渡す形は，matcher expectation が slot demand でないため lift されず拒否される．
+  `CertifiedInferenceRegression` の selector 検査（identity）と負の `#guard` で固定し，
+  対応する宣言的 `HasTy` 導出（`ApplicationCoercionRegression` の
+  `productMatcherArgumentApplication_surface_typed`）は wide 包絡の意図された受理
+  ギャップとして維持する．なお raw `Matcher` を matcher-expected 位置へ渡す形
+  （`Pack something` 等）は coercion ではなく通常単一化で従来どおり受理される．
 - **capability freeze（解消済み・正例）**: `packProgram` = `Pack something`
   （`Pack : ∀κ α. Matcher κ α → Packed`）は宣言的には `κ := Any` の instance で
   型付き，推論器も受理する．fresh instance capability は局所 solve 中だけ
@@ -560,12 +561,11 @@ executable regression とその正負境界．削るときは対応する設計�
   正順 accept／逆順 reject の対，および product-of-matchers／product-of-slots の
   selector 検査と domain-directed application の `#guard`（結果型・terminal alignment
   端点・componentwise coercion を行わない負例・empty-product matcher precedence 込み）．
-  matcher-期待 selector 検査と対応する受理 `#guard` は slot-demand 一本化で負例へ反転
-  予定．
+  matcher-期待側は負例（selector は identity・application `#guard` は拒否）．
 - [`TypePM/ApplicationCoercionRegression.lean`](../TypePM/ApplicationCoercionRegression.lean):
   domain-directed application の matcher product／matcher-to-slot／slot-tuple の明示
   surface 導出と，空 product の matcher-first 二段 `NormalPlan`．product-matcher
-  application は反転予定（宣言導出は wide 包絡の例として維持可）．
+  application の宣言導出は wide 包絡の意図された受理ギャップ（公開 inference は拒否）．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の

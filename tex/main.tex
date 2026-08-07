@@ -106,9 +106,10 @@ ordinary-first を言明する．
 bare `something` と product lift を順に渡す項について，その domain を slot と選んで各 producer を
 coerce する一つの wide $\mathsf{HasTy}$ 導出と，公開推論器による拒否を与える．展示した
 wide 導出は $\mathsf{DDTyping}$ の fresh-domain／synthesis-first 規則には対応しない．第一用法では
-未解決 domain と raw matcher を通常 alignment して domain を matcher 型に固定し，第二用法では
-product lift 後の capability とその既存 annotation が衝突する．逆順では第一用法が domain を
-raw product 型に固定し，第二用法の bare matcher に使える coercion branch がない．従って両順序の
+未解決 domain と raw matcher を通常 alignment して domain を matcher 型に固定し，第二用法の
+matcher-expected 位置には slot demand が無いため raw product は lift されず，通常 alignment が
+head 不一致で拒否する．逆順では第一用法が domain を
+raw product 型に固定し，第二用法の bare matcher にも slot demand が無い．従って両順序の
 拒否は selector の raw-head 死角を修正しても変えない意図された境界である．一方，同じ producer 対を
 $\mathtt{let}$ で多相化した形は，各 lookup が独立な fresh domain instance を得るため受理される．
 その control は，結果が三つの相異なる target 変数を持つ raw producer-level shape のままであり，
@@ -1362,9 +1363,9 @@ solver metatheory の比較対象ではあるが，$\mathsf{DDTyping}$ の index
 product coercion の source view を $\tau_{\mathit{raw}}$ 自身から認識する．従って raw
 metavariable が $S_1$ の下で初めて product-of-matchers／product-of-slots になる場合，または
 component head が初めて matcher／slot になる場合の completeness は現段階では主張しない．
-また現行 helper には matcher expected head に対して product lift 単独（matcher 終点）を選ぶ
-分岐が一つ残っている．これは slot-demand 原則の外であり，対応する受理回帰とともに撤去して
-意図された拒否へ反転する予定である．
+matcher expected head に対して product lift 単独（matcher 終点）を選んでいた旧分岐は撤去済みで
+あり，executable helper も slot-demand に一本化されている．matcher-expected 位置への
+product-of-matchers は意図された拒否として負の regression で固定する．
 $\mathsf{RawSourceVisible}$ は，$\mathsf{DDTyping}$ derivation の各 coercive check について，
 selector が必要とする source view がその cut の raw operand に既に現れていることを表す独立な
 fragment 条件である．既存 core certificate の raw-source provenance 添字は，実際に観察した raw

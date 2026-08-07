@@ -1344,8 +1344,8 @@ theorem history_terminal_apply_eq
 /--
 Reconstruct the explicit unary product node selected by
 `expectedCoercionSource`.  The executable selector only changes the source at
-a matcher/slot use site and only when the raw inferred target itself exposes a
-product of matchers or, for a slot expectation, a product of slots.
+a slot use site and only when the raw inferred target itself exposes a
+product of matchers or a product of slots.
 Consequently no normalized component is substituted a second time at the
 terminal cut.
 -/

@@ -33,13 +33,15 @@ def concretePairMatcherType : Ty :=
 def concretePairSlotType : Ty :=
   .slot (.prod [.any, .any]) (.prod [.int, .int])
 
-/-- A matcher expectation selects the unary product lift before alignment. -/
+/-- A matcher expectation is not a coercion demand: the selector leaves the
+raw product untouched, so only the ordinary alignment of a raw matcher can
+succeed at a matcher-headed use site. -/
 theorem productMatcher_expected_source
     (state : Inference.InferState) :
     Inference.expectedCoercionSource state concretePairProductType
-      concretePairMatcherType = concretePairMatcherType := by
+      concretePairMatcherType = concretePairProductType := by
   simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
-    Inference.matcherDual?, Inference.productMatcherTarget,
+    Inference.productSlotDuals?, Inference.matcherDual?, Inference.slotDual?,
     concretePairProductType, concretePairMatcherType]
 
 /-- A slot expectation presents the lifted matcher to the existing
@@ -99,17 +101,15 @@ def productMatcherConsumerContext : Context :=
 def productMatcherArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
 
-/-- Function application checks its argument against the synthesized domain,
-so a product of matchers receives the whole-product lift at that use site. -/
+/-- A matcher-headed domain is not a coercion demand: the raw product of
+matchers is not lifted there, so the application is rejected.  The
+corresponding wide declarative derivation remains in
+`ApplicationCoercionRegression` as an intended acceptance gap. -/
 def productMatcherArgumentApplicationSucceeds : Bool :=
   Inference.inferenceSucceeds emptySignature productMatcherConsumerContext
     productMatcherArgumentApplication
 
-#guard productMatcherArgumentApplicationSucceeds
-
-#guard inferenceHasAlignment productMatcherConsumerContext
-  productMatcherArgumentApplication concretePairMatcherType
-  concretePairMatcherType .int
+#guard !productMatcherArgumentApplicationSucceeds
 
 def productSlotConsumerContext : Context :=
   [("consume", Scheme.mono (.fn concretePairSlotType .int))]

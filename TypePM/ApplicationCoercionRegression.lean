@@ -7,7 +7,9 @@ import TypePM.CertifiedInferenceRegression
 These declarations complement the executable guards in
 `CertifiedInferenceRegression` with explicit declarative derivations.  Each
 application has result type `Int`; only the coercion spine used to check its
-argument differs.
+argument differs.  The matcher-headed variant is declarative-only: a matcher
+expectation is not a slot demand, so the public inferencer rejects that
+application and its guard is negative.
 -/
 
 namespace TypePM
@@ -59,8 +61,11 @@ private theorem pairOfMatchers_matcher_typed
       (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
       (pairOfMatchers_product_typed context))
 
-/-- A product of matcher-valued components is lifted to a product matcher at
-the ordinary function-argument boundary. -/
+/-- In the wide declarative envelope a product of matchers can still be
+lifted at a matcher-headed argument boundary.  Under slot-demand this is not
+a coercion demand, so the public inferencer rejects this application (the
+negative guard lives in `CertifiedInferenceRegression`); the derivation is
+kept as an intended acceptance gap of the wide envelope. -/
 theorem productMatcherArgumentApplication_surface_typed :
     HasTy emptySignature productMatcherConsumerContext
       productMatcherArgumentApplication .int := by

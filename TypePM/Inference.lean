@@ -2029,17 +2029,19 @@ def slotTupleTarget (duals : List Dual) : Ty :=
 
 /--
 Choose the raw type presented to expected-type alignment.  This helper is
-the demand-directed coercion principle in executable form: a coercion source
-is selected only when the substituted expected type already demands a
-matcher or slot head, and an unresolved expectation leaves the synthesized
-type untouched — raw types are never structured to enable a coercion.
-Ordinary product uses retain their synthesized product type.  At a matcher
-or slot use site, a raw product of matchers is first lifted by the explicit
-unary `coerceProductMatcher` rule; `alignAtSlot` can then perform either
-equality or the existing producer-stable matcher-to-slot conversion.  At a
-slot use site, a raw product of slots is lifted by `coerceSlotTuple`.
-Matcher-product lifting has precedence for the empty product, whose two
-component recognizers both succeed vacuously.
+the slot-demand coercion principle in executable form: a coercion source is
+selected only when the substituted expected type already demands a slot
+head, and any other expectation — unresolved, matcher-headed, or ordinary —
+leaves the synthesized type untouched.  Raw types are never structured to
+enable a coercion, and a matcher-headed expectation admits only the ordinary
+alignment of a raw matcher (a tuple behaves as a product matcher exactly at
+the moment it is consumed as a matcher, and every built-in consumption site
+expects a slot).  At a slot use site, a raw product of matchers is first
+lifted by the explicit unary `coerceProductMatcher` rule; `alignAtSlot` then
+performs the existing producer-stable matcher-to-slot conversion.  A raw
+product of slots is lifted by `coerceSlotTuple`.  Matcher-product lifting
+has precedence for the empty product, whose two component recognizers both
+succeed vacuously.
 
 Keeping this choice in a non-recursive helper leaves the Algorithm W traversal
 and its fuel argument unchanged.
@@ -2048,7 +2050,6 @@ def expectedCoercionSource
     (state : InferState) (inferred expected : Ty) : Ty :=
   match productMatcherDuals? inferred, productSlotDuals? inferred,
       state.prevailing.apply expected with
-  | some duals, _, .matcher _ _ => productMatcherTarget duals
   | some duals, _, .slot _ _ => productMatcherTarget duals
   | _, some duals, .slot _ _ => slotTupleTarget duals
   | _, _, _ => inferred

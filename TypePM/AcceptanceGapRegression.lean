@@ -24,11 +24,13 @@ the slot structure that makes both coercions succeed.  No inversion theorem
 claiming that every wide `HasTy` derivation must have this form is made here.
 The pipeline is demand-directed:
 coercions are inserted only where the substituted expected type already
-demands a matcher/slot head, and unresolved domains are never structured to
+demands a slot head, and unresolved domains are never structured to
 enable a coercion.  It therefore resolves the domain from the first use to
-the raw `Matcher Any ?τ` and rejects the product lift's capability
-`prod [Any, Any]` against `Any` inside `mguTy`; the swapped order is
-rejected against a non-matcher expected head.  Both rejections are intended
+the raw `Matcher Any ?τ`, and the second use finds no slot demand there:
+the raw product of matchers stays unlifted and ordinary alignment rejects
+the `prod`/`matcher` head mismatch.  In the swapped order the domain is
+pinned to the raw product type and the bare matcher likewise meets no slot
+demand.  Both rejections are intended
 behaviour and permanently refute `WideAnnotationFree`
 (`wideAnnotationFree_refuted`); they are not scheduled to be fixed by the
 origin-aware unifier.  The accepted idiom — let-polymorphism giving each
@@ -307,8 +309,9 @@ coercion strategy is the intended demand-directed behaviour.  The pursued
 completeness statement keeps the conclusion but replaces the wide `HasTy`
 premise with the independent syntax-directed, state-threaded `DDTyping`
 judgment from stage 3 of the roadmap.  That judgment introduces lambda
-domains as fresh metavariables and observes an expected matcher/slot head
-only after synthesis at the current prevailing-substitution cut. -/
+domains as fresh metavariables and admits a non-identity coercion only for
+an expected slot head observed after synthesis at the current
+prevailing-substitution cut. -/
 theorem wideAnnotationFree_refuted : ¬ Coherent.WideAnnotationFree := by
   intro hfree
   have haccept :=
