@@ -17,18 +17,20 @@ The second family is pinned below as a boundary example of the wide
 declarative system, not as an inference defect: a shared monomorphic
 consumer declaratively receives the wildcard slot domain
 (`Slot Any (prod [Int, Int])`) and consumes both a bare `something` and a
-product of `something`s, but only through `coerceMatcherToSlot` steps taken
-at argument positions where no slot demand exists — the domain is a plain
-lambda-bound metavariable, and the derivation invents the slot structure
-that makes both coercions succeed.  The pipeline is demand-directed:
+product of `something`s.  The exhibited derivations below choose
+`coerceMatcherToSlot` steps at argument positions where no slot demand exists
+— the domain is a plain lambda-bound metavariable, and those witnesses invent
+the slot structure that makes both coercions succeed.  No inversion theorem
+claiming that every wide `HasTy` derivation must have this form is made here.
+The pipeline is demand-directed:
 coercions are inserted only where the substituted expected type already
 demands a matcher/slot head, and unresolved domains are never structured to
 enable a coercion.  It therefore resolves the domain from the first use to
 the raw `Matcher Any ?τ` and rejects the product lift's capability
 `prod [Any, Any]` against `Any` inside `mguTy`; the swapped order is
 rejected against a non-matcher expected head.  Both rejections are intended
-behaviour and permanently refute the wide-premise `AnnotationFree`
-(`annotationFree_wide_refuted`); they are not scheduled to be fixed by the
+behaviour and permanently refute `WideAnnotationFree`
+(`wideAnnotationFree_refuted`); they are not scheduled to be fixed by the
 origin-aware unifier.  The accepted idiom — let-polymorphism giving each
 use its own domain instance — is pinned as `nestedCapLetProgram_accepted`.
 
@@ -246,6 +248,43 @@ theorem nestedCapLetProgram_accepted :
       true := by
   native_decide
 
+/-- The polymorphic control keeps both producer forms raw.  The concrete
+target-variable identifiers are intentionally ignored, but the three targets
+must remain pairwise-distinct variables: the stable shape is a bare matcher
+in the first component and an unlifted product of two bare matchers in the
+second. -/
+def nestedCapLetRawTargetShape : Ty → Bool
+  | .prod [.matcher .any (.var first),
+      .prod [.matcher .any (.var second),
+        .matcher .any (.var third)]] =>
+      first != second && first != third && second != third
+  | _ => false
+
+/-- Check that a successful raw result contains no matcher-to-slot solver
+constraint.  Returning `false` for `none` makes this check pin raw acceptance
+as well as the absence of the coercion. -/
+def rawResultHasNoProducerToSlot : Option Inference.ExprResult → Bool
+  | none => false
+  | some result =>
+      result.state.trace.solves.all fun step =>
+        match step.constraint with
+        | .producerToSlot _ _ _ _ => false
+        | _ => true
+
+/-- Raw inference returns exactly the intended producer-level result shape. -/
+theorem nestedCapLetProgram_raw_target_shape :
+    (match Inference.inferRawType emptySignature [] nestedCapLetProgram with
+      | none => false
+      | some target => nestedCapLetRawTargetShape target) = true := by
+  native_decide
+
+/-- Let-polymorphism accepts the two uses without emitting any
+`producerToSlot` constraint. -/
+theorem nestedCapLetProgram_raw_has_no_producerToSlot :
+    rawResultHasNoProducerToSlot
+      (Inference.inferRaw emptySignature [] nestedCapLetProgram) = true := by
+  native_decide
+
 /-- The pipeline rejects the program: the first use pins the domain to the
 raw `Matcher Any ?τ`, and the second compares the lifted capability
 `prod [Any, Any]` against `Any` as a rigid annotation inside `mguTy`. -/
@@ -263,12 +302,13 @@ theorem nestedCapSwappedProgram_rejected :
   native_decide
 
 /-- The nested-capability boundary example permanently refutes the
-wide-premise `AnnotationFree`: the declarative typing exists only through
-demand-free matcher-to-slot coercions, and rejecting those is the intended
-demand-directed behaviour.  The pursued completeness statement keeps the
-conclusion but replaces the wide `HasTy` premise with a demand-directed
-judgment (stage 3 of the roadmap). -/
-theorem annotationFree_wide_refuted : ¬ Coherent.AnnotationFree := by
+wide-premise `WideAnnotationFree`: the displayed declarative typing witness
+uses demand-free matcher-to-slot coercions, and rejecting that witness's
+coercion strategy is the intended demand-directed behaviour.  The pursued
+completeness statement keeps the conclusion but replaces the wide `HasTy`
+premise with an independent demand-directed judgment (stage 3 of the
+roadmap). -/
+theorem wideAnnotationFree_refuted : ¬ Coherent.WideAnnotationFree := by
   intro hfree
   have haccept :=
     hfree emptySignature nestedCapProgram (.prod [sharedSlot, sharedSlot])
@@ -350,10 +390,10 @@ theorem packMonoProgram_accepted :
     Inference.inferenceSucceeds packMonoSignature [] packProgram = true := by
   native_decide
 
-/-- The freeze gap independently refutes annotation-freeness for the
-current inferencer. -/
-theorem annotationFree_current_refuted_by_freeze :
-    ¬ Coherent.AnnotationFree := by
+/-- The freeze gap independently refutes the same wide annotation-freeness
+envelope for the current inferencer. -/
+theorem wideAnnotationFree_refuted_by_freeze :
+    ¬ Coherent.WideAnnotationFree := by
   intro hfree
   have haccept :=
     hfree packSignature packProgram (.data "Packed" []) packProgram_typed

@@ -24,10 +24,16 @@ the coherent judgment.  The standalone pattern-local boundaries and their
 forgetful maps remain in `TypePM.CoherentSurface`
 (`PatternResolutionDeriv.toThreadedSurface` and onward).
 
-`AnnotationFree` states the top-level project goal — acceptance completeness
-of public inference for closed declaratively typed programs — as a named
-proposition only.  It is not asserted, not axiomatized, and remains open;
-neither algorithmic completeness nor any principality claim is made here.
+`WideAnnotationFree` names the broad acceptance-completeness envelope for
+closed programs typed by the unrestricted surface `HasTy`.  That proposition
+is permanently refuted by `AcceptanceGapRegression.wideAnnotationFree_refuted`;
+it is retained only to state the rejected boundary precisely.  The intended
+`DemandDirectedAnnotationFree` goal is not yet a Lean definition because its
+independent `DemandDirectedHasTy` premise is still a stage-3 design task.  In
+particular, that judgment must distinguish authoritative slot demands from a
+slot-shaped lambda domain selected only to enable a coercion; a checking
+position whose expected head happens to be `slot` is not by itself enough.
+Neither algorithmic completeness nor any principality claim is made here.
 -/
 
 namespace TypePM
@@ -233,26 +239,28 @@ theorem idProgram_coherent {signature : FrozenSig}
     CoherentExpr signature [] DM.idProgram .int :=
   dm_coherent sigFtv DM.idProgram_dm_typed
 
-/-! ## The annotation-freeness goal -/
+/-! ## The refuted wide annotation-freeness envelope -/
 
 /--
-The top-level goal proposition in its wide-premise envelope form: closed
-declaratively typed programs are accepted by public executable inference
-without any annotation.  The core syntax has no annotation form, so this
-acceptance completeness is the precise meaning of annotation-freeness.
+The deliberately broad full-`HasTy` envelope: closed declaratively typed
+programs are accepted by public executable inference without any annotation.
+It records a tempting but overly strong statement so that its refutation has
+a stable name; it is not the project's open completion target.
 
 Over the full `HasTy` the proposition is permanently refuted
-(`AcceptanceGapRegression.annotationFree_wide_refuted`): the wide system
+(`AcceptanceGapRegression.wideAnnotationFree_refuted`): the wide system
 admits matcher-to-slot coercions at positions with no slot demand
 (`nestedCapProgram`), and rejecting those is the intended behaviour of the
 demand-directed pipeline — coercions are inserted only where the use site
 already demands a matcher/slot head, and unresolved domains are never
 structured to enable a coercion.  The pursued form of the goal keeps this
-conclusion but replaces the premise by a demand-directed declarative
-judgment (stage 3 of the roadmap).  On that path the first concrete
-counterexample — an or-pattern whose alternatives bind the same variable —
-is fixed (`AcceptanceGapRegression` now pins its acceptance), and the
-remaining genuine inference gap is the producer-guard freeze
+conclusion but replaces the premise by the not-yet-defined demand-directed
+declarative judgment from stage 3 of the roadmap.  That judgment must record
+where a matcher/slot demand originates rather than accept any slot-shaped
+expected type chosen by a declarative lambda rule.  On that path the first
+concrete counterexample — an or-pattern whose alternatives bind the same
+variable — is fixed (`AcceptanceGapRegression` now pins its acceptance), and
+the remaining genuine inference gap is the producer-guard freeze
 (`packProgram`), to be resolved by the origin-aware ledger switch.  The
 staged path continues through Damas–Milner algorithmic acceptance,
 fragment-restricted completeness, and the removal of the selector's
@@ -260,7 +268,7 @@ raw-head blind spot via cut-indexed coercion events.  The mechanized
 principality counterexample is independent: it refutes substitution-only
 recovery of every typing from the inferred result, not acceptance itself.
 -/
-def AnnotationFree : Prop :=
+def WideAnnotationFree : Prop :=
   ∀ (signature : FrozenSig) (expression : Expr) (target : Ty),
     HasTy signature [] expression target →
     Inference.inferenceSucceeds signature [] expression = true

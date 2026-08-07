@@ -83,26 +83,35 @@ commit／push はその都度の明示指示がある場合に限るという規
   `PatternResolutionDeriv.toThreadedSurface`（`CoherentSurface.lean`）が与える．これを algorithmic
   completeness や principality と呼ばない．coercion 挿入は **demand-directed（要求駆動）を
   根本原則**とする：coercion は利用位置の要求型（prevailing 適用後の期待型）の頭が
-  matcher／slot として確定している位置で，raw 型がそのままでは合わない場合にだけ挿入し，
-  要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で未解決
-  metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．宣言的
-  `HasTy` の無条件 coercion はこの規律の外（動的安全性の包絡）であり，受理完全性の前提に
-  しない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として言明を固定してあるが，
-  広い `HasTy` 前提のこの形は境界例により**恒久的に反証済み**である
-  （`annotationFree_wide_refuted`）．到達目標は結論を保ったまま前提を demand-directed な
-  宣言的 judgment（段階 3-1）へ置き換えた形であり，どちらも無証明で主張しない．最初の具体反例
+  matcher／slot として正当な由来から確定している位置で，raw 型がそのままでは合わない場合にだけ
+  挿入し，要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で未解決
+  metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．将来の
+  demand-directed 宣言的 judgment（段階 3-1，仮称 `DemandDirectedHasTy`）を単なる
+  「checking 位置の期待型の頭が matcher／slot」という規則にしてはならない．通常の宣言的 λ 規則が
+  domain として任意の `MatcherSlot` を先に選べば，その選択自身が見かけ上の demand になり
+  `nestedCapProgram` を再導出できる．matcher／slot demand には syntax／frozen signature／
+  coercion に依存しない先行 solve から来た rigid origin witness，または λ domain を fresh unresolved
+  metavariable として推論器と同じ順序で解く同等の ordered constraint state を必須とする．
+  宣言的 `HasTy` の無条件 coercion はこの規律の外（動的安全性の包絡）であり，受理完全性の前提に
+  しない．広い `HasTy` 前提の `Coherent.WideAnnotationFree` は境界例により**恒久的に反証済み**で
+  （`wideAnnotationFree_refuted`），完成目標でも open goal でもない．到達目標は結論を保ったまま
+  前提を上記の demand-directed judgment に置き換えた `DemandDirectedAnnotationFree`（仮称）である．
+  両者を同じ `AnnotationFree` と呼ばず，将来 judgment と目標は定義・証明前に成立済みと主張しない．
+  最初の具体反例
   だった or-pattern の binder 共有欠如は解消済みである：or の整合は `alignBindings`（binder 名の
   位置照合＋束縛型の単一化）で行い，raw metavariable ID の構文的等価を要求しない．これに伴い
   `PatternResolutionDeriv.or` と `ThreadedPatternResolution.or` は「左右の raw 結果 Δ＋
   prevailing 像の等価 premise」へ緩和した（結論は左の raw Δ・宣言的 `TerminalPatternResolution.or`
   は不変で，忘却 map は premise で輸送する）．既知の残り二系統は `AcceptanceGapRegression` で
   機械化反例として固定済みである：nested matcher capability の rigid 比較
-  （`nestedCapProgram`）は demand の無い位置への coercion だけで宣言的に型付く恒久的
-  境界例であり，拒否が意図された挙動である（`let` 多相化した `nestedCapLetProgram` は
-  受理・広い前提への恒久反証 `annotationFree_wide_refuted` を伴う．origin-aware unifier で
-  受理側へ反転させる対象にしない）．capability freeze（`packProgram` = `Pack something`，
+  （`nestedCapProgram`）については，`sharedSlot` を選び demand の無い位置で coercion を使う
+  一つの宣言的導出と，意図された推論拒否を固定している．これで広い前提への恒久反証
+  `wideAnnotationFree_refuted` は得られるが，全 `HasTy` 導出がその coercion に依存するという
+  inversion は未証明なので記述しない（`let` 多相化した `nestedCapLetProgram` は受理し，
+  origin-aware unifier で `nestedCapProgram` を受理側へ反転させる対象にはしない）．
+  capability freeze（`packProgram` = `Pack something`，
   fresh instance capability の protected 化）は真の受理ギャップで，現行推論器への反証
-  `annotationFree_current_refuted_by_freeze` を伴い，origin-aware paired unifier
+  `wideAnnotationFree_refuted_by_freeze` を伴い，origin-aware paired unifier
   （guard の ledger 化）の対象である．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
   先に立て，一意性は canonical boundary（substitution が coercible head を導入しない等）を
   定義してから条件付きで扱う．proof-indexed な derivation
@@ -206,20 +215,24 @@ commit／push はその都度の明示指示がある場合に限るという規
     （`Coherent.CoherentExpr := ExprDeriv` ほか 10 family），`CoherentExpr.toHasTy`，
     `infer_success_coherent`，match-free 断片の全 coherence
     （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
-    および目標命題 `AnnotationFree`（広い `HasTy` 前提の形は恒久反証済み．
-    到達目標は demand-directed 前提版＝段階 3-1）．
+    および反証済み境界命題 `WideAnnotationFree`．到達目標の
+    `DemandDirectedAnnotationFree`（仮称）は段階 3-1 の独立した demand-origin-aware
+    judgment を前提とする未定義・未証明の別命題である．
   - `TypePM/AcceptanceGapRegression.lean`: or-pattern の宣言的型付け
     `orProgram_typed` と，binder 整合修正後の受理固定
     （`orProgram_accepted`・異位置束縛の `orMixedProgram_accepted`・
     単一分岐 control）．nested matcher capability の rigid 比較は demand-directed
     原則の恒久的境界例として固定：`nestedCapProgram`／swapped 版の宣言的型付けと
     （意図された）拒否，同一 producer 二回の control 受理，`let` 多相化の受理
-    control `nestedCapLetProgram_accepted`，および広い前提への恒久反証
-    `annotationFree_wide_refuted`．
+    control `nestedCapLetProgram_accepted`，その三つの相異なる target 変数を持つ raw 結果 shape
+    `nestedCapLetProgram_raw_target_shape`，raw solve trace に `producerToSlot` が無いことを固定する
+    `nestedCapLetProgram_raw_has_no_producerToSlot`，および広い前提への恒久反証
+    `wideAnnotationFree_refuted`．現時点では提示した wide 導出以外を排除する inversion を
+    回帰の主張に含めない．
     capability freeze は真のギャップとして固定済み：`packScheme`（`∀κ α. Matcher κ α → Packed`）の
     `packProgram_typed`（宣言的 `κ := Any` instance）と raw／public の拒否，
     capability を scheme 側で `Any` に固定した `packMonoSignature` の control 受理，
-    および独立反証 `annotationFree_current_refuted_by_freeze`．
+    および独立反証 `wideAnnotationFree_refuted_by_freeze`．
   - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
     matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
     `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal

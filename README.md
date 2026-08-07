@@ -2,39 +2,59 @@
 
 ## 最上位目標
 
-本リポジトリの完成目標は，Egison core の**注釈不要性**（annotation-freeness）を
-機械化することである．
-
-> Well-typed programs need no type annotations: if a closed Egison core program
-> has any declarative typing, executable inference accepts it.
-
-形式的には，公開 executable `infer` に対する受理完全性
+本リポジトリの完成目標は，Egison core の **demand-directed な注釈不要性**
+（annotation-freeness）を機械化することである．目標は，段階 3-1 で推論器から独立に
+定義する宣言的 judgment（仮称 `DemandDirectedHasTy`）を前提とする受理完全性
+`DemandDirectedAnnotationFree` である：
 
 ```text
-∀ signature e τ,  HasTy signature [] e τ  →  (infer signature [] e).isSome
+∀ signature e τ,
+  DemandDirectedHasTy signature [] e τ →
+  (infer signature [] e).isSome
 ```
 
-である．core の構文（[`TypePM/Term.lean`](TypePM/Term.lean)）には型注釈の形が
-そもそも存在しないので，この定理が「ユーザーは型注釈を書く必要がない」の正確な形である．
-この命題は [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
-`Coherent.AnnotationFree` として言明を固定してある．
+`DemandDirectedHasTy` と `DemandDirectedAnnotationFree` はまだ Lean 上で未定義・未証明であり，
+名前も段階 3-1 の設計時に確定する．core の構文
+（[`TypePM/Term.lean`](TypePM/Term.lean)）自体には型注釈の形がないので，この形が最終的に
+保証したい「要求駆動で宣言的に型付く closed program は注釈なしで受理される」の正確な主張である．
 
-この目標を成立させる**根本原則は demand-directed coercion**（要求駆動の coercion 挿入）
-である：coercion は，利用位置の要求型（prevailing 適用後の期待型）の頭が matcher／slot
-として確定している位置で，raw 型がそのままでは要求に合わない場合にだけ挿入する．要求が
-未確定な位置では raw 型をそのまま使い，coercion を成立させる目的で未解決 metavariable や
-確定済み domain を matcher／slot へ（遡及的にも）構造化しない．この原則が coercion 挿入を
-決定的・構文主導に保つことが，受理完全性を到達可能にする．実装は
-`expectedCoercionSource` と domain-directed application check としてこの原則どおりである．
+これと区別して，広い `HasTy` を前提とする次の命題を
+[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
+`Coherent.WideAnnotationFree` と呼ぶ：
 
-宣言的 `HasTy` の無条件 coercion 規則（`coerceMatcherToSlot` 等）はこの規律の外にあり，
-動的安全性の包絡としては維持するが，受理完全性の前提としては広すぎる．このため広い前提の
-ままの `AnnotationFree` は**恒久的に反証済み**である（`annotationFree_wide_refuted`）：
-境界例 `nestedCapProgram`（と swapped 版）は，λ束縛の単相 domain という demand の無い位置
-への matcher→slot coercion だけで宣言的に型付くプログラムで，推論器の拒否が意図された
-挙動である（同じ producer 対を `let` で多相化した `nestedCapLetProgram` は受理される）．
-到達目標は，結論を保ったまま前提を demand-directed な宣言的 judgment に置き換えた
-受理完全性（段階 3-1）である．
+```text
+∀ signature e τ,  HasTy signature [] e τ → (infer signature [] e).isSome
+```
+
+`WideAnnotationFree` は完成目標でも open goal でもなく，境界を固定するために残した
+**恒久的に反証済みの命題**である（`wideAnnotationFree_refuted`）．宣言的 `HasTy` の
+無条件 coercion 規則（`coerceMatcherToSlot` 等）は動的安全性の包絡としては維持するが，
+受理完全性の前提としては広すぎる．
+
+最終目標を成立させる根本原則は **demand-directed coercion**（要求駆動の coercion 挿入）
+である．ただし，「checking 位置の期待型の頭が matcher／slot である」という条件だけでは
+不十分である．通常の宣言的 λ 規則が `f` の domain として任意の `MatcherSlot` 型を先に選べば，
+その選択自身を見かけ上の checking demand にして `nestedCapProgram` を再び導出できるからである．
+従って段階 3-1 の judgment は，次のいずれかの仕組みを**必須**とする．
+
+- matcher／slot 要求が syntax や frozen signature，または coercion に依存しない先行 solve から
+  確定したことを表す rigid demand-origin witness
+- λ domain を fresh unresolved metavariable として導入し，synthesis・通常の単一化・checking を
+  推論器と同じ順序で進め，後から domain を slot に構造化できない ordered constraint state
+
+coercion は，このように正当な由来を持つ要求型（prevailing 適用後）の頭が matcher／slot として
+確定し，raw 型がそのままでは要求に合わない場合にだけ挿入する．要求が未確定な位置では raw 型を
+そのまま使い，coercion を成立させる目的で未解決 metavariable や確定済み domain を matcher／slot
+へ（遡及的にも）構造化しない．現行実装の `expectedCoercionSource` と domain-directed
+application check はこの順序に従うが，将来の宣言的 judgment には上記の由来／順序を独立に
+表現する必要がある．
+
+`nestedCapProgram`（と swapped 版）について現在機械化されているのは，`sharedSlot` を選び
+demand の無い位置で matcher→slot coercion を使う一つの `HasTy` 導出と，公開推論器による拒否で
+ある．これは `WideAnnotationFree` を反証するには十分だが，「すべての `HasTy` 導出がその coercion
+だけを通る」という inversion は未証明である．この強い主張は，段階 3-1 の judgment を導入して
+排除定理を証明するまでは行わない．同じ producer 対を `let` で多相化した
+`nestedCapLetProgram` は受理される．
 
 最初の具体的反例だった or pattern（両分岐で同名を束縛する
 `matchAll 0 something ($x | $x) x`）は，or の整合を raw binding context の構文的
@@ -44,7 +64,7 @@
 残る真の受理ギャップは constructor instance capability の producer guard による固定
 （`packProgram` = `Pack something`，`∀κ α. Matcher κ α → Packed` の宣言的
 `κ := Any` instance を guard が拒否）の一系統で，現行推論器への反証
-（`annotationFree_current_refuted_by_freeze`）を伴い，origin-aware paired unifier への
+（`wideAnnotationFree_refuted_by_freeze`）を伴い，origin-aware paired unifier への
 切替（guard の ledger 化）で解消予定である．principality と異なり，受理完全性は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．
@@ -107,17 +127,21 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 2. **済** 受理ギャップの regression 固定 — 既知の三系統をすべて
    [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
    機械化済み．or pattern は宣言的型付けと（修正後の）受理．nested matcher
-   capability は `nestedCapProgram`（と逆順の swapped 版）：demand の無い λ束縛
-   domain への coercion だけで宣言的に型付くが，demand-directed な推論器は第一用法で
-   域を raw matcher 型に固定し第二用法の capability を注釈として rigid 比較して
-   拒否する．この拒否は意図された挙動＝広い `HasTy` の恒久的境界例であり
-   （`annotationFree_wide_refuted`），`let` 多相化した `nestedCapLetProgram` の
-   受理を control として固定した．capability freeze は `packProgram`
+   capability は `nestedCapProgram`（と逆順の swapped 版）：機械化した `HasTy` 導出は
+   λ束縛 domain に `sharedSlot` を選び，demand の無い位置で coercion を使う一方，
+   demand-directed な推論器は第一用法で domain を raw matcher 型に固定し第二用法の
+   capability を注釈として rigid 比較して拒否する．この導出と拒否の組が広い `HasTy`
+   前提の `WideAnnotationFree` を反証する（`wideAnnotationFree_refuted`）．全 `HasTy` 導出が
+   同じ coercion に依存するという inversion は未証明である．`let` 多相化した
+   `nestedCapLetProgram` の受理に加え，結果が三つの相異なる target 変数を持つ raw
+   producer-level shape のままであること（`nestedCapLetProgram_raw_target_shape`）と，raw solve
+   trace に `producerToSlot` が無いこと（`nestedCapLetProgram_raw_has_no_producerToSlot`）を
+   control として固定した．capability freeze は `packProgram`
    （`Pack : ∀κ α. Matcher κ α → Packed` に `Pack something`）：宣言的には
    `κ := Any` の instance で型付くが，fresh instance capability が protected
    producer として記録され guard が束縛を拒否する（capability を scheme 側で
    `Any` に固定した control は受理）．こちらは真のギャップで，現行推論器への反証
-   （`annotationFree_current_refuted_by_freeze`）を伴う．
+   （`wideAnnotationFree_refuted_by_freeze`）を伴う．
 3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
@@ -163,16 +187,23 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 
 ### 段階 3: fragment 受理完全性と制限 principality
 
-1. 未: fragment 条件の言明 — 第一候補は，coercion を「要求のある checking 位置」に
-   限定した demand-directed な宣言的（bidirectional）judgment を推論器から独立に
-   定義することである（`SynthHead`／`CoercionPlan` の制限版として書け，
-   `MatcherToSlotRawCert` 等の証明書部品は流用できる．`ElaborableHasTy := ∃
-   CoreTyping` 型の循環定義の禁止は従来どおり）．これが最終形の受理完全性の前提に
-   なる．raw-head 可視性は provenance 添字だけでは言明にならない（恒等 witness が
-   常に取れる）ため，trace／solve-cut と certificate を結ぶ `GeneratedByTrace`・
-   `RawHeadVisibleAt` 型の述語は replay 用の証明書と inference-generated
-   certificate の区別に用いる．capability freeze 適合は `CapabilityOrigin` の
-   ledger から言明を起こす（設計が証明に先行する）．
+1. 未: fragment 条件の言明 — demand-directed な宣言的（bidirectional）judgment
+   `DemandDirectedHasTy`（仮称）を推論器から独立に定義する．単に coercion を
+   「checking 位置で期待型の頭が matcher／slot の場合」に限るだけでは不十分である：
+   宣言的 λ 規則が domain として `sharedSlot` を任意に選べば，その選択を checking demand
+   として `nestedCapProgram` を再導出できる．従って matcher／slot demand には，syntax・
+   frozen signature・coercion に依存しない先行 solve に由来する rigid origin witness，または
+   それと同等な ordered constraint state を**必ず**持たせる．後者では λ domain を fresh
+   unresolved metavariable として導入し，推論器と同じ constraint order でしか確定できず，
+   coercion のための遡及的な構造化を禁止する．`SynthHead`／`CoercionPlan` の制限版と
+   `MatcherToSlotRawCert` 等は利用できるが，`ElaborableHasTy := ∃ CoreTyping` 型の循環定義は
+   禁止する．これが `DemandDirectedAnnotationFree`（仮称）の前提になる．新 judgment の
+   導入後は，`nestedCapProgram` にその導出がないことを inversion で証明し，現在未証明の
+   「wide 導出は demand-free coercion に限られる」という強い説明の代わりにする．
+   raw-head 可視性は provenance 添字だけでは言明にならない（恒等 witness が常に取れる）ため，
+   trace／solve-cut と certificate を結ぶ `GeneratedByTrace`・`RawHeadVisibleAt` 型の述語は
+   replay 用の証明書と inference-generated certificate の区別に用いる．capability freeze
+   適合は `CapabilityOrigin` の ledger から言明を起こす（設計が証明に先行する）．
 2. 未: coherent かつ可視かつ freeze 適合な typing に対する受理＋因子化（段階 2 の機械の
    全構文拡張）．
 3. 未: principal-core factorization の**存在定理**を先に立てる — ∀ surface typing に
@@ -182,8 +213,9 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    coercible head を導入しない」等の canonical boundary を定義した後に条件付きで
    狙う．定理は inference acceptance・factorization の存在・（canonicalization 後の）
    一意性の三本に分ける．
-4. 未（推奨）: coherentization — 任意の `HasTy` 型付けの coherent 再提示．受理完全性の
-   仮定から coherence 条件を消す格上げ．
+4. 未（推奨）: coherentization — 任意の `DemandDirectedHasTy` 型付けの coherent 再提示．
+   demand-directed という境界は維持したまま，受理完全性の仮定から追加の coherence 条件を
+   消す格上げ．広い `HasTy` への格上げは `WideAnnotationFree` の反例と矛盾するため行わない．
 
 ### 段階 4: 受理完全性の最終形
 
@@ -194,8 +226,8 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 2. 未: capability freeze completeness（origin-aware solver への切替）．
 3. 到達点: demand-directedness 以外の fragment 条件を外した受理完全性．
    coercion-demand 軸は反例が確定済み（境界例 `nestedCapProgram`，
-   `annotationFree_wide_refuted`）なので，demand-directed 前提（段階 3-1 の
-   judgment）が最終形であり，広い `HasTy` 前提の `AnnotationFree` を復活させない．
+   `wideAnnotationFree_refuted`）なので，demand-directed 前提（段階 3-1 の
+   judgment）が最終形であり，広い `HasTy` 前提の `WideAnnotationFree` を復活させない．
 
 ## 概要
 
@@ -433,7 +465,8 @@ constraint acceptance と terminal audit は従来の `protectedCaps` をその�
 機械化済みで，切り替えに残るのは solve cut ごとの ledger snapshot と，raw binder ではなく
 局所 solve 後に外へ生存する prevailing image の leaf を freeze する export event である．
 切替が解消するのは producer guard による freeze ギャップ（`packProgram`）であり，
-demand の無い coercion に由来する境界例（`nestedCapProgram`）の拒否は変えない．
+`nestedCapProgram` について提示した demand-free coercion を使う wide 導出を受理するために，
+推論器の拒否を変えるものではない．
 
 `CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
 completeness は得られた．canonical core judgment への強化に残る項目（critical pair の解消，
@@ -634,8 +667,13 @@ producer へ置き換えた control twin が成功することを対で検査す
 
 次はこの formal core の主張に含めない．
 
-- Algorithm W の completeness（`AnnotationFree` はロードマップ上の未証明目標として
-  言明のみ）と，反証済みの無制限 principality
+- 広い `HasTy` を前提にした Algorithm W の completeness
+  （`WideAnnotationFree` は機械化反例により恒久的に反証済み）
+- 段階 3-1 の `DemandDirectedHasTy` と，それを前提とする
+  `DemandDirectedAnnotationFree`（どちらも仮称で，現時点では未定義・未証明）
+- `nestedCapProgram` の全 `HasTy` 導出が demand-free coercion に依存するという inversion
+  （現在の回帰が示すのは該当する一つの導出と推論拒否）
+- 反証済みの無制限 principality
 - alias，mutual recursion，transform，高階 origin を含む一般 producer-flow 解析
 - raw declaration から frozen signature を構築する validator
 - full Egison の warning mode の実装，module/import persistence，標準ライブラリ移行
@@ -649,7 +687,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing と注釈不要性目標 |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing，反証済み wide 注釈不要性境界 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
 | 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |

@@ -67,24 +67,49 @@
 \begin{document}
 \maketitle
 
-本仕様の機械化の最上位目標は，Egison core の注釈不要性（annotation-freeness），
-すなわち閉じたプログラムに対する受理完全性
-$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$
-である．core の構文には型注釈の形が存在しないため，これが「正しいプログラムに
-注釈は不要」の正確な形である．この目標を成立させる根本原則は demand-directed な
-coercion 挿入である：coercion は利用位置の要求型（prevailing 適用後の期待型）の頭が
-matcher／slot として確定している位置で，raw 型がそのままでは要求に合わない場合にだけ
-挿入し，要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で
-未解決 metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．
-宣言的体系の無条件 coercion 規則はこの規律の外にあり，動的安全性の包絡としては維持する
-が，受理完全性の前提としては広すぎる．実際，広い前提のままの受理完全性は機械化済みの
-境界例により恒久的に反証済みである：wildcard slot 域の単相 consumer に bare `something`
-と product lift を順に渡すプログラムは，demand の無い $\lambda$ 束縛 domain への
-matcher-to-slot coercion だけで宣言的に型付くが，推論器は第一用法で域を raw な matcher
-型に固定し，第二用法の lift された capability を注釈として等値比較して拒否する（逆順も
-raw-head 死角で拒否）．この拒否は意図された挙動であり，同じ producer 対を
-$\mathtt{let}$ で多相化した形は受理される．到達目標は，結論を保ったまま前提を
-demand-directed な宣言的 judgment に置き換えた受理完全性である．最初の具体反例だった
+本仕様では，Egison core の注釈不要性（annotation-freeness）について，次の二つの
+言明を区別する．現行の広い宣言的 $\mathsf{HasTy}$ を前提とする包絡は
+\[
+\mathsf{WideAnnotationFree}\ \equiv
+\forall e\,\tau,\quad
+  \emptyset \vdash_{\mathsf{wide}} e : \tau
+  \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}
+\]
+である．ここで $\vdash_{\mathsf{wide}}$ は無条件の surface coercion を含む現行
+$\mathsf{HasTy}$ を表す．この言明は最上位目標ではなく，機械化済みの境界例により
+恒久的に反証された広い包絡である．実際の将来到達目標は，独立な demand-directed
+宣言的 judgment $\vdash_{\mathsf{dd}}$ を前提とする
+\[
+\mathsf{DemandDirectedAnnotationFree}\ \equiv
+\forall e\,\tau,\quad
+  \emptyset \vdash_{\mathsf{dd}} e : \tau
+  \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}
+\]
+である．core の構文には型注釈の形が存在しないため，後者を「正しいプログラムに
+注釈は不要」の目標とする．$\vdash_{\mathsf{dd}}$ はまだ定義・機械化しておらず，推論器が
+生成した certificate の存在を前提にする循環的な判断としては定義しない．
+
+この将来判断の根本原則は demand-directed な coercion 挿入である：coercion は利用位置の
+要求型（prevailing 適用後の期待型）の頭が matcher／slot として確定しており，raw 型が
+そのままでは要求に合わない場合にだけ挿入し，要求が未確定な位置では raw 型をそのまま使う．
+ただし「checking 位置の期待型が slot である」ことだけでは demand の根拠として不十分である．
+宣言的な $\lambda$ 規則が未決定の binder domain を先に slot として選べば，その選択自身を
+期待型に見せられるからである．従って将来判断は，signature や $\mathtt{matchAll}$ などから
+先に与えられた rigid な consumer 要求と，未解決の $\lambda$ domain から後付けで作った型を
+区別する demand provenance／origin（または同じ順序を保証する ordered constraint state）を
+保持しなければならない．coercion を成立させる目的で未解決 metavariable や domain を
+matcher／slot へ構造化し，その結果を demand の由来として扱ってはならない．
+
+現行宣言体系の無条件 coercion 規則はこの規律の外にあり，動的安全性の包絡としては維持するが，
+受理完全性の前提としては広すぎる．機械化済みの境界例では，wildcard slot 域の単相 consumer に
+bare `something` と product lift を順に渡す項について，その domain を slot と選んで各 producer を
+coerce する一つの wide $\mathsf{HasTy}$ 導出と，公開推論器による拒否を与える．これは展示した
+導出が demand-free な選択を使うことを示すが，その項の全宣言的導出がその経路だけを使うという
+inversion theorem はまだ主張しない．推論器は第一用法で域を raw な matcher 型に固定し，
+第二用法の lift された capability を注釈として等値比較して拒否する（逆順も raw-head 死角で
+拒否する）．この拒否は意図された挙動であり，同じ producer 対を $\mathtt{let}$ で多相化した形は
+受理される．その control は，結果が三つの相異なる target 変数を持つ raw producer-level shape
+のままであり，raw solve trace に producer-to-slot constraint が無いことも検査する．最初の具体反例だった
 or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化による整合へ改めて
 解消し，受理側の regression として固定した．残る真の受理ギャップは instance capability
 の producer guard による固定である：
@@ -103,8 +128,9 @@ in Lean~4.
 
 ここで soundness は，公開 executable inference が成功すれば，返した型に対する
 declarative expression typing が必ず構成できることを意味する．機械化した定理は
-後述する静的入力整形式性を追加前提にしない．completeness は上記の open な目標で
-あり，full principality は機械化済み反例により偽である．
+後述する静的入力整形式性を追加前提にしない．広い $\mathsf{HasTy}$ に対する completeness は
+上記のとおり反証済みであり，将来の demand-directed completeness は open である．
+full principality は機械化済み反例により偽である．
 
 \section{構文}
 
@@ -1401,8 +1427,9 @@ admissible-post 準拠を運ぶ proof-carrying certificate であり，二 sort 
 閉性による．対称 solver が rigid 注釈比較で拒否する制約を flexible ledger の下で解く
 対照回帰も固定した．W への切替には cut ごとの snapshot，および raw binder でなく
 局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が残る．
-切替が解消するのは producer guard による freeze ギャップであり，demand の無い
-coercion に由来する境界例の拒否は変えない．
+切替が解消するのは producer guard による freeze ギャップであり，上で展示した demand-free な
+wide 導出を持つ境界例の拒否は変えない．この記述はその項の全 surface 導出を分類する
+inversion theorem を含意しない．
 
 terminal pattern leaf の任意の actual context をまず
 $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface
@@ -1421,11 +1448,13 @@ next-matcher の式 premise は certificate 自身へ再帰し，surface typing 
 頭を検査した raw type を faithful に注入する（恒等 witness も常に取れるため判断を制限しない）．coherence が制限するのは pattern の provenance だけなので，$\mathtt{matchAll}$ と matcher literal を
 含まない match-free 断片では任意の surface typing が coherent であり，Damas–Milner 断片の宣言的
 型付けはすべて埋め込みを経て coherent judgment に入る（DM 受理目標の宣言側）．
-最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
-$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ である．
-広い宣言的前提のままのこの言明は，demand の無い coercion を許すため境界例により恒久的に
-反証済みであり，到達目標は前提を demand-directed な宣言的 judgment へ置き換えた形として
-扱う（or pattern の binder 整合は解消済み・受理側 regression で固定）．なお or の
+現行 $\mathsf{HasTy}$ を前提とする $\mathsf{WideAnnotationFree}$ は，無条件 coercion を許すため
+境界例により恒久的に反証済みである．最上位の将来到達目標は，冒頭で区別した
+$\mathsf{DemandDirectedAnnotationFree}$ である．その独立な宣言的判断は，単に slot 型を
+期待する checking 規則ではなく，要求が signature／$\mathtt{matchAll}$ 等の rigid な consumer
+位置から生じ，未解決 $\lambda$ domain の恣意的な slot 選択からは生じていないことを，
+provenance／origin または ordered constraint state で記録する必要がある．この判断と完全性定理は
+ともに未機械化である（or pattern の binder 整合は解消済み・受理側 regression で固定）．なお or の
 certificate（deriv／threaded の or 規則）は左右の raw 結果を別々に持ち prevailing 像の
 等価 premise で結ぶ形へ緩和したが，宣言的 terminal or 規則は不変である．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
