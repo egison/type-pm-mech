@@ -3,7 +3,7 @@ import TypePM.CoherentSurface
 import TypePM.DamasMilner
 
 /-!
-# Coherent surface typing and the annotation-freeness goal
+# Coherent surface typing and the acceptance boundary
 
 The reconstruction certificate `Reconstruction.ExprDeriv` is itself the
 mutual coherent surface typing: its value-pattern, arm, and clause premises
@@ -27,13 +27,23 @@ forgetful maps remain in `TypePM.CoherentSurface`
 `WideAnnotationFree` names the broad acceptance-completeness envelope for
 closed programs typed by the unrestricted surface `HasTy`.  That proposition
 is permanently refuted by `AcceptanceGapRegression.wideAnnotationFree_refuted`;
-it is retained only to state the rejected boundary precisely.  The intended
-`DemandDirectedAnnotationFree` goal is not yet a Lean definition because its
-independent `DemandDirectedHasTy` premise is still a stage-3 design task.  In
-particular, that judgment must distinguish authoritative slot demands from a
-slot-shaped lambda domain selected only to enable a coercion; a checking
-position whose expected head happens to be `slot` is not by itself enough.
-Neither algorithmic completeness nor any principality claim is made here.
+it is retained only to state the rejected boundary precisely.  The stage-3
+target specification is instead an independent, syntax-directed,
+state-threaded judgment called `DDTyping` in the design documents.  Its state
+contains a fresh supply and prevailing substitution; checking synthesizes
+first and inspects the retained raw synthesized head and the current
+prevailing expected head at that exact solve cut.  It gives ordinary equality
+alignment/identity priority through a deterministic positive head selector,
+and never guesses a lambda domain or metavariable structure merely to enable a
+coercion.  Genuine unification failure is deliberately not a negative rule
+premise, so failed-attempt rollback, operational fuel exhaustion, and guard
+rejection cannot become coercion evidence.  The equality-priority property is
+instead a selector invariant to prove.  `DDTyping` is not yet defined here.
+The unrestricted
+`HasTy` remains the deliberately broad dynamic-safety envelope, while raw-head
+visibility at a cut and capability freeze/export admissibility are separate
+axes of a future completeness theorem.  Neither algorithmic completeness nor
+any principality claim is made here.
 -/
 
 namespace TypePM
@@ -251,20 +261,23 @@ Over the full `HasTy` the proposition is permanently refuted
 (`AcceptanceGapRegression.wideAnnotationFree_refuted`): the wide system
 admits matcher-to-slot coercions at positions with no slot demand
 (`nestedCapProgram`), and rejecting those is the intended behaviour of the
-demand-directed pipeline — coercions are inserted only where the use site
-already demands a matcher/slot head, and unresolved domains are never
-structured to enable a coercion.  The pursued form of the goal keeps this
-conclusion but replaces the premise by the not-yet-defined demand-directed
-declarative judgment from stage 3 of the roadmap.  That judgment must record
-where a matcher/slot demand originates rather than accept any slot-shaped
-expected type chosen by a declarative lambda rule.  On that path the first
-concrete counterexample — an or-pattern whose alternatives bind the same
-variable — is fixed (`AcceptanceGapRegression` now pins its acceptance), and
-the remaining genuine inference gap is the producer-guard freeze
-(`packProgram`), to be resolved by the origin-aware ledger switch.  The
-staged path continues through Damas–Milner algorithmic acceptance,
-fragment-restricted completeness, and the removal of the selector's
-raw-head blind spot via cut-indexed coercion events.  The mechanized
+syntax-directed pipeline.  The pursued form keeps the same acceptance
+conclusion but replaces the premise by the not-yet-defined `DDTyping` judgment
+from stage 3 of the roadmap.  `DDTyping` threads a fresh supply and prevailing
+substitution, introduces unresolved lambda domains instead of choosing their
+shape, and synthesizes before checking.  At the exact cut it gives ordinary
+alignment/identity priority through a deterministic positive selector and
+permits a canonical non-identity coercion only when the raw/current heads
+visible there select it under the no-guess rules.  It does not turn failed
+unification into a rule premise.  `HasTy` remains the
+wider safety envelope rather than this completeness premise.  On that path the
+first concrete counterexample — an or-pattern whose alternatives bind the same
+variable — is fixed (`AcceptanceGapRegression` now pins its acceptance).
+Raw-head visibility, including the selector's cut-indexed blind spot, and
+capability freeze/export, including `packProgram`, are independent
+completeness axes rather than demand-admissibility rules inside `DDTyping`.
+The staged path continues through Damas–Milner algorithmic acceptance and
+fragment-restricted completeness.  The mechanized
 principality counterexample is independent: it refutes substitution-only
 recovery of every typing from the inferred result, not acceptance itself.
 -/

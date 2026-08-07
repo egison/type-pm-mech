@@ -3,20 +3,30 @@
 ## 最上位目標
 
 本リポジトリの完成目標は，Egison core の **demand-directed な注釈不要性**
-（annotation-freeness）を機械化することである．目標は，段階 3-1 で推論器から独立に
-定義する宣言的 judgment（仮称 `DemandDirectedHasTy`）を前提とする受理完全性
-`DemandDirectedAnnotationFree` である：
+（annotation-freeness）を機械化することである．その前提となる仕様を，推論器から独立した
+構文主導の状態付き judgment `DDTyping` として定義する方針に固定する．完成定理は
+`DDTyping` に対する公開推論器の受理完全性である：
 
 ```text
 ∀ signature e τ,
-  DemandDirectedHasTy signature [] e τ →
+  DDTyping signature [] e τ →
   (infer signature [] e).isSome
 ```
 
-`DemandDirectedHasTy` と `DemandDirectedAnnotationFree` はまだ Lean 上で未定義・未証明であり，
-名前も段階 3-1 の設計時に確定する．core の構文
-（[`TypePM/Term.lean`](TypePM/Term.lean)）自体には型注釈の形がないので，この形が最終的に
-保証したい「要求駆動で宣言的に型付く closed program は注釈なしで受理される」の正確な主張である．
+`DDTyping` はまだ Lean 上で未定義・未証明である．内部には fresh supply `q` と prevailing
+substitution `S` を入出力で thread する synthesis／checking の二判断を置く：
+
+```text
+q; S; Γ ⊢ e ⇒ τraw ⊣ q'; S'       -- DDSynth
+q; S; Γ ⊢ e ⇐ τexpected ⊣ q'; S'  -- DDCheck
+```
+
+closed wrapper `DDTyping` は `initialSupply signature context` と identity substitution から
+開始し，終端 substitution を raw result に適用した型を公開する．これは実行関数の成功や
+`CoreTyping` の存在を前提にした定義ではなく，fresh allocation，通常 solve，coercion selection，
+左から右の構文走査を帰納規則として独立に記述する．core の構文
+（[`TypePM/Term.lean`](TypePM/Term.lean)）自体には型注釈の形がないので，上の完成定理が最終的に
+保証したい「`DDTyping` を持つ closed program は注釈なしで受理される」の正確な主張である．
 
 これと区別して，広い `HasTy` を前提とする次の命題を
 [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
@@ -32,29 +42,55 @@
 受理完全性の前提としては広すぎる．
 
 最終目標を成立させる根本原則は **demand-directed coercion**（要求駆動の coercion 挿入）
-である．ただし，「checking 位置の期待型の頭が matcher／slot である」という条件だけでは
-不十分である．通常の宣言的 λ 規則が `f` の domain として任意の `MatcherSlot` 型を先に選べば，
-その選択自身を見かけ上の checking demand にして `nestedCapProgram` を再び導出できるからである．
-従って段階 3-1 の judgment は，次のいずれかの仕組みを**必須**とする．
+である．`DDCheck` は必ず先に期待型なしで式を synthesize し，その出力state
+`q₁; S₁` を exact coercion cut とする：
 
-- matcher／slot 要求が syntax や frozen signature，または coercion に依存しない先行 solve から
-  確定したことを表す rigid demand-origin witness
-- λ domain を fresh unresolved metavariable として導入し，synthesis・通常の単一化・checking を
-  推論器と同じ順序で進め，後から domain を slot に構造化できない ordered constraint state
+```text
+q₀; S₀; Γ ⊢ e ⇒ τraw ⊣ q₁; S₁
+head (S₁ τexpected) が要求する branch を選択
+q₁; S₁ から source と expected を整合
+```
 
-coercion は，このように正当な由来を持つ要求型（prevailing 適用後）の頭が matcher／slot として
-確定し，raw 型がそのままでは要求に合わない場合にだけ挿入する．要求が未確定な位置では raw 型を
-そのまま使い，coercion を成立させる目的で未解決 metavariable や確定済み domain を matcher／slot
-へ（遡及的にも）構造化しない．現行実装の `expectedCoercionSource` と domain-directed
-application check はこの順序に従うが，将来の宣言的 judgment には上記の由来／順序を独立に
-表現する必要がある．
+non-identity coercion を選べるのは，この cut で `S₁ τexpected` の matcher／slot head が既に
+露出している場合だけである．checking 開始前の `S₀` でも，全走査後の substitution でもなく，
+synthesis 後かつ当該 coercion 前の `S₁` を見る．特に matcher→slot coercion は expected head が
+`MatcherSlot` の場合にだけ許す．λ domain は任意の型として選ばず fresh
+metavariable とし，application は function synthesis，fresh domain／codomain，通常 alignment，
+argument synthesis，domain check の順で state を thread する．list 構文も左から右へ進める．
+要求が未確定なら source は raw synthesized type のままで，通常 alignment が期待metaをそのraw型へ
+固定できるが，coercionを成立させるために matcher／slot headを発明しない．各solve deltaはその時点で
+解くconstraintに対するMGUまたはone-way solutionに限定し，無関係なmetaを同時に構造化しない．
+
+この順序自体が正当なdemandの由来を与えるため，別のdemand-origin tokenやDunfield--Krishnaswami風の
+ordered existential contextは導入しない．また，coercion可否をsemantic entailmentで定義せず，通常の
+unificationが失敗してから別のcoercion branchを試す方式も採用しない．coercion branchはunification前に
+上のvisible headから決定し，そのbranchのsolveが失敗すればそのcheckは失敗する．
+
+### 関連研究から採用する部分
+
+[Dunfield--Krishnaswami](https://doi.org/10.1145/2500365.2500582) から採用するのは，前の
+premise の出力を次の premise の入力へ渡す algorithmic judgment の input/output state
+threading だけであり，ordered existential context そのものは採用しない．
+[Luo の polymorphic coercion inference](https://doi.org/10.1017/S0960129508006804) にある，
+通常の unification が不成立だったことを負の前提として coercion insertion へ進む分岐も採用しない．
+[OutsideIn(X)](https://doi.org/10.1017/S0956796811000098) は，広い宣言仕様とは別に guess-free な
+solution／simplifier と algorithmic completeness 条件を置く先例として参照するが，式から制約を
+生成して後段でまとめて解く constraint-generation／solving architecture は採用せず，`DDTyping`
+自身が構文走査中に state と solve を逐次 thread する．
+
+expected-head visibilityと，現行selectorの **raw-source visibility** は区別する．`DDTyping` の
+demand規律は前者で定めるが，現行 `expectedCoercionSource` はproduct liftのsourceを
+`S₁ τraw` ではなくraw `τraw`から認識する．従って最初の受理定理には，選ばれたproduct liftのheadが
+raw sourceにも見えているという別条件 `RawSourceVisible` を置く．この条件はdemandの権威ではなく，
+現行実装との対応条件であり，後にcut-indexed coercion eventで外す．
 
 `nestedCapProgram`（と swapped 版）について現在機械化されているのは，`sharedSlot` を選び
 demand の無い位置で matcher→slot coercion を使う一つの `HasTy` 導出と，公開推論器による拒否で
 ある．これは `WideAnnotationFree` を反証するには十分だが，「すべての `HasTy` 導出がその coercion
-だけを通る」という inversion は未証明である．この強い主張は，段階 3-1 の judgment を導入して
-排除定理を証明するまでは行わない．同じ producer 対を `let` で多相化した
-`nestedCapLetProgram` は受理される．
+だけを通る」という inversion は未証明であり，`DDTyping` の定義にも不要である．代わりに，fresh
+lambda-domainと上記のsolve順序から `nestedCapProgram` に `DDTyping` がないことを反転で証明する．
+同じproducer対を `let` で多相化した `nestedCapLetProgram` は，各利用がfreshなdomain instanceを
+持ち，raw producer型のまま `DDTyping` と公開受理の正例になる．
 
 最初の具体的反例だった or pattern（両分岐で同名を束縛する
 `matchAll 0 something ($x | $x) x`）は，or の整合を raw binding context の構文的
@@ -95,8 +131,9 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 - **済** surface への忘却 `CoherentExpr.toHasTy` と推論成功からの
   `infer_success_coherent`（pattern 層の standalone threaded 境界への忘却は既存の
   `PatternResolutionDeriv.toThreadedSurface`）．
-- **済** product lift 構成子の raw-source provenance 添字（段階 3 の可視性 fragment を
-  言明する装置）．W の reconstruction motive は selector が実際に頭を検査した raw type を
+- **済** product lift 構成子の raw-source provenance 添字（`RawSourceVisible` を仮定する
+  中間定理で，selector の選択と raw source を結ぶ装置）．W の reconstruction motive は
+  selector が実際に頭を検査した raw type を
   faithful に注入し，恒等 witness も常に取れるため判断を制限しない．
 - **済** 旗艦例の coherent instance（`listMatcherMatchAll_coherent`）．
 - **済** pval-free 吸収補題（fragment 記述の精密化用）：`pval` leaf を含まない
@@ -185,49 +222,47 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 7. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
 8. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
 
-### 段階 3: fragment 受理完全性と制限 principality
+### 段階 3: `DDTyping` と条件付き受理完全性
 
-1. 未: fragment 条件の言明 — demand-directed な宣言的（bidirectional）judgment
-   `DemandDirectedHasTy`（仮称）を推論器から独立に定義する．単に coercion を
-   「checking 位置で期待型の頭が matcher／slot の場合」に限るだけでは不十分である：
-   宣言的 λ 規則が domain として `sharedSlot` を任意に選べば，その選択を checking demand
-   として `nestedCapProgram` を再導出できる．従って matcher／slot demand には，syntax・
-   frozen signature・coercion に依存しない先行 solve に由来する rigid origin witness，または
-   それと同等な ordered constraint state を**必ず**持たせる．後者では λ domain を fresh
-   unresolved metavariable として導入し，推論器と同じ constraint order でしか確定できず，
-   coercion のための遡及的な構造化を禁止する．`SynthHead`／`CoercionPlan` の制限版と
-   `MatcherToSlotRawCert` 等は利用できるが，`ElaborableHasTy := ∃ CoreTyping` 型の循環定義は
-   禁止する．これが `DemandDirectedAnnotationFree`（仮称）の前提になる．新 judgment の
-   導入後は，`nestedCapProgram` にその導出がないことを inversion で証明し，現在未証明の
-   「wide 導出は demand-free coercion に限られる」という強い説明の代わりにする．
-   raw-head 可視性は provenance 添字だけでは言明にならない（恒等 witness が常に取れる）ため，
-   trace／solve-cut と certificate を結ぶ `GeneratedByTrace`・`RawHeadVisibleAt` 型の述語は
-   replay 用の証明書と inference-generated certificate の区別に用いる．capability freeze
-   適合は `CapabilityOrigin` の ledger から言明を起こす（設計が証明に先行する）．
-2. 未: coherent かつ可視かつ freeze 適合な typing に対する受理＋因子化（段階 2 の機械の
-   全構文拡張）．
-3. 未: principal-core factorization の**存在定理**を先に立てる — ∀ surface typing に
+1. 未: `DDTyping` の定義 — 推論器から独立な帰納的 `DDSynth`／`DDCheck` を定義し，fresh
+   supply と prevailing substitution を入出力で thread する．λ domain は fresh meta，
+   application と list は現行 W と同じ左から右の順序とし，各 solve は当該 constraint に
+   関係する MGU／one-way solution だけを追加する．`DDCheck` は式を先に synthesize し，その
+   直後かつ coercion 前の state で正規化した expected head から branch を一意に選ぶ．branch
+   選択後の solve が失敗した場合はその check を棄却する．実行関数の成功や
+   `ElaborableHasTy := ∃ CoreTyping` を定義に含めない．
+2. 未: `DDTyping` の基本メタ理論 — state extension，prevailing replay，freshness，solve delta の
+   relevance，`HasTy` への忘却，reconstruction certificate（`CoherentExpr`）への変換を証明する．例の境界は
+   `nestedCapProgram` と swapped 版に `DDTyping` がないこと，`nestedCapLetProgram` に
+   `DDTyping` があることをそれぞれ inversion／構成で固定する．前者について全 `HasTy` 導出を
+   分類する必要はない．
+3. 未: 現行実装に対する最初の受理定理 — `d : DDTyping signature [] e τ` に対し，
+   `RawSourceVisible d` と `FreezeCompatible d` を仮定して
+   `(infer signature [] e).isSome` を証明する．前者は product lift の選択時に必要な head が
+   raw source にも現れているという selector 実装上の条件，後者は現行 producer guard による
+   固定と衝突しないという条件であり，どちらも coercion demand の由来を定義する条件ではない．
+   証明は `DDSynth`／`DDCheck` の導出帰納を W の走査に同期させ，段階 2 の trace-level
+   factorization と terminal-validator 受理を利用する．
+4. 未: principal-core factorization の**存在定理**を先に立てる — ∀ surface typing に
    ∃θ plan，`plan : NormalPlan (θ τ₀) τ`．一意性は residual substitution が異なる
    因子化（`α ↦ Slot Any Integer` に `refl`，`α ↦ Matcher Any Integer` に
    `matcherToSlot`）を許すため plan kinds だけでは決まらない．「substitution が
    coercible head を導入しない」等の canonical boundary を定義した後に条件付きで
    狙う．定理は inference acceptance・factorization の存在・（canonicalization 後の）
    一意性の三本に分ける．
-4. 未（推奨）: coherentization — 任意の `DemandDirectedHasTy` 型付けの coherent 再提示．
-   demand-directed という境界は維持したまま，受理完全性の仮定から追加の coherence 条件を
-   消す格上げ．広い `HasTy` への格上げは `WideAnnotationFree` の反例と矛盾するため行わない．
 
-### 段階 4: 受理完全性の最終形
+### 段階 4: `DDTyping` 受理完全性の最終形
 
-1. 未: solve-cut event（cut-indexed coercion event）による selector の raw-head 死角の
-   除去（demand が存在するのに raw 型の頭が prevailing substitution 後に初めて現れる
-   正当な盲点が対象）．canonical core judgment への強化で残る critical pair の解消・
-   full plan uniqueness（または quotient）・置換に対する naturality もここに属する．
-2. 未: capability freeze completeness（origin-aware solver への切替）．
-3. 到達点: demand-directedness 以外の fragment 条件を外した受理完全性．
-   coercion-demand 軸は反例が確定済み（境界例 `nestedCapProgram`，
-   `wideAnnotationFree_refuted`）なので，demand-directed 前提（段階 3-1 の
-   judgment）が最終形であり，広い `HasTy` 前提の `WideAnnotationFree` を復活させない．
+1. 未: solve-cut event（cut-indexed coercion event）を導入し，prevailing substitution 後に
+   初めて product head が現れる正当な case も selector が扱えるようにして，中間定理から
+   `RawSourceVisible` を外す．
+2. 未: W を origin-aware paired solver へ切り替え，solve cut ごとの ledger snapshot と
+   export 時点の freeze event を接続して，中間定理から `FreezeCompatible` を外す．これは
+   `packProgram` の producer-freeze ギャップを解消するが，`nestedCapProgram` の拒否は変えない．
+3. 未: canonical core judgment の critical pair を解消し，canonical boundary 下の full plan
+   uniqueness と置換に対する naturality を証明する．
+4. 到達点: `DDTyping signature [] e τ → (infer signature [] e).isSome`．受理完全性の前提は
+   `DDTyping` だけとし，広い `HasTy` 前提の `WideAnnotationFree` は復活させない．
 
 ## 概要
 
@@ -433,10 +468,13 @@ inhabitant 自体の一意性，および公開推論が observable plan data �
 product-of-matchers から product matcher への規則は
 tuple literal 専用ではなく unary な `COERCE-PRODUCT-MATCHER` とした．このため coercion は
 `let` の束縛時ではなく変数利用位置にも挿入できる．
-`expectedCoercionSource` は matcher／slot が要求されたとき，raw synthesized type が
+`DDCheck` が固定する cut と同様に，現行 `checkExprFuel` は式を期待型なしで先に synthesize し，
+その出力 state の prevailing substitution を expected 型へ適用してから head を観測する．
+`expectedCoercionSource` はその head が matcher／slot を要求するときだけ，raw synthesized type が
 product-of-matchers なら product-matcher lift，slot が要求され raw type が product-of-slots
 なら slot-tuple lift という branch を決定的に選び，`alignExprResultAtExpected` がその後の
-type equality または slot alignment を行う．空 product は両 recognizer に一致するため，
+type equality または slot alignment を行う．branch 選択は alignment より前に確定し，選んだ
+branch の solve が失敗しても別 branch へ切り替えない．空 product は両 recognizer に一致するため，
 coherence policy として product-matcher branch を先に選ぶ．これは selector の決定性であって，
 surface coercion 全体の一意性をまだ意味しない．
 `checkExprFuel` と通常の関数適用はこの非再帰 helper を共有する．関数適用は function を推論し，
@@ -444,9 +482,11 @@ fresh domain／codomain へ整合してから argument を domain に対して c
 application の引数位置でも product matcher／matcher-to-slot／slot-tuple coercion を挿入できる．
 terminal reconstruction は同じ選択から `ExprDeriv.coerceProductMatcher` または
 `ExprDeriv.coerceSlotTuple` を構成し，solver trace に型付け oracle を追加しない．現段階の
-selector は raw type の頭を検査するので，raw metavariable が prevailing substitution 後に初めて
-product-of-matchers または product-of-slots になる場合（component metavariable が初めて matcher／
-slot になる場合を含む）は completeness の今後の課題として残る．
+selector は `S τraw` ではなく raw `τraw` の頭を検査するので，raw metavariable が prevailing
+substitution 後に初めて product-of-matchers または product-of-slots になる場合（component
+metavariable が初めて matcher／slot になる場合を含む）は completeness の今後の課題として残る．
+段階 3 の `RawSourceVisible` はこの実装上の死角だけを隔離し，expected head による demand の
+可否とは分けて扱う．
 
 [`TypePM/CapabilityOrigin.lean`](TypePM/CapabilityOrigin.lean) は capability metavariable を
 `rigid`，`renameOnly`，`structuralFlexible` に分ける有限 ledger と，ledger に対する admissible
@@ -460,7 +500,8 @@ constructor／primitive の局所 structural instantiation と既存 producer �
 一般 fresh capability と constructor／primitive image を `structuralFlexible`，context scheme／
 pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．ただし
 constraint acceptance と terminal audit は従来の `protectedCaps` をそのまま使うため，受理挙動はまだ
-変えていない．unifier の origin-aware orientation は
+変えていない．この producer-freeze 用 ledger は `DDTyping` の coercion demand に別証人を要求する
+仕組みではない．unifier の origin-aware orientation は
 [`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) の kernel slice として
 機械化済みで，切り替えに残るのは solve cut ごとの ledger snapshot と，raw binder ではなく
 局所 solve 後に外へ生存する prevailing image の leaf を freeze する export event である．
@@ -470,7 +511,7 @@ constraint acceptance と terminal audit は従来の `protectedCaps` をその�
 
 `CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
 completeness は得られた．canonical core judgment への強化に残る項目（critical pair の解消，
-plan uniqueness または quotient，cut-indexed evidence など）はロードマップ節に集約する．
+canonical boundary 下の plan uniqueness，cut-indexed evidence など）はロードマップ節に集約する．
 
 現行 `TerminalPatternResolution` の leaf は freshness 用 `rawContext` と `actualContext` を
 独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も含まれる．
@@ -669,8 +710,9 @@ producer へ置き換えた control twin が成功することを対で検査す
 
 - 広い `HasTy` を前提にした Algorithm W の completeness
   （`WideAnnotationFree` は機械化反例により恒久的に反証済み）
-- 段階 3-1 の `DemandDirectedHasTy` と，それを前提とする
-  `DemandDirectedAnnotationFree`（どちらも仮称で，現時点では未定義・未証明）
+- `DDTyping`，`DDSynth`，`DDCheck` の Lean 定義，および `RawSourceVisible`／
+  `FreezeCompatible` を仮定する中間受理定理と，それらを外した最終受理定理
+  （いずれもロードマップ上の未実装項目）
 - `nestedCapProgram` の全 `HasTy` 導出が demand-free coercion に依存するという inversion
   （現在の回帰が示すのは該当する一つの導出と推論拒否）
 - 反証済みの無制限 principality

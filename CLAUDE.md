@@ -82,21 +82,28 @@ commit／push はその都度の明示指示がある場合に限るという規
   `infer_success_coherent` を持ち，pattern 層の standalone threaded 境界への忘却は既存の
   `PatternResolutionDeriv.toThreadedSurface`（`CoherentSurface.lean`）が与える．これを algorithmic
   completeness や principality と呼ばない．coercion 挿入は **demand-directed（要求駆動）を
-  根本原則**とする：coercion は利用位置の要求型（prevailing 適用後の期待型）の頭が
-  matcher／slot として正当な由来から確定している位置で，raw 型がそのままでは合わない場合にだけ
-  挿入し，要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で未解決
-  metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．将来の
-  demand-directed 宣言的 judgment（段階 3-1，仮称 `DemandDirectedHasTy`）を単なる
-  「checking 位置の期待型の頭が matcher／slot」という規則にしてはならない．通常の宣言的 λ 規則が
-  domain として任意の `MatcherSlot` を先に選べば，その選択自身が見かけ上の demand になり
-  `nestedCapProgram` を再導出できる．matcher／slot demand には syntax／frozen signature／
-  coercion に依存しない先行 solve から来た rigid origin witness，または λ domain を fresh unresolved
-  metavariable として推論器と同じ順序で解く同等の ordered constraint state を必須とする．
-  宣言的 `HasTy` の無条件 coercion はこの規律の外（動的安全性の包絡）であり，受理完全性の前提に
-  しない．広い `HasTy` 前提の `Coherent.WideAnnotationFree` は境界例により**恒久的に反証済み**で
-  （`wideAnnotationFree_refuted`），完成目標でも open goal でもない．到達目標は結論を保ったまま
-  前提を上記の demand-directed judgment に置き換えた `DemandDirectedAnnotationFree`（仮称）である．
-  両者を同じ `AnnotationFree` と呼ばず，将来 judgment と目標は定義・証明前に成立済みと主張しない．
+  根本原則**とする．段階 3 の到達仕様は，推論器や reconstruction certificate から独立した
+  構文主導・state-threaded な judgment `DDTyping` とする．`DDTyping` の input／output state は
+  fresh supply と prevailing substitution を持ち，λ domain などを fresh unresolved metavariable
+  として導入する．checking は必ず式を先に synthesize し，その raw 結果と prevailing 適用後の
+  expected type を同じ cut で照合する．coercion selector が使えるのは，その cut 時点で規則が検査する
+  matcher／slot／product head が見えている場合だけであり，後続 solve の結果を遡及的に使わない．
+  各 cut の正の selector は ordinary alignment／identity を優先し，現在見えている expected head と
+  raw source head が canonical な非恒等 coercion を要求する場合だけその plan を選ぶ．この優先順位は
+  「通常単一化の失敗」を負の規則前提にせず，selector の決定性と head 構成子の排他性から補題として
+  示す．従って failed attempt の rollback，fuel 切れ，guard 拒否を coercion の根拠に持ち込まない．
+  各 solve は syntax，signature，fresh state と現在の constraint だけから決まり，coercion を
+  成立させるために λ domain や未解決 metavariable の構造を推測する no-guess 違反を許さない．
+  従って，単に「checking 位置の expected head が matcher／slot」という declarative 規則や，任意の
+  `MatcherSlot` domain を先に選べる通常の λ 規則で代用しない．
+  宣言的 `HasTy` の無条件 coercion は意図的に広い**動的安全性の包絡**として維持し，受理完全性の
+  前提には使わない．広い `HasTy` 前提の `Coherent.WideAnnotationFree` は境界例により
+  **恒久的に反証済み**であり（`wideAnnotationFree_refuted`），完成目標でも open goal でもない．
+  到達目標は独立な `DDTyping` を前提に同じ受理結論を示すことであり，judgment と定理を定義・証明する
+  前に成立済みとは主張しない．また，**raw visibility**（cut 時点で selector に必要な head が見えるか）
+  と **capability freeze**（producer image に許される substitution／export）は `DDTyping` の
+  syntax-directed admissibility とは別軸である．前者は solve-cut／trace visibility，後者は
+  capability-origin ledger／export freeze の条件として，fragment 受理完全性で別々に扱う．
   最初の具体反例
   だった or-pattern の binder 共有欠如は解消済みである：or の整合は `alignBindings`（binder 名の
   位置照合＋束縛型の単一化）で行い，raw metavariable ID の構文的等価を要求しない．これに伴い
@@ -108,7 +115,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   一つの宣言的導出と，意図された推論拒否を固定している．これで広い前提への恒久反証
   `wideAnnotationFree_refuted` は得られるが，全 `HasTy` 導出がその coercion に依存するという
   inversion は未証明なので記述しない（`let` 多相化した `nestedCapLetProgram` は受理し，
-  origin-aware unifier で `nestedCapProgram` を受理側へ反転させる対象にはしない）．
+  capability-freeze 軸の paired unifier で `nestedCapProgram` を受理側へ反転させる対象にはしない）．
   capability freeze（`packProgram` = `Pack something`，
   fresh instance capability の protected 化）は真の受理ギャップで，現行推論器への反証
   `wideAnnotationFree_refuted_by_freeze` を伴い，origin-aware paired unifier
@@ -215,9 +222,10 @@ commit／push はその都度の明示指示がある場合に限るという規
     （`Coherent.CoherentExpr := ExprDeriv` ほか 10 family），`CoherentExpr.toHasTy`，
     `infer_success_coherent`，match-free 断片の全 coherence
     （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
-    および反証済み境界命題 `WideAnnotationFree`．到達目標の
-    `DemandDirectedAnnotationFree`（仮称）は段階 3-1 の独立した demand-origin-aware
-    judgment を前提とする未定義・未証明の別命題である．
+    および反証済み境界命題 `WideAnnotationFree`．段階 3 の到達仕様は，fresh supply と
+    prevailing substitution を thread し，synthesis-first checking，cut 時点の head 検査，
+    no-guess solve を規則に持つ独立な構文主導 judgment `DDTyping` である．これは未定義・未証明で，
+    raw visibility と capability freeze は別の completeness 軸として扱う．
   - `TypePM/AcceptanceGapRegression.lean`: or-pattern の宣言的型付け
     `orProgram_typed` と，binder 整合修正後の受理固定
     （`orProgram_accepted`・異位置束縛の `orMixedProgram_accepted`・

@@ -306,8 +306,10 @@ wide-premise `WideAnnotationFree`: the displayed declarative typing witness
 uses demand-free matcher-to-slot coercions, and rejecting that witness's
 coercion strategy is the intended demand-directed behaviour.  The pursued
 completeness statement keeps the conclusion but replaces the wide `HasTy`
-premise with an independent demand-directed judgment (stage 3 of the
-roadmap). -/
+premise with the independent syntax-directed, state-threaded `DDTyping`
+judgment from stage 3 of the roadmap.  That judgment introduces lambda
+domains as fresh metavariables and observes an expected matcher/slot head
+only after synthesis at the current prevailing-substitution cut. -/
 theorem wideAnnotationFree_refuted : ¬ Coherent.WideAnnotationFree := by
   intro hfree
   have haccept :=

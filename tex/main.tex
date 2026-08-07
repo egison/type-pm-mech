@@ -77,48 +77,52 @@
 \]
 である．ここで $\vdash_{\mathsf{wide}}$ は無条件の surface coercion を含む現行
 $\mathsf{HasTy}$ を表す．この言明は最上位目標ではなく，機械化済みの境界例により
-恒久的に反証された広い包絡である．実際の将来到達目標は，独立な demand-directed
-宣言的 judgment $\vdash_{\mathsf{dd}}$ を前提とする
+恒久的に反証された広い包絡である．実際の将来到達目標は，推論器や reconstruction
+certificate から独立した，構文主導・state-threaded な関係 $\mathsf{DDTyping}$ を前提とする
 \[
-\mathsf{DemandDirectedAnnotationFree}\ \equiv
-\forall e\,\tau,\quad
-  \emptyset \vdash_{\mathsf{dd}} e : \tau
-  \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}
+\forall\Sighat\,e\,\tau,\quad
+  \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+  \Rightarrow \mathsf{infer}(\Sighat,\emptyset,e) \neq \mathsf{none}
 \]
-である．core の構文には型注釈の形が存在しないため，後者を「正しいプログラムに
-注釈は不要」の目標とする．$\vdash_{\mathsf{dd}}$ はまだ定義・機械化しておらず，推論器が
-生成した certificate の存在を前提にする循環的な判断としては定義しない．
+である．core の構文には型注釈の形が存在しないため，これを「要求駆動で型付く closed
+program は注釈なしで受理される」という完成目標とする．$\mathsf{DDTyping}$ とこの定理は
+まだ定義・機械化していない．
 
-この将来判断の根本原則は demand-directed な coercion 挿入である：coercion は利用位置の
-要求型（prevailing 適用後の期待型）の頭が matcher／slot として確定しており，raw 型が
-そのままでは要求に合わない場合にだけ挿入し，要求が未確定な位置では raw 型をそのまま使う．
-ただし「checking 位置の期待型が slot である」ことだけでは demand の根拠として不十分である．
-宣言的な $\lambda$ 規則が未決定の binder domain を先に slot として選べば，その選択自身を
-期待型に見せられるからである．従って将来判断は，signature や $\mathtt{matchAll}$ などから
-先に与えられた rigid な consumer 要求と，未解決の $\lambda$ domain から後付けで作った型を
-区別する demand provenance／origin（または同じ順序を保証する ordered constraint state）を
-保持しなければならない．coercion を成立させる目的で未解決 metavariable や domain を
-matcher／slot へ構造化し，その結果を demand の由来として扱ってはならない．
+$\mathsf{DDTyping}$ は fresh supply と prevailing paired substitution だけを state の
+input／output として thread する．$\lambda$ domain は任意の型として選ばず，supply から得た
+fresh unresolved metavariable とする．checking は式を先に synthesize して raw result と
+中間 state を得た後，その同じ cut における prevailing 適用後の expected type の頭を観察し，
+決定的 selector で identity または許された coercion branch を選ぶ．後続 solve の結果を
+遡及的に利用せず，coercion を成立させるために未解決 metavariable の構造を推測しない．
+別建ての demand-origin token，完全な ordered constraint store，semantic entailment は
+主判断の index としない．また，通常 alignment の失敗を coercion 規則の負前提にせず，
+selector が非 identity branch を返す形は通常 alignment と競合しないという invariant／補題で
+ordinary-first を言明する．
 
 現行宣言体系の無条件 coercion 規則はこの規律の外にあり，動的安全性の包絡としては維持するが，
 受理完全性の前提としては広すぎる．機械化済みの境界例では，wildcard slot 域の単相 consumer に
 bare `something` と product lift を順に渡す項について，その domain を slot と選んで各 producer を
-coerce する一つの wide $\mathsf{HasTy}$ 導出と，公開推論器による拒否を与える．これは展示した
-導出が demand-free な選択を使うことを示すが，その項の全宣言的導出がその経路だけを使うという
-inversion theorem はまだ主張しない．推論器は第一用法で域を raw な matcher 型に固定し，
-第二用法の lift された capability を注釈として等値比較して拒否する（逆順も raw-head 死角で
-拒否する）．この拒否は意図された挙動であり，同じ producer 対を $\mathtt{let}$ で多相化した形は
-受理される．その control は，結果が三つの相異なる target 変数を持つ raw producer-level shape
-のままであり，raw solve trace に producer-to-slot constraint が無いことも検査する．最初の具体反例だった
+coerce する一つの wide $\mathsf{HasTy}$ 導出と，公開推論器による拒否を与える．展示した
+wide 導出は $\mathsf{DDTyping}$ の fresh-domain／synthesis-first 規則には対応しない．第一用法では
+未解決 domain と raw matcher を通常 alignment して domain を matcher 型に固定し，第二用法では
+product lift 後の capability とその既存 annotation が衝突する．逆順では第一用法が domain を
+raw product 型に固定し，第二用法の bare matcher に使える coercion branch がない．従って両順序の
+拒否は selector の raw-head 死角を修正しても変えない意図された境界である．一方，同じ producer 対を
+$\mathtt{let}$ で多相化した形は，各 lookup が独立な fresh domain instance を得るため受理される．
+その control は，結果が三つの相異なる target 変数を持つ raw producer-level shape のままであり，
+raw solve trace に producer-to-slot constraint が無いことも検査する．最初の具体反例だった
 or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化による整合へ改めて
-解消し，受理側の regression として固定した．残る真の受理ギャップは instance capability
-の producer guard による固定である：
+解消し，受理側の regression として固定した．既知の具体的な capability 側の真の受理ギャップは
+instance capability の producer guard による固定である：
 $\mathsf{Pack} : \forall\kappa\,\alpha.\ \mathsf{Matcher}\,\kappa\,\alpha \to
 \mathsf{Packed}$ に対する $\mathsf{Pack\ something}$ は宣言的には
 $\kappa := \Any$ の instance で型付くが，推論器は fresh instance capability を
 protected producer として記録し，guard がその束縛を拒否する（capability を scheme 側で
 $\Any$ に固定した control は受理される）．この反例は現行推論器に対する反証を伴い，
-origin-aware な paired unifier（guard の ledger 化）で解消させる．
+origin-aware な paired unifier（guard の ledger 化）で解消させる．これは coercion demand の
+可否とは独立な capability freeze／export の問題であり，$\mathsf{DDTyping}$ の selector 規則へ
+混ぜない．また current selector の raw-source blind spot は，この freeze gap とも別の
+completeness 軸として扱う．
 達成済みの主柱は次である．
 
 \begin{quote}
@@ -129,7 +133,7 @@ in Lean~4.
 ここで soundness は，公開 executable inference が成功すれば，返した型に対する
 declarative expression typing が必ず構成できることを意味する．機械化した定理は
 後述する静的入力整形式性を追加前提にしない．広い $\mathsf{HasTy}$ に対する completeness は
-上記のとおり反証済みであり，将来の demand-directed completeness は open である．
+上記のとおり反証済みであり，将来の $\mathsf{DDTyping}$ に対する completeness は open である．
 full principality は機械化済み反例により偽である．
 
 \section{構文}
@@ -1233,16 +1237,93 @@ raw traversal と validator はともに停止する executable function であ�
 には caller-supplied bridge，型付け oracle，completeness，full principal-type theorem を
 含めない．
 
-式 checking と application の引数 checking は同じ期待型整合 helper を使う．raw synthesized
-type が matcher の product で期待型が matcher または matcher slot なら
-COERCE-PRODUCT-MATCHER を，raw type が slot の product で期待型が matcher slot なら
-COERCE-SLOT-TUPLE を決定的な branch として選び，その後に通常の type equality または
-producer-stable な slot alignment を行う．空 product は両 recognizer に一致するため，
-product-matcher branch を優先する．これは executable selector の決定性であり，surface coercion
-全体の一意性ではない．terminal reconstruction は同じ raw type と期待型から unary coercion node を
-再構成するため，trace に型付け oracle を追加しない．raw metavariable が prevailing substitution
-後に初めて product head または matcher／slot component を持つ場合の completeness は，matcher
-product と slot product の双方について現段階では主張しない．
+将来の受理完全性で用いる $\mathsf{DDTyping}$ は，次の二つの相互再帰的な構文主導 relation の
+closed-program wrapper とする．$q=(q_\kappa,q_\tau)$ は二 sort の fresh supply，$S$ は
+その位置までの prevailing paired substitution である．
+\[
+\begin{array}{l}
+\mathsf{DDSynth}:\quad
+  \Sighat;\Gamma\vdash_{\mathsf{dd}}
+  \langle q,S;e\rangle\Rightarrow
+  \langle q',S';\tau_{\mathit{raw}}\rangle,\\[0.35em]
+\mathsf{DDCheck}:\quad
+  \Sighat;\Gamma\vdash_{\mathsf{dd}}
+  \langle q,S;e\rangle\Leftarrow\rho\Rightarrow
+  \langle q',S'\rangle.
+\end{array}
+\]
+$\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)$ は，入力の全自由変数より上にある canonical
+$q_0=\mathsf{initialSupply}(\Sighat,\Gamma)$ と identity substitution から
+$\mathsf{DDSynth}$ が成功し，終端 result
+$S'\tau_{\mathit{raw}}$ が $\tau$ であることをいう．これは executable
+$\mathsf{infer}$ の成功や reconstruction certificate の存在を定義に含めない．
+
+各規則の出力 state は入力 state の chronological extension でなければならない．すなわち supply は
+単調に進み，substitution にはある局所 delta について $S'=\delta\circ S$ という因子化を要求する．
+通常 solve の $\delta$ はその位置の constraint に対する proof-carrying MGU，one-way solve の
+$\delta$ は対応する producer-stable solution とし，constraint に無関係な metavariable を同時に
+束縛する transition は許さない．この exactness／relevance が no-guess 条件である．一度
+$S\rho$ に matcher／slot の外側構成子が露出すれば，任意の後続 state extension でもその頭が保存される
+ことは substitution の構成子保存と MGU factorization から別補題として示す．
+
+$\mathsf{DDCheck}$ は syntax／signature ごとの coercion 規則を持たず，必ず次の一つの
+一般 checking schema を使う．まず同じ $q,S$ から $e$ を synthesize して
+$q_1,S_1,\tau_{\mathit{raw}}$ を得る．次に，その直後の cut で
+$S_1\rho$ の expected head と，raw／current source
+$\tau_{\mathit{raw}},S_1\tau_{\mathit{raw}}$ を決定的 selector に渡す．selector が返した
+identity または許された head-changing plan に沿って alignment を一度だけ行い，得られた
+delta を $S_1$ の後ろへ合成する．この判断には全 constraint 列，後続 suffix，明示的な
+demand-origin token を持たせない．特に $\lambda$ 規則は supply から fresh domain
+metavariable を取り，application は function を synthesize した後に fresh domain／codomain を
+作って function を arrow へ通常 alignment し，引数を同じ $\mathsf{DDCheck}$ で検査する．
+expression list は左から右へ state を thread し，$\mathtt{let}$ lookup は generalize した
+scheme から利用ごとに別の fresh instance を作る．各 ordinary solve の constraint は現在の
+syntax，freeze 済み signature，fresh state，直前までの prevailing substitution だけから生成し，
+まだ選んでいない coercion endpoint を expected type へ逆流させない．
+
+selector は raw matcher の product と matcher／slot expected head に対して
+COERCE-PRODUCT-MATCHER を，raw slot の product と slot expected head に対して
+COERCE-SLOT-TUPLE を選び，matcher-to-slot は producer-stable な slot alignment へ送る．
+空 product は両 product recognizer に一致するため product-matcher branch を優先する．一方，
+expected head が未解決の場合や non-coercive branch の head pattern に一致する場合は identity を
+選ぶ．ordinary-first は「通常 unification を試して失敗した」という負前提ではない．selector の
+positive な head table は上記の優先順位を含めて決定的であり，選ばれた非 identity branch の
+source／target head は通常 alignment の branch と排他的である，という invariant と補題として
+証明する．従って
+failed-attempt の rollback，unifier の失敗証拠，fuel exhaustion，producer guard の拒否を
+coercion evidence として利用しない．選択済み branch の alignment が失敗すれば checking 全体が
+失敗し，別の coercion を fallback として探索しない．これは executable selector の決定性であり，
+surface coercion 全体の一意性ではない．terminal reconstruction は同じ raw type，cut 時点の
+prevailing substitution，expected type から unary coercion node を再構成するため，trace に
+型付け oracle を追加しない．
+
+この設計は，Swamy--Hicks--Bierman の type-directed coercion insertion における「context が
+型を要求しない位置では coercion を挿入しない」という原則を，型注釈のない $\lambda$ へ
+適用できるよう fresh state で具体化したものである
+（\href{https://www.cs.umd.edu/~mwh/papers/coercions.pdf}{Swamy et al., ICFP 2009}）．
+Dunfield--Krishnaswami の bidirectional system からは，前の premise の output context を次の
+premise の input context とする state threading だけを借り，higher-rank scope 管理のための
+ordered existential context 全体は導入しない
+（\href{https://doi.org/10.1145/2500365.2500582}{Dunfield and Krishnaswami, ICFP 2013}）．
+Kießling--Luo の HM coercion inference が採る「通常 unification を先に試し，失敗時だけ
+coercion を探索する」手続きは負前提／rollback を必要とするため主判断には採らない
+（\href{https://www.cs.rhul.ac.uk/~zhaohui/TYPES03HM.pdf}{Kießling and Luo, TYPES 2003}）．
+HM(X) の constraint entailment と OutsideIn(X) の given／wanted・guess-free solver は
+solver metatheory の比較対象ではあるが，$\mathsf{DDTyping}$ の index は semantic entailment や
+完全な constraint state ではなく，上の fresh supply と prevailing substitution だけである
+（\href{https://www.cambridge.org/core/services/aop-cambridge-core/content/view/E43F57EC1FF8C202A3F64C55C436930E/S0956796807006569a.pdf/hmx-type-inference-is-clpx-solving.pdf}{Sulzmann--Stuckey 2008}；
+\href{https://simon.peytonjones.org/assets/pdfs/outsideinx.pdf}{Vytiniotis et al. 2011}）．
+
+現行 executable helper は，expected type には cut 時点の prevailing substitution を適用する一方，
+product coercion の source view を $\tau_{\mathit{raw}}$ 自身から認識する．従って raw
+metavariable が $S_1$ の下で初めて product-of-matchers／product-of-slots になる場合，または
+component head が初めて matcher／slot になる場合の completeness は現段階では主張しない．
+$\mathsf{RawSourceVisible}$ は，$\mathsf{DDTyping}$ derivation の各 coercive check について，
+selector が必要とする source view がその cut の raw operand に既に現れていることを表す独立な
+fragment 条件である．既存 core certificate の raw-source provenance 添字は，実際に観察した raw
+type を忠実に保存するが，identity witness を常に選べるため，それだけでは
+$\mathsf{RawSourceVisible}$ を含意しない．将来この条件を外すときも後続 suffix を見るのではなく，
+同じ cut の $S_1\tau_{\mathit{raw}}$ と raw source の対応を event に記録して再構成する．
 
 この公開境界には positive／negative control twin を置く．同じ structured consumer に
 対して polymorphic value producer を用いる項は $\mathsf{infer}$ が拒否し，あらかじめ
@@ -1427,9 +1508,13 @@ admissible-post 準拠を運ぶ proof-carrying certificate であり，二 sort 
 閉性による．対称 solver が rigid 注釈比較で拒否する制約を flexible ledger の下で解く
 対照回帰も固定した．W への切替には cut ごとの snapshot，および raw binder でなく
 局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が残る．
-切替が解消するのは producer guard による freeze ギャップであり，上で展示した demand-free な
-wide 導出を持つ境界例の拒否は変えない．この記述はその項の全 surface 導出を分類する
-inversion theorem を含意しない．
+切替が解消するのは producer guard による freeze ギャップである．
+$\mathsf{FreezeCompatible}$ は，$\mathsf{DDTyping}$ derivation 中の instance，局所 solve，
+generalization，export がこの ledger の admissible post／freeze 条件を満たすことをいう独立な
+fragment 条件であり，coercion selector の head 判断ではない．実際，$\mathsf{Pack\ something}$ の
+拒否には head-changing coercion が一つも関与せず，raw-source visibility を改善しても解消しない．
+逆に，paired solver を ledger へ切り替えても，fresh monomorphic domain を共有する上の
+nested-capability 境界例を受理側へ変えない．
 
 terminal pattern leaf の任意の actual context をまず
 $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface
@@ -1443,29 +1528,65 @@ reconstruction evidence へそのまま吸収される（pval-free 吸収）．�
 まで含む coherent surface typing を，reconstruction certificate そのものとの定義的同一視として公開する
 （鏡写しの独立 domain は維持しない）．pattern 層は threaded 形，value-pattern／arm body／clause
 next-matcher の式 premise は certificate 自身へ再帰し，surface typing への忘却と，公開 inference の
-成功から coherent typing を得る系を持つ．product lift の構成子は将来の raw-head 可視 fragment を
-言明するための raw-source provenance 添字を certificate 本体に保持し，W の再構成は selector が実際に
-頭を検査した raw type を faithful に注入する（恒等 witness も常に取れるため判断を制限しない）．coherence が制限するのは pattern の provenance だけなので，$\mathtt{matchAll}$ と matcher literal を
-含まない match-free 断片では任意の surface typing が coherent であり，Damas–Milner 断片の宣言的
-型付けはすべて埋め込みを経て coherent judgment に入る（DM 受理目標の宣言側）．
+成功から coherent typing を得る系を持つ．product lift の構成子は raw-source provenance 添字を
+certificate 本体に保持し，W の再構成は selector が実際に検査した raw type を faithful に注入する．
+ただし恒等 witness を常に取れるため，この添字は $\mathsf{RawSourceVisible}$ という fragment 条件の
+代用ではない．coherence が制限するのは pattern の provenance だけなので，$\mathtt{matchAll}$ と
+matcher literal を含まない match-free 断片では任意の surface typing が coherent であり，
+Damas–Milner 断片の宣言的型付けはすべて埋め込みを経て coherent judgment に入る
+（DM 受理目標の宣言側）．
+
 現行 $\mathsf{HasTy}$ を前提とする $\mathsf{WideAnnotationFree}$ は，無条件 coercion を許すため
-境界例により恒久的に反証済みである．最上位の将来到達目標は，冒頭で区別した
-$\mathsf{DemandDirectedAnnotationFree}$ である．その独立な宣言的判断は，単に slot 型を
-期待する checking 規則ではなく，要求が signature／$\mathtt{matchAll}$ 等の rigid な consumer
-位置から生じ，未解決 $\lambda$ domain の恣意的な slot 選択からは生じていないことを，
-provenance／origin または ordered constraint state で記録する必要がある．この判断と完全性定理は
-ともに未機械化である（or pattern の binder 整合は解消済み・受理側 regression で固定）．なお or の
-certificate（deriv／threaded の or 規則）は左右の raw 結果を別々に持ち prevailing 像の
+境界例により恒久的に反証済みである．最上位の将来到達目標は冒頭の
+$\mathsf{DDTyping}$ を前提とする受理定理である．$\mathsf{DDTyping}$ は通常の宣言的 $\lambda$ 規則に
+任意の domain を選ばせず，fresh supply と prevailing substitution を thread する．すべての
+checking は synthesis 後の同じ cut で一般 selector を使い，ordinary alignment の優先は
+priority つき positive head table の決定性と，選択 branch の head 排他性から得る．従って
+明示的 demand-origin witness，完全な
+ordered constraint state，semantic entailment，unification 失敗の負前提はこの到達仕様に含めない．
+この判断と受理定理はともに未機械化である．or pattern の binder 整合は既に解消し，受理側
+regression で固定した．deriv／threaded の or 規則は左右の raw 結果を別々に持ち prevailing 像の
 等価 premise で結ぶ形へ緩和したが，宣言的 terminal or 規則は不変である．
+
+最初の fragment completeness は，$\mathcal D$ が closed $\mathsf{DDTyping}$ derivation であるとき
+\[
+\frac{
+  \mathcal D:\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+  \qquad \mathsf{RawSourceVisible}(\mathcal D)
+  \qquad \mathsf{FreezeCompatible}(\mathcal D)
+}{
+  \mathsf{infer}(\Sighat,\emptyset,e)\neq\mathsf{none}
+}
+\]
+を示すことである．$\mathsf{RawSourceVisible}$ は selector と raw source の cut-local な対応，
+$\mathsf{FreezeCompatible}$ は capability substitution／export の admissibility であり，互いにも
+$\mathsf{DDTyping}$ の syntax-directed admissibility にも従属しない．次に，同じ cut の zonked
+source を記録して raw-source blind spot を除き，origin-aware paired solver と export freeze を
+公開 W へ接続して二条件を順に外す．完成形は
+\[
+\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+\Rightarrow
+\mathsf{infer}(\Sighat,\emptyset,e)\neq\mathsf{none}
+\]
+である．別方向の soundness は現行 $\mathsf{infer}$ について既に $\mathsf{HasTy}$ まで機械化済みで
+あり，将来は $\mathsf{DDTyping}$ 自身の $\mathsf{HasTy}$ への忘却を先に証明してから，上の
+acceptance completeness を証明する．これらを full principality や広い $\mathsf{HasTy}$ の
+completeness とは呼ばない．
+
+$\mathsf{nestedCapProgram}$ とその swapped 版は，fresh monomorphic domain を第一利用の raw 型へ
+通常 alignment する $\mathsf{DDTyping}$ には導出を持たないことを inversion で示す対象であり，
+raw-source／freeze の条件を外しても拒否境界に残る．一方，$\mathsf{nestedCapLetProgram}$ は
+$\mathtt{let}$ 多相化が利用ごとに独立な fresh instance を与える positive control で，公開 W の
+受理，三つの相異なる raw target variable，producer-to-slot solve の不在を既に検査している．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
 unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
 整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として
 使う場合には COERCE-SLOT-TUPLE を選ぶ．通常の application も function を fresh domain／codomain
 へ先に整合してから argument をその domain に対して check するため，関数引数位置で
-product-matcher lift，matcher-to-slot，slot-tuple を挿入できる．ただし raw metavariable が prevailing
-substitution 後に初めて product head または matcher／slot component を持つ場合には，matcher
-product／slot product の双方で，判明した solve cut と後続 suffix を記録する cut-indexed event が
-なお必要である．空 product は両 recognizer に一致するため product-matcher branch を優先する．
+product-matcher lift，matcher-to-slot，slot-tuple を挿入できる．raw source が cut 時点の prevailing
+像で初めて必要な head を持つ場合の拡張も，同じ cut の snapshot だけを記録し，後続 suffix から
+coercion の可否を遡及させない．空 product は両 recognizer に一致するため product-matcher branch を
+優先する．
 外側 plan から candidate syntax への論理的 normalization completeness は得られた．この先は，
 component-first 経路を含む critical pair の解消，full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality
 を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．二 sort unifier の
