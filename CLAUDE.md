@@ -87,8 +87,10 @@ commit／push はその都度の明示指示がある場合に限るという規
   位置照合＋束縛型の単一化）で行い，raw metavariable ID の構文的等価を要求しない．これに伴い
   `PatternResolutionDeriv.or` と `ThreadedPatternResolution.or` は「左右の raw 結果 Δ＋
   prevailing 像の等価 premise」へ緩和した（結論は左の raw Δ・宣言的 `TerminalPatternResolution.or`
-  は不変で，忘却 map は premise で輸送する）．残る既知ギャップは capability freeze と nested
-  matcher capability の rigid 比較（いずれも origin-aware paired unifier の対象）．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
+  は不変で，忘却 map は premise で輸送する）．既知ギャップのうち nested matcher capability の
+  rigid 比較は `AcceptanceGapRegression` の `nestedCapProgram` で機械化反例として固定済み
+  （現行推論器への反証 `annotationFree_current_refuted` を含む）で，capability freeze が
+  概念例のまま残る（いずれも origin-aware paired unifier の対象）．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
   先に立て，一意性は canonical boundary（substitution が coercible head を導入しない等）を
   定義してから条件付きで扱う．proof-indexed な derivation
   property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない方針は維持する．
@@ -186,8 +188,11 @@ commit／push はその都度の明示指示がある場合に限るという規
   - `TypePM/AcceptanceGapRegression.lean`: or-pattern の宣言的型付け
     `orProgram_typed` と，binder 整合修正後の受理固定
     （`orProgram_accepted`・異位置束縛の `orMixedProgram_accepted`・
-    単一分岐 control）．capability freeze と nested matcher capability の
-    ギャップは仕様が言明可能になり次第ここへ固定する．
+    単一分岐 control）．nested matcher capability の rigid 比較ギャップも固定：
+    `nestedCapProgram`／swapped 版の宣言的型付けと拒否，同一 producer 二回の
+    control 受理，および現行推論器への反証 `annotationFree_current_refuted`．
+    capability freeze（`Pack something`）は signature fixture が言明可能に
+    なり次第ここへ固定する．
   - `TypePM/ApplicationCoercionRegression.lean`: domain-directed application の matcher product，
     matcher-to-slot，slot-tuple の三つの明示 surface 導出．対応する公開 inference 成功は
     `CertifiedInferenceRegression.lean` の kernel-evaluated `#guard` で固定し，結果型，terminal

@@ -73,9 +73,13 @@ $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq 
 である．core の構文には型注釈の形が存在しないため，これが「正しいプログラムに
 注釈は不要」の正確な形である．この命題は完成後の推論器に対する到達目標である．最初の
 具体反例だった or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化に
-よる整合へ改めて解消し，受理側の regression として固定した．残る既知の受理ギャップ
-（instance capability の producer guard による固定と，入れ子 matcher capability の
-rigid 比較）は origin-aware な paired unifier で解消させる．
+よる整合へ改めて解消し，受理側の regression として固定した．残る既知の受理ギャップの
+うち，入れ子 matcher capability の rigid 比較は機械化済みの反例で固定した：wildcard
+slot 域の単相 consumer に bare `something` と product lift を順に渡すプログラムは宣言的に
+型付くが，推論器は第一用法で域を raw な matcher 型に固定し，第二用法の lift された
+capability を注釈として等値比較して拒否する（逆順も raw-head 死角で拒否）．この反例は
+現行推論器に対する注釈不要性を反証し，instance capability の producer guard による固定
+（概念例 `Pack something`）とともに origin-aware な paired unifier で解消させる．
 達成済みの主柱は次である．
 
 \begin{quote}

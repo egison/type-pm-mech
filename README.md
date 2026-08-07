@@ -23,9 +23,12 @@
 等価から binder 名の照合＋型の単一化（`alignBindings`）へ改めたことで解消し，
 受理側の regression として固定した
 （[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean)）．
-残る既知の受理ギャップは，constructor／primitive instance capability の producer
-guard による固定と，型内部に入れ子の matcher capability の rigid 比較の二系統で，
-いずれも origin-aware paired unifier で解消予定である．principality と異なり，この目標は
+残る既知の受理ギャップのうち，型内部に入れ子の matcher capability の rigid 比較は
+機械化済みの反例（`nestedCapProgram`：宣言的に型付き・推論器は拒否・
+`annotationFree_current_refuted` が現行推論器への反証を固定）で pin 済みであり，
+constructor／primitive instance capability の producer guard による固定
+（概念例 `Pack something`）が概念例のまま残る．いずれも origin-aware paired unifier で
+解消予定である．principality と異なり，この目標は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
 利用位置での明示的 coercion 挿入が引き受ける．
@@ -82,9 +85,13 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    公開する．
 2. **一部済** 受理ギャップの regression 固定 — or pattern は
    [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
-   宣言的型付けと（修正後の）受理を機械化済み．capability freeze（概念例
-   `Pack something`）と nested matcher capability の対は origin-aware solver の
-   仕様確定と合わせて固定する．
+   宣言的型付けと（修正後の）受理を機械化済み．nested matcher capability も同所で
+   pin 済み：wildcard slot 域の単相 consumer に bare `something` と product lift を
+   順に渡す `nestedCapProgram`（と逆順の swapped 版）は宣言的に型付くが，推論器は
+   第一用法で域を raw matcher 型に固定し第二用法の capability を注釈として rigid
+   比較して拒否する（`annotationFree_current_refuted` が現行推論器への反証）．
+   残るは capability freeze（概念例 `Pack something`）で，signature fixture が
+   言明可能になり次第固定する．
 3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
