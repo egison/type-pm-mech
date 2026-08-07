@@ -42,6 +42,10 @@
    provenance 添字を持つ．
 2. MGU 普遍性（unifier factorization）と inference 状態不変量を機械化し，pattern を
    含まない Damas–Milner 断片の全受理（algorithmic acceptance）を証明する．
+   このうち**最汎性は機械化済み**：[`TypePM/Unification.lean`](TypePM/Unification.lean) の
+   proof-carrying kernel が `universal` certificate を構成し，
+   `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として公開する．
+   可解入力に対する solvability completeness と fuel 十分性は残課題である．
 3. coherent かつ product lift の raw head が可視で capability freeze に適合する
    fragment に対する受理完全性を証明する．制限された principality
    （置換 + 一意な coercion-plan kinds への因子化）はこの段の系として狙う．

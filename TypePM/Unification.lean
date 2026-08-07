@@ -186,15 +186,23 @@ def tyFuel (left right : Ty) : Nat :=
 
 /-! ## Proof-carrying kernels -/
 
-/-- Internal certificate returned by a successful capability unification. -/
+/-- Internal certificate returned by a successful capability unification.
+Beyond soundness it certifies most generality: every unifier of the same
+constraint factors through the returned substitution. -/
 structure CapResult (left right : Cap) where
   subst : CapSubst
   sound : left.apply subst = right.apply subst
+  universal :
+    ∀ U : CapSubst, left.apply U = right.apply U →
+      ∃ R : CapSubst, U = CapSubst.comp R subst
 
 /-- Internal certificate returned by successful capability-list unification. -/
 structure CapListResult (left right : List Cap) where
   subst : CapSubst
   sound : Cap.applyList subst left = Cap.applyList subst right
+  universal :
+    ∀ U : CapSubst, Cap.applyList U left = Cap.applyList U right →
+      ∃ R : CapSubst, U = CapSubst.comp R subst
 
 /-- Internal certificate returned by a successful target unification. -/
 structure TyResult (left right : Ty) where
@@ -202,6 +210,9 @@ structure TyResult (left right : Ty) where
   supportVars : List TypePM.TyVar
   support : subst.SupportWithin supportVars
   sound : left.applyTarget subst = right.applyTarget subst
+  universal :
+    ∀ U : TySubst, left.applyTarget U = right.applyTarget U →
+      ∃ R : TySubst, U = TySubst.comp R subst
 
 /-- Internal certificate returned by successful target-list unification. -/
 structure TyListResult (left right : List Ty) where
@@ -209,6 +220,9 @@ structure TyListResult (left right : List Ty) where
   supportVars : List TypePM.TyVar
   support : subst.SupportWithin supportVars
   sound : Ty.applyTargetList subst left = Ty.applyTargetList subst right
+  universal :
+    ∀ U : TySubst, Ty.applyTargetList U left = Ty.applyTargetList U right →
+      ∃ R : TySubst, U = TySubst.comp R subst
 
 mutual
 
@@ -221,6 +235,7 @@ private def solveCap :
         some {
           subst := CapSubst.id
           sound := by subst right; rfl
+          universal := fun U _ => ⟨U, funext fun _ => rfl⟩
         }
       else
         match left, right with
@@ -234,6 +249,15 @@ private def solveCap :
                   simp only [Cap.apply, CapSubst.single, if_pos]
                   exact
                     (Cap.apply_single_of_not_mem varId right right hoccurs).symm
+                universal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, CapSubst.single, Cap.apply]
+                      using hunify
+                  · simp [CapSubst.comp, CapSubst.single, Cap.apply,
+                      hcandidate]
               }
         | left, .var varId =>
             if hoccurs : varId ∈ left.fcv then
@@ -244,6 +268,15 @@ private def solveCap :
                 sound := by
                   simp only [Cap.apply, CapSubst.single, if_pos]
                   exact Cap.apply_single_of_not_mem varId left left hoccurs
+                universal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, CapSubst.single, Cap.apply]
+                      using hunify.symm
+                  · simp [CapSubst.comp, CapSubst.single, Cap.apply,
+                      hcandidate]
               }
         | .con leftName leftChildren, .con rightName rightChildren =>
             if hname : leftName = rightName then
@@ -255,6 +288,10 @@ private def solveCap :
                     sound := by
                       simp only [Cap.apply]
                       rw [hname, result.sound]
+                    universal := by
+                      intro U hunify
+                      simp only [Cap.apply, Cap.con.injEq] at hunify
+                      exact result.universal U hunify.2
                   }
             else
               none
@@ -267,6 +304,10 @@ private def solveCap :
                   sound := by
                     simp only [Cap.apply]
                     exact congrArg Cap.prod result.sound
+                  universal := by
+                    intro U hunify
+                    simp only [Cap.apply, Cap.prod.injEq] at hunify
+                    exact result.universal U hunify
                 }
         | _, _ => none
 
@@ -279,6 +320,7 @@ private def solveCapList :
       some {
         subst := CapSubst.id
         sound := rfl
+        universal := fun U _ => ⟨U, funext fun _ => rfl⟩
       }
   | fuel + 1, leftHead :: leftTail, rightHead :: rightTail =>
       match solveCap fuel leftHead rightHead with
@@ -299,6 +341,23 @@ private def solveCapList :
                     (fun capability => capability.apply tailResult.subst)
                     headResult.sound
                   rw [hhead, tailResult.sound]
+                universal := by
+                  intro U hunify
+                  simp only [Cap.applyList, List.cons.injEq] at hunify
+                  obtain ⟨hhead, htail⟩ := hunify
+                  obtain ⟨R₁, hR₁⟩ := headResult.universal U hhead
+                  have htail' :
+                      Cap.applyList R₁
+                          (Cap.applyList headResult.subst leftTail) =
+                        Cap.applyList R₁
+                          (Cap.applyList headResult.subst rightTail) := by
+                    rw [← Cap.applyList_comp, ← Cap.applyList_comp, ← hR₁]
+                    exact htail
+                  obtain ⟨R₂, hR₂⟩ := tailResult.universal R₁ htail'
+                  refine ⟨R₂, ?_⟩
+                  rw [hR₁, hR₂]
+                  funext candidate
+                  simp [CapSubst.comp, Cap.apply_comp]
               }
   | _ + 1, _, _ => none
 
@@ -318,6 +377,7 @@ private def solveTy :
           supportVars := []
           support := TySubst.id_supportWithin []
           sound := by subst right; rfl
+          universal := fun U _ => ⟨U, funext fun _ => rfl⟩
         }
       else
         match left, right with
@@ -334,6 +394,15 @@ private def solveTy :
                   exact
                     (Ty.applyTarget_single_of_not_mem varId right right
                       hoccurs).symm
+                universal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [TySubst.comp, TySubst.single, Ty.applyTarget]
+                      using hunify
+                  · simp [TySubst.comp, TySubst.single, Ty.applyTarget,
+                      hcandidate]
               }
         | left, .var varId =>
             if hoccurs : varId ∈ left.ftv then
@@ -346,6 +415,15 @@ private def solveTy :
                 sound := by
                   simp only [Ty.applyTarget, TySubst.single, if_pos]
                   exact Ty.applyTarget_single_of_not_mem varId left left hoccurs
+                universal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [TySubst.comp, TySubst.single, Ty.applyTarget]
+                      using hunify.symm
+                  · simp [TySubst.comp, TySubst.single, Ty.applyTarget,
+                      hcandidate]
               }
         | .data leftName leftFields, .data rightName rightFields =>
             if hname : leftName = rightName then
@@ -359,6 +437,10 @@ private def solveTy :
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hname, result.sound]
+                    universal := by
+                      intro U hunify
+                      simp only [Ty.applyTarget, Ty.data.injEq] at hunify
+                      exact result.universal U hunify.2
                   }
             else
               none
@@ -373,6 +455,10 @@ private def solveTy :
                   sound := by
                     simp only [Ty.applyTarget]
                     exact congrArg Ty.prod result.sound
+                  universal := by
+                    intro U hunify
+                    simp only [Ty.applyTarget, Ty.prod.injEq] at hunify
+                    exact result.universal U hunify
                 }
         | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
             match solveTy fuel leftDomain rightDomain with
@@ -404,6 +490,25 @@ private def solveTy :
                           (fun τ => τ.applyTarget codomainResult.subst)
                           domainResult.sound
                         rw [hdomain, codomainResult.sound]
+                      universal := by
+                        intro U hunify
+                        simp only [Ty.applyTarget, Ty.fn.injEq] at hunify
+                        obtain ⟨hdomain, hcodomain⟩ := hunify
+                        obtain ⟨R₁, hR₁⟩ := domainResult.universal U hdomain
+                        have hcodomain' :
+                            (leftCodomain.applyTarget
+                                domainResult.subst).applyTarget R₁ =
+                              (rightCodomain.applyTarget
+                                domainResult.subst).applyTarget R₁ := by
+                          rw [← Ty.applyTarget_comp, ← Ty.applyTarget_comp,
+                            ← hR₁]
+                          exact hcodomain
+                        obtain ⟨R₂, hR₂⟩ :=
+                          codomainResult.universal R₁ hcodomain'
+                        refine ⟨R₂, ?_⟩
+                        rw [hR₁, hR₂]
+                        funext candidate
+                        simp [TySubst.comp, Ty.applyTarget_comp]
                     }
         | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
             if hcap : leftCap = rightCap then
@@ -417,6 +522,10 @@ private def solveTy :
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hcap, result.sound]
+                    universal := by
+                      intro U hunify
+                      simp only [Ty.applyTarget, Ty.matcher.injEq] at hunify
+                      exact result.universal U hunify.2
                   }
             else
               none
@@ -432,6 +541,10 @@ private def solveTy :
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hcap, result.sound]
+                    universal := by
+                      intro U hunify
+                      simp only [Ty.applyTarget, Ty.slot.injEq] at hunify
+                      exact result.universal U hunify.2
                   }
             else
               none
@@ -448,6 +561,7 @@ private def solveTyList :
         supportVars := []
         support := TySubst.id_supportWithin []
         sound := rfl
+        universal := fun U _ => ⟨U, funext fun _ => rfl⟩
       }
   | fuel + 1, leftHead :: leftTail, rightHead :: rightTail =>
       match solveTy fuel leftHead rightHead with
@@ -471,6 +585,24 @@ private def solveTyList :
                     (fun τ => τ.applyTarget tailResult.subst)
                     headResult.sound
                   rw [hhead, tailResult.sound]
+                universal := by
+                  intro U hunify
+                  simp only [Ty.applyTargetList, List.cons.injEq] at hunify
+                  obtain ⟨hhead, htail⟩ := hunify
+                  obtain ⟨R₁, hR₁⟩ := headResult.universal U hhead
+                  have htail' :
+                      Ty.applyTargetList R₁
+                          (Ty.applyTargetList headResult.subst leftTail) =
+                        Ty.applyTargetList R₁
+                          (Ty.applyTargetList headResult.subst rightTail) := by
+                    rw [← Ty.applyTargetList_comp, ← Ty.applyTargetList_comp,
+                      ← hR₁]
+                    exact htail
+                  obtain ⟨R₂, hR₂⟩ := tailResult.universal R₁ htail'
+                  refine ⟨R₂, ?_⟩
+                  rw [hR₁, hR₂]
+                  funext candidate
+                  simp [TySubst.comp, Ty.applyTarget_comp]
               }
   | _ + 1, _, _ => none
 
@@ -634,6 +766,112 @@ theorem mguTyList_sound
     (hsuccess : mguTyList left right = some S) :
     Ty.applyTargetList S left = Ty.applyTargetList S right := by
   exact mguTyListFuel_sound hsuccess
+
+/-! ## Most generality of returned unifiers
+
+The kernels are proof carrying, so every successful run also certifies that
+the returned substitution is a most general unifier: any unifier of the same
+constraint factors through it.  These theorems hold at every fuel; they say
+nothing about solvability, so completeness of the fuel-bounded wrappers on
+unifiable inputs remains a separate open question. -/
+
+/-- Every substitution returned by fuelled capability unification is most
+general. -/
+theorem mguCapFuel_universal
+    {fuel : Nat} {left right : Cap} {S : CapSubst}
+    (hsuccess : mguCapFuel fuel left right = some S)
+    {U : CapSubst} (hunify : left.apply U = right.apply U) :
+    ∃ R : CapSubst, U = CapSubst.comp R S := by
+  unfold mguCapFuel at hsuccess
+  cases hsolve : solveCap fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.universal U hunify
+
+/-- Every substitution returned by fuelled capability-list unification is most
+general. -/
+theorem mguCapListFuel_universal
+    {fuel : Nat} {left right : List Cap} {S : CapSubst}
+    (hsuccess : mguCapListFuel fuel left right = some S)
+    {U : CapSubst} (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ R : CapSubst, U = CapSubst.comp R S := by
+  unfold mguCapListFuel at hsuccess
+  cases hsolve : solveCapList fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.universal U hunify
+
+/-- Every substitution returned by fuelled target unification is most
+general. -/
+theorem mguTyFuel_universal
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (hsuccess : mguTyFuel fuel left right = some S)
+    {U : TySubst} (hunify : left.applyTarget U = right.applyTarget U) :
+    ∃ R : TySubst, U = TySubst.comp R S := by
+  unfold mguTyFuel at hsuccess
+  cases hsolve : solveTy fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.universal U hunify
+
+/-- Every substitution returned by fuelled target-list unification is most
+general. -/
+theorem mguTyListFuel_universal
+    {fuel : Nat} {left right : List Ty} {S : TySubst}
+    (hsuccess : mguTyListFuel fuel left right = some S)
+    {U : TySubst}
+    (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
+    ∃ R : TySubst, U = TySubst.comp R S := by
+  unfold mguTyListFuel at hsuccess
+  cases hsolve : solveTyList fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.universal U hunify
+
+/-- Most generality of the specification-level capability unifier. -/
+theorem mguCap_universal
+    {left right : Cap} {S : CapSubst}
+    (hsuccess : mguCap left right = some S)
+    {U : CapSubst} (hunify : left.apply U = right.apply U) :
+    ∃ R : CapSubst, U = CapSubst.comp R S :=
+  mguCapFuel_universal hsuccess hunify
+
+/-- Most generality of the specification-level capability-list unifier. -/
+theorem mguCapList_universal
+    {left right : List Cap} {S : CapSubst}
+    (hsuccess : mguCapList left right = some S)
+    {U : CapSubst} (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ R : CapSubst, U = CapSubst.comp R S :=
+  mguCapListFuel_universal hsuccess hunify
+
+/-- Most generality of the specification-level target unifier. -/
+theorem mguTy_universal
+    {left right : Ty} {S : TySubst}
+    (hsuccess : mguTy left right = some S)
+    {U : TySubst} (hunify : left.applyTarget U = right.applyTarget U) :
+    ∃ R : TySubst, U = TySubst.comp R S :=
+  mguTyFuel_universal hsuccess hunify
+
+/-- Most generality of the specification-level target-list unifier. -/
+theorem mguTyList_universal
+    {left right : List Ty} {S : TySubst}
+    (hsuccess : mguTyList left right = some S)
+    {U : TySubst}
+    (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
+    ∃ R : TySubst, U = TySubst.comp R S :=
+  mguTyListFuel_universal hsuccess hunify
 
 /-! ## Executable regression checks -/
 

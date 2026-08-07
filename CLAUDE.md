@@ -48,7 +48,12 @@ commit／push はその都度の明示指示がある場合に限るという規
   `Elaboration.CoreTyping` は公開 inference が構成する derivation-structured な `Prop` 証明書
   `Reconstruction.ExprDeriv` の別名であり，明示的 coercion に沿う証明を erase して `HasTy` を得る
   soundness 境界である．proof irrelevance のため観測可能な core data とは呼ばない．
-  一意性／MGU 普遍性／surface completeness は open として扱う．
+  MGU の最汎性は証明済みである：`Unification.lean` の proof-carrying kernel は `universal`
+  field で「返された substitution を任意の unifier が factor する」ことを構成し，
+  `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）が公開定理である．
+  これは成功時の性質であり，可解な入力で fuel-bounded wrapper が成功する solvability
+  completeness（および構造 fuel の十分性）は open のまま扱う．
+  一意性／surface completeness も open として扱う．
   特に `TerminalPatternResolution` の leaf は `rawContext` と任意の `actualContext` を
   独立に持てるため，無条件の `HasTy → ExprDeriv` は主張しない．再帰的 completeness は
   `actualContext = rawContext.applySubst prevailing` を満たす coherent surface subset

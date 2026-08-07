@@ -1391,7 +1391,9 @@ product／slot product の双方で，判明した solve cut と後続 suffix �
 なお必要である．空 product は両 recognizer に一致するため product-matcher branch を優先する．
 外側 plan から candidate syntax への論理的 normalization completeness は得られた．この先は，
 component-first 経路を含む critical pair の解消，full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality
-を確定してから，core typing の一意性，unifier factorization，coherent surface completeness へ進む必要がある．
+を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．二 sort unifier の
+最汎性（返された substitution を任意の unifier が factor すること）は proof-carrying kernel の certificate
+として機械化済みであり，残るのは可解な入力に対する solvability completeness と fuel 十分性である．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 
