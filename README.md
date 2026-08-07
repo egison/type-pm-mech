@@ -32,30 +32,76 @@
 `InferenceInputWF` 入力に限定した主張より強く，`WBridgeWF` は validator が内部で
 構成する証明書であって呼び出し側の仮定ではない．
 
-目標への段階は次のとおり．
+段階の詳細は次節ロードマップにまとめる．現在は段階 1 が完了し，段階 2 は宣言側と
+MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ全体の検証は主張しない．
 
-1. **済**: 相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか 10 family，
-   [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean)）と reconstruction
-   certificate `ExprDeriv` の相互変換，surface への忘却 `CoherentExpr.toHasTy`，
-   および `infer` 成功から coherent typing を得る `infer_success_coherent`．
-   product lift の構成子は将来の可視性 fragment を言明するための raw-source
-   provenance 添字を持つ．
-2. MGU 普遍性（unifier factorization）と inference 状態不変量を機械化し，pattern を
-   含まない Damas–Milner 断片の全受理（algorithmic acceptance）を証明する．
-   このうち**最汎性は機械化済み**：[`TypePM/Unification.lean`](TypePM/Unification.lean) の
+## ロードマップ
+
+無制限の principality は機械化済み反例により偽であり，どの段でも復活させない．
+各段は独立に主張として成立する形で積む．
+
+### 段階 1: coherent surface typing 基盤 — 済
+
+- **済** 10 family の相互帰納 coherent surface typing（`Coherent.CoherentExpr` ほか，
+  [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean)）．pattern 層は
+  threaded-only．
+- **済** reconstruction certificate `ExprDeriv` との相互変換
+  （`toExprDeriv`／`ofExprDeriv`），surface への忘却 `CoherentExpr.toHasTy`，
+  推論成功からの `infer_success_coherent`，standalone threaded 境界への忘却
+  `toThreadedSurface`．
+- **済** product lift 構成子の raw-source provenance 添字（段階 3 の可視性 fragment を
+  言明するための装置．恒等 witness が常に取れるため判断を制限しない）．
+- **済** 旗艦例の coherent instance（`listMatcherMatchAll_coherent`）．
+- 未: pval-free aligned 吸収補題（fragment 記述の精密化用，批判経路外）．
+
+### 段階 2: Damas–Milner 断片の全受理
+
+宣言側は完了している．
+
+- **済** DM 埋め込み `DM.HasTy.emb`
+  （[`TypePM/DamasMilner.lean`](TypePM/DamasMilner.lean)）．
+- **済** match-free 断片の全 coherence
+  （`coherent_of_matchFree`／`certified_of_matchFree`）: `matchAll` と matcher literal を
+  含まない式の宣言的型付けはすべて coherent．
+- **済** その系 `dm_coherent`: DM のすべての宣言的型付けが埋め込みを経て coherent
+  judgment に入る（多相 let 証人の instance `idProgram_coherent` つき）．
+
+算法側は依存順に次を積む．
+
+1. **済** MGU 最汎性: [`TypePM/Unification.lean`](TypePM/Unification.lean) の
    proof-carrying kernel が `universal` certificate を構成し，
-   `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として公開する．
-   可解入力に対する solvability completeness と fuel 十分性は残課題である．
-3. coherent かつ product lift の raw head が可視で capability freeze に適合する
-   fragment に対する受理完全性を証明する．制限された principality
-   （置換 + 一意な coercion-plan kinds への因子化）はこの段の系として狙う．
-4. solve-cut event により selector の raw-head 死角を除去し，fragment 条件を
-   取り外して `AnnotationFree` 本体へ到達する．
+   `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として
+   公開する．
+2. 未: MGU solvability completeness — 可解入力に対する ∃fuel 成功（変数消去測度による
+   帰納）．構造 fuel 束縛 wrapper の十分性は別問題として open に扱う．
+3. 未: `inferRaw` の状態不変量（freshness・prevailing 合成・`protectedCaps` 単調性）と，
+   DM 断片での成功＋因子化の主帰納法（段階 2 最大の作業）．
+4. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
+5. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
 
-plain surface principality は機械化済み反例により偽である．現時点では core evidence を
-伴う soundness，raw provenance を保つ再帰的 core head factorization，外側 coercion plan の
-論理的な normalization completeness，および段階 1 までを証明している．core の一意性と
-Egison コンパイラ全体の検証はまだ主張しない．
+### 段階 3: fragment 受理完全性と制限 principality
+
+1. 未: fragment 条件の言明 — raw-head 可視性（段階 1 の provenance 添字で言明可能）と
+   capability freeze 適合（`CapabilityOrigin` の ledger から言明を起こす．設計が証明に
+   先行する）．
+2. 未: coherent かつ可視かつ freeze 適合な typing に対する受理＋因子化（段階 2 の機械の
+   全構文拡張）．
+3. 未: 制限 principality — 推論結果 τ₀ と一意な `NormalPlan` kinds への因子化．
+   kinds 一意性（`Spine.kinds_unique`／`NormalPlan.eq_refl`）は証明済みなので
+   組み立てのみ．
+4. 未（推奨）: coherentization — 任意の `HasTy` 型付けの coherent 再提示．受理完全性の
+   仮定から coherence 条件を消す格上げ．
+
+### 段階 4: `AnnotationFree` 本体
+
+1. 未: solve-cut event（cut-indexed coercion event）による selector の raw-head 死角の
+   除去．canonical core judgment への強化で残る critical pair の解消・full plan
+   uniqueness（または quotient）・置換に対する naturality もここに属する．
+2. 未: capability freeze completeness（origin-aware solver への切替）．
+3. 到達点: fragment 条件を外した `AnnotationFree`．途中で反例が見つかった場合は
+   fragment 版（段階 3）を最終形として確定し，反例を境界として記録する．
+
+## 概要
 
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．形式仕様は
 [`tex/main.tex`](tex/main.tex)，Lean の public import surface は
@@ -291,41 +337,33 @@ origin-aware orientation，および raw binder ではなく局所 solve 後に�
 leaf を freeze する export event が必要である．
 
 `CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
-completeness は得られた．今後 canonical core judgment へ強化するには，component-first 経路を含む
-critical pair の解消と full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality，
-および normalized product が判明した
-solve cut を保存する cut-indexed evidence が必要になる．その上で W が生成する core typing の
-一意性（binder の alpha 同値を除く），unifier の factorization（置換普遍性），および任意の coherent surface
-typing がその置換と明示的 coercion から得られる completeness を証明する．現行
-`TerminalPatternResolution` の leaf は freshness 用 `rawContext` と
-`actualContext` を独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も
-含まれる．[`TypePM/CoherentSurface.lean`](TypePM/CoherentSurface.lean) は第一段階として，
-各 terminal pattern leaf の actual context を definitionally
+completeness は得られた．canonical core judgment への強化に残る項目（critical pair の解消，
+plan uniqueness または quotient，cut-indexed evidence など）はロードマップ節に集約する．
+
+現行 `TerminalPatternResolution` の leaf は freshness 用 `rawContext` と `actualContext` を
+独立に選べるため，`HasTy` 全体には algorithmic provenance を持たない導出も含まれる．
+[`TypePM/CoherentSurface.lean`](TypePM/CoherentSurface.lean) は pattern-local な coherent 境界を
+与える：各 terminal pattern leaf の actual context を definitionally
 `rawContext.applySubst prevailing` に固定する indices-only な
-`CoherentTerminalPatternResolution(s)` と `CoherentResolvedPatternTy` を追加する．coherent
-evidence から既存 surface judgment への forgetful map と，inference reconstruction の
-`PatternResolutionDeriv(s)`／`ResolvedPatternDeriv` がこの leaf-local 境界へ入る bridge も証明する．
-さらに `ThreadedPatternResolution(s)` は一つの raw `Context`／`PatternCtx` を全 child で共有し，
-raw `MonoCtx` だけを binder 導入順に threadする．この強い judgment から leaf-local 境界への
-forgetful map は証明済みである．`PatternResolutionDeriv(s)` 自体も同じ raw context と raw binding
-thread を保持する形へ強化し，W の pattern reconstruction motive がこれを直接生成する．その `pval` は
-再帰的な `ExprDeriv` を要求し，arm と clause も既存の reconstruction family に閉じているため，公開
-inference が返す `CoreTyping` は全構文部分で surface typing oracle へ戻らない．この core evidence から
-`ThreadedPatternResolution(s)` への bridge では `ExprDeriv` を `HasTy` へ忘却する．
-[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) はこの残りを埋める：expression，arm，
-clause まで含む 10 family の相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか）を
-独立に定式化し，`Reconstruction` certificate との相互変換（`toExprDeriv`／`ofExprDeriv`），surface への
-忘却 `CoherentExpr.toHasTy`，推論成功から coherent typing を得る `infer_success_coherent`，standalone
-threaded 境界への忘却 `toThreadedSurface` を証明する．pattern 層は threaded-only で，product lift
-構成子は raw-source provenance 添字を持つ（恒等 witness が常に取れるため判断を制限しない）．
-さらに coherence が制限するのは pattern の provenance だけであることを反映して，
-`matchAll` と matcher literal を含まない **match-free 断片では任意の surface typing が
-coherent** である（`coherent_of_matchFree`／`certified_of_matchFree`）．その系として，
-Damas–Milner 断片のすべての宣言的型付けは埋め込みを経て coherent judgment に入る
-（`dm_coherent`）．これは段階 2（DM 全受理）の宣言側の半分であり，算法側
-（公開 `infer` の成功）は未主張のまま残る．
-最上位目標の注釈不要性 `Coherent.AnnotationFree` は言明のみを固定した未証明の目標である．
-現時点ではこの進展を algorithmic completeness や principality として主張しない．
+`CoherentTerminalPatternResolution(s)`／`CoherentResolvedPatternTy`，一つの raw
+`Context`／`PatternCtx` を全 child で共有し raw `MonoCtx` だけを binder 導入順に thread する
+強い `ThreadedPatternResolution(s)`，および surface への forgetful map と reconstruction
+bridge である．`PatternResolutionDeriv(s)` も同じ raw context と raw binding thread を保持し，
+W の pattern reconstruction motive がこれを直接生成する．その `pval` は再帰的な `ExprDeriv` を
+要求し，arm と clause も reconstruction family に閉じているため，公開 inference が返す
+`CoreTyping` は全構文部分で surface typing oracle へ戻らない．
+
+[`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) はこれを expression，arm，clause まで
+拡張する：10 family の相互帰納的 coherent surface typing（`Coherent.CoherentExpr` ほか）を
+独立に定式化し，`Reconstruction` certificate との相互変換（`toExprDeriv`／`ofExprDeriv`），
+surface への忘却 `CoherentExpr.toHasTy`，推論成功から coherent typing を得る
+`infer_success_coherent`，standalone threaded 境界への忘却 `toThreadedSurface` を証明する．
+pattern 層は threaded-only で，product lift 構成子は raw-source provenance 添字を持つ
+（恒等 witness が常に取れるため判断を制限しない）．coherence が制限するのは pattern の
+provenance だけなので，`matchAll` と matcher literal を含まない **match-free 断片では任意の
+surface typing が coherent** であり（`coherent_of_matchFree`／`certified_of_matchFree`），
+その系として Damas–Milner 断片のすべての宣言的型付けは埋め込みを経て coherent judgment に
+入る（`dm_coherent`）．これらを algorithmic completeness や principality とは呼ばない．
 
 ### Runtime safety
 
@@ -393,9 +431,10 @@ signature 上の二 sort 宣言体系へ埋め込まれる**こと（`DM.HasTy.e
 埋め込みの下で capability sort は不活性で
 ある：capability binder は空，capability substitution は自明に作用し（`STy.emb_fcv` = 空），
 `let` の一般化は二 sort generalizer と可換（`generalize_emb`）．多相 `let` の証人
-`let id = λx.x in (id id) 1` の DM 導出とその埋め込みも固定する．逆方向
-（conservativity）と algorithmic acceptance（公開 `infer` が DM program を全受理すること）は
-主張しない．
+`let id = λx.x in (id id) 1` の DM 導出とその埋め込みも固定する．受理の宣言側の準備として，
+DM の全型付けが coherent judgment へ入ること（`Coherent.dm_coherent`）は
+`CoherentTyping.lean` で証明済みである．逆方向（conservativity）と algorithmic acceptance
+（公開 `infer` が DM program を全受理すること）は主張しない．
 
 [`TypePM/PrincipalityCounterexample.lean`](TypePM/PrincipalityCounterexample.lean) は，
 宣言体系のprincipalityが**そのままの形では偽**であることを機械化された反例で確定する．
@@ -495,7 +534,8 @@ producer へ置き換えた control twin が成功することを対で検査す
 
 次はこの formal core の主張に含めない．
 
-- Algorithm W の completeness／full principality
+- Algorithm W の completeness（`AnnotationFree` はロードマップ上の未証明目標として
+  言明のみ）と，反証済みの無制限 principality
 - alias，mutual recursion，transform，高階 origin を含む一般 producer-flow 解析
 - raw declaration から frozen signature を構築する validator
 - full Egison の warning mode の実装，module/import persistence，標準ライブラリ移行
