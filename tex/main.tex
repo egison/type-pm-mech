@@ -346,9 +346,10 @@ substitution がなければ失敗する．
 $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であり，成功時は
 両端を等しくする sound な unifier を返す．constructor／arity の不一致，occurs check の失敗，
 または rigid skolem を解く必要がある場合は失敗する．
-ここで主張するのは成功結果の soundness，関数としての決定性，および置換普遍性
-（任意の別 unifier が成功結果を経由して factor すること）である．可解な入力での
-成功（solvability completeness）と fuel 十分性は含まない．
+ここで主張するのは成功結果の soundness，関数としての決定性，置換普遍性
+（任意の別 unifier が成功結果を経由して factor すること），および fuel 単調性
+（成功はより大きい任意の fuel で同じ substitution のまま保存されること）である．
+可解な入力での成功（solvability completeness）と固定 fuel bound の十分性は含まない．
 $\Any$ はこの一方向 consumer relation でだけ wildcard であり，対称な $\mguCap$
 では通常の rigid ground constructor として扱う．従って $\mguCap(\Any,\Any)$ は
 成功するが，$\mguCap(\Any,K\overline\kappa)$ は失敗する（flexible variable を
@@ -1409,7 +1410,9 @@ product／slot product の双方で，判明した solve cut と後続 suffix �
 component-first 経路を含む critical pair の解消，full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality
 を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．二 sort unifier の
 最汎性（返された substitution を任意の unifier が factor すること）は proof-carrying kernel の certificate
-として機械化済みであり，残るのは可解な入力に対する solvability completeness と fuel 十分性である．
+として，fuel 単調性（成功が任意のより大きい fuel で同じ substitution のまま保存されること）は
+fuel の直接帰納として機械化済みであり，残るのは可解な入力に対する solvability completeness
+（一つの十分な fuel の存在と固定 bound の十分性）である．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 

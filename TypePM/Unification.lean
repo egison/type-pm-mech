@@ -612,6 +612,480 @@ private def solveTyList :
 end
 
 
+/-! ## Fuel monotonicity of the kernels
+
+Branch selection in the kernels depends only on the constraint, never on the
+remaining fuel, so a successful run replays verbatim with any larger fuel and
+returns the same substitution.  These lemmas are the first half of the
+solvability programme: they reduce "some fuel succeeds" to "every larger fuel
+succeeds", leaving only the existence of one sufficient fuel open. -/
+
+private theorem solveCapPair_mono_succ :
+    ∀ fuel : Nat,
+      (∀ (left right : Cap) (result : CapResult left right),
+        solveCap fuel left right = some result →
+          ∃ result' : CapResult left right,
+            solveCap (fuel + 1) left right = some result' ∧
+              result'.subst = result.subst) ∧
+      (∀ (left right : List Cap) (result : CapListResult left right),
+        solveCapList fuel left right = some result →
+          ∃ result' : CapListResult left right,
+            solveCapList (fuel + 1) left right = some result' ∧
+              result'.subst = result.subst)
+  | 0 => by
+      constructor
+      · intro left right result hrun
+        simp [solveCap] at hrun
+      · intro left right result hrun
+        simp [solveCapList] at hrun
+  | fuel + 1 => by
+      obtain ⟨ihCap, ihList⟩ := solveCapPair_mono_succ fuel
+      constructor
+      · intro left right result hrun
+        rw [solveCap] at hrun ⊢
+        by_cases hequal : left = right
+        · rw [dif_pos hequal] at hrun ⊢
+          exact ⟨_, rfl, by cases hrun; rfl⟩
+        · rw [dif_neg hequal] at hrun ⊢
+          match left, right with
+          | .var varId, right =>
+              exact ⟨result, hrun, rfl⟩
+          | .con leftName leftChildren, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .prod leftComponents, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .any, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .skolem name, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .con leftName leftChildren, .con rightName rightChildren =>
+              simp only [] at hrun ⊢
+              by_cases hname : leftName = rightName
+              · rw [dif_pos hname] at hrun ⊢
+                cases hchildren : solveCapList fuel leftChildren rightChildren
+                  with
+                | none => rw [hchildren] at hrun; cases hrun
+                | some childResult =>
+                    rw [hchildren] at hrun
+                    obtain ⟨childResult', hchildren', hsubst⟩ :=
+                      ihList leftChildren rightChildren childResult hchildren
+                    rw [hchildren']
+                    cases hrun
+                    exact ⟨_, rfl, hsubst⟩
+              · rw [dif_neg hname] at hrun
+                cases hrun
+          | .prod leftComponents, .prod rightComponents =>
+              simp only [] at hrun ⊢
+              cases hcomponents :
+                  solveCapList fuel leftComponents rightComponents with
+              | none => rw [hcomponents] at hrun; cases hrun
+              | some componentResult =>
+                  rw [hcomponents] at hrun
+                  obtain ⟨componentResult', hcomponents', hsubst⟩ :=
+                    ihList leftComponents rightComponents componentResult
+                      hcomponents
+                  rw [hcomponents']
+                  cases hrun
+                  exact ⟨_, rfl, hsubst⟩
+          | .any, .any => cases hrun
+          | .any, .skolem _ => cases hrun
+          | .any, .con _ _ => cases hrun
+          | .any, .prod _ => cases hrun
+          | .skolem _, .any => cases hrun
+          | .skolem _, .skolem _ => cases hrun
+          | .skolem _, .con _ _ => cases hrun
+          | .skolem _, .prod _ => cases hrun
+          | .con _ _, .any => cases hrun
+          | .con _ _, .prod _ => cases hrun
+          | .prod _, .any => cases hrun
+          | .prod _, .skolem _ => cases hrun
+          | .prod _, .con _ _ => cases hrun
+      · intro left right result hrun
+        match left, right with
+        | [], [] =>
+            exact ⟨result, hrun, rfl⟩
+        | leftHead :: leftTail, rightHead :: rightTail =>
+            simp only [solveCapList] at hrun ⊢
+            cases hhead : solveCap fuel leftHead rightHead with
+            | none => rw [hhead] at hrun; cases hrun
+            | some headResult =>
+                rw [hhead] at hrun
+                simp only [] at hrun
+                obtain ⟨headResult', hhead', hheadSubst⟩ :=
+                  ihCap leftHead rightHead headResult hhead
+                rw [hhead']
+                simp only []
+                cases htail : solveCapList fuel
+                    (Cap.applyList headResult.subst leftTail)
+                    (Cap.applyList headResult.subst rightTail) with
+                | none => rw [htail] at hrun; cases hrun
+                | some tailResult =>
+                    rw [htail] at hrun
+                    obtain ⟨tailResult', htail', htailSubst⟩ :=
+                      ihList _ _ tailResult htail
+                    have htailPrimed : ∃ tailResultP : CapListResult
+                        (Cap.applyList headResult'.subst leftTail)
+                        (Cap.applyList headResult'.subst rightTail),
+                        solveCapList (fuel + 1)
+                            (Cap.applyList headResult'.subst leftTail)
+                            (Cap.applyList headResult'.subst rightTail) =
+                          some tailResultP ∧
+                        tailResultP.subst = tailResult.subst := by
+                      rw [hheadSubst]
+                      exact ⟨tailResult', htail', htailSubst⟩
+                    obtain ⟨tailResultP, htailP, htailPSubst⟩ := htailPrimed
+                    rw [htailP]
+                    cases hrun
+                    exact ⟨_, rfl, by
+                      show CapSubst.comp tailResultP.subst headResult'.subst =
+                        CapSubst.comp tailResult.subst headResult.subst
+                      rw [htailPSubst, hheadSubst]⟩
+        | [], _ :: _ =>
+            cases hrun
+        | _ :: _, [] =>
+            cases hrun
+
+private theorem solveTyPair_mono_succ :
+    ∀ fuel : Nat,
+      (∀ (left right : Ty) (result : TyResult left right),
+        solveTy fuel left right = some result →
+          ∃ result' : TyResult left right,
+            solveTy (fuel + 1) left right = some result' ∧
+              result'.subst = result.subst) ∧
+      (∀ (left right : List Ty) (result : TyListResult left right),
+        solveTyList fuel left right = some result →
+          ∃ result' : TyListResult left right,
+            solveTyList (fuel + 1) left right = some result' ∧
+              result'.subst = result.subst)
+  | 0 => by
+      constructor
+      · intro left right result hrun
+        simp [solveTy] at hrun
+      · intro left right result hrun
+        simp [solveTyList] at hrun
+  | fuel + 1 => by
+      obtain ⟨ihTy, ihList⟩ := solveTyPair_mono_succ fuel
+      constructor
+      · intro left right result hrun
+        rw [solveTy] at hrun ⊢
+        by_cases hequal : left = right
+        · rw [dif_pos hequal] at hrun ⊢
+          exact ⟨_, rfl, by cases hrun; rfl⟩
+        · rw [dif_neg hequal] at hrun ⊢
+          match left, right with
+          | .var varId, right =>
+              exact ⟨result, hrun, rfl⟩
+          | .skolem name, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .unit, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .int, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .bool, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .data leftName leftFields, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .prod leftComponents, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .fn leftDomain leftCodomain, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .matcher leftCap leftTarget, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .slot leftCap leftTarget, .var varId =>
+              exact ⟨result, hrun, rfl⟩
+          | .data leftName leftFields, .data rightName rightFields =>
+              simp only [] at hrun ⊢
+              by_cases hname : leftName = rightName
+              · rw [dif_pos hname] at hrun ⊢
+                cases hfields : solveTyList fuel leftFields rightFields with
+                | none => rw [hfields] at hrun; cases hrun
+                | some fieldResult =>
+                    rw [hfields] at hrun
+                    obtain ⟨fieldResult', hfields', hsubst⟩ :=
+                      ihList leftFields rightFields fieldResult hfields
+                    rw [hfields']
+                    cases hrun
+                    exact ⟨_, rfl, hsubst⟩
+              · rw [dif_neg hname] at hrun
+                cases hrun
+          | .prod leftComponents, .prod rightComponents =>
+              simp only [] at hrun ⊢
+              cases hcomponents :
+                  solveTyList fuel leftComponents rightComponents with
+              | none => rw [hcomponents] at hrun; cases hrun
+              | some componentResult =>
+                  rw [hcomponents] at hrun
+                  obtain ⟨componentResult', hcomponents', hsubst⟩ :=
+                    ihList leftComponents rightComponents componentResult
+                      hcomponents
+                  rw [hcomponents']
+                  cases hrun
+                  exact ⟨_, rfl, hsubst⟩
+          | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
+              simp only [] at hrun ⊢
+              cases hdomain : solveTy fuel leftDomain rightDomain with
+              | none => rw [hdomain] at hrun; cases hrun
+              | some domainResult =>
+                  rw [hdomain] at hrun
+                  simp only [] at hrun
+                  obtain ⟨domainResult', hdomain', hdomainSubst⟩ :=
+                    ihTy leftDomain rightDomain domainResult hdomain
+                  rw [hdomain']
+                  simp only []
+                  cases hcodomain : solveTy fuel
+                      (leftCodomain.applyTarget domainResult.subst)
+                      (rightCodomain.applyTarget domainResult.subst) with
+                  | none => rw [hcodomain] at hrun; cases hrun
+                  | some codomainResult =>
+                      rw [hcodomain] at hrun
+                      obtain ⟨codomainResult', hcodomain', hcodomainSubst⟩ :=
+                        ihTy _ _ codomainResult hcodomain
+                      have hcodomainPrimed : ∃ codomainResultP : TyResult
+                          (leftCodomain.applyTarget domainResult'.subst)
+                          (rightCodomain.applyTarget domainResult'.subst),
+                          solveTy (fuel + 1)
+                              (leftCodomain.applyTarget domainResult'.subst)
+                              (rightCodomain.applyTarget domainResult'.subst) =
+                            some codomainResultP ∧
+                          codomainResultP.subst = codomainResult.subst := by
+                        rw [hdomainSubst]
+                        exact ⟨codomainResult', hcodomain', hcodomainSubst⟩
+                      obtain ⟨codomainResultP, hcodomainP, hcodomainPSubst⟩ :=
+                        hcodomainPrimed
+                      rw [hcodomainP]
+                      cases hrun
+                      exact ⟨_, rfl, by
+                        show TySubst.comp codomainResultP.subst
+                            domainResult'.subst =
+                          TySubst.comp codomainResult.subst domainResult.subst
+                        rw [hcodomainPSubst, hdomainSubst]⟩
+          | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
+              simp only [] at hrun ⊢
+              by_cases hcap : leftCap = rightCap
+              · rw [dif_pos hcap] at hrun ⊢
+                cases htarget : solveTy fuel leftTarget rightTarget with
+                | none => rw [htarget] at hrun; cases hrun
+                | some targetResult =>
+                    rw [htarget] at hrun
+                    obtain ⟨targetResult', htarget', hsubst⟩ :=
+                      ihTy leftTarget rightTarget targetResult htarget
+                    rw [htarget']
+                    cases hrun
+                    exact ⟨_, rfl, hsubst⟩
+              · rw [dif_neg hcap] at hrun
+                cases hrun
+          | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+              simp only [] at hrun ⊢
+              by_cases hcap : leftCap = rightCap
+              · rw [dif_pos hcap] at hrun ⊢
+                cases htarget : solveTy fuel leftTarget rightTarget with
+                | none => rw [htarget] at hrun; cases hrun
+                | some targetResult =>
+                    rw [htarget] at hrun
+                    obtain ⟨targetResult', htarget', hsubst⟩ :=
+                      ihTy leftTarget rightTarget targetResult htarget
+                    rw [htarget']
+                    cases hrun
+                    exact ⟨_, rfl, hsubst⟩
+              · rw [dif_neg hcap] at hrun
+                cases hrun
+          | .skolem _, .skolem _ =>
+              cases hrun
+          | .skolem _, .unit =>
+              cases hrun
+          | .skolem _, .int =>
+              cases hrun
+          | .skolem _, .bool =>
+              cases hrun
+          | .skolem _, .data _ _ =>
+              cases hrun
+          | .skolem _, .prod _ =>
+              cases hrun
+          | .skolem _, .fn _ _ =>
+              cases hrun
+          | .skolem _, .matcher _ _ =>
+              cases hrun
+          | .skolem _, .slot _ _ =>
+              cases hrun
+          | .unit, .skolem _ =>
+              cases hrun
+          | .unit, .unit =>
+              cases hrun
+          | .unit, .int =>
+              cases hrun
+          | .unit, .bool =>
+              cases hrun
+          | .unit, .data _ _ =>
+              cases hrun
+          | .unit, .prod _ =>
+              cases hrun
+          | .unit, .fn _ _ =>
+              cases hrun
+          | .unit, .matcher _ _ =>
+              cases hrun
+          | .unit, .slot _ _ =>
+              cases hrun
+          | .int, .skolem _ =>
+              cases hrun
+          | .int, .unit =>
+              cases hrun
+          | .int, .int =>
+              cases hrun
+          | .int, .bool =>
+              cases hrun
+          | .int, .data _ _ =>
+              cases hrun
+          | .int, .prod _ =>
+              cases hrun
+          | .int, .fn _ _ =>
+              cases hrun
+          | .int, .matcher _ _ =>
+              cases hrun
+          | .int, .slot _ _ =>
+              cases hrun
+          | .bool, .skolem _ =>
+              cases hrun
+          | .bool, .unit =>
+              cases hrun
+          | .bool, .int =>
+              cases hrun
+          | .bool, .bool =>
+              cases hrun
+          | .bool, .data _ _ =>
+              cases hrun
+          | .bool, .prod _ =>
+              cases hrun
+          | .bool, .fn _ _ =>
+              cases hrun
+          | .bool, .matcher _ _ =>
+              cases hrun
+          | .bool, .slot _ _ =>
+              cases hrun
+          | .data _ _, .skolem _ =>
+              cases hrun
+          | .data _ _, .unit =>
+              cases hrun
+          | .data _ _, .int =>
+              cases hrun
+          | .data _ _, .bool =>
+              cases hrun
+          | .data _ _, .prod _ =>
+              cases hrun
+          | .data _ _, .fn _ _ =>
+              cases hrun
+          | .data _ _, .matcher _ _ =>
+              cases hrun
+          | .data _ _, .slot _ _ =>
+              cases hrun
+          | .prod _, .skolem _ =>
+              cases hrun
+          | .prod _, .unit =>
+              cases hrun
+          | .prod _, .int =>
+              cases hrun
+          | .prod _, .bool =>
+              cases hrun
+          | .prod _, .data _ _ =>
+              cases hrun
+          | .prod _, .fn _ _ =>
+              cases hrun
+          | .prod _, .matcher _ _ =>
+              cases hrun
+          | .prod _, .slot _ _ =>
+              cases hrun
+          | .fn _ _, .skolem _ =>
+              cases hrun
+          | .fn _ _, .unit =>
+              cases hrun
+          | .fn _ _, .int =>
+              cases hrun
+          | .fn _ _, .bool =>
+              cases hrun
+          | .fn _ _, .data _ _ =>
+              cases hrun
+          | .fn _ _, .prod _ =>
+              cases hrun
+          | .fn _ _, .matcher _ _ =>
+              cases hrun
+          | .fn _ _, .slot _ _ =>
+              cases hrun
+          | .matcher _ _, .skolem _ =>
+              cases hrun
+          | .matcher _ _, .unit =>
+              cases hrun
+          | .matcher _ _, .int =>
+              cases hrun
+          | .matcher _ _, .bool =>
+              cases hrun
+          | .matcher _ _, .data _ _ =>
+              cases hrun
+          | .matcher _ _, .prod _ =>
+              cases hrun
+          | .matcher _ _, .fn _ _ =>
+              cases hrun
+          | .matcher _ _, .slot _ _ =>
+              cases hrun
+          | .slot _ _, .skolem _ =>
+              cases hrun
+          | .slot _ _, .unit =>
+              cases hrun
+          | .slot _ _, .int =>
+              cases hrun
+          | .slot _ _, .bool =>
+              cases hrun
+          | .slot _ _, .data _ _ =>
+              cases hrun
+          | .slot _ _, .prod _ =>
+              cases hrun
+          | .slot _ _, .fn _ _ =>
+              cases hrun
+          | .slot _ _, .matcher _ _ =>
+              cases hrun
+      · intro left right result hrun
+        match left, right with
+        | [], [] =>
+            exact ⟨result, hrun, rfl⟩
+        | leftHead :: leftTail, rightHead :: rightTail =>
+            simp only [solveTyList] at hrun ⊢
+            cases hhead : solveTy fuel leftHead rightHead with
+            | none => rw [hhead] at hrun; cases hrun
+            | some headResult =>
+                rw [hhead] at hrun
+                simp only [] at hrun
+                obtain ⟨headResult', hhead', hheadSubst⟩ :=
+                  ihTy leftHead rightHead headResult hhead
+                rw [hhead']
+                simp only []
+                cases htail : solveTyList fuel
+                    (Ty.applyTargetList headResult.subst leftTail)
+                    (Ty.applyTargetList headResult.subst rightTail) with
+                | none => rw [htail] at hrun; cases hrun
+                | some tailResult =>
+                    rw [htail] at hrun
+                    obtain ⟨tailResult', htail', htailSubst⟩ :=
+                      ihList _ _ tailResult htail
+                    have htailPrimed : ∃ tailResultP : TyListResult
+                        (Ty.applyTargetList headResult'.subst leftTail)
+                        (Ty.applyTargetList headResult'.subst rightTail),
+                        solveTyList (fuel + 1)
+                            (Ty.applyTargetList headResult'.subst leftTail)
+                            (Ty.applyTargetList headResult'.subst rightTail) =
+                          some tailResultP ∧
+                        tailResultP.subst = tailResult.subst := by
+                      rw [hheadSubst]
+                      exact ⟨tailResult', htail', htailSubst⟩
+                    obtain ⟨tailResultP, htailP, htailPSubst⟩ := htailPrimed
+                    rw [htailP]
+                    cases hrun
+                    exact ⟨_, rfl, by
+                      show TySubst.comp tailResultP.subst headResult'.subst =
+                        TySubst.comp tailResult.subst headResult.subst
+                      rw [htailPSubst, hheadSubst]⟩
+        | [], _ :: _ =>
+            cases hrun
+        | _ :: _, [] =>
+            cases hrun
+
 /-! ## Executable public interfaces and soundness -/
 
 /-- Run capability unification with caller-supplied fuel. -/
@@ -875,6 +1349,151 @@ theorem mguTyList_universal
     (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
     ∃ R : TySubst, U = TySubst.comp R S :=
   mguTyListFuel_universal hsuccess hunify
+
+/-! ## Fuel monotonicity of the public fuelled interfaces
+
+Success of a fuelled kernel is stable under enlarging the fuel, with the same
+returned substitution.  Together with the most-generality certificates this
+sharpens the remaining solvability question to the existence of one
+sufficient fuel: no larger fuel can change or lose an established solution. -/
+
+/-- Success of fuelled capability unification is preserved by one more unit
+of fuel. -/
+theorem mguCapFuel_mono_succ
+    {fuel : Nat} {left right : Cap} {S : CapSubst}
+    (hsuccess : mguCapFuel fuel left right = some S) :
+    mguCapFuel (fuel + 1) left right = some S := by
+  unfold mguCapFuel at hsuccess ⊢
+  cases hsolve : solveCap fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      obtain ⟨result', hsolve', hsubst⟩ :=
+        (solveCapPair_mono_succ fuel).1 left right result hsolve
+      rw [hsolve']
+      rw [hsolve] at hsuccess
+      simpa [hsubst] using hsuccess
+
+/-- Success of fuelled capability-list unification is preserved by one more
+unit of fuel. -/
+theorem mguCapListFuel_mono_succ
+    {fuel : Nat} {left right : List Cap} {S : CapSubst}
+    (hsuccess : mguCapListFuel fuel left right = some S) :
+    mguCapListFuel (fuel + 1) left right = some S := by
+  unfold mguCapListFuel at hsuccess ⊢
+  cases hsolve : solveCapList fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      obtain ⟨result', hsolve', hsubst⟩ :=
+        (solveCapPair_mono_succ fuel).2 left right result hsolve
+      rw [hsolve']
+      rw [hsolve] at hsuccess
+      simpa [hsubst] using hsuccess
+
+/-- Success of fuelled target unification is preserved by one more unit of
+fuel. -/
+theorem mguTyFuel_mono_succ
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (hsuccess : mguTyFuel fuel left right = some S) :
+    mguTyFuel (fuel + 1) left right = some S := by
+  unfold mguTyFuel at hsuccess ⊢
+  cases hsolve : solveTy fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      obtain ⟨result', hsolve', hsubst⟩ :=
+        (solveTyPair_mono_succ fuel).1 left right result hsolve
+      rw [hsolve']
+      rw [hsolve] at hsuccess
+      simpa [hsubst] using hsuccess
+
+/-- Success of fuelled target-list unification is preserved by one more unit
+of fuel. -/
+theorem mguTyListFuel_mono_succ
+    {fuel : Nat} {left right : List Ty} {S : TySubst}
+    (hsuccess : mguTyListFuel fuel left right = some S) :
+    mguTyListFuel (fuel + 1) left right = some S := by
+  unfold mguTyListFuel at hsuccess ⊢
+  cases hsolve : solveTyList fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      obtain ⟨result', hsolve', hsubst⟩ :=
+        (solveTyPair_mono_succ fuel).2 left right result hsolve
+      rw [hsolve']
+      rw [hsolve] at hsuccess
+      simpa [hsubst] using hsuccess
+
+/-- Success of fuelled capability unification is preserved by any larger
+fuel, with the same substitution. -/
+theorem mguCapFuel_mono
+    {fuel fuel' : Nat} (hle : fuel ≤ fuel')
+    {left right : Cap} {S : CapSubst}
+    (hsuccess : mguCapFuel fuel left right = some S) :
+    mguCapFuel fuel' left right = some S := by
+  obtain ⟨gap, rfl⟩ : ∃ gap, fuel' = fuel + gap :=
+    ⟨fuel' - fuel, (Nat.add_sub_cancel' hle).symm⟩
+  induction gap with
+  | zero => exact hsuccess
+  | succ gap ih =>
+      exact mguCapFuel_mono_succ (ih (Nat.le_add_right fuel gap))
+
+/-- Success of fuelled capability-list unification is preserved by any larger
+fuel, with the same substitution. -/
+theorem mguCapListFuel_mono
+    {fuel fuel' : Nat} (hle : fuel ≤ fuel')
+    {left right : List Cap} {S : CapSubst}
+    (hsuccess : mguCapListFuel fuel left right = some S) :
+    mguCapListFuel fuel' left right = some S := by
+  obtain ⟨gap, rfl⟩ : ∃ gap, fuel' = fuel + gap :=
+    ⟨fuel' - fuel, (Nat.add_sub_cancel' hle).symm⟩
+  induction gap with
+  | zero => exact hsuccess
+  | succ gap ih =>
+      exact mguCapListFuel_mono_succ (ih (Nat.le_add_right fuel gap))
+
+/-- Success of fuelled target unification is preserved by any larger fuel,
+with the same substitution. -/
+theorem mguTyFuel_mono
+    {fuel fuel' : Nat} (hle : fuel ≤ fuel')
+    {left right : Ty} {S : TySubst}
+    (hsuccess : mguTyFuel fuel left right = some S) :
+    mguTyFuel fuel' left right = some S := by
+  obtain ⟨gap, rfl⟩ : ∃ gap, fuel' = fuel + gap :=
+    ⟨fuel' - fuel, (Nat.add_sub_cancel' hle).symm⟩
+  induction gap with
+  | zero => exact hsuccess
+  | succ gap ih =>
+      exact mguTyFuel_mono_succ (ih (Nat.le_add_right fuel gap))
+
+/-- Success of fuelled target-list unification is preserved by any larger
+fuel, with the same substitution. -/
+theorem mguTyListFuel_mono
+    {fuel fuel' : Nat} (hle : fuel ≤ fuel')
+    {left right : List Ty} {S : TySubst}
+    (hsuccess : mguTyListFuel fuel left right = some S) :
+    mguTyListFuel fuel' left right = some S := by
+  obtain ⟨gap, rfl⟩ : ∃ gap, fuel' = fuel + gap :=
+    ⟨fuel' - fuel, (Nat.add_sub_cancel' hle).symm⟩
+  induction gap with
+  | zero => exact hsuccess
+  | succ gap ih =>
+      exact mguTyListFuel_mono_succ (ih (Nat.le_add_right fuel gap))
+
+/-- Any fuelled capability success at fuel below the structural bound is
+already the specification-level answer. -/
+theorem mguCap_of_fuel_le
+    {fuel : Nat} {left right : Cap} {S : CapSubst}
+    (hle : fuel ≤ capFuel left right)
+    (hsuccess : mguCapFuel fuel left right = some S) :
+    mguCap left right = some S :=
+  mguCapFuel_mono hle hsuccess
+
+/-- Any fuelled target success at fuel below the structural bound is already
+the specification-level answer. -/
+theorem mguTy_of_fuel_le
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (hle : fuel ≤ tyFuel left right)
+    (hsuccess : mguTyFuel fuel left right = some S) :
+    mguTy left right = some S :=
+  mguTyFuel_mono hle hsuccess
 
 /-! ## Executable regression checks -/
 

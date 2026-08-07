@@ -94,12 +94,14 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    freeze する．外側 `Matcher`／`Slot` だけでなく型構造を再帰しながら
    capability／target の二 sort を同時に解き，nested matcher capability の rigid 比較
    （現状は `mguTy` が capability を注釈として等値比較）も解消する．
-5. 未: fuel 単調性と solvability — 単調性の前提として，kernel の重複 match
-   （catch-all 行）が functional induction に opaque-scrutinee case を生み，
-   `fun_induction` は mutual 関数に未対応（実測）のため，先に kernel を非重複
-   match へ再構成してから `mutual_induct` で証明する．また公開 `infer` は固定
-   fuel の `mguCap`／`mguTy` を呼ぶため「可解なら ∃fuel で成功」では足りず，
-   固定 bound の十分性を証明するか well-founded な total solver に置き換える．
+5. **一部済** fuel 単調性と solvability — 単調性は機械化済み：成功は任意のより
+   大きい fuel で同じ substitution のまま保存される（`mguCapFuel_mono`／
+   `mguTyFuel_mono`，list 版含む）．kernel の非重複 match への再構成は不要だった：
+   branch 選択は fuel に依存しないので，fuel の直接帰納で fuel 非依存な行は
+   definitional equality により，再帰行は substitution 射影の輸送により閉じる．
+   残るは solvability：公開 `infer` は固定 fuel の `mguCap`／`mguTy` を呼ぶため，
+   「可解なら ∃fuel で成功」に加えて固定 bound の十分性を証明するか，
+   well-founded な total solver に置き換える．
 6. 未: `inferRaw` の状態不変量と trace-level factorization — 単制約の `universal`
    を，`Subst.seq` で連結された solve trace・capability／target の相互作用・
    one-way `CapMatch`・origin／freeze admissibility・relevant variable 上の因子化
