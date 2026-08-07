@@ -13,10 +13,13 @@ The target-sort solver treats capability annotations already present in a
 capability solver to its capability constraint and then invokes the target
 solver on the capability-zonked target types.
 
-The certified kernels below recurse on explicit fuel.  Their public wrappers
-choose a structural fuel bound.  Failure includes fuel exhaustion, an occurs
-check, unequal rigid skolems, unequal constructor heads, unequal capability
-annotations in target types, and unequal constructor/product arities.
+The certified kernels below recurse on explicit fuel and are proof carrying:
+every success certifies both soundness and most generality of the returned
+substitution.  Their public wrappers choose a structural fuel bound.  Failure
+includes fuel exhaustion, an occurs check, unequal rigid skolems, unequal
+constructor heads, unequal capability annotations in target types, and
+unequal constructor/product arities.  Solvability completeness on unifiable
+inputs is not claimed.
 -/
 
 namespace TypePM

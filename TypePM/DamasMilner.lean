@@ -14,7 +14,10 @@ Damas–Milner system embeds into the two-sort declarative system over any close
 frozen signature, with the capability sort inert.  Under the embedding,
 capability binder lists are empty, capability substitutions act trivially, and
 `let` generalization commutes with the two-sort generalizer.  The converse
-(conservativity) direction is not claimed here.
+(conservativity) direction is not claimed here.  `TypePM.CoherentTyping`
+extends the embedding with `Coherent.dm_coherent`: every DM typing lands in
+the mutual coherent judgment.  Algorithmic acceptance by public inference
+remains open.
 -/
 
 namespace TypePM

@@ -15,10 +15,11 @@ the root, while `CoercionPlan` records the (possibly empty) outer coercion
 spine explicitly.  `HasTy.factorHead` proves that every surface typing admits
 this decomposition.
 
-The premises of `SynthHead` intentionally remain surface judgments for now.
-Thus this is the root factorization needed by the future mutually recursive
-core judgment, not yet a claim of full core principality.  Keeping that
-distinction explicit prevents the negative result in
+The premises of `SynthHead` intentionally remain surface judgments here.
+Thus this is the root factorization consumed by the recursive core
+factorization in `TypePM.CoreTyping` and the mutual coherent surface typing
+in `TypePM.CoherentTyping`, not yet a claim of full core principality.
+Keeping that distinction explicit prevents the negative result in
 `PrincipalityCounterexample` from being hidden by terminology.
 -/
 

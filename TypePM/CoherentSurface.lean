@@ -18,7 +18,9 @@ Reconstruction now retains exactly these raw indices, and the W reconstruction
 motive generates the threaded evidence directly.  Its recursive value-pattern
 premise is `ExprDeriv`; only the independent surface judgment below forgets
 that premise to ordinary `HasTy`.  These bridges establish coherent core
-provenance, but imply neither inference completeness nor principality.
+provenance, but imply neither inference completeness nor principality.  The
+mutually inductive coherent judgment covering expressions, arms, and clauses
+on top of this boundary lives in `TypePM.CoherentTyping`.
 -/
 
 namespace TypePM
@@ -471,7 +473,8 @@ def PatternResolutionsDeriv.toCoherentSurface
     (PatternResolutionsDeriv.toThreadedSurface derivation)
 
 /-- Resolved reconstruction evidence lands in the coherent resolved surface
-boundary, ready for a future coherent `T-MATCHALL` judgment. -/
+boundary; the mutual coherent `T-MATCHALL` judgment consuming this shape lives
+in `TypePM.CoherentTyping`. -/
 def ResolvedPatternDeriv.toCoherentSurface
     {signature prevailing context parameters bindings pattern capability target
      result}

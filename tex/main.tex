@@ -67,7 +67,12 @@
 \begin{document}
 \maketitle
 
-本仕様の機械化目標は，次を正確に主張できることにある．
+本仕様の機械化の最上位目標は，Egison core の注釈不要性（annotation-freeness），
+すなわち閉じたプログラムに対する受理完全性
+$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$
+である．core の構文には型注釈の形が存在しないため，これが「正しいプログラムに
+注釈は不要」の正確な形である．この命題は現在，言明のみを固定した未証明の目標である．
+達成済みの主柱は次である．
 
 \begin{quote}
 The soundness of executable type inference for the Egison core is mechanized
@@ -76,8 +81,8 @@ in Lean~4.
 
 ここで soundness は，公開 executable inference が成功すれば，返した型に対する
 declarative expression typing が必ず構成できることを意味する．機械化した定理は
-後述する静的入力整形式性を追加前提にせず，completeness と full principality は
-含まない．
+後述する静的入力整形式性を追加前提にしない．completeness は上記の open な目標で
+あり，full principality は機械化済み反例により偽である．
 
 \section{構文}
 
@@ -337,8 +342,9 @@ substitution がなければ失敗する．
 $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であり，成功時は
 両端を等しくする sound な unifier を返す．constructor／arity の不一致，occurs check の失敗，
 または rigid skolem を解く必要がある場合は失敗する．
-ここで主張するのは成功結果の soundness と関数としての決定性であり，任意の別 unifier が
-成功結果を経由して factor するという置換普遍性はまだ含まない．
+ここで主張するのは成功結果の soundness，関数としての決定性，および置換普遍性
+（任意の別 unifier が成功結果を経由して factor すること）である．可解な入力での
+成功（solvability completeness）と fuel 十分性は含まない．
 $\Any$ はこの一方向 consumer relation でだけ wildcard であり，対称な $\mguCap$
 では通常の rigid ground constructor として扱う．従って $\mguCap(\Any,\Any)$ は
 成功するが，$\mguCap(\Any,K\overline\kappa)$ は失敗する（flexible variable を
@@ -1340,8 +1346,8 @@ inference が構成する core typing 証明書は pattern の raw expression／
 raw binding context を左から右へ threadする．value-pattern，arm，clause の premise も再帰的な core evidence
 であり，surface typing oracle へ戻らない．この証明書はさらに，再帰 premise を core evidence に保つ
 non-coercion head と明示的な外側 coercion plan に分解でき，逆向きの再構成も可能である．ただし core typing の
-一意性，unifier の factorization（置換普遍性），
-surface typing に対する再帰的 completeness はまだ主張しない．一方，命題値の coercion reachability
+一意性と surface typing に対する再帰的 completeness はまだ主張しない
+（unifier の置換普遍性は機械化済みである）．一方，命題値の coercion reachability
 とは別に，型の頭を変える3つの observable primitive step，非空 spine，identity を持つが一般の
 trans を持たない candidate normal-plan syntax を観測可能な型として定義する．product of matchers
 から slot への指定二段経路は
