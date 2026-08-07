@@ -17,8 +17,14 @@
 である．core の構文（[`TypePM/Term.lean`](TypePM/Term.lean)）には型注釈の形が
 そもそも存在しないので，この定理が「ユーザーは型注釈を書く必要がない」の正確な形である．
 この命題は [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
-`Coherent.AnnotationFree` として**言明のみ**を固定してあり，未証明の目標である
-（定理としても公理としても主張しない）．principality と異なり，この目標は
+`Coherent.AnnotationFree` として言明を固定してある．これは**完成後の推論器に対する
+到達目標**であり，現行の `infer` に対しては偽である：or pattern が両分岐で同名を束縛する
+`matchAll 0 something ($x | $x) x` は宣言的に `List Integer` を持つが，現行の走査は
+分岐を別々に freshen した後で raw binding context の構文的等価を要求するため拒否する
+（[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) の
+`annotationFree_current_refuted` が反証を機械化）．ほかに constructor／primitive
+instance capability の producer guard による固定と，型内部に入れ子の matcher
+capability の rigid 比較が既知の受理ギャップである．principality と異なり，この目標は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
 利用位置での明示的 coercion 挿入が引き受ける．
@@ -67,37 +73,58 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 - **済** その系 `dm_coherent`: DM のすべての宣言的型付けが埋め込みを経て coherent
   judgment に入る（多相 let 証人の instance `idProgram_coherent` つき）．
 
-算法側は依存順に次を積む．
+算法側は次の順で積む（DM 断片自体は or・matcher 固有の問題と独立に進められる）．
 
 1. **済** MGU 最汎性: [`TypePM/Unification.lean`](TypePM/Unification.lean) の
    proof-carrying kernel が `universal` certificate を構成し，
    `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）として
    公開する．
-2. 未: fuel 単調性と MGU solvability completeness — 可解入力に対する ∃fuel 成功
-   （変数消去測度による帰納）．構造 fuel 束縛 wrapper の十分性は別問題として open に
-   扱う．単調性の前提として，kernel の重複 match（catch-all 行）が functional
-   induction に opaque-scrutinee case を生み，`fun_induction` は mutual 関数に
-   未対応（実測）のため，先に kernel を非重複 match へ再構成してから
-   `mutual_induct` で証明する．
-3. 未: `inferRaw` の状態不変量（freshness・prevailing 合成・`protectedCaps` 単調性）と，
-   DM 断片での成功＋因子化の主帰納法（段階 2 最大の作業）．履歴側の語彙は
+2. **一部済** 受理ギャップの regression 固定 — or pattern は
+   [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
+   宣言的型付け・算法的拒否・現行推論器への `AnnotationFree` 反証まで機械化済み．
+   capability freeze（概念例 `Pack something`）と nested matcher capability の対は
+   origin-aware solver の仕様確定と合わせて固定する．
+3. 未: or-pattern binder の共有 — OR 全体で binder skeleton を先に共有するか，
+   binder 名を照合して対応する型を制約として整合させる．raw metavariable ID の
+   構文的等価要求をやめる．
+4. 未: origin-aware な再帰的 paired unifier — `renameOnly` は構造化禁止・
+   `structuralFlexible` は局所 solve で構造化許可・export 時点で prevailing image を
+   freeze する．外側 `Matcher`／`Slot` だけでなく型構造を再帰しながら
+   capability／target の二 sort を同時に解き，nested matcher capability の rigid 比較
+   （現状は `mguTy` が capability を注釈として等値比較）も解消する．
+5. 未: fuel 単調性と solvability — 単調性の前提として，kernel の重複 match
+   （catch-all 行）が functional induction に opaque-scrutinee case を生み，
+   `fun_induction` は mutual 関数に未対応（実測）のため，先に kernel を非重複
+   match へ再構成してから `mutual_induct` で証明する．また公開 `infer` は固定
+   fuel の `mguCap`／`mguTy` を呼ぶため「可解なら ∃fuel で成功」では足りず，
+   固定 bound の十分性を証明するか well-founded な total solver に置き換える．
+6. 未: `inferRaw` の状態不変量と trace-level factorization — 単制約の `universal`
+   を，`Subst.seq` で連結された solve trace・capability／target の相互作用・
+   one-way `CapMatch`・origin／freeze admissibility・relevant variable 上の因子化
+   へ格上げする（段階 2 最大の作業）．履歴側の語彙は
    [`TypePM/InferenceHistory.lean`](TypePM/InferenceHistory.lean) に既設
    （`InferState.HistoryPrefix` の refl／trans／`prevailing_eq`＝prevailing の
    replay 因子化と，各 traversal の prefix 補題群）で，不足は supply と
    `protectedCaps` の単調性補題のみ．
-4. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
-5. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
+7. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
+8. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
 
 ### 段階 3: fragment 受理完全性と制限 principality
 
-1. 未: fragment 条件の言明 — raw-head 可視性（段階 1 の provenance 添字で言明可能）と
-   capability freeze 適合（`CapabilityOrigin` の ledger から言明を起こす．設計が証明に
-   先行する）．
+1. 未: fragment 条件の言明 — raw-head 可視性は provenance 添字だけでは言明に
+   ならない（恒等 witness が常に取れる）ため，trace／solve-cut と certificate を
+   結ぶ `GeneratedByTrace`・`RawHeadVisibleAt` 型の述語を定義し，replay 用の
+   証明書と inference-generated certificate を区別する．capability freeze 適合は
+   `CapabilityOrigin` の ledger から言明を起こす（設計が証明に先行する）．
 2. 未: coherent かつ可視かつ freeze 適合な typing に対する受理＋因子化（段階 2 の機械の
    全構文拡張）．
-3. 未: 制限 principality — 推論結果 τ₀ と一意な `NormalPlan` kinds への因子化．
-   kinds 一意性（`Spine.kinds_unique`／`NormalPlan.eq_refl`）は証明済みなので
-   組み立てのみ．
+3. 未: principal-core factorization の**存在定理**を先に立てる — ∀ surface typing に
+   ∃θ plan，`plan : NormalPlan (θ τ₀) τ`．一意性は residual substitution が異なる
+   因子化（`α ↦ Slot Any Integer` に `refl`，`α ↦ Matcher Any Integer` に
+   `matcherToSlot`）を許すため plan kinds だけでは決まらない．「substitution が
+   coercible head を導入しない」等の canonical boundary を定義した後に条件付きで
+   狙う．定理は inference acceptance・factorization の存在・（canonicalization 後の）
+   一意性の三本に分ける．
 4. 未（推奨）: coherentization — 任意の `HasTy` 型付けの coherent 再提示．受理完全性の
    仮定から coherence 条件を消す格上げ．
 

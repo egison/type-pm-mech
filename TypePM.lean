@@ -45,6 +45,7 @@ import TypePM.CertifiedInference
 import TypePM.CoreTyping
 import TypePM.CoherentTyping
 import TypePM.CertifiedInferenceRegression
+import TypePM.AcceptanceGapRegression
 import TypePM.ApplicationCoercionRegression
 import TypePM.DynamicSafetyRegression
 import TypePM.DynamicCaptureRegression

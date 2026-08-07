@@ -71,7 +71,10 @@
 すなわち閉じたプログラムに対する受理完全性
 $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$
 である．core の構文には型注釈の形が存在しないため，これが「正しいプログラムに
-注釈は不要」の正確な形である．この命題は現在，言明のみを固定した未証明の目標である．
+注釈は不要」の正確な形である．この命題は完成後の推論器に対する到達目標である：現行の
+推論器には，or pattern が両分岐で同名を束縛する場合の分岐別 freshening による具体反例が
+機械化されており（宣言的には型付くが拒否される），binder 共有の修正や origin-aware な
+paired unifier などロードマップの推論器側修正を経て成立させる．
 達成済みの主柱は次である．
 
 \begin{quote}
@@ -1387,8 +1390,9 @@ next-matcher の式 premise は certificate 自身へ再帰し，surface typing 
 含まない match-free 断片では任意の surface typing が coherent であり，Damas–Milner 断片の宣言的
 型付けはすべて埋め込みを経て coherent judgment に入る（DM 受理目標の宣言側）．
 最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
-$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ であり，
-命題としての言明のみを固定した未証明の目標として扱う．
+$\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ である．
+言明を固定した上で，現行推論器に対しては or pattern の binder 共有欠如による反証を
+機械化しており，推論器側の修正を経て成立させる到達目標として扱う．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
 unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
 整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として
