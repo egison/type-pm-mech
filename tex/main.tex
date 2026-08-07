@@ -1324,7 +1324,7 @@ $\mathtt{something}$ が one-way に満たす delegating matcher literal
 $\delta$ は対応する producer-stable solution とし，constraint に無関係な metavariable を同時に
 束縛する transition は許さない．この exactness／relevance が no-guess 条件であり，機械化では
 各 solve delta を exact MGU（最汎・constraint の変数の外では恒等・constraint 内変数の像も
-constraint の変数の内）として要求する．一度
+constraint の変数の内・二度適用が一度に等しい solved form）として要求する．一度
 $S\rho$ に matcher／slot の外側構成子が露出すれば，任意の後続 state extension でもその頭が保存される
 ことは substitution の構成子保存と MGU factorization から別補題として示す．no-guess の核は
 MGU 性そのものから定理として従うことも機械化済みである：MGU の普遍性だけから，ある unifier が
@@ -1337,7 +1337,15 @@ MGU 性そのものから定理として従うことも機械化済みである�
 最汎解でありながら無関係な $?_3$／$?_9$ を交換する delta は，部分一般化 scheme
 $\forall 9.\,9\to 3$ の束縛子を capture して $\forall 9.\,9\to 9$ に変え，輸送した
 instance $\mathsf{Int}\to ?_9$ はもはや instance でない．bare 最汎性だけでは宣言的
-value flow が delta に沿って輸送できない．
+value flow が delta に沿って輸送できない．support／range の閉じ込めが除くのは
+constraint の外のリネームだけであることも境界定理として固定してある：自明に成立する
+constraint $\mathsf{fn}\;?_0\;?_1 \doteq \mathsf{fn}\;?_0\;?_1$ 上の $?_0$／$?_1$ の
+involutive swap は sound・最汎（un-swap で全 unifier が因子化）かつ support／range とも
+constraint 内だが，二度適用で元に戻るため prevailing substitution の吸収 —
+mid-derivation で threading 済みの型の view が terminal view と一致すること — を壊す．
+solved-form 条項はこの残余を除き，強化後の exactness はこの swap を拒否する．吸収
+（idempotent な prevailing への後続合成が earlier の作用を二度見ないこと）と solved-form
+の合成保存は，忘却写像の transport 補題として別に用意する．
 
 この chronological extension の上に freshness 不変量を層として証明してある．supply $q$ に
 対する有界性を，capability／type は counter 未満の変数のみを含むこと，substitution は
@@ -1697,8 +1705,17 @@ acceptance completeness を証明する．この忘却は無条件では成立�
 束縛した文脈上の $(\lambda h.\,(h\;\mathtt{something},\,h\;m))\,(\lambda z.\,z)$ は，
 $m$ の fresh instance capability を ordinary matcher 対 solve が $\mathsf{Any}$ へ構造化して
 demand-directed には型が付くが，宣言的 value-flow instance は capability binder を変数へしか
-写せないため同じ型を拒否する．capability-freeze 軸は acceptance の対応条件であると同時に
-忘却の対応条件でもあり，忘却定理は freeze 側条件つきで述べる．これらを full principality や
+写せないため同じ型を拒否する．同じ分離は量化 seed なしでも生じる：単相 seed
+$m_2:\mathsf{Matcher}\;(\mathsf{con}\;c\;[])\;\mathsf{Int}$ の下の
+$\mathtt{let}\ f=\lambda x.\,\mathsf{Pack}\;x\ \mathtt{in}\ (f\;\mathtt{something},\,f\;m_2)$
+は，値の domain が instantiated constructor field に解決された後の mid-derivation
+generalization が capability metavariable を自ら束縛し，二つの利用がそれぞれの fresh
+instance capability を $\mathsf{Any}$ と $\mathsf{con}\;c\;[]$ へ発散して構造化して
+demand-directed に閉じるが，宣言的にはどの $\lambda$ domain の選択も両利用を同時に
+満たせない（変数 capability は variable-only 条件に，構造 capability は二要求の
+どちらかとの構成子衝突に当たる）．従って capability-freeze 軸は acceptance の対応条件で
+あると同時に忘却の対応条件でもあり，その条件は文脈側の述語だけでは表せず
+$\mathtt{let}$ 一般化 scheme も制約する形で述べる．これらを full principality や
 広い $\mathsf{HasTy}$ の completeness とは呼ばない．
 
 $\mathsf{nestedCapProgram}$ が $\mathsf{DDTyping}$ に導出を持たないことは inversion で

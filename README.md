@@ -92,11 +92,14 @@ coercion の対象ではなく，意図された拒否である．
   の順で state を thread し，list 構文も左から右へ進める．
 - 要求が未確定なら source は raw synthesized type のままである．通常 alignment が期待
   meta をその raw 型へ固定できるが，coercion を成立させるために slot head を発明しない．
-  各 solve delta はその時点で解く constraint に対する **exact MGU**（最汎かつ制約変数の
-  外では恒等）または one-way solution に限定し，無関係な meta には触れない（no-guess）．
-  このうち「構造化も衝突もしない」は MGU 仕様の普遍性だけから定理として従い，exactness
-  条項が除くのは残余のリネーム自由度だけである．そのリネームを許すと scheme binder を
-  capture して value-flow instance の輸送が壊れることは境界定理として固定してある．
+  各 solve delta はその時点で解く constraint に対する **exact MGU**（最汎・制約変数の
+  外では恒等・像も制約変数の内・solved form＝冪等）または one-way solution に限定し，
+  無関係な meta には触れない（no-guess）．このうち「構造化も衝突もしない」は MGU 仕様の
+  普遍性だけから定理として従い，exactness 条項が除くのは残余のリネーム自由度である．
+  制約外のリネームを許すと scheme binder を capture して value-flow instance の輸送が
+  壊れ，制約内でも自明に成立する制約上の involutive swap は support／range を満たした
+  まま prevailing 吸収（文脈型の terminal 輸送）を壊す．どちらも境界定理として固定
+  してあり，前者は support／range 条項が，後者は solved-form 条項が除く．
 - coercion 可否を semantic entailment で定義せず，通常の unification が失敗してから
   coercion branch を試す方式（負前提）も採らない．branch は unification 前に visible な
   slot head から決定し，その branch の solve が失敗すればその check は失敗する．
@@ -158,8 +161,10 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
   （段階 3-0 で負の回帰として固定済み）．
 - capability freeze の忘却側境界 — 量化 matcher producer の instance capability を
   demand 判断は構造化できるが宣言的 value flow は variable-only であり，
-  `DDTyping` と `HasTy` が分離する（`capFreeze_forgetting_gap`）．忘却定理は
-  freeze 側対応条件つきで述べる．
+  `DDTyping` と `HasTy` が分離する（`capFreeze_forgetting_gap`）．同じ分離は
+  量化 seed なしでも `let` 一般化が capability meta を束縛する形で生じる
+  （`letCapFreeze_forgetting_gap`）ため，忘却定理の freeze 側対応条件は文脈側の
+  述語だけでは表せず，`let` 一般化 scheme も制約する形で述べる．
 - 非主張: 広い `HasTy` 前提の completeness，無制限 principality，一般 producer-flow
   解析（alias／mutual recursion／高階 origin），raw declaration からの signature
   validator，一般の評価停止性，full Egison の warning mode／module persistence／標準
@@ -245,7 +250,17 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    matcher-pair solve が `Any` へ構造化して `DDTyping` で閉じるが，宣言側は value-flow
    instance の variable-only 条件が同じ型を拒否する（`capFreeze_forgetting_gap`）．
    よって任意文脈の無条件忘却は偽であり，忘却定理は freeze 側対応条件
-   （段階 3-3 の `FreezeCompatible` に対応）を持つ形が最終形である．
+   （段階 3-3 の `FreezeCompatible` に対応）を持つ形が最終形である．さらに同じ分離は
+   量化 seed なしでも生じる：単相 seed `m2 : Matcher (con "c" []) Int` の下の
+   `let f = λx. Pack x in (f something, f m2)` は mid-derivation の generalize が
+   capability meta を自ら束縛し，二利用が instance capability を発散して構造化して
+   `DDTyping` で閉じるが，どの λ domain 選択も宣言的に両利用を満たせない
+   （`letCapFreeze_forgetting_gap`）．よって freeze 側条件は文脈側の述語だけでは
+   表せず，`let` 一般化 scheme も制約する．**忘却の transport 前提として exactness に
+   solved-form（冪等）条項を追加済み**：support／range を満たす制約内 involutive swap が
+   prevailing 吸収を壊すことは境界例で固定し（`inConstraintSwap_forces_solvedForm`），
+   吸収（`Subst.seq_absorbs_of_idempotent`）と solved-form 合成
+   （`Subst.seq_idempotent`）を忘却の主帰納の道具として用意した．
    **freshness 不変量は完成**: 供給有界性述語（`Cap`／`Ty`／`Dual`／`Subst`／scheme
    三種／context 三種の `BoundedBy`）・supply extension に沿う単調性・恒等／apply／seq の
    閉包・**exact delta の有界性**（像有界性は exactness の条項に採用:

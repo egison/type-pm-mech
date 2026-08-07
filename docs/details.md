@@ -323,11 +323,13 @@ demand し，`DDSynth.matcher` は共有 target を確保して全 clause を走
 
 solve delta は実行ソルバに言及しない関係的仕様で制約する：**exact MGU**
 `ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU`（= bare MGU ∧ `SupportWithin`
-制約変数＝制約の外では恒等）と，exact one-way 解 `OneWayDelta`（`matchCap` の
-制限付き binding substitution＋capability 適用後 target の exact MGU）．bare 形
-`CapMGU`／`TargetMGU`／`PairedMGU`（soundness＋全 unifier の因子化＝kernel
-certificate と同形）は no-guess 定理と transport 境界の主語として残す．各規則の
-出力 substitution は `Subst.seq` による局所 delta の chronological 合成である．
+＝制約の外では恒等 ∧ `RangeWithin`／`CapRangeWithin`＝像は制約変数の内 ∧
+`Idempotent`＝二度適用は一度＝solved form）と，exact one-way 解 `OneWayDelta`
+（`matchCap` の制限付き binding substitution＋capability 適用後 target の exact
+MGU）．bare 形 `CapMGU`／`TargetMGU`／`PairedMGU`（soundness＋全 unifier の
+因子化＝kernel certificate と同形）は no-guess 定理と transport 境界の主語として
+残す．各規則の出力 substitution は `Subst.seq` による局所 delta の chronological
+合成である．
 
 checking cut の分岐は cut-resolved view（`S₁ τraw` と `S₁ τexpected`）上の決定的
 classifier `demandClass`（product-matcher lift／slot-tuple lift／matcher-to-slot／
@@ -361,7 +363,18 @@ exact witness（`ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` の
 `Ty.fcv_applyCapability`＝flatMap 等式・`Ty.mem_fcv_applyTarget`＝membership 形）．
 像有界性は exactness の条項に採用した（`CapSubst.RangeWithin`／
 `TySubst.RangeWithin`／`TySubst.CapRangeWithin` を `Exact*` に追加；paired 仕様の
-canonical solver 完全性が未整備のため導出でなく条項）．その上に solve 層の有界性:
+canonical solver 完全性が未整備のため導出でなく条項）．**solved-form（冪等性）も
+第三の exactness 条項として採用した**（`CapSubst.Idempotent`／`TySubst.Idempotent`／
+`Subst.Idempotent` を `Exact*` の末尾に追加）：support／range の閉じ込めが除くのは
+制約外のリネームだけで，自明に成立する制約上の制約内 involutive swap は最汎・
+support・range を全て満たしつつ二度適用で元に戻り，prevailing 吸収 —
+mid-derivation の文脈型を terminal view へ輸送する際に earlier substitution を
+二度見ないこと（`Subst.seq_absorbs_of_idempotent`）— を壊す．witness は全て
+solved form（identity・occurs 条件つき single・diagonal／fresh／shared-fresh の
+関数整合 delta；pointwise 持ち上げ `CapSubst.idempotent_of_pointwise`／
+`TySubst.idempotent_of_pointwise`／`Subst.idempotent_of_capId`），合成側は
+`Subst.seq_idempotent`（solved-form delta の合成像を prevailing が固定するとき
+composite も solved form）を用意した．その上に solve 層の有界性:
 `Exact*.boundedBy`（有界制約の exact delta は `Subst.BoundedBy`），
 `OneWayDelta.boundedBy`（`matchCapAcc_imagesWithin`＝binding 像は producer 変数内，
 mutual・全 12 mismatch 行込み），`DDAlignTypes.boundedBy`／`DDAlign.boundedBy`
@@ -402,8 +415,9 @@ pattern synthesis は dual と binding context，clause 層は hole ledger を�
 自 context を有界化する）と `DDTyping.published_boundedBy`（公開型は initialSupply
 を拡張する終端 supply で有界）．
 非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
-`capFreeze_forgetting_gap` により反証済み），`CoherentExpr` への変換，受理定理
-（段階 3-2／3-3）．
+`capFreeze_forgetting_gap` により反証済みで，`let` 経由の
+`letCapFreeze_forgetting_gap` により文脈側条件だけの形も反証済み），
+`CoherentExpr` への変換，受理定理（段階 3-2／3-3）．
 
 ### capability origin ledger と origin-aware paired solver
 
@@ -583,6 +597,28 @@ instance／alignment／generalization check を通す trace invariant の一般�
   （`capFreezeProgram_not_hasTy`）．結合形 `capFreeze_forgetting_gap` が任意文脈の
   無条件忘却を反証し，段階 3-2 の忘却定理が freeze 側対応条件（段階 3-3 の
   `FreezeCompatible` の忘却版）を持つべきことを固定する．
+- **capability freeze の忘却側境界・`let` 経由（恒久的境界例）**: 量化 seed なしでも
+  同じ分離が生じる．`m2 : Matcher (con "c" []) Int` の単相 seed の下で
+  `let f = λx. Pack x in (f something, f m2)` は，値の domain が instantiated
+  constructor field `Matcher ?κ ?α` に解決され，mid-derivation の generalize が
+  capability meta を束縛して `∀κ α. Matcher κ α → Packed` を自ら作り，二つの利用が
+  それぞれの fresh instance capability を ordinary matcher-pair solve で `Any` と
+  `con "c" []` へ**発散して**構造化して `(Packed, Packed)` で閉じる
+  （`letCapFreezeProgram_ddTyping`）．宣言側はどの λ domain の選択でも両利用を
+  同時に満たせない：変数 cap の domain は variable-only 条件に，構造 cap の domain は
+  二要求のどちらかとの構成子衝突に当たる（`letCapFreezeProgram_not_hasTy`；値本体
+  `Pack x` の任意型付けが domain を matcher 頭か product-of-matchers に強制する
+  補題 `packCtor_domain_shape` は coercion 連鎖を式 index 一般化の構造的再帰で
+  閉じる）．結合形 `letCapFreeze_forgetting_gap` により，忘却の freeze 側条件は
+  文脈側の述語だけでは表せず，`let` 一般化 scheme も制約する形が要ることが確定．
+- **in-constraint swap と solved-form 条項（恒久的境界例）**: 自明に成立する制約
+  `fn ?0 ?1 ≐ fn ?0 ?1` 上の `?0`／`?1` の involutive swap（`inConstraintSwap`）は
+  sound・最汎（un-swap で全 unifier が因子化）・support／range とも制約内だが，
+  二度適用で元に戻り（`inConstraintSwap_not_idempotent`），identity 継続でも
+  prevailing 吸収を壊す（`inConstraintSwap_breaks_absorption`）．強化後の exactness は
+  これを拒否する（`inConstraintSwap_exact_refuted`；一括形
+  `inConstraintSwap_forces_solvedForm`）．`swappingDelta`（制約外 swap，support 違反で
+  拒否）と対で，exactness の三条項がそれぞれ何を除くかを固定する．
 - **capability freeze（受理側・解消済み・正例）**: `packProgram` = `Pack something`
   （`Pack : ∀κ α. Matcher κ α → Packed`）は宣言的には `κ := Any` の instance で
   型付き，推論器も受理する．fresh instance capability は局所 solve 中だけ
@@ -737,8 +773,13 @@ executable regression とその正負境界．削るときは対応する設計�
   因子化）で，部分一般化 scheme `∀9. 9 → 3`（`capturedScheme`）の instance
   `Int → ?3` を，capture した `∀9. 9 → 9` の非 instance `Int → ?9` へ写す —
   bare 最汎性では宣言的 value flow が輸送できないことの固定で，判断の exactness
-  強化の根拠．capability-freeze 忘却境界（`producerScheme`／`capFreezeProgram`／
-  `capFreeze_forgetting_gap`）: 上記「受理ギャップと境界例」の項を参照．
+  強化の根拠．in-constraint swap 境界（`inConstraintSwap` 一式・
+  `inConstraintSwap_forces_solvedForm`）: support／range を通る制約内 swap が
+  冪等性を欠いて吸収を壊すことの固定で，solved-form 条項の根拠．
+  capability-freeze 忘却境界（`producerScheme`／`capFreezeProgram`／
+  `capFreeze_forgetting_gap`，および `let` 経由の `letCapContext`／
+  `letCapFreezeProgram`／`letCapFreeze_forgetting_gap` と補題
+  `packCtor_domain_shape`）: 上記「受理ギャップと境界例」の項を参照．
   署名閉性の非空虚性：`emptySignature`（自明）・generic list・multiset 各署名の
   `SchemesClosed` witness（テーブル単位の decidable 検査，
   `FrozenSig.SchemesClosed.of_entries` 経由）と，多相 `let` 旗艦導出での
