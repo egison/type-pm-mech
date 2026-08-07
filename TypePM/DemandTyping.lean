@@ -4392,4 +4392,495 @@ theorem DDPatternCtorCap.boundedBy {signature : FrozenSig}
           extendsQA)) varId varMem
       · exact alignedBounded.mono (SupplyExtends.freshenSkeleton freshened)
 
+/-! ### Boundedness of schemes, contexts, and instantiation
+
+Bounded schemes have all out-of-binder free variables below the supply's
+counters.  Binder instantiation then yields output bounded by the successor
+supply: quantified variables receive metas inside the consumed interval and
+free variables persist below the original counters.  Signature schemes are
+consumed through the closedness predicate `FrozenSig.SchemesClosed`, which
+makes them bounded at every supply.
+-/
+
+/-- All free variables of an expression scheme lie below the counters. -/
+structure Scheme.BoundedBy (q : InferenceBase.FreshSupply)
+    (scheme : Scheme) : Prop where
+  caps : ∀ varId ∈ scheme.fcv, varId.id < q.nextCap
+  targets : ∀ varId ∈ scheme.ftv, varId < q.nextTy
+
+/-- Scheme boundedness is monotone along supply extension. -/
+theorem Scheme.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {scheme : Scheme} (extends_ : SupplyExtends q q')
+    (bounded : scheme.BoundedBy q) : scheme.BoundedBy q' :=
+  ⟨fun varId mem => Nat.lt_of_lt_of_le (bounded.caps varId mem) extends_.1,
+    fun varId mem =>
+      Nat.lt_of_lt_of_le (bounded.targets varId mem) extends_.2⟩
+
+/-- A monomorphic scheme of a bounded type is bounded. -/
+theorem Scheme.BoundedBy.ofMono {q : InferenceBase.FreshSupply} {τ : Ty}
+    (bounded : Ty.BoundedBy q τ) : (Scheme.mono τ).BoundedBy q :=
+  ⟨fun varId mem => bounded.caps varId (List.mem_filter.mp mem).1,
+    fun varId mem => bounded.targets varId (List.mem_filter.mp mem).1⟩
+
+/-- Instantiating binders over a capability with bounded free variables
+yields a capability bounded by the successor supply. -/
+theorem instantiateBinders_applyCap_boundedBy
+    {q : InferenceBase.FreshSupply} {capBinders : List CapVar}
+    {tyBinders : List TypePM.TyVar} {capability : Cap}
+    (capsBounded : ∀ varId ∈ capability.fcv, varId ∉ capBinders →
+      varId.id < q.nextCap) :
+    Cap.BoundedBy
+      (InferenceBase.instantiateBinders q capBinders tyBinders).supply
+      (capability.apply
+        (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.cap) := by
+  intro varId mem
+  rw [Unification.Cap.fcv_apply] at mem
+  simp only [List.mem_flatMap] at mem
+  obtain ⟨original, originalMem, imageMem⟩ := mem
+  by_cases hbinder : original ∈ capBinders
+  · obtain ⟨freshId, hmap, hlow, hhigh⟩ :=
+      InferenceBase.instantiateBinders_cap_bounds q capBinders tyBinders
+        hbinder
+    rw [hmap] at imageMem
+    simp only [Cap.fcv, List.mem_singleton] at imageMem
+    subst imageMem
+    exact hhigh
+  · rw [InferenceBase.instantiateBinders_cap_support q capBinders tyBinders
+      original hbinder] at imageMem
+    simp only [Cap.fcv, List.mem_singleton] at imageMem
+    subst imageMem
+    refine Nat.lt_of_lt_of_le (capsBounded varId originalMem hbinder) ?_
+    rw [InferenceBase.instantiateBinders_nextCap]
+    exact Nat.le_add_right _ _
+
+/-- Instantiating binders over a type with bounded free variables yields a
+type bounded by the successor supply. -/
+theorem instantiateBinders_apply_boundedBy
+    {q : InferenceBase.FreshSupply} {capBinders : List CapVar}
+    {tyBinders : List TypePM.TyVar} {body : Ty}
+    (capsBounded : ∀ varId ∈ body.fcv, varId ∉ capBinders →
+      varId.id < q.nextCap)
+    (targetsBounded : ∀ varId ∈ body.ftv, varId ∉ tyBinders →
+      varId < q.nextTy) :
+    Ty.BoundedBy
+      (InferenceBase.instantiateBinders q capBinders tyBinders).supply
+      ((InferenceBase.instantiateBinders q capBinders
+        tyBinders).subst.apply body) := by
+  constructor
+  · intro varId mem
+    have mem' : varId ∈ ((body.applyCapability
+        (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.cap).applyTarget
+        (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.target).fcv := mem
+    rcases Ty.mem_fcv_applyTarget _ _ varId mem' with own | image
+    · rw [Ty.fcv_applyCapability] at own
+      simp only [List.mem_flatMap] at own
+      obtain ⟨original, originalMem, imageMem⟩ := own
+      by_cases hbinder : original ∈ capBinders
+      · obtain ⟨freshId, hmap, hlow, hhigh⟩ :=
+          InferenceBase.instantiateBinders_cap_bounds q capBinders
+            tyBinders hbinder
+        rw [hmap] at imageMem
+        simp only [Cap.fcv, List.mem_singleton] at imageMem
+        subst imageMem
+        exact hhigh
+      · rw [InferenceBase.instantiateBinders_cap_support q capBinders
+          tyBinders original hbinder] at imageMem
+        simp only [Cap.fcv, List.mem_singleton] at imageMem
+        subst imageMem
+        refine Nat.lt_of_lt_of_le
+          (capsBounded varId originalMem hbinder) ?_
+        rw [InferenceBase.instantiateBinders_nextCap]
+        exact Nat.le_add_right _ _
+    · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+      rcases InferenceBase.freshTySubst_is_var q.nextTy tyBinders tyVar
+        with ⟨freshId, hvar⟩
+      have himg : (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.target tyVar = .var freshId := hvar
+      rw [himg] at imageMem
+      simp only [Ty.fcv] at imageMem
+      exact nomatch imageMem
+  · intro varId mem
+    have mem' : varId ∈ ((body.applyCapability
+        (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.cap).applyTarget
+        (InferenceBase.instantiateBinders q capBinders
+          tyBinders).subst.target).ftv := mem
+    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem'
+    simp only [List.mem_flatMap] at mem'
+    obtain ⟨original, originalMem, imageMem⟩ := mem'
+    by_cases hbinder : original ∈ tyBinders
+    · obtain ⟨freshId, hmap, hlow, hhigh⟩ :=
+        InferenceBase.instantiateBinders_ty_bounds q capBinders tyBinders
+          hbinder
+      rw [hmap] at imageMem
+      simp only [Ty.ftv, List.mem_singleton] at imageMem
+      subst imageMem
+      exact hhigh
+    · rw [InferenceBase.instantiateBinders_ty_support q capBinders
+        tyBinders original hbinder] at imageMem
+      simp only [Ty.ftv, List.mem_singleton] at imageMem
+      subst imageMem
+      refine Nat.lt_of_lt_of_le
+        (targetsBounded varId originalMem hbinder) ?_
+      rw [InferenceBase.instantiateBinders_nextTy]
+      exact Nat.le_add_right _ _
+
+/-- Instantiating a bounded expression scheme yields a bounded type. -/
+theorem instantiateScheme_boundedBy {q : InferenceBase.FreshSupply}
+    {scheme : Scheme} (bounded : Scheme.BoundedBy q scheme) :
+    Ty.BoundedBy (InferenceBase.instantiateScheme q scheme).supply
+      (InferenceBase.instantiateScheme q scheme).value :=
+  instantiateBinders_apply_boundedBy
+    (fun varId mem hbinder => bounded.caps varId
+      (List.mem_filter.mpr ⟨mem, by simpa using hbinder⟩))
+    (fun varId mem hbinder => bounded.targets varId
+      (List.mem_filter.mpr ⟨mem, by simpa using hbinder⟩))
+
+/-- All free variables of a constructor scheme lie below the counters. -/
+structure CtorScheme.BoundedBy (q : InferenceBase.FreshSupply)
+    (scheme : CtorScheme) : Prop where
+  caps : ∀ varId ∈ scheme.fcv, varId.id < q.nextCap
+  targets : ∀ varId ∈ scheme.ftv, varId < q.nextTy
+
+/-- Instantiating a bounded constructor scheme bounds both the argument
+targets and the result. -/
+theorem instantiateCtorScheme_boundedBy {q : InferenceBase.FreshSupply}
+    {scheme : CtorScheme} (bounded : CtorScheme.BoundedBy q scheme) :
+    (∀ arg ∈ (InferenceBase.instantiateCtorScheme q scheme).value.1,
+      Ty.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply
+        arg) ∧
+    Ty.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply
+      (InferenceBase.instantiateCtorScheme q scheme).value.2 := by
+  constructor
+  · intro arg argMem
+    have argMem' : arg ∈ scheme.args.map
+        (InferenceBase.instantiateBinders q scheme.capBinders
+          scheme.tyBinders).subst.apply := argMem
+    obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp argMem'
+    exact instantiateBinders_apply_boundedBy
+      (fun varId mem hbinder => bounded.caps varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inl
+          (Ty.mem_fcvList_of_mem originalMem mem)),
+          by simpa using hbinder⟩))
+      (fun varId mem hbinder => bounded.targets varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inl
+          (Ty.mem_ftvList_of_mem originalMem mem)),
+          by simpa using hbinder⟩))
+  · exact instantiateBinders_apply_boundedBy
+      (fun varId mem hbinder => bounded.caps varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inr mem),
+          by simpa using hbinder⟩))
+      (fun varId mem hbinder => bounded.targets varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inr mem),
+          by simpa using hbinder⟩))
+
+/-- All free variables of a dual scheme lie below the counters. -/
+structure DualScheme.BoundedBy (q : InferenceBase.FreshSupply)
+    (scheme : DualScheme) : Prop where
+  caps : ∀ varId ∈ scheme.fcv, varId.id < q.nextCap
+  targets : ∀ varId ∈ scheme.ftv, varId < q.nextTy
+
+/-- Instantiating a bounded dual scheme bounds the argument duals and the
+result dual. -/
+theorem instantiateDualScheme_boundedBy {q : InferenceBase.FreshSupply}
+    {scheme : DualScheme} (bounded : DualScheme.BoundedBy q scheme) :
+    (∀ dual ∈ (InferenceBase.instantiateDualScheme q scheme).value.1,
+      Dual.BoundedBy (InferenceBase.instantiateDualScheme q scheme).supply
+        dual) ∧
+    Dual.BoundedBy (InferenceBase.instantiateDualScheme q scheme).supply
+      (InferenceBase.instantiateDualScheme q scheme).value.2 := by
+  have dualBounded : ∀ dual : Dual,
+      (∀ varId ∈ dual.fcv, varId ∉ scheme.capBinders →
+        varId.id < q.nextCap) →
+      (∀ varId ∈ dual.ftv, varId ∉ scheme.tyBinders →
+        varId < q.nextTy) →
+      Dual.BoundedBy
+        (InferenceBase.instantiateBinders q scheme.capBinders
+          scheme.tyBinders).supply
+        (dual.apply
+          (InferenceBase.instantiateBinders q scheme.capBinders
+            scheme.tyBinders).subst.cap
+          (InferenceBase.instantiateBinders q scheme.capBinders
+            scheme.tyBinders).subst.target) := by
+    intro dual capsBounded targetsBounded
+    constructor
+    · exact instantiateBinders_applyCap_boundedBy
+        (fun varId mem hbinder => capsBounded varId
+          (List.mem_append.mpr (Or.inl mem)) hbinder)
+    · exact instantiateBinders_apply_boundedBy
+        (fun varId mem hbinder => capsBounded varId
+          (List.mem_append.mpr (Or.inr mem)) hbinder)
+        (fun varId mem hbinder => targetsBounded varId mem hbinder)
+  constructor
+  · intro dual dualMem
+    have dualMem' : dual ∈ scheme.args.map (Dual.apply
+        (InferenceBase.instantiateBinders q scheme.capBinders
+          scheme.tyBinders).subst.cap
+        (InferenceBase.instantiateBinders q scheme.capBinders
+          scheme.tyBinders).subst.target) := dualMem
+    obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp dualMem'
+    exact dualBounded original
+      (fun varId mem hbinder => bounded.caps varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inl
+          (List.mem_flatMap.mpr ⟨original, originalMem, mem⟩)),
+          by simpa using hbinder⟩))
+      (fun varId mem hbinder => bounded.targets varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inl
+          (List.mem_flatMap.mpr ⟨original, originalMem, mem⟩)),
+          by simpa using hbinder⟩))
+  · exact dualBounded scheme.result
+      (fun varId mem hbinder => bounded.caps varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inr mem),
+          by simpa using hbinder⟩))
+      (fun varId mem hbinder => bounded.targets varId
+        (List.mem_filter.mpr ⟨List.mem_append.mpr (Or.inr mem),
+          by simpa using hbinder⟩))
+
+/-! ### Closed signature schemes -/
+
+/-- A constructor scheme with no free variables outside its binders. -/
+def CtorScheme.Closed (scheme : CtorScheme) : Prop :=
+  scheme.fcv = [] ∧ scheme.ftv = []
+
+/-- A dual scheme with no free variables outside its binders. -/
+def DualScheme.Closed (scheme : DualScheme) : Prop :=
+  scheme.fcv = [] ∧ scheme.ftv = []
+
+/-- A closed constructor scheme is bounded by every supply. -/
+theorem CtorScheme.Closed.boundedBy {q : InferenceBase.FreshSupply}
+    {scheme : CtorScheme} (closed : scheme.Closed) :
+    CtorScheme.BoundedBy q scheme := by
+  constructor
+  · intro varId mem
+    rw [closed.1] at mem
+    exact nomatch mem
+  · intro varId mem
+    rw [closed.2] at mem
+    exact nomatch mem
+
+/-- A closed dual scheme is bounded by every supply. -/
+theorem DualScheme.Closed.boundedBy {q : InferenceBase.FreshSupply}
+    {scheme : DualScheme} (closed : scheme.Closed) :
+    DualScheme.BoundedBy q scheme := by
+  constructor
+  · intro varId mem
+    rw [closed.1] at mem
+    exact nomatch mem
+  · intro varId mem
+    rw [closed.2] at mem
+    exact nomatch mem
+
+/-- Every scheme reachable from the frozen lookup tables is closed.  This
+is the signature-closedness condition of the freshness invariant: a frozen
+signature never leaks an ambient inference metavariable. -/
+structure FrozenSig.SchemesClosed (signature : FrozenSig) : Prop where
+  dataCtors : ∀ {name : String} {scheme : CtorScheme},
+    signature.findDataCtor name = some scheme → scheme.Closed
+  patternCtors : ∀ {name : String}
+    {entry : PatternCtorScheme signature.observability},
+    signature.findPatternCtor name = some entry → entry.scheme.Closed
+  patternFuns : ∀ {name : String} {scheme : DualScheme},
+    signature.findPatternFun name = some scheme → scheme.Closed
+  primitives : ∀ {op : PrimOp} {scheme : CtorScheme},
+    signature.findPrimitive op = some scheme → scheme.Closed
+
+/-! ### Boundedness of contexts -/
+
+/-- All schemes of an expression context are bounded. -/
+def Context.BoundedBy (q : InferenceBase.FreshSupply) (Γ : Context) :
+    Prop :=
+  ∀ entry ∈ Γ, Scheme.BoundedBy q entry.2
+
+/-- Context boundedness is monotone along supply extension. -/
+theorem Context.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {Γ : Context} (extends_ : SupplyExtends q q')
+    (bounded : Context.BoundedBy q Γ) : Context.BoundedBy q' Γ :=
+  fun entry mem => (bounded entry mem).mono extends_
+
+/-- Extending a bounded context with a bounded scheme is bounded. -/
+theorem Context.BoundedBy.cons {q : InferenceBase.FreshSupply}
+    {entry : String × Scheme} {Γ : Context}
+    (entryBounded : Scheme.BoundedBy q entry.2)
+    (bounded : Context.BoundedBy q Γ) :
+    Context.BoundedBy q (entry :: Γ) := by
+  intro e mem
+  rcases List.mem_cons.mp mem with rfl | hmem
+  · exact entryBounded
+  · exact bounded e hmem
+
+/-- Appending bounded contexts is bounded. -/
+theorem Context.BoundedBy.append {q : InferenceBase.FreshSupply}
+    {Γ₁ Γ₂ : Context} (bounded₁ : Context.BoundedBy q Γ₁)
+    (bounded₂ : Context.BoundedBy q Γ₂) :
+    Context.BoundedBy q (Γ₁ ++ Γ₂) := by
+  intro e mem
+  rcases List.mem_append.mp mem with hmem | hmem
+  · exact bounded₁ e hmem
+  · exact bounded₂ e hmem
+
+/-- Lookup in a bounded context returns a bounded scheme. -/
+theorem Context.BoundedBy.find? {q : InferenceBase.FreshSupply}
+    {Γ : Context} {name : String} {scheme : Scheme}
+    (bounded : Context.BoundedBy q Γ)
+    (found : Context.find? Γ name = some scheme) :
+    Scheme.BoundedBy q scheme := by
+  unfold Context.find? at found
+  cases hfind : List.find? (fun entry => entry.1 == name) Γ with
+  | none => rw [hfind] at found; exact nomatch found
+  | some entry =>
+      rw [hfind] at found
+      cases found
+      exact bounded entry (List.mem_of_find?_eq_some hfind)
+
+/-- Applying a bounded substitution to a bounded scheme is bounded. -/
+theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
+    {S : Subst} {scheme : Scheme} (Sb : S.BoundedBy q)
+    (bounded : Scheme.BoundedBy q scheme) :
+    (scheme.applySubst S).BoundedBy q := by
+  have maskedCap : ∀ original : CapVar,
+      S.cap.mask scheme.capBinders original =
+        (if original ∈ scheme.capBinders then Cap.var original
+          else S.cap original) := fun _ => rfl
+  have maskedTarget : ∀ original : TypePM.TyVar,
+      S.target.mask scheme.tyBinders original =
+        (if original ∈ scheme.tyBinders then Ty.var original
+          else S.target original) := fun _ => rfl
+  constructor
+  · intro varId mem
+    simp only [Scheme.applySubst, Scheme.fcv] at mem
+    obtain ⟨mem', hnotbinder⟩ := List.mem_filter.mp mem
+    rcases Ty.mem_fcv_applyTarget _ _ varId mem' with own | image
+    · rw [Ty.fcv_applyCapability] at own
+      simp only [List.mem_flatMap] at own
+      obtain ⟨original, originalMem, imageMem⟩ := own
+      by_cases hbinder : original ∈ scheme.capBinders
+      · rw [maskedCap original, if_pos hbinder] at imageMem
+        simp only [Cap.fcv, List.mem_singleton] at imageMem
+        subst imageMem
+        exact absurd hbinder (by simpa using hnotbinder)
+      · rw [maskedCap original, if_neg hbinder] at imageMem
+        exact Sb.capImagesBounded original
+          (bounded.caps original (List.mem_filter.mpr
+            ⟨originalMem, by simpa using hbinder⟩)) varId imageMem
+    · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+      rw [Ty.ftv_applyCapability] at tyMem
+      have imageMem' : varId ∈
+          (S.target.mask scheme.tyBinders tyVar).fcv := imageMem
+      by_cases hbinder : tyVar ∈ scheme.tyBinders
+      · rw [maskedTarget tyVar, if_pos hbinder] at imageMem'
+        simp only [Ty.fcv] at imageMem'
+        exact nomatch imageMem'
+      · rw [maskedTarget tyVar, if_neg hbinder] at imageMem'
+        exact (Sb.targetImagesBounded tyVar (bounded.targets tyVar
+          (List.mem_filter.mpr ⟨tyMem, by simpa using hbinder⟩))).caps
+          varId imageMem'
+  · intro varId mem
+    simp only [Scheme.applySubst, Scheme.ftv] at mem
+    obtain ⟨mem', hnotbinder⟩ := List.mem_filter.mp mem
+    have mem'' : varId ∈ ((scheme.body.applyCapability
+        (S.cap.mask scheme.capBinders)).applyTarget
+        (S.target.mask scheme.tyBinders)).ftv := mem'
+    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem''
+    simp only [List.mem_flatMap] at mem''
+    obtain ⟨original, originalMem, imageMem⟩ := mem''
+    have imageMem' : varId ∈
+        (S.target.mask scheme.tyBinders original).ftv := imageMem
+    by_cases hbinder : original ∈ scheme.tyBinders
+    · rw [maskedTarget original, if_pos hbinder] at imageMem'
+      simp only [Ty.ftv, List.mem_singleton] at imageMem'
+      subst imageMem'
+      exact absurd hbinder (by simpa using hnotbinder)
+    · rw [maskedTarget original, if_neg hbinder] at imageMem'
+      exact (Sb.targetImagesBounded original (bounded.targets original
+        (List.mem_filter.mpr ⟨originalMem,
+          by simpa using hbinder⟩))).targets varId imageMem'
+
+/-- Applying a bounded substitution to a bounded context is bounded. -/
+theorem Context.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
+    {S : Subst} {Γ : Context} (Sb : S.BoundedBy q)
+    (bounded : Context.BoundedBy q Γ) :
+    Context.BoundedBy q (Context.applySubst S Γ) := by
+  intro entry mem
+  obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp mem
+  exact Scheme.BoundedBy.applySubst Sb (bounded original originalMem)
+
+/-- All types of a monomorphic context are bounded. -/
+def MonoCtx.BoundedBy (q : InferenceBase.FreshSupply) (Δ : MonoCtx) :
+    Prop :=
+  ∀ entry ∈ Δ, Ty.BoundedBy q entry.2
+
+/-- Monomorphic-context boundedness is monotone along supply extension. -/
+theorem MonoCtx.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {Δ : MonoCtx} (extends_ : SupplyExtends q q')
+    (bounded : MonoCtx.BoundedBy q Δ) : MonoCtx.BoundedBy q' Δ :=
+  fun entry mem => (bounded entry mem).mono extends_
+
+/-- Extending a bounded monomorphic context with a bounded type. -/
+theorem MonoCtx.BoundedBy.cons {q : InferenceBase.FreshSupply}
+    {entry : String × Ty} {Δ : MonoCtx}
+    (entryBounded : Ty.BoundedBy q entry.2)
+    (bounded : MonoCtx.BoundedBy q Δ) :
+    MonoCtx.BoundedBy q (entry :: Δ) := by
+  intro e mem
+  rcases List.mem_cons.mp mem with rfl | hmem
+  · exact entryBounded
+  · exact bounded e hmem
+
+/-- Appending bounded monomorphic contexts is bounded. -/
+theorem MonoCtx.BoundedBy.append {q : InferenceBase.FreshSupply}
+    {Δ₁ Δ₂ : MonoCtx} (bounded₁ : MonoCtx.BoundedBy q Δ₁)
+    (bounded₂ : MonoCtx.BoundedBy q Δ₂) :
+    MonoCtx.BoundedBy q (Δ₁ ++ Δ₂) := by
+  intro e mem
+  rcases List.mem_append.mp mem with hmem | hmem
+  · exact bounded₁ e hmem
+  · exact bounded₂ e hmem
+
+/-- A bounded monomorphic context yields a bounded expression context. -/
+theorem MonoCtx.BoundedBy.toContext {q : InferenceBase.FreshSupply}
+    {Δ : MonoCtx} (bounded : MonoCtx.BoundedBy q Δ) :
+    Context.BoundedBy q (MonoCtx.toContext Δ) := by
+  intro entry mem
+  obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp mem
+  exact Scheme.BoundedBy.ofMono (bounded original originalMem)
+
+/-- All duals of a pattern-parameter context are bounded. -/
+def PatternCtx.BoundedBy (q : InferenceBase.FreshSupply)
+    (Φ : PatternCtx) : Prop :=
+  ∀ entry ∈ Φ, Dual.BoundedBy q entry.2
+
+/-- Pattern-context boundedness is monotone along supply extension. -/
+theorem PatternCtx.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {Φ : PatternCtx} (extends_ : SupplyExtends q q')
+    (bounded : PatternCtx.BoundedBy q Φ) : PatternCtx.BoundedBy q' Φ :=
+  fun entry mem =>
+    ⟨(bounded entry mem).1.mono extends_,
+      (bounded entry mem).2.mono extends_⟩
+
+/-- Lookup in a bounded pattern context returns a bounded dual. -/
+theorem PatternCtx.BoundedBy.find? {q : InferenceBase.FreshSupply}
+    {Φ : PatternCtx} {name : String} {dual : Dual}
+    (bounded : PatternCtx.BoundedBy q Φ)
+    (found : PatternCtx.find? Φ name = some dual) :
+    Dual.BoundedBy q dual := by
+  unfold PatternCtx.find? at found
+  cases hfind : List.find? (fun entry => entry.1 == name) Φ with
+  | none => rw [hfind] at found; exact nomatch found
+  | some entry =>
+      rw [hfind] at found
+      cases found
+      exact bounded entry (List.mem_of_find?_eq_some hfind)
+
+/-- Generalization relative to a frozen signature preserves boundedness:
+the generalized scheme's free variables are free variables of its body. -/
+theorem FrozenSig.generalize_boundedBy {q : InferenceBase.FreshSupply}
+    {signature : FrozenSig} {Γ : Context} {τ : Ty}
+    (bounded : Ty.BoundedBy q τ) :
+    Scheme.BoundedBy q (signature.generalize Γ τ) :=
+  ⟨fun varId mem => bounded.caps varId (List.mem_filter.mp mem).1,
+    fun varId mem => bounded.targets varId (List.mem_filter.mp mem).1⟩
+
 end TypePM
