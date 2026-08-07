@@ -887,5 +887,328 @@ theorem finalizeMasked_applyRen
 
 end
 
+/-! ## Flexible capability variables of partial evidence -/
+
+/-- Flexible capability variables of a complete evidence leaf. -/
+def Leaf.fcv : Leaf → List CapVar
+  | .any => []
+  | .var varId => [varId]
+  | .skolem _ => []
+
+/-- Leaf embedding preserves flexible capability variables. -/
+theorem Leaf.fcv_toCap : ∀ leaf : Leaf, leaf.toCap.fcv = leaf.fcv
+  | .any => rfl
+  | .var _ => rfl
+  | .skolem _ => rfl
+
+mutual
+
+/-- Flexible capability variables occurring in partial evidence. -/
+def Evidence.fcv : Evidence → List CapVar
+  | .unseen => []
+  | .known leaf => leaf.fcv
+  | .con _ children => Evidence.fcvList children
+  | .prod components => Evidence.fcvList components
+
+/-- Flexible capability variables of an evidence list. -/
+def Evidence.fcvList : List Evidence → List CapVar
+  | [] => []
+  | evidence :: rest => evidence.fcv ++ Evidence.fcvList rest
+
+end
+
+/-- Membership in the variables of an evidence list is membership in the
+variables of one member. -/
+theorem Evidence.mem_fcvList {varId : CapVar} :
+    ∀ {evidences : List Evidence},
+      varId ∈ Evidence.fcvList evidences ↔
+        ∃ evidence ∈ evidences, varId ∈ evidence.fcv
+  | [] => by simp [Evidence.fcvList]
+  | evidence :: rest => by
+      simp [Evidence.fcvList, List.mem_append,
+        Evidence.mem_fcvList (evidences := rest)]
+
+/-- Capability embedding preserves flexible capability variables. -/
+theorem fcv_ofCap :
+    ∀ capability : Cap, (ofCap capability).fcv = capability.fcv := by
+  intro capability
+  induction capability using Cap.rec
+      (motive_2 := fun capabilities =>
+        Evidence.fcvList (capabilities.map ofCap) =
+          Cap.fcvList capabilities) with
+  | any => simp [ofCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | var varId => simp [ofCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | skolem name => simp [ofCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | con name children childrenInduction =>
+      simp only [ofCap, Evidence.fcv, Cap.fcv, childrenInduction]
+  | prod components componentsInduction =>
+      simp only [ofCap, Evidence.fcv, Cap.fcv, componentsInduction]
+  | nil => simp [Evidence.fcvList, Cap.fcvList]
+  | cons capability capabilities capabilityInduction
+      capabilitiesInduction =>
+      simp only [List.map_cons, Evidence.fcvList, Cap.fcvList,
+        capabilityInduction, capabilitiesInduction]
+
+/-- Variables of an embedded capability list are the original variables. -/
+theorem fcvList_map_ofCap :
+    ∀ capabilities : List Cap,
+      Evidence.fcvList (capabilities.map ofCap) = Cap.fcvList capabilities
+  | [] => rfl
+  | capability :: capabilities => by
+      simp only [List.map_cons, Evidence.fcvList, Cap.fcvList,
+        fcv_ofCap capability, fcvList_map_ofCap capabilities]
+
+mutual
+
+/-- Exact merge introduces no flexible variables beyond its operands. -/
+theorem merge_fcv :
+    ∀ {left right merged : Evidence},
+      merge left right = some merged →
+      merged.fcv ⊆ left.fcv ++ right.fcv
+  | .unseen, _, _, h => by
+      cases h
+      intro varId mem
+      exact List.mem_append.mpr (Or.inr mem)
+  | .known _, .unseen, _, h => by
+      cases h
+      intro varId mem
+      exact List.mem_append.mpr (Or.inl mem)
+  | .con _ _, .unseen, _, h => by
+      cases h
+      intro varId mem
+      exact List.mem_append.mpr (Or.inl mem)
+  | .prod _, .unseen, _, h => by
+      cases h
+      intro varId mem
+      exact List.mem_append.mpr (Or.inl mem)
+  | .known left, .known right, merged, h => by
+      simp only [merge] at h
+      by_cases heq : left = right
+      · rw [if_pos heq] at h
+        cases h
+        intro varId mem
+        exact List.mem_append.mpr (Or.inl mem)
+      · rw [if_neg heq] at h
+        exact nomatch h
+  | .con leftName leftChildren, .con rightName rightChildren, merged,
+      h => by
+      simp only [merge] at h
+      by_cases hname : leftName = rightName
+      · rw [if_pos hname] at h
+        cases hchildren : mergeList leftChildren rightChildren with
+        | none => rw [hchildren] at h; exact nomatch h
+        | some children =>
+            rw [hchildren] at h
+            cases h
+            intro varId mem
+            have mem' : varId ∈ Evidence.fcvList children := mem
+            rcases List.mem_append.mp (mergeList_fcv hchildren mem') with
+              hl | hr
+            · exact List.mem_append.mpr (Or.inl hl)
+            · exact List.mem_append.mpr (Or.inr hr)
+      · rw [if_neg hname] at h
+        exact nomatch h
+  | .prod leftComponents, .prod rightComponents, merged, h => by
+      simp only [merge] at h
+      cases hcomponents : mergeList leftComponents rightComponents with
+      | none => rw [hcomponents] at h; exact nomatch h
+      | some components =>
+          rw [hcomponents] at h
+          cases h
+          intro varId mem
+          have mem' : varId ∈ Evidence.fcvList components := mem
+          rcases List.mem_append.mp (mergeList_fcv hcomponents mem') with
+            hl | hr
+          · exact List.mem_append.mpr (Or.inl hl)
+          · exact List.mem_append.mpr (Or.inr hr)
+  | .known _, .con _ _, _, h => nomatch h
+  | .known _, .prod _, _, h => nomatch h
+  | .con _ _, .known _, _, h => nomatch h
+  | .con _ _, .prod _, _, h => nomatch h
+  | .prod _, .known _, _, h => nomatch h
+  | .prod _, .con _ _, _, h => nomatch h
+
+/-- List form of `merge_fcv`. -/
+theorem mergeList_fcv :
+    ∀ {lefts rights merged : List Evidence},
+      mergeList lefts rights = some merged →
+      Evidence.fcvList merged ⊆
+        Evidence.fcvList lefts ++ Evidence.fcvList rights
+  | [], [], _, h => by
+      cases h
+      intro varId mem
+      simp only [Evidence.fcvList] at mem
+      exact nomatch mem
+  | left :: leftRest, right :: rightRest, merged, h => by
+      simp only [mergeList] at h
+      cases hhead : merge left right with
+      | none => rw [hhead] at h; exact nomatch h
+      | some head =>
+          cases htail : mergeList leftRest rightRest with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some tail =>
+              rw [hhead, htail] at h
+              cases h
+              intro varId mem
+              simp only [Evidence.fcvList, List.mem_append] at mem ⊢
+              rcases mem with hh | ht
+              · rcases List.mem_append.mp (merge_fcv hhead hh) with
+                  hl | hr
+                · exact Or.inl (Or.inl hl)
+                · exact Or.inr (Or.inl hr)
+              · rcases List.mem_append.mp (mergeList_fcv htail ht) with
+                  hl | hr
+                · exact Or.inl (Or.inr hl)
+                · exact Or.inr (Or.inr hr)
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+end
+
+/-- Folded exact merge introduces no flexible variables beyond its inputs. -/
+theorem mergeAll_fcv :
+    ∀ {evidences : List Evidence} {merged : Evidence},
+      mergeAll evidences = some merged →
+      merged.fcv ⊆ Evidence.fcvList evidences
+  | [], _, h => by
+      cases h
+      intro varId mem
+      simp only [Evidence.fcv] at mem
+      exact nomatch mem
+  | evidence :: rest, merged, h => by
+      simp only [mergeAll] at h
+      cases haccum : mergeAll rest with
+      | none => rw [haccum] at h; exact nomatch h
+      | some accumulated =>
+          rw [haccum] at h
+          intro varId mem
+          simp only [Evidence.fcvList, List.mem_append]
+          rcases List.mem_append.mp (merge_fcv h mem) with hl | hr
+          · exact Or.inl hl
+          · exact Or.inr (mergeAll_fcv haccum hr)
+
+mutual
+
+/-- Finalization introduces no flexible variables beyond its evidence. -/
+theorem finalize_fcv {observable : Observability} :
+    ∀ {evidence : Evidence} {capability : Cap},
+      finalize observable evidence = some capability →
+      capability.fcv ⊆ evidence.fcv
+  | .unseen, _, h => nomatch h
+  | .known leaf, _, h => by
+      cases h
+      intro varId mem
+      rw [Leaf.fcv_toCap] at mem
+      exact mem
+  | .con name children, capability, h => by
+      simp only [finalize] at h
+      split at h
+      · exact nomatch h
+      · split at h
+        · rename_i capabilities hmasked
+          cases h
+          intro varId mem
+          exact finalizeMasked_fcv hmasked mem
+        · exact nomatch h
+  | .prod components, capability, h => by
+      simp only [finalize] at h
+      split at h
+      · rename_i capabilities hlist
+        cases h
+        intro varId mem
+        exact finalizeList_fcv hlist mem
+      · exact nomatch h
+
+/-- List form of `finalize_fcv`. -/
+theorem finalizeList_fcv {observable : Observability} :
+    ∀ {evidences : List Evidence} {capabilities : List Cap},
+      finalizeList observable evidences = some capabilities →
+      Cap.fcvList capabilities ⊆ Evidence.fcvList evidences
+  | [], _, h => by
+      cases h
+      intro varId mem
+      simp only [Cap.fcvList] at mem
+      exact nomatch mem
+  | evidence :: rest, capabilities, h => by
+      simp only [finalizeList] at h
+      cases hhead : finalize observable evidence with
+      | none => rw [hhead] at h; exact nomatch h
+      | some capability =>
+          cases htail : finalizeList observable rest with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some rest' =>
+              rw [hhead, htail] at h
+              cases h
+              intro varId mem
+              simp only [Cap.fcvList, List.mem_append] at mem
+              simp only [Evidence.fcvList, List.mem_append]
+              rcases mem with hh | ht
+              · exact Or.inl (finalize_fcv hhead hh)
+              · exact Or.inr (finalizeList_fcv htail ht)
+
+/-- Masked form of `finalize_fcv`. -/
+theorem finalizeMasked_fcv {observable : Observability} :
+    ∀ {mask : List Bool} {evidences : List Evidence}
+      {capabilities : List Cap},
+      finalizeMasked observable mask evidences = some capabilities →
+      Cap.fcvList capabilities ⊆ Evidence.fcvList evidences
+  | [], [], _, h => by
+      cases h
+      intro varId mem
+      simp only [Cap.fcvList] at mem
+      exact nomatch mem
+  | isObservable :: mask, evidence :: rest, capabilities, h => by
+      simp only [finalizeMasked] at h
+      cases isObservable with
+      | true =>
+          simp only [if_pos] at h
+          cases hhead : finalize observable evidence with
+          | none => rw [hhead] at h; exact nomatch h
+          | some capability =>
+              cases htail : finalizeMasked observable mask rest with
+              | none => rw [hhead, htail] at h; exact nomatch h
+              | some rest' =>
+                  rw [hhead, htail] at h
+                  cases h
+                  intro varId mem
+                  simp only [Cap.fcvList, List.mem_append] at mem
+                  simp only [Evidence.fcvList, List.mem_append]
+                  rcases mem with hh | ht
+                  · exact Or.inl (finalize_fcv hhead hh)
+                  · exact Or.inr (finalizeMasked_fcv htail ht)
+      | false =>
+          simp only [Bool.false_eq_true, if_neg, not_false_eq_true] at h
+          cases htail : finalizeMasked observable mask rest with
+          | none => rw [htail] at h; exact nomatch h
+          | some rest' =>
+              rw [htail] at h
+              cases h
+              intro varId mem
+              simp only [Cap.fcvList, Cap.fcv, List.nil_append] at mem
+              simp only [Evidence.fcvList, List.mem_append]
+              exact Or.inr (finalizeMasked_fcv htail mem)
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+end
+
+/-- Shape inference introduces no flexible variables beyond its clause
+evidence. -/
+theorem inferShape_fcv {observable : Observability}
+    {clauses : List Evidence} {capability : Cap}
+    (h : inferShape observable clauses = some capability) :
+    capability.fcv ⊆ Evidence.fcvList clauses := by
+  unfold inferShape at h
+  split at h
+  · exact nomatch h
+  · rename_i hmerged
+    cases h
+    intro varId mem
+    simp only [Cap.fcv] at mem
+    exact nomatch mem
+  · rename_i evidence _ hmerged
+    intro varId mem
+    exact mergeAll_fcv hmerged (finalize_fcv h mem)
+
 end Shape
 end TypePM

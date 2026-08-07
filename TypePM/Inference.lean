@@ -4563,5 +4563,366 @@ theorem polymorphicProducer_strengthening_rejected :
 
 
 
+/-! ## Flexible capability variables of skeleton and clause evidence
+
+Skeleton evidence is built from clause syntax alone and is therefore
+variable-free; actual clause evidence only embeds the supplied hole
+capabilities; the fallback field demands only carry the shared assignment
+skeleton.  These conservation lemmas feed the freshness invariant of the
+demand-directed judgments.
+-/
+
+mutual
+
+/-- Structural skeleton evidence is variable-free. -/
+theorem ppatSkeletonEvidence_fcv {signature : FrozenMatcherSig} :
+    ∀ {pattern : PPat} {evidence : Shape.Evidence},
+      ppatSkeletonEvidence signature pattern = some evidence →
+      evidence.fcv = []
+  | .hole, _, h => by
+      cases h
+      simp [Shape.Evidence.fcv]
+  | .wild, _, h => by
+      cases h
+      simp [Shape.Evidence.fcv]
+  | .pval _, _, h => by
+      cases h
+      simp [Shape.Evidence.fcv]
+  | .ctor name patterns, evidence, h => by
+      cases hctor : signature.findPatternConstructor? name with
+      | none => simp [ppatSkeletonEvidence, hctor] at h
+      | some constructor =>
+          cases hchildren : ppatSkeletonEvidenceList signature patterns with
+          | none => simp [ppatSkeletonEvidence, hctor, hchildren] at h
+          | some children =>
+              simp only [ppatSkeletonEvidence, hctor, hchildren,
+                Option.bind_eq_bind, Option.bind] at h
+              have hsub := Projection.projectSignature_fcv h
+              rw [ppatSkeletonEvidenceList_fcv hchildren] at hsub
+              exact List.subset_nil.mp hsub
+  | .tuple patterns, evidence, h => by
+      cases hchildren : ppatSkeletonEvidenceList signature patterns with
+      | none => simp [ppatSkeletonEvidence, hchildren] at h
+      | some children =>
+          simp only [ppatSkeletonEvidence, hchildren, Option.bind_eq_bind,
+            Option.bind] at h
+          cases h
+          simp [Shape.Evidence.fcv,
+            ppatSkeletonEvidenceList_fcv hchildren]
+
+/-- List form of `ppatSkeletonEvidence_fcv`. -/
+theorem ppatSkeletonEvidenceList_fcv {signature : FrozenMatcherSig} :
+    ∀ {patterns : List PPat} {evidences : List Shape.Evidence},
+      ppatSkeletonEvidenceList signature patterns = some evidences →
+      Shape.Evidence.fcvList evidences = []
+  | [], _, h => by
+      cases h
+      simp [Shape.Evidence.fcvList]
+  | pattern :: patterns, evidences, h => by
+      cases hhead : ppatSkeletonEvidence signature pattern with
+      | none => simp [ppatSkeletonEvidenceList, hhead] at h
+      | some head =>
+          cases htail : ppatSkeletonEvidenceList signature patterns with
+          | none => simp [ppatSkeletonEvidenceList, hhead, htail] at h
+          | some tail =>
+              simp only [ppatSkeletonEvidenceList, hhead, htail,
+                Option.bind_eq_bind, Option.bind] at h
+              cases h
+              simp [Shape.Evidence.fcvList,
+                ppatSkeletonEvidence_fcv hhead,
+                ppatSkeletonEvidenceList_fcv htail]
+
+end
+
+/-- The pointwise skeleton pass over clauses is variable-free. -/
+theorem mapM_ppatSkeletonEvidence_fcv {signature : FrozenMatcherSig} :
+    ∀ {clauses : List Clause} {evidences : List Shape.Evidence},
+      clauses.mapM
+          (fun clause => ppatSkeletonEvidence signature clause.pp) =
+        some evidences →
+      Shape.Evidence.fcvList evidences = []
+  | [], _, h => by
+      cases h
+      simp [Shape.Evidence.fcvList]
+  | clause :: clauses, evidences, h => by
+      rw [List.mapM_cons] at h
+      cases hhead : ppatSkeletonEvidence signature clause.pp with
+      | none => simp [hhead] at h
+      | some head =>
+          cases htail : clauses.mapM
+              (fun clause => ppatSkeletonEvidence signature clause.pp) with
+          | none => simp [hhead, htail] at h
+          | some tail =>
+              simp only [hhead, htail, Option.bind_eq_bind,
+                Option.bind, Option.pure_def] at h
+              cases h
+              simp [Shape.Evidence.fcvList,
+                ppatSkeletonEvidence_fcv hhead,
+                mapM_ppatSkeletonEvidence_fcv htail]
+
+/-- The recursive matcher skeleton is variable-free. -/
+theorem matcherSkeletonEvidence_fcv {signature : FrozenMatcherSig}
+    {clauses : List Clause} {evidence : Shape.Evidence}
+    (h : matcherSkeletonEvidence signature clauses = some evidence) :
+    evidence.fcv = [] := by
+  unfold matcherSkeletonEvidence at h
+  cases hmap : clauses.mapM
+      (fun clause => ppatSkeletonEvidence signature clause.pp) with
+  | none => simp [hmap] at h
+  | some evidences =>
+      simp only [hmap, Option.bind_eq_bind, Option.bind] at h
+      have hsub := Shape.mergeAll_fcv h
+      rw [mapM_ppatSkeletonEvidence_fcv hmap] at hsub
+      exact List.subset_nil.mp hsub
+
+mutual
+
+/-- Actual clause evidence only embeds the supplied hole capabilities, and
+the unconsumed suffix only carries supplied variables. -/
+theorem clauseEvidenceGo_fcv {signature : FrozenMatcherSig} :
+    ∀ {atRoot : Bool} {pattern : PPat} {capabilities : List Cap}
+      {evidence : Shape.Evidence} {remaining : List Cap},
+      clauseEvidenceGo signature atRoot pattern capabilities =
+        some (evidence, remaining) →
+      evidence.fcv ⊆ Cap.fcvList capabilities ∧
+        Cap.fcvList remaining ⊆ Cap.fcvList capabilities
+  | _, .hole, [], _, _, h => nomatch h
+  | true, .hole, capability :: capabilities, evidence, remaining, h => by
+      simp only [clauseEvidenceGo] at h
+      cases h
+      constructor
+      · intro x mem
+        have mem' : x ∈ Shape.Evidence.unseen.fcv := mem
+        simp only [Shape.Evidence.fcv] at mem'
+        exact nomatch mem'
+      · intro x mem
+        simp only [Cap.fcvList, List.mem_append]
+        exact Or.inr mem
+  | false, .hole, capability :: capabilities, evidence, remaining, h => by
+      simp only [clauseEvidenceGo] at h
+      cases h
+      constructor
+      · intro x mem
+        have mem' : x ∈ (Shape.ofCap capability).fcv := mem
+        rw [Shape.fcv_ofCap] at mem'
+        simp only [Cap.fcvList, List.mem_append]
+        exact Or.inl mem'
+      · intro x mem
+        simp only [Cap.fcvList, List.mem_append]
+        exact Or.inr mem
+  | _, .wild, capabilities, evidence, remaining, h => by
+      simp only [clauseEvidenceGo] at h
+      cases h
+      constructor
+      · intro x mem
+        simp only [Shape.Evidence.fcv] at mem
+        exact nomatch mem
+      · exact fun x mem => mem
+  | _, .pval _, capabilities, evidence, remaining, h => by
+      simp only [clauseEvidenceGo] at h
+      cases h
+      constructor
+      · intro x mem
+        simp only [Shape.Evidence.fcv] at mem
+        exact nomatch mem
+      · exact fun x mem => mem
+  | atRoot, .ctor name patterns, capabilities, evidence, remaining, h => by
+      cases hctor : signature.findPatternConstructor? name with
+      | none => simp [clauseEvidenceGo, hctor] at h
+      | some constructor =>
+          cases hchildren : clauseEvidenceListGo signature patterns
+              capabilities with
+          | none => simp [clauseEvidenceGo, hctor, hchildren] at h
+          | some result =>
+              obtain ⟨children, afterChildren⟩ := result
+              cases hproject : Projection.projectClauseSignature
+                  constructor children with
+              | none =>
+                  simp [clauseEvidenceGo, hctor, hchildren, hproject] at h
+              | some projected =>
+                  simp only [clauseEvidenceGo, hctor, hchildren, hproject,
+                    Option.bind_eq_bind, Option.bind] at h
+                  cases h
+                  obtain ⟨hchildrenFcv, hremaining⟩ :=
+                    clauseEvidenceListGo_fcv hchildren
+                  exact ⟨fun x mem => hchildrenFcv
+                      (Projection.projectClauseSignature_fcv hproject mem),
+                    hremaining⟩
+  | atRoot, .tuple patterns, capabilities, evidence, remaining, h => by
+      cases hchildren : clauseEvidenceListGo signature patterns
+          capabilities with
+      | none => simp [clauseEvidenceGo, hchildren] at h
+      | some result =>
+          obtain ⟨children, afterChildren⟩ := result
+          simp only [clauseEvidenceGo, hchildren, Option.bind_eq_bind,
+            Option.bind] at h
+          cases h
+          obtain ⟨hchildrenFcv, hremaining⟩ :=
+            clauseEvidenceListGo_fcv hchildren
+          exact ⟨hchildrenFcv, hremaining⟩
+
+/-- List form of `clauseEvidenceGo_fcv`. -/
+theorem clauseEvidenceListGo_fcv {signature : FrozenMatcherSig} :
+    ∀ {patterns : List PPat} {capabilities : List Cap}
+      {evidences : List Shape.Evidence} {remaining : List Cap},
+      clauseEvidenceListGo signature patterns capabilities =
+        some (evidences, remaining) →
+      Shape.Evidence.fcvList evidences ⊆ Cap.fcvList capabilities ∧
+        Cap.fcvList remaining ⊆ Cap.fcvList capabilities
+  | [], capabilities, evidences, remaining, h => by
+      simp only [clauseEvidenceListGo] at h
+      cases h
+      constructor
+      · intro x mem
+        simp only [Shape.Evidence.fcvList] at mem
+        exact nomatch mem
+      · exact fun x mem => mem
+  | pattern :: patterns, capabilities, evidences, remaining, h => by
+      cases hhead : clauseEvidenceGo signature false pattern
+          capabilities with
+      | none => simp [clauseEvidenceListGo, hhead] at h
+      | some headResult =>
+          obtain ⟨head, afterHead⟩ := headResult
+          cases htail : clauseEvidenceListGo signature patterns
+              afterHead with
+          | none => simp [clauseEvidenceListGo, hhead, htail] at h
+          | some tailResult =>
+              obtain ⟨tail, afterTail⟩ := tailResult
+              simp only [clauseEvidenceListGo, hhead, htail,
+                Option.bind_eq_bind, Option.bind] at h
+              cases h
+              obtain ⟨hheadFcv, hafterHead⟩ := clauseEvidenceGo_fcv hhead
+              obtain ⟨htailFcv, hafterTail⟩ := clauseEvidenceListGo_fcv htail
+              constructor
+              · intro x mem
+                simp only [Shape.Evidence.fcvList, List.mem_append] at mem
+                rcases mem with hh | ht
+                · exact hheadFcv hh
+                · exact hafterHead (htailFcv ht)
+              · exact fun x mem => hafterHead (hafterTail mem)
+
+end
+
+/-- Complete clause evidence only embeds the supplied hole capabilities. -/
+theorem clauseEvidence_fcv {signature : FrozenMatcherSig} {pattern : PPat}
+    {holeCapabilities : List Cap} {evidence : Shape.Evidence}
+    (h : clauseEvidence signature pattern holeCapabilities =
+      some evidence) :
+    evidence.fcv ⊆ Cap.fcvList holeCapabilities := by
+  unfold clauseEvidence at h
+  split at h
+  · split at h
+    · unfold finishClauseEvidence at h
+      split at h
+      · rename_i result ev heq
+        cases h
+        exact (clauseEvidenceGo_fcv heq).1
+      · exact nomatch h
+    · exact nomatch h
+  · exact nomatch h
+
+/-- Every collected clause evidence only carries the variables of one hole
+ledger entry. -/
+theorem collectClauseEvidence_fcv {signature : FrozenMatcherSig} :
+    ∀ {clauses : List Clause} {holeLists : List (List Cap)}
+      {evidences : List Shape.Evidence},
+      collectClauseEvidence signature clauses holeLists = some evidences →
+      ∀ varId ∈ Shape.Evidence.fcvList evidences,
+        ∃ holes ∈ holeLists, varId ∈ Cap.fcvList holes
+  | [], [], _, h => by
+      cases h
+      intro varId mem
+      simp only [Shape.Evidence.fcvList] at mem
+      exact nomatch mem
+  | clause :: clauses, holes :: holeLists, evidences, h => by
+      cases hevidence : clauseEvidence signature clause.pp holes with
+      | none => simp [collectClauseEvidence, hevidence] at h
+      | some evidence =>
+          cases hrest : collectClauseEvidence signature clauses
+              holeLists with
+          | none => simp [collectClauseEvidence, hevidence, hrest] at h
+          | some rest =>
+              simp only [collectClauseEvidence, hevidence, hrest,
+                Option.bind_eq_bind, Option.bind] at h
+              cases h
+              intro varId mem
+              simp only [Shape.Evidence.fcvList, List.mem_append] at mem
+              rcases mem with hh | ht
+              · exact ⟨holes, by simp,
+                  clauseEvidence_fcv hevidence hh⟩
+              · obtain ⟨holes', hmem, hvar⟩ :=
+                  collectClauseEvidence_fcv hrest varId ht
+                exact ⟨holes', by simp [hmem], hvar⟩
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+/-- Fallback field demands only carry the shared assignment skeleton. -/
+theorem patternCtorFieldDemands_fcv
+    {observable : Shape.Observability}
+    {resultVariables : List TypePM.TyVar}
+    {assignments : Projection.Assignments} :
+    ∀ {fieldTypes : List Ty} {demands : List (Option Cap)},
+      patternCtorFieldDemands observable resultVariables assignments
+        fieldTypes = some demands →
+      ∀ demand ∈ demands, ∀ capability, demand = some capability →
+        capability.fcv ⊆ Projection.assignmentsFcv assignments
+  | [], _, h => by
+      cases h
+      intro demand mem
+      exact nomatch mem
+  | fieldType :: fieldTypes, demands, h => by
+      cases hrelevant : Projection.relevantVars observable resultVariables
+          fieldType with
+      | none => simp [patternCtorFieldDemands, hrelevant] at h
+      | some relevant =>
+          cases relevant with
+          | nil =>
+              cases hrest : patternCtorFieldDemands observable
+                  resultVariables assignments fieldTypes with
+              | none =>
+                  simp [patternCtorFieldDemands, hrelevant, hrest] at h
+              | some rest =>
+                  simp only [patternCtorFieldDemands, hrelevant, hrest,
+                    Option.bind_eq_bind, Option.bind, Option.pure_def] at h
+                  cases h
+                  intro demand mem capability hdemand
+                  rcases List.mem_cons.mp mem with hhead | htail
+                  · rw [hhead] at hdemand
+                    exact nomatch hdemand
+                  · exact patternCtorFieldDemands_fcv hrest demand htail
+                      capability hdemand
+          | cons headVar tailVars =>
+              cases htemplate : Projection.buildResultTemplate observable
+                  resultVariables assignments fieldType with
+              | none =>
+                  simp [patternCtorFieldDemands, hrelevant, htemplate] at h
+              | some template =>
+                  cases hfinal : Shape.finalize observable template with
+                  | none =>
+                      simp [patternCtorFieldDemands, hrelevant, htemplate,
+                        hfinal] at h
+                  | some headCapability =>
+                      cases hrest : patternCtorFieldDemands observable
+                          resultVariables assignments fieldTypes with
+                      | none =>
+                          simp [patternCtorFieldDemands, hrelevant,
+                            htemplate, hrest] at h
+                      | some rest =>
+                          simp only [patternCtorFieldDemands, hrelevant,
+                            htemplate, hfinal, hrest, Option.bind_eq_bind,
+                            Option.bind, Option.pure_def] at h
+                          cases h
+                          intro demand mem capability hdemand
+                          rcases List.mem_cons.mp mem with hhead | htail
+                          · rw [hhead] at hdemand
+                            cases hdemand
+                            intro x xmem
+                            exact Projection.buildResultTemplate_fcv
+                              htemplate
+                              (Shape.finalize_fcv hfinal xmem)
+                          · exact patternCtorFieldDemands_fcv hrest demand
+                              htail capability hdemand
+
+
 end Inference
 end TypePM

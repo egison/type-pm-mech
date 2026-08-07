@@ -1374,5 +1374,774 @@ example :
     targetVars, targetVarsList, collectFieldAssignments, collectAssignments,
     canonicalAssignments, buildResultRoot, buildResultSlotsMasked]
 
+/-! ## Flexible capability variables of projection
+
+Projection never invents a flexible capability variable: every stage of the
+certified pipeline only rearranges, merges, or drops the evidence supplied by
+its children.  These lemmas propagate that conservation from the assignment
+environment out to `projectSignature` and `projectClauseSignature`.
+-/
+
+/-- Flexible capability variables of an assignment environment. -/
+def assignmentsFcv : Assignments → List CapVar
+  | [] => []
+  | assignment :: rest => assignment.2.fcv ++ assignmentsFcv rest
+
+/-- Flexible capability variables of a field-chunk list. -/
+def chunksFcv : List Assignments → List CapVar
+  | [] => []
+  | chunk :: chunks => assignmentsFcv chunk ++ chunksFcv chunks
+
+/-- Membership in the variables of an assignment environment is membership
+in the evidence of one assignment. -/
+theorem mem_assignmentsFcv {varId : CapVar} :
+    ∀ {assignments : Assignments},
+      varId ∈ assignmentsFcv assignments ↔
+        ∃ assignment ∈ assignments, varId ∈ assignment.2.fcv
+  | [] => by simp [assignmentsFcv]
+  | assignment :: rest => by
+      simp [assignmentsFcv, List.mem_append,
+        mem_assignmentsFcv (assignments := rest)]
+
+/-- Membership in the variables of a chunk list is membership in one
+chunk. -/
+theorem mem_chunksFcv {varId : CapVar} :
+    ∀ {chunks : List Assignments},
+      varId ∈ chunksFcv chunks ↔
+        ∃ chunk ∈ chunks, varId ∈ assignmentsFcv chunk
+  | [] => by simp [chunksFcv]
+  | chunk :: chunks => by
+      simp [chunksFcv, List.mem_append, mem_chunksFcv (chunks := chunks)]
+
+/-- A looked-up evidence entry only carries environment variables. -/
+theorem lookupAssignment_fcv :
+    ∀ {varId : TypePM.TyVar} {assignments : Assignments}
+      {evidence : Evidence},
+      lookupAssignment varId assignments = some evidence →
+      evidence.fcv ⊆ assignmentsFcv assignments
+  | _, [], _, h => nomatch h
+  | varId, (candidate, previous) :: rest, evidence, h => by
+      simp only [lookupAssignment] at h
+      by_cases heq : varId = candidate
+      · rw [if_pos heq] at h
+        cases h
+        intro x mem
+        simp only [assignmentsFcv, List.mem_append]
+        exact Or.inl mem
+      · rw [if_neg heq] at h
+        intro x mem
+        simp only [assignmentsFcv, List.mem_append]
+        exact Or.inr (lookupAssignment_fcv h mem)
+
+/-- Insertion introduces no variables beyond the inserted evidence and the
+previous environment. -/
+theorem insertAssignment_fcv :
+    ∀ {varId : TypePM.TyVar} {evidence : Evidence}
+      {assignments updated : Assignments},
+      insertAssignment varId evidence assignments = some updated →
+      assignmentsFcv updated ⊆ evidence.fcv ++ assignmentsFcv assignments
+  | varId, evidence, [], updated, h => by
+      cases h
+      intro x mem
+      simp only [assignmentsFcv, List.append_nil] at mem
+      exact List.mem_append.mpr (Or.inl mem)
+  | varId, evidence, (candidate, previous) :: rest, updated, h => by
+      simp only [insertAssignment] at h
+      by_cases heq : varId = candidate
+      · rw [if_pos heq] at h
+        cases hmerge : Shape.merge previous evidence with
+        | none => rw [hmerge] at h; exact nomatch h
+        | some merged =>
+            rw [hmerge] at h
+            cases h
+            intro x mem
+            simp only [assignmentsFcv, List.mem_append] at mem ⊢
+            rcases mem with hm | hr
+            · rcases List.mem_append.mp (Shape.merge_fcv hmerge hm) with
+                hp | he
+              · exact Or.inr (Or.inl hp)
+              · exact Or.inl he
+            · exact Or.inr (Or.inr hr)
+      · rw [if_neg heq] at h
+        cases hrec : insertAssignment varId evidence rest with
+        | none => rw [hrec] at h; exact nomatch h
+        | some updated' =>
+            rw [hrec] at h
+            cases h
+            intro x mem
+            simp only [assignmentsFcv, List.mem_append] at mem ⊢
+            rcases mem with hp | hu
+            · exact Or.inr (Or.inl hp)
+            · rcases List.mem_append.mp (insertAssignment_fcv hrec hu) with
+                he | hr
+              · exact Or.inl he
+              · exact Or.inr (Or.inr hr)
+
+/-- Environment merge introduces no variables beyond its operands. -/
+theorem mergeAssignments_fcv :
+    ∀ {right left merged : Assignments},
+      mergeAssignments left right = some merged →
+      assignmentsFcv merged ⊆
+        assignmentsFcv left ++ assignmentsFcv right
+  | [], left, merged, h => by
+      cases h
+      intro x mem
+      exact List.mem_append.mpr (Or.inl mem)
+  | (varId, evidence) :: rest, left, merged, h => by
+      simp only [mergeAssignments] at h
+      cases hins : insertAssignment varId evidence left with
+      | none => rw [hins] at h; exact nomatch h
+      | some updated =>
+          rw [hins] at h
+          intro x mem
+          simp only [assignmentsFcv, List.mem_append] at ⊢
+          rcases List.mem_append.mp (mergeAssignments_fcv h mem) with
+            hu | hr
+          · rcases List.mem_append.mp (insertAssignment_fcv hins hu) with
+              he | hl
+            · exact Or.inr (Or.inl he)
+            · exact Or.inl hl
+          · exact Or.inr (Or.inr hr)
+
+mutual
+
+/-- One-field assignment collection only carries evidence variables. -/
+theorem collectAssignments_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar} :
+    ∀ {fieldType : Ty} {evidence : Evidence} {assignments : Assignments},
+      collectAssignments observable resultVariables fieldType evidence =
+        some assignments →
+      assignmentsFcv assignments ⊆ evidence.fcv
+  | _, .unseen, _, h => by
+      rw [collectAssignments.eq_def] at h
+      cases h
+      intro x mem
+      simp only [assignmentsFcv] at mem
+      exact nomatch mem
+  | fieldType, .known leaf, assignments, h => by
+      rw [collectAssignments.eq_def] at h
+      split at h
+      · next heq => exact nomatch heq
+      · split at h
+        · exact nomatch h
+        · cases h
+          intro x mem
+          simp only [assignmentsFcv] at mem
+          exact nomatch mem
+        · split at h
+          · split at h
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv, List.append_nil] at mem
+              exact mem
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv] at mem
+              exact nomatch mem
+          · next heq _ => exact nomatch heq
+          · next heq _ => exact nomatch heq
+          · exact nomatch h
+  | fieldType, .con conName children, assignments, h => by
+      rw [collectAssignments.eq_def] at h
+      split at h
+      · next heq => exact nomatch heq
+      · split at h
+        · exact nomatch h
+        · cases h
+          intro x mem
+          simp only [assignmentsFcv] at mem
+          exact nomatch mem
+        · split at h
+          · split at h
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv, List.append_nil] at mem
+              exact mem
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv] at mem
+              exact nomatch mem
+          · next heq _ => exact nomatch heq
+          · next dataName arguments evidenceName children' heq hvars =>
+              injection heq with hname hchildren
+              subst hchildren
+              split at h
+              · split at h
+                · simp only [Evidence.fcv]
+                  exact collectAssignmentsMasked_fcv h
+                · exact nomatch h
+              · exact nomatch h
+          · exact nomatch h
+  | fieldType, .prod components, assignments, h => by
+      rw [collectAssignments.eq_def] at h
+      split at h
+      · next heq => exact nomatch heq
+      · split at h
+        · exact nomatch h
+        · cases h
+          intro x mem
+          simp only [assignmentsFcv] at mem
+          exact nomatch mem
+        · split at h
+          · split at h
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv, List.append_nil] at mem
+              exact mem
+            · cases h
+              intro x mem
+              simp only [assignmentsFcv] at mem
+              exact nomatch mem
+          · next componentTypes componentEvidence heq hvars =>
+              injection heq with hcomponents
+              subst hcomponents
+              simp only [Evidence.fcv]
+              exact collectAssignmentsList_fcv h
+          · next heq _ => exact nomatch heq
+          · exact nomatch h
+
+/-- List form of `collectAssignments_fcv`. -/
+theorem collectAssignmentsList_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar} :
+    ∀ {fieldTypes : List Ty} {evidences : List Evidence}
+      {assignments : Assignments},
+      collectAssignmentsList observable resultVariables fieldTypes
+        evidences = some assignments →
+      assignmentsFcv assignments ⊆ Evidence.fcvList evidences
+  | [], [], _, h => by
+      cases h
+      intro x mem
+      simp only [assignmentsFcv] at mem
+      exact nomatch mem
+  | fieldType :: fieldTypes, evidence :: restEvidence, assignments, h => by
+      simp only [collectAssignmentsList] at h
+      cases hhead : collectAssignments observable resultVariables fieldType
+          evidence with
+      | none => rw [hhead] at h; exact nomatch h
+      | some head =>
+          cases htail : collectAssignmentsList observable resultVariables
+              fieldTypes restEvidence with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some tail =>
+              rw [hhead, htail] at h
+              intro x mem
+              simp only [Evidence.fcvList, List.mem_append]
+              rcases List.mem_append.mp
+                  (mergeAssignments_fcv h mem) with hh | ht
+              · exact Or.inl (collectAssignments_fcv hhead hh)
+              · exact Or.inr (collectAssignmentsList_fcv htail ht)
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+/-- Masked form of `collectAssignments_fcv`. -/
+theorem collectAssignmentsMasked_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar} :
+    ∀ {mask : List Bool} {arguments : List Ty}
+      {children : List Evidence} {assignments : Assignments},
+      collectAssignmentsMasked observable resultVariables mask arguments
+        children = some assignments →
+      assignmentsFcv assignments ⊆ Evidence.fcvList children
+  | [], [], [], _, h => by
+      cases h
+      intro x mem
+      simp only [assignmentsFcv] at mem
+      exact nomatch mem
+  | isObservable :: mask, argument :: arguments, child :: children,
+      assignments, h => by
+      simp only [collectAssignmentsMasked] at h
+      cases isObservable with
+      | true =>
+          simp only [if_pos] at h
+          cases hhead : collectAssignments observable resultVariables
+              argument child with
+          | none => rw [hhead] at h; exact nomatch h
+          | some headAssignments =>
+              cases htail : collectAssignmentsMasked observable
+                  resultVariables mask arguments children with
+              | none => rw [hhead, htail] at h; exact nomatch h
+              | some tailAssignments =>
+                  rw [hhead, htail] at h
+                  intro x mem
+                  simp only [Evidence.fcvList, List.mem_append]
+                  rcases List.mem_append.mp
+                      (mergeAssignments_fcv h mem) with hh | ht
+                  · exact Or.inl (collectAssignments_fcv hhead hh)
+                  · exact Or.inr (collectAssignmentsMasked_fcv htail ht)
+      | false =>
+          simp only [Bool.false_eq_true, if_neg, not_false_eq_true] at h
+          cases htail : collectAssignmentsMasked observable resultVariables
+              mask arguments children with
+          | none => rw [htail] at h; exact nomatch h
+          | some tailAssignments =>
+              rw [htail] at h
+              intro x mem
+              simp only [Evidence.fcvList, List.mem_append]
+              rcases List.mem_append.mp
+                  (mergeAssignments_fcv h mem) with hh | ht
+              · simp only [assignmentsFcv] at hh
+                exact nomatch hh
+              · exact Or.inr (collectAssignmentsMasked_fcv htail ht)
+  | [], _ :: _, _, _, h => nomatch h
+  | [], [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, _, h => nomatch h
+  | _ :: _, _ :: _, [], _, h => nomatch h
+
+end
+
+/-- Per-field chunk collection only carries the paired evidence
+variables. -/
+theorem collectFieldAssignments_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar} :
+    ∀ {fields : List FieldEvidence} {chunks : List Assignments},
+      collectFieldAssignments observable resultVariables fields =
+        some chunks →
+      chunksFcv chunks ⊆ Evidence.fcvList (fields.map Prod.snd)
+  | [], _, h => by
+      cases h
+      intro x mem
+      simp only [chunksFcv] at mem
+      exact nomatch mem
+  | (fieldType, evidence) :: fields, chunks, h => by
+      simp only [collectFieldAssignments] at h
+      cases hhead : collectAssignments observable resultVariables fieldType
+          evidence with
+      | none => rw [hhead] at h; exact nomatch h
+      | some head =>
+          cases htail : collectFieldAssignments observable resultVariables
+              fields with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some tail =>
+              rw [hhead, htail] at h
+              cases h
+              intro x mem
+              simp only [chunksFcv, List.mem_append] at mem
+              simp only [List.map_cons, Evidence.fcvList, List.mem_append]
+              rcases mem with hh | ht
+              · exact Or.inl (collectAssignments_fcv hhead hh)
+              · exact Or.inr (collectFieldAssignments_fcv htail ht)
+
+/-- Contributions to one variable only carry chunk variables. -/
+theorem evidenceContributions_fcv
+    {varId : TypePM.TyVar} {chunks : List Assignments} :
+    Evidence.fcvList (evidenceContributions varId chunks) ⊆
+      chunksFcv chunks := by
+  intro x mem
+  rcases Shape.Evidence.mem_fcvList.mp mem with ⟨evidence, emem, xmem⟩
+  rcases List.mem_filterMap.mp emem with ⟨chunk, cmem, hlook⟩
+  exact mem_chunksFcv.mpr ⟨chunk, cmem, lookupAssignment_fcv hlook xmem⟩
+
+/-- Canonical aggregation only carries chunk variables. -/
+theorem canonicalAssignments_fcv :
+    ∀ {resultVariables : List TypePM.TyVar} {chunks : List Assignments}
+      {assignments : Assignments},
+      canonicalAssignments resultVariables chunks = some assignments →
+      assignmentsFcv assignments ⊆ chunksFcv chunks
+  | [], chunks, _, h => by
+      simp only [canonicalAssignments] at h
+      cases h
+      intro x mem
+      simp only [assignmentsFcv] at mem
+      exact nomatch mem
+  | varId :: variables, chunks, assignments, h => by
+      simp only [canonicalAssignments] at h
+      split at h
+      · rename_i tail _ htail
+        cases h
+        exact canonicalAssignments_fcv htail
+      · rename_i evidence tail hne hmerged htail
+        cases h
+        intro x mem
+        simp only [assignmentsFcv, List.mem_append] at mem
+        rcases mem with he | ht
+        · exact evidenceContributions_fcv
+            (Shape.mergeAll_fcv hmerged he)
+        · exact canonicalAssignments_fcv htail ht
+      · exact nomatch h
+
+/-- The evidence components of paired fields are the original child
+evidence. -/
+theorem pairFields_snd :
+    ∀ {fieldTypes : List Ty} {childEvidence : List Evidence}
+      {fields : List FieldEvidence},
+      pairFields fieldTypes childEvidence = some fields →
+      fields.map Prod.snd = childEvidence
+  | [], [], _, h => by cases h; rfl
+  | fieldType :: fieldTypes, evidence :: childEvidence, fields, h => by
+      simp only [pairFields] at h
+      cases hpairs : pairFields fieldTypes childEvidence with
+      | none => rw [hpairs] at h; exact nomatch h
+      | some pairs =>
+          rw [hpairs] at h
+          cases h
+          simp only [List.map_cons, pairFields_snd hpairs]
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+mutual
+
+/-- Result templates only carry assignment variables. -/
+theorem buildResultTemplate_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} :
+    ∀ {resultType : Ty} {evidence : Evidence},
+      buildResultTemplate observable resultVariables assignments
+        resultType = some evidence →
+      evidence.fcv ⊆ assignmentsFcv assignments
+  | .var varId, evidence, h => by
+      simp only [buildResultTemplate] at h
+      split at h
+      · split at h
+        · rename_i hlook
+          cases h
+          exact lookupAssignment_fcv hlook
+        · cases h
+          intro x mem
+          simp only [Evidence.fcv] at mem
+          exact nomatch mem
+      · cases h
+        intro x mem
+        simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+        exact nomatch mem
+  | .prod componentTypes, evidence, h => by
+      simp only [buildResultTemplate] at h
+      split at h
+      · exact nomatch h
+      · cases h
+        intro x mem
+        simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+        exact nomatch mem
+      · split at h
+        · rename_i components hcomponents
+          cases h
+          intro x mem
+          exact buildResultTemplateList_fcv hcomponents mem
+        · exact nomatch h
+  | .data name arguments, evidence, h => by
+      simp only [buildResultTemplate] at h
+      split at h
+      · exact nomatch h
+      · cases h
+        intro x mem
+        simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+        exact nomatch mem
+      · split at h
+        · cases h
+          intro x mem
+          simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+          exact nomatch mem
+        · split at h
+          · rename_i children hchildren
+            cases h
+            intro x mem
+            exact buildResultTemplateMasked_fcv hchildren mem
+          · exact nomatch h
+  | .int, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .skolem _, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .unit, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .bool, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .fn _ _, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .matcher _ _, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+  | .slot _ _, evidence, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+      exact nomatch mem
+
+/-- List form of `buildResultTemplate_fcv`. -/
+theorem buildResultTemplateList_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} :
+    ∀ {componentTypes : List Ty} {components : List Evidence},
+      buildResultTemplateList observable resultVariables assignments
+        componentTypes = some components →
+      Evidence.fcvList components ⊆ assignmentsFcv assignments
+  | [], _, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcvList] at mem
+      exact nomatch mem
+  | componentType :: componentTypes, components, h => by
+      simp only [buildResultTemplateList] at h
+      cases hhead : buildResultTemplate observable resultVariables
+          assignments componentType with
+      | none => rw [hhead] at h; exact nomatch h
+      | some head =>
+          cases htail : buildResultTemplateList observable resultVariables
+              assignments componentTypes with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some tail =>
+              rw [hhead, htail] at h
+              cases h
+              intro x mem
+              simp only [Evidence.fcvList, List.mem_append] at mem
+              rcases mem with hh | ht
+              · exact buildResultTemplate_fcv hhead hh
+              · exact buildResultTemplateList_fcv htail ht
+
+/-- Masked form of `buildResultTemplate_fcv`. -/
+theorem buildResultTemplateMasked_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} :
+    ∀ {mask : List Bool} {arguments : List Ty}
+      {children : List Evidence},
+      buildResultTemplateMasked observable resultVariables assignments
+        mask arguments = some children →
+      Evidence.fcvList children ⊆ assignmentsFcv assignments
+  | [], [], _, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcvList] at mem
+      exact nomatch mem
+  | isObservable :: mask, argument :: arguments, children, h => by
+      simp only [buildResultTemplateMasked] at h
+      cases isObservable with
+      | true =>
+          simp only [if_pos] at h
+          cases hhead : buildResultTemplate observable resultVariables
+              assignments argument with
+          | none => rw [hhead] at h; exact nomatch h
+          | some headEvidence =>
+              cases htail : buildResultTemplateMasked observable
+                  resultVariables assignments mask arguments with
+              | none => rw [hhead, htail] at h; exact nomatch h
+              | some tailEvidence =>
+                  rw [hhead, htail] at h
+                  cases h
+                  intro x mem
+                  simp only [Evidence.fcvList, List.mem_append] at mem
+                  rcases mem with hh | ht
+                  · exact buildResultTemplate_fcv hhead hh
+                  · exact buildResultTemplateMasked_fcv htail ht
+      | false =>
+          simp only [Bool.false_eq_true, if_neg, not_false_eq_true] at h
+          cases htail : buildResultTemplateMasked observable
+              resultVariables assignments mask arguments with
+          | none => rw [htail] at h; exact nomatch h
+          | some tailEvidence =>
+              rw [htail] at h
+              cases h
+              intro x mem
+              simp only [Evidence.fcvList, Evidence.fcv, Shape.Leaf.fcv,
+                List.nil_append] at mem
+              exact buildResultTemplateMasked_fcv htail mem
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+end
+
+/-- One result slot only carries assignment variables. -/
+theorem buildResultSlot_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} {slotType : Ty} {evidence : Evidence}
+    (h : buildResultSlot observable resultVariables assignments slotType =
+      some evidence) :
+    evidence.fcv ⊆ assignmentsFcv assignments := by
+  unfold buildResultSlot at h
+  split at h
+  · exact nomatch h
+  · cases h
+    intro x mem
+    simp only [Evidence.fcv, Shape.Leaf.fcv] at mem
+    exact nomatch mem
+  · split at h
+    · exact buildResultTemplate_fcv h
+    · cases h
+      intro x mem
+      simp only [Evidence.fcv] at mem
+      exact nomatch mem
+
+mutual
+
+/-- Result slots only carry assignment variables. -/
+theorem buildResultSlots_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} :
+    ∀ {slotTypes : List Ty} {components : List Evidence},
+      buildResultSlots observable resultVariables assignments slotTypes =
+        some components →
+      Evidence.fcvList components ⊆ assignmentsFcv assignments
+  | [], _, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcvList] at mem
+      exact nomatch mem
+  | slotType :: slotTypes, components, h => by
+      simp only [buildResultSlots] at h
+      cases hhead : buildResultSlot observable resultVariables assignments
+          slotType with
+      | none => rw [hhead] at h; exact nomatch h
+      | some head =>
+          cases htail : buildResultSlots observable resultVariables
+              assignments slotTypes with
+          | none => rw [hhead, htail] at h; exact nomatch h
+          | some tail =>
+              rw [hhead, htail] at h
+              cases h
+              intro x mem
+              simp only [Evidence.fcvList, List.mem_append] at mem
+              rcases mem with hh | ht
+              · exact buildResultSlot_fcv hhead hh
+              · exact buildResultSlots_fcv htail ht
+
+/-- Masked form of `buildResultSlots_fcv`. -/
+theorem buildResultSlotsMasked_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} :
+    ∀ {mask : List Bool} {arguments : List Ty}
+      {children : List Evidence},
+      buildResultSlotsMasked observable resultVariables assignments mask
+        arguments = some children →
+      Evidence.fcvList children ⊆ assignmentsFcv assignments
+  | [], [], _, h => by
+      cases h
+      intro x mem
+      simp only [Evidence.fcvList] at mem
+      exact nomatch mem
+  | isObservable :: mask, argument :: arguments, children, h => by
+      simp only [buildResultSlotsMasked] at h
+      cases isObservable with
+      | true =>
+          simp only [if_pos] at h
+          cases hhead : buildResultSlot observable resultVariables
+              assignments argument with
+          | none => rw [hhead] at h; exact nomatch h
+          | some headEvidence =>
+              cases htail : buildResultSlotsMasked observable
+                  resultVariables assignments mask arguments with
+              | none => rw [hhead, htail] at h; exact nomatch h
+              | some tailEvidence =>
+                  rw [hhead, htail] at h
+                  cases h
+                  intro x mem
+                  simp only [Evidence.fcvList, List.mem_append] at mem
+                  rcases mem with hh | ht
+                  · exact buildResultSlot_fcv hhead hh
+                  · exact buildResultSlotsMasked_fcv htail ht
+      | false =>
+          simp only [Bool.false_eq_true, if_neg, not_false_eq_true] at h
+          cases htail : buildResultSlotsMasked observable resultVariables
+              assignments mask arguments with
+          | none => rw [htail] at h; exact nomatch h
+          | some tailEvidence =>
+              rw [htail] at h
+              cases h
+              intro x mem
+              simp only [Evidence.fcvList, Evidence.fcv, Shape.Leaf.fcv,
+                List.nil_append] at mem
+              exact buildResultSlotsMasked_fcv htail mem
+  | [], _ :: _, _, h => nomatch h
+  | _ :: _, [], _, h => nomatch h
+
+end
+
+/-- The rebuilt result root only carries assignment variables. -/
+theorem buildResultRoot_fcv
+    {observable : Observability} {resultVariables : List TypePM.TyVar}
+    {assignments : Assignments} {resultType : Ty} {evidence : Evidence}
+    (h : buildResultRoot observable resultVariables assignments
+      resultType = some evidence) :
+    evidence.fcv ⊆ assignmentsFcv assignments := by
+  unfold buildResultRoot at h
+  split at h
+  · rename_i componentTypes
+    split at h
+    · rename_i components hcomponents
+      cases h
+      intro x mem
+      exact buildResultSlots_fcv hcomponents mem
+    · exact nomatch h
+  · rename_i name arguments
+    split at h
+    · exact nomatch h
+    · split at h
+      · rename_i children hchildren
+        cases h
+        intro x mem
+        exact buildResultSlotsMasked_fcv hchildren mem
+      · exact nomatch h
+  · exact nomatch h
+
+/-- Order-independent paired projection only carries child-evidence
+variables. -/
+theorem projectPaired_fcv
+    {observable : Observability} {resultType : Ty}
+    {fields : List FieldEvidence} {evidence : Evidence}
+    (h : projectPaired observable resultType fields = some evidence) :
+    evidence.fcv ⊆ Evidence.fcvList (fields.map Prod.snd) := by
+  cases hvars : relevantVars observable (targetVars resultType)
+      resultType with
+  | none => simp [projectPaired, hvars] at h
+  | some resultVariables =>
+      cases hchunks : collectFieldAssignments observable resultVariables
+          fields with
+      | none => simp [projectPaired, hvars, hchunks] at h
+      | some chunks =>
+          cases hassignments : canonicalAssignments resultVariables
+              chunks with
+          | none => simp [projectPaired, hvars, hchunks, hassignments] at h
+          | some assignments =>
+              simp only [projectPaired, hvars, hchunks, hassignments,
+                Option.bind_eq_bind, Option.bind] at h
+              intro x mem
+              exact collectFieldAssignments_fcv hchunks
+                (canonicalAssignments_fcv hassignments
+                  (buildResultRoot_fcv h mem))
+
+/-- Certified signature projection only carries child-evidence variables. -/
+theorem projectSignature_fcv
+    {observable : Observability}
+    {signature : ProjectionSignature observable}
+    {childEvidence : List Evidence} {evidence : Evidence}
+    (h : projectSignature signature childEvidence = some evidence) :
+    evidence.fcv ⊆ Evidence.fcvList childEvidence := by
+  cases hfields : pairFields signature.fieldTypes childEvidence with
+  | none => simp [projectSignature, hfields] at h
+  | some fields =>
+      simp only [projectSignature, hfields, Option.bind_eq_bind,
+        Option.bind] at h
+      have := projectPaired_fcv h
+      rw [pairFields_snd hfields] at this
+      exact this
+
+/-- Actual-clause signature projection only carries child-evidence
+variables. -/
+theorem projectClauseSignature_fcv
+    {observable : Observability}
+    {signature : ProjectionSignature observable}
+    {childEvidence : List Evidence} {evidence : Evidence}
+    (h : projectClauseSignature signature childEvidence = some evidence) :
+    evidence.fcv ⊆ Evidence.fcvList childEvidence := by
+  cases hvalidate : validateFieldHeads observable signature.fieldTypes
+      childEvidence with
+  | none => simp [projectClauseSignature, hvalidate] at h
+  | some u =>
+      simp only [projectClauseSignature, hvalidate, Option.bind_eq_bind,
+        Option.bind] at h
+      exact projectSignature_fcv h
+
 end Projection
 end TypePM
