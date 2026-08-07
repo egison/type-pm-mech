@@ -736,6 +736,11 @@ executable regression とその正負境界．削るときは対応する設計�
   bare 最汎性では宣言的 value flow が輸送できないことの固定で，判断の exactness
   強化の根拠．capability-freeze 忘却境界（`producerScheme`／`capFreezeProgram`／
   `capFreeze_forgetting_gap`）: 上記「受理ギャップと境界例」の項を参照．
+  署名閉性の非空虚性：`emptySignature`（自明）・generic list・multiset 各署名の
+  `SchemesClosed` witness（テーブル単位の decidable 検査，
+  `FrozenSig.SchemesClosed.of_entries` 経由）と，多相 `let` 旗艦導出での
+  closed-wrapper 系の発火 `dmLet_published_boundedBy`（公開型が initialSupply を
+  拡張する終端 supply で有界）．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の
