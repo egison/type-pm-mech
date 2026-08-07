@@ -17,22 +17,37 @@
 である．core の構文（[`TypePM/Term.lean`](TypePM/Term.lean)）には型注釈の形が
 そもそも存在しないので，この定理が「ユーザーは型注釈を書く必要がない」の正確な形である．
 この命題は [`TypePM/CoherentTyping.lean`](TypePM/CoherentTyping.lean) の
-`Coherent.AnnotationFree` として言明を固定してある．これは**完成後の推論器に対する
-到達目標**である．最初の具体的反例だった or pattern（両分岐で同名を束縛する
+`Coherent.AnnotationFree` として言明を固定してある．
+
+この目標を成立させる**根本原則は demand-directed coercion**（要求駆動の coercion 挿入）
+である：coercion は，利用位置の要求型（prevailing 適用後の期待型）の頭が matcher／slot
+として確定している位置で，raw 型がそのままでは要求に合わない場合にだけ挿入する．要求が
+未確定な位置では raw 型をそのまま使い，coercion を成立させる目的で未解決 metavariable や
+確定済み domain を matcher／slot へ（遡及的にも）構造化しない．この原則が coercion 挿入を
+決定的・構文主導に保つことが，受理完全性を到達可能にする．実装は
+`expectedCoercionSource` と domain-directed application check としてこの原則どおりである．
+
+宣言的 `HasTy` の無条件 coercion 規則（`coerceMatcherToSlot` 等）はこの規律の外にあり，
+動的安全性の包絡としては維持するが，受理完全性の前提としては広すぎる．このため広い前提の
+ままの `AnnotationFree` は**恒久的に反証済み**である（`annotationFree_wide_refuted`）：
+境界例 `nestedCapProgram`（と swapped 版）は，λ束縛の単相 domain という demand の無い位置
+への matcher→slot coercion だけで宣言的に型付くプログラムで，推論器の拒否が意図された
+挙動である（同じ producer 対を `let` で多相化した `nestedCapLetProgram` は受理される）．
+到達目標は，結論を保ったまま前提を demand-directed な宣言的 judgment に置き換えた
+受理完全性（段階 3-1）である．
+
+最初の具体的反例だった or pattern（両分岐で同名を束縛する
 `matchAll 0 something ($x | $x) x`）は，or の整合を raw binding context の構文的
 等価から binder 名の照合＋型の単一化（`alignBindings`）へ改めたことで解消し，
 受理側の regression として固定した
 （[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean)）．
-残る既知の受理ギャップは両方とも機械化済みの反例で pin 済みである：型内部に入れ子の
-matcher capability の rigid 比較（`nestedCapProgram`）と，constructor instance
-capability の producer guard による固定（`packProgram` = `Pack something`，
-`∀κ α. Matcher κ α → Packed` の宣言的 `κ := Any` instance を guard が拒否）．
-それぞれ現行推論器への反証（`annotationFree_current_refuted`／
-`annotationFree_current_refuted_by_freeze`）を伴い，いずれも origin-aware paired
-unifier で解消予定である．principality と異なり，この目標は
+残る真の受理ギャップは constructor instance capability の producer guard による固定
+（`packProgram` = `Pack something`，`∀κ α. Matcher κ α → Packed` の宣言的
+`κ := Any` instance を guard が拒否）の一系統で，現行推論器への反証
+（`annotationFree_current_refuted_by_freeze`）を伴い，origin-aware paired unifier への
+切替（guard の ledger 化）で解消予定である．principality と異なり，受理完全性は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
-代入による全型付けの回収であって，受理そのものではない．coercion の view 選択は
-利用位置での明示的 coercion 挿入が引き受ける．
+代入による全型付けの回収であって，受理そのものではない．
 
 達成済みの主柱は逆方向の soundness である．
 
@@ -92,15 +107,17 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 2. **済** 受理ギャップの regression 固定 — 既知の三系統をすべて
    [`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean) で
    機械化済み．or pattern は宣言的型付けと（修正後の）受理．nested matcher
-   capability は `nestedCapProgram`（と逆順の swapped 版）：宣言的に型付くが，
-   推論器は第一用法で域を raw matcher 型に固定し第二用法の capability を注釈として
-   rigid 比較して拒否する．capability freeze は `packProgram`
+   capability は `nestedCapProgram`（と逆順の swapped 版）：demand の無い λ束縛
+   domain への coercion だけで宣言的に型付くが，demand-directed な推論器は第一用法で
+   域を raw matcher 型に固定し第二用法の capability を注釈として rigid 比較して
+   拒否する．この拒否は意図された挙動＝広い `HasTy` の恒久的境界例であり
+   （`annotationFree_wide_refuted`），`let` 多相化した `nestedCapLetProgram` の
+   受理を control として固定した．capability freeze は `packProgram`
    （`Pack : ∀κ α. Matcher κ α → Packed` に `Pack something`）：宣言的には
    `κ := Any` の instance で型付くが，fresh instance capability が protected
    producer として記録され guard が束縛を拒否する（capability を scheme 側で
-   `Any` に固定した control は受理）．両ギャップとも現行推論器への反証
-   （`annotationFree_current_refuted`／`annotationFree_current_refuted_by_freeze`）
-   を伴う．
+   `Any` に固定した control は受理）．こちらは真のギャップで，現行推論器への反証
+   （`annotationFree_current_refuted_by_freeze`）を伴う．
 3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
@@ -116,8 +133,10 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    注釈制約を flexible ledger の下で解く対照回帰
    （`paired_solves_flexible_annotation`／`symmetric_still_rigid`）つき．残るは
    W への配線：solve cut ごとの ledger snapshot・export 時点の prevailing image
-   freeze event・inference 内 rigid 比較の置換（受理挙動の変更を伴うため，
-   AcceptanceGapRegression の反例反転とセットで行う）．
+   freeze event・producer guard の ledger 化．配線の解消対象は capability freeze
+   ギャップ（`packProgram`）のみであり，受理挙動の変更を伴うため freeze 系反例の
+   反転とセットで行う．`nestedCapProgram` は demand-directed 原則下の意図された
+   拒否であり，配線で受理側へ反転させる対象ではない．
 5. **一部済** fuel 単調性と solvability — 単調性（成功は任意のより大きい fuel で
    同じ substitution のまま保存される：`mguCapFuel_mono`／`mguTyFuel_mono`，
    list 版含む）と **∃fuel solvability completeness**（可解な制約はある fuel で
@@ -144,11 +163,16 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 
 ### 段階 3: fragment 受理完全性と制限 principality
 
-1. 未: fragment 条件の言明 — raw-head 可視性は provenance 添字だけでは言明に
-   ならない（恒等 witness が常に取れる）ため，trace／solve-cut と certificate を
-   結ぶ `GeneratedByTrace`・`RawHeadVisibleAt` 型の述語を定義し，replay 用の
-   証明書と inference-generated certificate を区別する．capability freeze 適合は
-   `CapabilityOrigin` の ledger から言明を起こす（設計が証明に先行する）．
+1. 未: fragment 条件の言明 — 第一候補は，coercion を「要求のある checking 位置」に
+   限定した demand-directed な宣言的（bidirectional）judgment を推論器から独立に
+   定義することである（`SynthHead`／`CoercionPlan` の制限版として書け，
+   `MatcherToSlotRawCert` 等の証明書部品は流用できる．`ElaborableHasTy := ∃
+   CoreTyping` 型の循環定義の禁止は従来どおり）．これが最終形の受理完全性の前提に
+   なる．raw-head 可視性は provenance 添字だけでは言明にならない（恒等 witness が
+   常に取れる）ため，trace／solve-cut と certificate を結ぶ `GeneratedByTrace`・
+   `RawHeadVisibleAt` 型の述語は replay 用の証明書と inference-generated
+   certificate の区別に用いる．capability freeze 適合は `CapabilityOrigin` の
+   ledger から言明を起こす（設計が証明に先行する）．
 2. 未: coherent かつ可視かつ freeze 適合な typing に対する受理＋因子化（段階 2 の機械の
    全構文拡張）．
 3. 未: principal-core factorization の**存在定理**を先に立てる — ∀ surface typing に
@@ -161,14 +185,17 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 4. 未（推奨）: coherentization — 任意の `HasTy` 型付けの coherent 再提示．受理完全性の
    仮定から coherence 条件を消す格上げ．
 
-### 段階 4: `AnnotationFree` 本体
+### 段階 4: 受理完全性の最終形
 
 1. 未: solve-cut event（cut-indexed coercion event）による selector の raw-head 死角の
-   除去．canonical core judgment への強化で残る critical pair の解消・full plan
-   uniqueness（または quotient）・置換に対する naturality もここに属する．
+   除去（demand が存在するのに raw 型の頭が prevailing substitution 後に初めて現れる
+   正当な盲点が対象）．canonical core judgment への強化で残る critical pair の解消・
+   full plan uniqueness（または quotient）・置換に対する naturality もここに属する．
 2. 未: capability freeze completeness（origin-aware solver への切替）．
-3. 到達点: fragment 条件を外した `AnnotationFree`．途中で反例が見つかった場合は
-   fragment 版（段階 3）を最終形として確定し，反例を境界として記録する．
+3. 到達点: demand-directedness 以外の fragment 条件を外した受理完全性．
+   coercion-demand 軸は反例が確定済み（境界例 `nestedCapProgram`，
+   `annotationFree_wide_refuted`）なので，demand-directed 前提（段階 3-1 の
+   judgment）が最終形であり，広い `HasTy` 前提の `AnnotationFree` を復活させない．
 
 ## 概要
 
@@ -405,6 +432,8 @@ constraint acceptance と terminal audit は従来の `protectedCaps` をその�
 [`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) の kernel slice として
 機械化済みで，切り替えに残るのは solve cut ごとの ledger snapshot と，raw binder ではなく
 局所 solve 後に外へ生存する prevailing image の leaf を freeze する export event である．
+切替が解消するのは producer guard による freeze ギャップ（`packProgram`）であり，
+demand の無い coercion に由来する境界例（`nestedCapProgram`）の拒否は変えない．
 
 `CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
 completeness は得られた．canonical core judgment への強化に残る項目（critical pair の解消，

@@ -71,20 +71,29 @@
 すなわち閉じたプログラムに対する受理完全性
 $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$
 である．core の構文には型注釈の形が存在しないため，これが「正しいプログラムに
-注釈は不要」の正確な形である．この命題は完成後の推論器に対する到達目標である．最初の
-具体反例だった or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化に
-よる整合へ改めて解消し，受理側の regression として固定した．残る既知の受理ギャップの
-うち，入れ子 matcher capability の rigid 比較は機械化済みの反例で固定した：wildcard
-slot 域の単相 consumer に bare `something` と product lift を順に渡すプログラムは宣言的に
-型付くが，推論器は第一用法で域を raw な matcher 型に固定し，第二用法の lift された
-capability を注釈として等値比較して拒否する（逆順も raw-head 死角で拒否）．instance
-capability の producer guard による固定も機械化済みで固定した：
+注釈は不要」の正確な形である．この目標を成立させる根本原則は demand-directed な
+coercion 挿入である：coercion は利用位置の要求型（prevailing 適用後の期待型）の頭が
+matcher／slot として確定している位置で，raw 型がそのままでは要求に合わない場合にだけ
+挿入し，要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で
+未解決 metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．
+宣言的体系の無条件 coercion 規則はこの規律の外にあり，動的安全性の包絡としては維持する
+が，受理完全性の前提としては広すぎる．実際，広い前提のままの受理完全性は機械化済みの
+境界例により恒久的に反証済みである：wildcard slot 域の単相 consumer に bare `something`
+と product lift を順に渡すプログラムは，demand の無い $\lambda$ 束縛 domain への
+matcher-to-slot coercion だけで宣言的に型付くが，推論器は第一用法で域を raw な matcher
+型に固定し，第二用法の lift された capability を注釈として等値比較して拒否する（逆順も
+raw-head 死角で拒否）．この拒否は意図された挙動であり，同じ producer 対を
+$\mathtt{let}$ で多相化した形は受理される．到達目標は，結論を保ったまま前提を
+demand-directed な宣言的 judgment に置き換えた受理完全性である．最初の具体反例だった
+or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化による整合へ改めて
+解消し，受理側の regression として固定した．残る真の受理ギャップは instance capability
+の producer guard による固定である：
 $\mathsf{Pack} : \forall\kappa\,\alpha.\ \mathsf{Matcher}\,\kappa\,\alpha \to
 \mathsf{Packed}$ に対する $\mathsf{Pack\ something}$ は宣言的には
 $\kappa := \Any$ の instance で型付くが，推論器は fresh instance capability を
 protected producer として記録し，guard がその束縛を拒否する（capability を scheme 側で
-$\Any$ に固定した control は受理される）．両反例は現行推論器に対する注釈不要性を反証し，
-origin-aware な paired unifier で解消させる．
+$\Any$ に固定した control は受理される）．この反例は現行推論器に対する反証を伴い，
+origin-aware な paired unifier（guard の ledger 化）で解消させる．
 達成済みの主柱は次である．
 
 \begin{quote}
@@ -1392,6 +1401,8 @@ admissible-post 準拠を運ぶ proof-carrying certificate であり，二 sort 
 閉性による．対称 solver が rigid 注釈比較で拒否する制約を flexible ledger の下で解く
 対照回帰も固定した．W への切替には cut ごとの snapshot，および raw binder でなく
 局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が残る．
+切替が解消するのは producer guard による freeze ギャップであり，demand の無い
+coercion に由来する境界例の拒否は変えない．
 
 terminal pattern leaf の任意の actual context をまず
 $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface
@@ -1412,8 +1423,9 @@ next-matcher の式 premise は certificate 自身へ再帰し，surface typing 
 型付けはすべて埋め込みを経て coherent judgment に入る（DM 受理目標の宣言側）．
 最上位目標は閉じたプログラムに対する受理完全性（annotation-freeness）
 $\forall e\,\tau,\ \emptyset \vdash e : \tau \Rightarrow \mathsf{infer}(e) \neq \mathsf{none}$ である．
-言明を固定した上で，推論器側の修正を段階的に積んで成立させる到達目標として扱う
-（or pattern の binder 整合は解消済み・受理側 regression で固定）．なお or の
+広い宣言的前提のままのこの言明は，demand の無い coercion を許すため境界例により恒久的に
+反証済みであり，到達目標は前提を demand-directed な宣言的 judgment へ置き換えた形として
+扱う（or pattern の binder 整合は解消済み・受理側 regression で固定）．なお or の
 certificate（deriv／threaded の or 規則）は左右の raw 結果を別々に持ち prevailing 像の
 等価 premise で結ぶ形へ緩和したが，宣言的 terminal or 規則は不変である．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への

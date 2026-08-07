@@ -236,21 +236,28 @@ theorem idProgram_coherent {signature : FrozenSig}
 /-! ## The annotation-freeness goal -/
 
 /--
-The top-level project goal, stated as a named proposition only: closed
+The top-level goal proposition in its wide-premise envelope form: closed
 declaratively typed programs are accepted by public executable inference
 without any annotation.  The core syntax has no annotation form, so this
 acceptance completeness is the precise meaning of annotation-freeness.
 
-The proposition is a target for the completed pipeline.  The first concrete
+Over the full `HasTy` the proposition is permanently refuted
+(`AcceptanceGapRegression.annotationFree_wide_refuted`): the wide system
+admits matcher-to-slot coercions at positions with no slot demand
+(`nestedCapProgram`), and rejecting those is the intended behaviour of the
+demand-directed pipeline — coercions are inserted only where the use site
+already demands a matcher/slot head, and unresolved domains are never
+structured to enable a coercion.  The pursued form of the goal keeps this
+conclusion but replaces the premise by a demand-directed declarative
+judgment (stage 3 of the roadmap).  On that path the first concrete
 counterexample — an or-pattern whose alternatives bind the same variable —
-is fixed (`AcceptanceGapRegression` now pins its acceptance); the known
-remaining gaps are producer-guard-pinned instance capabilities and rigidly
-compared nested matcher capabilities.  The staged path runs through the
-origin-aware recursive paired unifier, Damas–Milner algorithmic acceptance,
-fragment-restricted completeness (raw-head-visible lifts, freeze-compatible
-capability instances), and finally the removal of the selector's raw-head
-blind spot via cut-indexed coercion events.  The mechanized principality
-counterexample is compatible with this goal: it refutes substitution-only
+is fixed (`AcceptanceGapRegression` now pins its acceptance), and the
+remaining genuine inference gap is the producer-guard freeze
+(`packProgram`), to be resolved by the origin-aware ledger switch.  The
+staged path continues through Damas–Milner algorithmic acceptance,
+fragment-restricted completeness, and the removal of the selector's
+raw-head blind spot via cut-indexed coercion events.  The mechanized
+principality counterexample is independent: it refutes substitution-only
 recovery of every typing from the inferred result, not acceptance itself.
 -/
 def AnnotationFree : Prop :=

@@ -13,18 +13,24 @@ now aligns binder names positionally and unifies the bound types
 different positions of the alternatives are accepted.  The declarative
 derivation is kept alongside as the specification witness.
 
-The second gap is pinned below: a shared monomorphic consumer that
-declaratively has a wildcard slot domain (`Slot Any (prod [Int, Int])`) can
-consume both a bare `something` and a product of `something`s through
-explicit coercions, but the executable pipeline resolves the consumer's
-domain from the first use to the raw `Matcher Any ?τ` and then compares the
-product lift's capability `prod [Any, Any]` against `Any` as a rigid
-annotation inside `mguTy`, so the program is rejected.  The swapped order is
-rejected as well: there the domain is pinned to the raw product of matchers
-and the second use fails against a non-matcher expected head before any
-coercion branch fires.  Both witnesses refute `AnnotationFree` for the
-current inferencer and are scheduled to be fixed by the origin-aware
-recursive paired unifier (and the solve-cut event for the swapped order).
+The second family is pinned below as a boundary example of the wide
+declarative system, not as an inference defect: a shared monomorphic
+consumer declaratively receives the wildcard slot domain
+(`Slot Any (prod [Int, Int])`) and consumes both a bare `something` and a
+product of `something`s, but only through `coerceMatcherToSlot` steps taken
+at argument positions where no slot demand exists — the domain is a plain
+lambda-bound metavariable, and the derivation invents the slot structure
+that makes both coercions succeed.  The pipeline is demand-directed:
+coercions are inserted only where the substituted expected type already
+demands a matcher/slot head, and unresolved domains are never structured to
+enable a coercion.  It therefore resolves the domain from the first use to
+the raw `Matcher Any ?τ` and rejects the product lift's capability
+`prod [Any, Any]` against `Any` inside `mguTy`; the swapped order is
+rejected against a non-matcher expected head.  Both rejections are intended
+behaviour and permanently refute the wide-premise `AnnotationFree`
+(`annotationFree_wide_refuted`); they are not scheduled to be fixed by the
+origin-aware unifier.  The accepted idiom — let-polymorphism giving each
+use its own domain instance — is pinned as `nestedCapLetProgram_accepted`.
 
 The third gap — constructor instance capabilities pinned by the producer
 guard — is pinned below as well: `Pack : ∀κ α. Matcher κ α → Packed`
@@ -226,6 +232,20 @@ theorem nestedCapControl_accepted :
         (.lam "m" (.var "m"))) = true := by
   native_decide
 
+/-- The accepted idiom for the two producers: `let`-polymorphism gives each
+use its own instance of the generalized domain, so no demand-free coercion
+is needed. -/
+def nestedCapLetProgram : Expr :=
+  .letE "f" (.lam "m" (.var "m"))
+    (.tuple
+      [.app (.var "f") .something,
+       .app (.var "f") (.tuple [.something, .something])])
+
+theorem nestedCapLetProgram_accepted :
+    Inference.inferenceSucceeds emptySignature [] nestedCapLetProgram =
+      true := by
+  native_decide
+
 /-- The pipeline rejects the program: the first use pins the domain to the
 raw `Matcher Any ?τ`, and the second compares the lifted capability
 `prod [Any, Any]` against `Any` as a rigid annotation inside `mguTy`. -/
@@ -242,9 +262,13 @@ theorem nestedCapSwappedProgram_rejected :
       false := by
   native_decide
 
-/-- The nested-capability gap refutes annotation-freeness for the current
-inferencer; the goal statement stays a target for the origin-aware solver. -/
-theorem annotationFree_current_refuted : ¬ Coherent.AnnotationFree := by
+/-- The nested-capability boundary example permanently refutes the
+wide-premise `AnnotationFree`: the declarative typing exists only through
+demand-free matcher-to-slot coercions, and rejecting those is the intended
+demand-directed behaviour.  The pursued completeness statement keeps the
+conclusion but replaces the wide `HasTy` premise with a demand-directed
+judgment (stage 3 of the roadmap). -/
+theorem annotationFree_wide_refuted : ¬ Coherent.AnnotationFree := by
   intro hfree
   have haccept :=
     hfree emptySignature nestedCapProgram (.prod [sharedSlot, sharedSlot])

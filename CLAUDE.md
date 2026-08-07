@@ -81,17 +81,29 @@ commit／push はその都度の明示指示がある場合に限るという規
   埋め込みは縮退 witness を供給する．surface への忘却 `CoherentExpr.toHasTy` と推論成功からの
   `infer_success_coherent` を持ち，pattern 層の standalone threaded 境界への忘却は既存の
   `PatternResolutionDeriv.toThreadedSurface`（`CoherentSurface.lean`）が与える．これを algorithmic
-  completeness や principality と呼ばない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として言明を固定し，**完成後の推論器で
-  成立させる到達目標**として扱う（定理でも公理でもなく，無証明で主張しない）．最初の具体反例
+  completeness や principality と呼ばない．coercion 挿入は **demand-directed（要求駆動）を
+  根本原則**とする：coercion は利用位置の要求型（prevailing 適用後の期待型）の頭が
+  matcher／slot として確定している位置で，raw 型がそのままでは合わない場合にだけ挿入し，
+  要求が未確定な位置では raw 型をそのまま使う．coercion を成立させる目的で未解決
+  metavariable や確定済み domain を matcher／slot へ（遡及的にも）構造化しない．宣言的
+  `HasTy` の無条件 coercion はこの規律の外（動的安全性の包絡）であり，受理完全性の前提に
+  しない．最上位目標の注釈不要性は `Coherent.AnnotationFree` として言明を固定してあるが，
+  広い `HasTy` 前提のこの形は境界例により**恒久的に反証済み**である
+  （`annotationFree_wide_refuted`）．到達目標は結論を保ったまま前提を demand-directed な
+  宣言的 judgment（段階 3-1）へ置き換えた形であり，どちらも無証明で主張しない．最初の具体反例
   だった or-pattern の binder 共有欠如は解消済みである：or の整合は `alignBindings`（binder 名の
   位置照合＋束縛型の単一化）で行い，raw metavariable ID の構文的等価を要求しない．これに伴い
   `PatternResolutionDeriv.or` と `ThreadedPatternResolution.or` は「左右の raw 結果 Δ＋
   prevailing 像の等価 premise」へ緩和した（結論は左の raw Δ・宣言的 `TerminalPatternResolution.or`
-  は不変で，忘却 map は premise で輸送する）．既知ギャップは両方とも `AcceptanceGapRegression` で
-  機械化反例として固定済みである：nested matcher capability の rigid 比較（`nestedCapProgram`）と
-  capability freeze（`packProgram` = `Pack something`，fresh instance capability の protected 化）．
-  それぞれ現行推論器への反証（`annotationFree_current_refuted`／
-  `annotationFree_current_refuted_by_freeze`）を伴う（いずれも origin-aware paired unifier の対象）．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
+  は不変で，忘却 map は premise で輸送する）．既知の残り二系統は `AcceptanceGapRegression` で
+  機械化反例として固定済みである：nested matcher capability の rigid 比較
+  （`nestedCapProgram`）は demand の無い位置への coercion だけで宣言的に型付く恒久的
+  境界例であり，拒否が意図された挙動である（`let` 多相化した `nestedCapLetProgram` は
+  受理・広い前提への恒久反証 `annotationFree_wide_refuted` を伴う．origin-aware unifier で
+  受理側へ反転させる対象にしない）．capability freeze（`packProgram` = `Pack something`，
+  fresh instance capability の protected 化）は真の受理ギャップで，現行推論器への反証
+  `annotationFree_current_refuted_by_freeze` を伴い，origin-aware paired unifier
+  （guard の ledger 化）の対象である．principality の存在側は「∀ typing ∃θ plan の factorization 存在定理」を
   先に立て，一意性は canonical boundary（substitution が coercible head を導入しない等）を
   定義してから条件付きで扱う．proof-indexed な derivation
   property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で代用しない方針は維持する．
@@ -117,7 +129,9 @@ commit／push はその都度の明示指示がある場合に限るという規
   全成功が soundness＋`AdmissiblePost` 準拠の proof-carrying certificate を返す
   （`mguPairedTy_sound`／`mguPairedTy_admissible`；oriented kernel の最汎性・単調性・solvability は
   非主張）．W への切替前に残るのは solve-cut ごとの ledger snapshot と
-  prevailing image leaf を対象とする export freeze event である．constructor／primitive の local
+  prevailing image leaf を対象とする export freeze event である．切替の解消対象は
+  capability freeze ギャップ（`packProgram`）であり，`nestedCapProgram` の拒否は変えない．
+  constructor／primitive の local
   flexible instance が export 時に freeze される completeness はなお非主張とする．
   product-of-matchers の lift は tuple literal 専用へ戻さず，`let` 後の変数利用位置でも
   挿入できる unary `COERCE-PRODUCT-MATCHER` を維持する．sibling helper
@@ -192,14 +206,17 @@ commit／push はその都度の明示指示がある場合に限るという規
     （`Coherent.CoherentExpr := ExprDeriv` ほか 10 family），`CoherentExpr.toHasTy`，
     `infer_success_coherent`，match-free 断片の全 coherence
     （`coherent_of_matchFree`）と DM 埋め込みの系（`dm_coherent`），
-    および目標命題 `AnnotationFree`（現行推論器へは反証済みの到達目標）．
+    および目標命題 `AnnotationFree`（広い `HasTy` 前提の形は恒久反証済み．
+    到達目標は demand-directed 前提版＝段階 3-1）．
   - `TypePM/AcceptanceGapRegression.lean`: or-pattern の宣言的型付け
     `orProgram_typed` と，binder 整合修正後の受理固定
     （`orProgram_accepted`・異位置束縛の `orMixedProgram_accepted`・
-    単一分岐 control）．nested matcher capability の rigid 比較ギャップも固定：
-    `nestedCapProgram`／swapped 版の宣言的型付けと拒否，同一 producer 二回の
-    control 受理，および現行推論器への反証 `annotationFree_current_refuted`．
-    capability freeze も固定済み：`packScheme`（`∀κ α. Matcher κ α → Packed`）の
+    単一分岐 control）．nested matcher capability の rigid 比較は demand-directed
+    原則の恒久的境界例として固定：`nestedCapProgram`／swapped 版の宣言的型付けと
+    （意図された）拒否，同一 producer 二回の control 受理，`let` 多相化の受理
+    control `nestedCapLetProgram_accepted`，および広い前提への恒久反証
+    `annotationFree_wide_refuted`．
+    capability freeze は真のギャップとして固定済み：`packScheme`（`∀κ α. Matcher κ α → Packed`）の
     `packProgram_typed`（宣言的 `κ := Any` instance）と raw／public の拒否，
     capability を scheme 側で `Any` に固定した `packMonoSignature` の control 受理，
     および独立反証 `annotationFree_current_refuted_by_freeze`．

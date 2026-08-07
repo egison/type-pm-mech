@@ -25,10 +25,13 @@ the two sorts uses the cross-sort-aware `Subst.seq`, whose admissibility
 closure is provided by `AdmissiblePost.seq`.
 
 This module is not yet wired into Algorithm W: the ledger snapshots per
-solve cut, the export freeze events, and the replacement of the rigid
-annotation comparison inside inference remain future stages.  Most
-generality, monotonicity, and solvability completeness are not claimed for
-the oriented kernels.
+solve cut, the export freeze events, and the switch of the producer guard
+to the ledger discipline remain future stages.  The wiring targets the
+capability-freeze acceptance gap (`packProgram`); the nested-capability
+boundary example (`nestedCapProgram`) is intended rejection under the
+demand-directed coercion discipline and is not in scope.  Most generality,
+monotonicity, and solvability completeness are not claimed for the
+oriented kernels.
 -/
 
 namespace TypePM

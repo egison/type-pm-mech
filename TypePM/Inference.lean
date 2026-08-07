@@ -1889,14 +1889,18 @@ def slotTupleTarget (duals : List Dual) : Ty :=
   .slot (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
 
 /--
-Choose the raw type presented to expected-type alignment.  Ordinary product
-uses retain their synthesized product type.  At a matcher or slot use site, a
-raw product of matchers is first lifted by the explicit unary
-`coerceProductMatcher` rule; `alignAtSlot` can then perform either equality or
-the existing producer-stable matcher-to-slot conversion.  At a slot use site,
-a raw product of slots is lifted by `coerceSlotTuple`.  Matcher-product lifting
-has precedence for the empty product, whose two component recognizers both
-succeed vacuously.
+Choose the raw type presented to expected-type alignment.  This helper is
+the demand-directed coercion principle in executable form: a coercion source
+is selected only when the substituted expected type already demands a
+matcher or slot head, and an unresolved expectation leaves the synthesized
+type untouched — raw types are never structured to enable a coercion.
+Ordinary product uses retain their synthesized product type.  At a matcher
+or slot use site, a raw product of matchers is first lifted by the explicit
+unary `coerceProductMatcher` rule; `alignAtSlot` can then perform either
+equality or the existing producer-stable matcher-to-slot conversion.  At a
+slot use site, a raw product of slots is lifted by `coerceSlotTuple`.
+Matcher-product lifting has precedence for the empty product, whose two
+component recognizers both succeed vacuously.
 
 Keeping this choice in a non-recursive helper leaves the Algorithm W traversal
 and its fuel argument unchanged.
