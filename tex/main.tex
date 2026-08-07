@@ -92,7 +92,9 @@ $\mathsf{DDTyping}$ は fresh supply と prevailing paired substitution だけ�
 input／output として thread する．$\lambda$ domain は任意の型として選ばず，supply から得た
 fresh unresolved metavariable とする．checking は式を先に synthesize して raw result と
 中間 state を得た後，その同じ cut における prevailing 適用後の expected type の頭を観察し，
-決定的 selector で identity または許された coercion branch を選ぶ．後続 solve の結果を
+決定的 selector で identity または許された coercion branch を選ぶ．非 identity branch を
+選べるのは expected head が slot（$\MatcherSlot{}{}$）の場合だけであり（slot-demand），
+非恒等 coercion の終点は常に slot である．後続 solve の結果を
 遡及的に利用せず，coercion を成立させるために未解決 metavariable の構造を推測しない．
 別建ての demand-origin token，完全な ordered constraint store，semantic entailment は
 主判断の index としない．また，通常 alignment の失敗を coercion 規則の負前提にせず，
@@ -1317,12 +1319,18 @@ scheme から利用ごとに別の fresh instance を作る．各 ordinary solve
 syntax，freeze 済み signature，fresh state，直前までの prevailing substitution だけから生成し，
 まだ選んでいない coercion endpoint を expected type へ逆流させない．
 
-selector は raw matcher の product と matcher／slot expected head に対して
-COERCE-PRODUCT-MATCHER を，raw slot の product と slot expected head に対して
-COERCE-SLOT-TUPLE を選び，matcher-to-slot は producer-stable な slot alignment へ送る．
-空 product は両 product recognizer に一致するため product-matcher branch を優先する．一方，
-expected head が未解決の場合や non-coercive branch の head pattern に一致する場合は identity を
-選ぶ．ordinary-first は「通常 unification を試して失敗した」という負前提ではない．selector の
+selector が非 identity branch を検討するのは expected head が slot の場合だけである
+（slot-demand）．raw source が matcher なら producer-stable な matcher-to-slot alignment を，
+raw matcher の product なら COERCE-PRODUCT-MATCHER に同じ matcher-to-slot を続ける
+whole-product-first の二段を，raw slot の product なら COERCE-SLOT-TUPLE を選ぶ．
+空 product は両 product recognizer に一致するため product-matcher branch
+（matcher-first の二段）を優先する．一方，
+expected head が未解決・slot 以外の場合や non-coercive branch の head pattern に一致する場合は
+identity を選ぶ．特に matcher-expected 位置は raw matcher の通常 alignment だけを許し，
+そこへ product-of-matchers を渡す形は意図された拒否である．タプルが product matcher として
+振る舞うのは matcher として消費される瞬間であり，組み込みの消費位置
+（$\mathtt{matchAll}$ の matcher 位置・clause の next-matcher 位置）が要求する型は
+すべて slot だからである．ordinary-first は「通常 unification を試して失敗した」という負前提ではない．selector の
 positive な head table は上記の優先順位を含めて決定的であり，選ばれた非 identity branch の
 source／target head は通常 alignment の branch と排他的である，という invariant と補題として
 証明する．従って
@@ -1354,6 +1362,9 @@ solver metatheory の比較対象ではあるが，$\mathsf{DDTyping}$ の index
 product coercion の source view を $\tau_{\mathit{raw}}$ 自身から認識する．従って raw
 metavariable が $S_1$ の下で初めて product-of-matchers／product-of-slots になる場合，または
 component head が初めて matcher／slot になる場合の completeness は現段階では主張しない．
+また現行 helper には matcher expected head に対して product lift 単独（matcher 終点）を選ぶ
+分岐が一つ残っている．これは slot-demand 原則の外であり，対応する受理回帰とともに撤去して
+意図された拒否へ反転する予定である．
 $\mathsf{RawSourceVisible}$ は，$\mathsf{DDTyping}$ derivation の各 coercive check について，
 selector が必要とする source view がその cut の raw operand に既に現れていることを表す独立な
 fragment 条件である．既存 core certificate の raw-source provenance 添字は，実際に観察した raw
@@ -1637,11 +1648,11 @@ raw-source／freeze の条件を外しても拒否境界に残る．一方，$\m
 $\mathtt{let}$ 多相化が利用ごとに独立な fresh instance を与える positive control で，公開 W の
 受理，三つの相異なる raw target variable，producer-to-slot solve の不在を既に検査している．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
-unary lift であるため，$\mathtt{let}$ 後の変数利用位置にも明示的 coercion を挿入できる．期待型
-整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，後者を slot として
-使う場合には COERCE-SLOT-TUPLE を選ぶ．通常の application も function を fresh domain／codomain
-へ先に整合してから argument をその domain に対して check するため，関数引数位置で
-product-matcher lift，matcher-to-slot，slot-tuple を挿入できる．raw source が cut 時点の prevailing
+unary lift であるため，slot demand の下で $\mathtt{let}$ 後の変数利用位置にも明示的 coercion を
+挿入できる．期待型整合 helper は raw product-of-matchers に加えて raw product-of-slots も認識し，
+後者には COERCE-SLOT-TUPLE を選ぶ．通常の application も function を fresh domain／codomain
+へ先に整合してから argument をその domain に対して check するため，domain が slot 頭に確定した
+関数引数位置で同じ三形（matcher-to-slot，product-matcher lift の二段，slot-tuple）を挿入できる．raw source が cut 時点の prevailing
 像で初めて必要な head を持つ場合の拡張も，同じ cut の snapshot だけを記録し，後続 suffix から
 coercion の可否を遡及させない．空 product は両 recognizer に一致するため product-matcher branch を
 優先する．
