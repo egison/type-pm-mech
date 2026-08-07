@@ -4883,4 +4883,270 @@ theorem FrozenSig.generalize_boundedBy {q : InferenceBase.FreshSupply}
   ⟨fun varId mem => bounded.caps varId (List.mem_filter.mp mem).1,
     fun varId mem => bounded.targets varId (List.mem_filter.mp mem).1⟩
 
+/-! ### Boundedness sweep: pattern-layer families
+
+Every demand-directed judgment preserves the freshness invariant: from a
+bounded input state (prevailing substitution, context, and expected types
+below the input supply), the output substitution and every published
+output are bounded by the output supply.  The expression-free data- and
+primitive-pattern families close first.
+-/
+
+/-- A capability variable below the counter is bounded. -/
+theorem Cap.BoundedBy.varOf {q : InferenceBase.FreshSupply}
+    {varId : CapVar} (h : varId.id < q.nextCap) :
+    (Cap.var varId).BoundedBy q := by
+  intro w hw
+  simp only [Cap.fcv, List.mem_singleton] at hw
+  subst hw
+  exact h
+
+/-- A target variable below the counter is bounded. -/
+theorem Ty.BoundedBy.varOf {q : InferenceBase.FreshSupply}
+    {varId : TypePM.TyVar} (h : varId < q.nextTy) :
+    (Ty.var varId).BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.fcv] at hw
+    exact nomatch hw
+  · intro w hw
+    simp only [Ty.ftv, List.mem_singleton] at hw
+    subst hw
+    exact h
+
+/-- The integer base type is bounded by every supply. -/
+theorem Ty.BoundedBy.int {q : InferenceBase.FreshSupply} :
+    Ty.int.BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.fcv] at hw
+    exact nomatch hw
+  · intro w hw
+    simp only [Ty.ftv] at hw
+    exact nomatch hw
+
+/-- A function type of bounded components is bounded. -/
+theorem Ty.BoundedBy.fnOf {q : InferenceBase.FreshSupply}
+    {domain codomain : Ty} (domainBounded : domain.BoundedBy q)
+    (codomainBounded : codomain.BoundedBy q) :
+    (Ty.fn domain codomain).BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.fcv, List.mem_append] at hw
+    rcases hw with h | h
+    · exact domainBounded.caps w h
+    · exact codomainBounded.caps w h
+  · intro w hw
+    simp only [Ty.ftv, List.mem_append] at hw
+    rcases hw with h | h
+    · exact domainBounded.targets w h
+    · exact codomainBounded.targets w h
+
+/-- A matcher type of bounded components is bounded. -/
+theorem Ty.BoundedBy.matcherOf {q : InferenceBase.FreshSupply}
+    {capability : Cap} {target : Ty}
+    (capBounded : capability.BoundedBy q)
+    (targetBounded : target.BoundedBy q) :
+    (Ty.matcher capability target).BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.fcv, List.mem_append] at hw
+    rcases hw with h | h
+    · exact capBounded w h
+    · exact targetBounded.caps w h
+  · intro w hw
+    simp only [Ty.ftv] at hw
+    exact targetBounded.targets w hw
+
+/-- A slot type of bounded components is bounded. -/
+theorem Ty.BoundedBy.slotOf {q : InferenceBase.FreshSupply}
+    {capability : Cap} {target : Ty}
+    (capBounded : capability.BoundedBy q)
+    (targetBounded : target.BoundedBy q) :
+    (Ty.slot capability target).BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.fcv, List.mem_append] at hw
+    rcases hw with h | h
+    · exact capBounded w h
+    · exact targetBounded.caps w h
+  · intro w hw
+    simp only [Ty.ftv] at hw
+    exact targetBounded.targets w hw
+
+/-- The canonical tuple type of bounded components is bounded. -/
+theorem prodTy_boundedBy {q : InferenceBase.FreshSupply} :
+    ∀ {targets : List Ty},
+      (∀ target ∈ targets, target.BoundedBy q) →
+      (prodTy targets).BoundedBy q
+  | [], _ => Ty.BoundedBy.prodOfForall (fun target mem => nomatch mem)
+  | [target], bounded => bounded target (by simp)
+  | target₁ :: target₂ :: targets, bounded =>
+      Ty.BoundedBy.prodOfForall bounded
+
+/-- The list type of a bounded element is bounded. -/
+theorem listT_boundedBy {q : InferenceBase.FreshSupply} {τ : Ty}
+    (bounded : τ.BoundedBy q) : (Ty.listT τ).BoundedBy q := by
+  refine ⟨?_, ?_⟩
+  · intro w hw
+    simp only [Ty.listT, Ty.fcv, Ty.fcvList, List.append_nil] at hw
+    exact bounded.caps w hw
+  · intro w hw
+    simp only [Ty.listT, Ty.ftv, Ty.ftvList, List.append_nil] at hw
+    exact bounded.targets w hw
+
+mutual
+
+/-- Data-pattern checking preserves boundedness. -/
+theorem DDDPat.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {pattern : DPat}
+      {expectedTarget : Ty} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDDPat signature q S pattern expectedTarget bindings q' S' →
+      signature.SchemesClosed → S.BoundedBy q →
+      expectedTarget.BoundedBy q →
+      S'.BoundedBy q' ∧ MonoCtx.BoundedBy q' bindings
+  | _, _, _, _, _, _, _, .var, _, Sb, expectedBounded =>
+      ⟨Sb, by
+        intro entry mem
+        rcases List.mem_cons.mp mem with rfl | h
+        · exact expectedBounded
+        · exact nomatch h⟩
+  | _, _, _, _, _, _, _, .wild, _, Sb, _ =>
+      ⟨Sb, fun entry mem => nomatch mem⟩
+  | _, _, _, _, _, _, _,
+      .ctor (scheme := scheme) hfind aligned children, closed, Sb,
+      expectedBounded => by
+      rename_i q S expectedTarget bindings q' S' name patterns S₁
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.dataCtors hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateCtorScheme q scheme
+      have S₁Bounded := aligned.boundedBy (Sb.mono extendsInst)
+        instBounded.2 (expectedBounded.mono extendsInst)
+      exact children.boundedBy closed S₁Bounded instBounded.1
+  | _, _, _, _, _, _, _,
+      .tuple (patterns := patterns) aligned children, closed, Sb,
+      expectedBounded => by
+      rename_i q S expectedTarget S₁ bindings q' S'
+      have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
+      have extendsF := SupplyExtends.freshTargets patterns.length q
+      have S₁Bounded := aligned.boundedBy (Sb.mono extendsF)
+        (Ty.BoundedBy.prodOfForall targetsBounded)
+        (expectedBounded.mono extendsF)
+      exact children.boundedBy closed S₁Bounded targetsBounded
+
+/-- Data-pattern list checking preserves boundedness. -/
+theorem DDDPats.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List DPat}
+      {targets : List Ty} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDDPats signature q S patterns targets bindings q' S' →
+      signature.SchemesClosed → S.BoundedBy q →
+      (∀ target ∈ targets, target.BoundedBy q) →
+      S'.BoundedBy q' ∧ MonoCtx.BoundedBy q' bindings
+  | _, _, _, _, _, _, _, .nil, _, Sb, _ =>
+      ⟨Sb, fun entry mem => nomatch mem⟩
+  | _, _, _, _, _, _, _, .cons head tail hdisjoint, closed, Sb,
+      targetsBounded => by
+      obtain ⟨S₁Bounded, headBindings⟩ := head.boundedBy closed Sb
+        (targetsBounded _ (by simp))
+      obtain ⟨S'Bounded, tailBindings⟩ := tail.boundedBy closed S₁Bounded
+        (fun target mem => (targetsBounded target (by simp [mem])).mono
+          head.supplyExtends)
+      exact ⟨S'Bounded, MonoCtx.BoundedBy.append
+        (headBindings.mono tail.supplyExtends) tailBindings⟩
+
+end
+
+mutual
+
+/-- Primitive-pattern checking preserves boundedness and returns bounded
+holes and bindings. -/
+theorem DDPPat.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {pattern : PPat}
+      {expectedTarget : Ty} {holes : List Dual} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDPPat signature q S pattern expectedTarget holes bindings q' S' →
+      signature.SchemesClosed → S.BoundedBy q →
+      expectedTarget.BoundedBy q →
+      S'.BoundedBy q' ∧ (∀ dual ∈ holes, Dual.BoundedBy q' dual) ∧
+        MonoCtx.BoundedBy q' bindings
+  | _, _, _, _, _, _, _, _, .hole, _, Sb, expectedBounded => by
+      refine ⟨Sb.mono (SupplyExtends.bumpCap _ 1), ?_, ?_⟩
+      · intro dual mem
+        rcases List.mem_cons.mp mem with rfl | h
+        · exact ⟨Cap.BoundedBy.varOf (Nat.lt_succ_self _),
+            expectedBounded.mono (SupplyExtends.bumpCap _ 1)⟩
+        · exact nomatch h
+      · intro entry mem
+        exact nomatch mem
+  | _, _, _, _, _, _, _, _, .wild, _, Sb, _ => by
+      refine ⟨Sb, ?_, ?_⟩
+      · intro dual mem
+        exact nomatch mem
+      · intro entry mem
+        exact nomatch mem
+  | _, _, _, _, _, _, _, _, .pval, _, Sb, expectedBounded => by
+      refine ⟨Sb, ?_, ?_⟩
+      · intro dual mem
+        exact nomatch mem
+      · intro entry mem
+        rcases List.mem_cons.mp mem with rfl | h
+        · exact expectedBounded
+        · exact nomatch h
+  | _, _, _, _, _, _, _, _,
+      .ctor (entry := entry) hfind aligned children, closed, Sb,
+      expectedBounded => by
+      rename_i q S expectedTarget holes bindings q' S' name patterns S₁
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.patternCtors hfind).boundedBy)
+      have extendsInst := SupplyExtends.instantiateCtorScheme q entry.scheme
+      have S₁Bounded := aligned.boundedBy (Sb.mono extendsInst)
+        instBounded.2 (expectedBounded.mono extendsInst)
+      exact children.boundedBy closed S₁Bounded instBounded.1
+  | _, _, _, _, _, _, _, _,
+      .tuple (patterns := patterns) aligned children, closed, Sb,
+      expectedBounded => by
+      rename_i q S expectedTarget S₁ holes bindings q' S'
+      have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
+      have extendsF := SupplyExtends.freshTargets patterns.length q
+      have S₁Bounded := aligned.boundedBy (Sb.mono extendsF)
+        (Ty.BoundedBy.prodOfForall targetsBounded)
+        (expectedBounded.mono extendsF)
+      exact children.boundedBy closed S₁Bounded targetsBounded
+
+/-- Primitive-pattern list checking preserves boundedness. -/
+theorem DDPPats.boundedBy {signature : FrozenSig} :
+    ∀ {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List PPat}
+      {targets : List Ty} {holes : List Dual} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst},
+      DDPPats signature q S patterns targets holes bindings q' S' →
+      signature.SchemesClosed → S.BoundedBy q →
+      (∀ target ∈ targets, target.BoundedBy q) →
+      S'.BoundedBy q' ∧ (∀ dual ∈ holes, Dual.BoundedBy q' dual) ∧
+        MonoCtx.BoundedBy q' bindings
+  | _, _, _, _, _, _, _, _, .nil, _, Sb, _ => by
+      refine ⟨Sb, ?_, ?_⟩
+      · intro dual mem
+        exact nomatch mem
+      · intro entry mem
+        exact nomatch mem
+  | _, _, _, _, _, _, _, _, .cons head tail hdisjoint, closed, Sb,
+      targetsBounded => by
+      obtain ⟨S₁Bounded, headHoles, headBindings⟩ := head.boundedBy closed
+        Sb (targetsBounded _ (by simp))
+      obtain ⟨S'Bounded, tailHoles, tailBindings⟩ := tail.boundedBy closed
+        S₁Bounded
+        (fun target mem => (targetsBounded target (by simp [mem])).mono
+          head.supplyExtends)
+      refine ⟨S'Bounded, ?_, MonoCtx.BoundedBy.append
+        (headBindings.mono tail.supplyExtends) tailBindings⟩
+      intro dual mem
+      rcases List.mem_append.mp mem with h | h
+      · exact ⟨(headHoles dual h).1.mono tail.supplyExtends,
+          (headHoles dual h).2.mono tail.supplyExtends⟩
+      · exact tailHoles dual h
+
+end
+
 end TypePM
