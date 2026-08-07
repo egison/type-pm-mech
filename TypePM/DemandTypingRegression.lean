@@ -945,6 +945,346 @@ theorem capFreeze_forgetting_gap :
         (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) :=
   ⟨capFreezeProgram_ddTyping, capFreezeProgram_not_hasTy⟩
 
+/-! ## Capability freeze through `let`: the second forgetting-gap source
+
+The seeded gap above quantifies its matcher producer in the ambient
+context.  This block shows the same freeze-axis separation arises with no
+polymorphic seed at all: `let` generalization over a capability-polymorphic
+constructor field creates the quantified producer itself.  Under
+`m2 : Matcher (con "c" []) Int`,
+
+  `let f = λx. Pack x in (f something, f m2)`
+
+closes in `DDTyping` at `(Packed, Packed)`: the value's domain resolves to
+`Matcher ?κ ?α`, mid-derivation generalization quantifies the capability
+meta, and each use structures its own fresh instance capability by an
+ordinary matcher-pair solve (`Any` at the first use, `con "c" []` at the
+second).  Declaratively no choice of the λ domain serves both uses: a
+variable-capped domain violates the variable-only value-flow condition,
+and any structural cap collides with one of the two divergent demands.
+The forgetting-side freeze condition of stage 3-2 therefore cannot be a
+condition on the ambient context alone — it must constrain
+`let`-generalized schemes as well. -/
+
+open AcceptanceGapRegression (packSignature packScheme)
+
+/-- One monomorphic structurally-capped consumer seed. -/
+def letCapContext : Context :=
+  [("m2", Scheme.mono (.matcher (.con "c" []) .int))]
+
+/-- `let f = λx. Pack x in (f something, f m2)`. -/
+def letCapFreezeProgram : Expr :=
+  .letE "f" (.lam "x" (.ctor "Pack" [.var "x"]))
+    (.tuple [.app (.var "f") .something, .app (.var "f") (.var "m2")])
+
+/-- Prevailing substitution after the value's constructor-argument check
+resolves the λ domain to the instantiated `Pack` field. -/
+def letCapValueSubst : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 1 (.matcher (.var ⟨1⟩) (.var 2))⟩ Subst.id
+
+/-- The mid-derivation generalization of the value type quantifies the
+still-unresolved instance capability. -/
+def letCapScheme : Scheme :=
+  ⟨[⟨1⟩], [2], .fn (.matcher (.var ⟨1⟩) (.var 2)) (.data "Packed" [])⟩
+
+/-- The body context binding the generalized producer. -/
+def letCapBodyContext : Context := ("f", letCapScheme) :: letCapContext
+
+/-- Prevailing substitution after the first-use function alignment. -/
+def letCapFn1 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    fnFreshDelta (.matcher (.var ⟨3⟩) (.var 5)) (.data "Packed" []) 6 7⟩
+    letCapValueSubst
+
+/-- Prevailing substitution after the first argument check structures the
+first fresh instance capability to `Any`. -/
+def letCapStructure1 : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 8 (.var 5)⟩
+    (Subst.seq ⟨Unification.CapSubst.single ⟨3⟩ .any, TySubst.id⟩ letCapFn1)
+
+/-- Prevailing substitution after the second-use function alignment. -/
+def letCapFn2 : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    fnFreshDelta (.matcher (.var ⟨5⟩) (.var 11)) (.data "Packed" []) 12 13⟩
+    letCapStructure1
+
+/-- Terminal substitution: the second argument check structures the second
+fresh instance capability to `con "c" []`. -/
+def letCapTerminal : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 11 .int⟩
+    (Subst.seq ⟨Unification.CapSubst.single ⟨5⟩ (.con "c" []), TySubst.id⟩
+      letCapFn2)
+
+/-- The value synthesizes at `?1 → Packed` with the domain resolved to the
+instantiated constructor field `Matcher ?⟨1⟩ ?2`. -/
+theorem letCapValue_ddSynth :
+    DDSynth packSignature ⟨1, 1⟩ Subst.id letCapContext
+      (.lam "x" (.ctor "Pack" [.var "x"]))
+      (.fn (.var 1) (.data "Packed" [])) ⟨2, 3⟩ letCapValueSubst := by
+  exact DDSynth.lam
+    (DDSynth.ctor (scheme := packScheme) rfl
+      (.cons (.mk (DDSynth.var (scheme := Scheme.mono (.var 1)) rfl)
+        (.ordinary rfl (.ordinary rfl
+          (ExactPairedMGU.varLeft 1 (.matcher (.var ⟨1⟩) (.var 2))
+            (by decide)))))
+        .nil))
+
+/-- The first use structures the fresh instance capability of `f` to `Any`
+by an ordinary matcher-pair solve against `something`. -/
+theorem letCapUse1_ddSynth :
+    DDSynth packSignature ⟨2, 3⟩ letCapValueSubst letCapBodyContext
+      (.app (.var "f") .something) (.var 7) ⟨4, 9⟩ letCapStructure1 := by
+  exact DDSynth.app (q₁ := ⟨4, 6⟩) (S₁ := letCapValueSubst) (S₂ := letCapFn1)
+    (functionTarget := .fn (.matcher (.var ⟨3⟩) (.var 5)) (.data "Packed" []))
+    (DDSynth.var (scheme := letCapScheme) rfl)
+    (.ordinary rfl (ExactPairedMGU.fnFresh (.matcher (.var ⟨3⟩) (.var 5))
+      (.data "Packed" []) 6 7 (by decide) (by decide) (by decide) (by decide)
+      (by decide)))
+    (.mk .something (.ordinary rfl (.matcherPair rfl rfl
+      (ExactCapMGU.varRight .any ⟨3⟩ (by decide))
+      (ExactPairedMGU.varLeft 8 (.var 5) (by decide)))))
+
+/-- The second use structures its own fresh instance capability to
+`con "c" []`: two divergent structural solves of the same generalized
+capability binder. -/
+theorem letCapUse2_ddSynth :
+    DDSynth packSignature ⟨4, 9⟩ letCapStructure1 letCapBodyContext
+      (.app (.var "f") (.var "m2")) (.var 13) ⟨6, 14⟩ letCapTerminal := by
+  exact DDSynth.app (q₁ := ⟨6, 12⟩) (S₁ := letCapStructure1)
+    (S₂ := letCapFn2)
+    (functionTarget := .fn (.matcher (.var ⟨5⟩) (.var 11)) (.data "Packed" []))
+    (DDSynth.var (scheme := letCapScheme) rfl)
+    (.ordinary rfl (ExactPairedMGU.fnFresh (.matcher (.var ⟨5⟩) (.var 11))
+      (.data "Packed" []) 12 13 (by decide) (by decide) (by decide)
+      (by decide) (by decide)))
+    (.mk (DDSynth.var
+        (scheme := Scheme.mono (.matcher (.con "c" []) .int)) rfl)
+      (.ordinary rfl (.matcherPair rfl rfl
+        (ExactCapMGU.varRight (.con "c" []) ⟨5⟩ (by decide))
+        (ExactPairedMGU.varRight .int 11 (by decide)))))
+
+/-- The whole program closes in the demand-directed judgment at
+`(Packed, Packed)`. -/
+theorem letCapFreezeProgram_ddTyping :
+    DDTyping packSignature letCapContext letCapFreezeProgram
+      (.prod [.data "Packed" [], .data "Packed" []]) := by
+  refine ⟨.prod [.var 7, .var 13], ⟨6, 14⟩, letCapTerminal, ?_, rfl⟩
+  exact DDSynth.letE letCapValue_ddSynth
+    (DDSynth.tuple (.cons letCapUse1_ddSynth
+      (.cons letCapUse2_ddSynth .nil)))
+
+/-- `something` typed at any matcher-headed type has capability `Any`. -/
+theorem something_matcher_cap {context : Context} {published : Ty}
+    (typing : HasTy packSignature context .something published)
+    {capability : Cap} {target : Ty}
+    (headEq : published = .matcher capability target) :
+    capability = .any := by
+  cases typing with
+  | something =>
+      injection headEq with capEq _
+      exact capEq.symm
+  | coerceProductMatcher premise => cases premise
+  | coerceMatcherToSlot _ _ _ => nomatch headEq
+  | checkSlotToSlot _ _ _ => nomatch headEq
+  | coerceSlotTuple _ => nomatch headEq
+
+/-- The seeded monomorphic consumer typed at any matcher-headed type has
+capability `con "c" []`. -/
+theorem m2var_matcher_cap {context : Context} {published : Ty}
+    (contextFind :
+      context.find? "m2" = some (Scheme.mono (.matcher (.con "c" []) .int)))
+    (typing : HasTy packSignature context (.var "m2") published)
+    {capability : Cap} {target : Ty}
+    (headEq : published = .matcher capability target) :
+    capability = .con "c" [] := by
+  cases typing with
+  | var find inst =>
+      rename_i scheme
+      have pinned : some scheme =
+          some (Scheme.mono (.matcher (.con "c" []) .int)) :=
+        find.symm.trans contextFind
+      injection pinned with pinned
+      subst pinned
+      exact congrArg (fun τ => match τ with
+        | Ty.matcher head _ => head
+        | _ => Cap.any) (headEq.symm.trans inst.mono_eq)
+  | coerceProductMatcher premise =>
+      cases premise with
+      | var find inst =>
+          rename_i scheme
+          have pinned : some scheme =
+              some (Scheme.mono (.matcher (.con "c" []) .int)) :=
+            find.symm.trans contextFind
+          injection pinned with pinned
+          subst pinned
+          nomatch inst.mono_eq
+  | coerceMatcherToSlot _ _ _ => nomatch headEq
+  | checkSlotToSlot _ _ _ => nomatch headEq
+  | coerceSlotTuple _ => nomatch headEq
+
+/-- Any declarative typing of the value body `Pack x` forces the λ domain
+to be matcher-headed or a product of matchers: coercion wrappers only move
+the published head, never the domain constraint. -/
+theorem packCtor_domain_shape {domain : Ty} :
+    ∀ {context : Context} {expression : Expr} {published : Ty},
+      HasTy packSignature context expression published →
+      expression = .ctor "Pack" [.var "x"] →
+      context.find? "x" = some (Scheme.mono domain) →
+      (∃ capability target, domain = .matcher capability target) ∨
+        (∃ duals : List Dual,
+          domain = .prod (duals.map fun dual =>
+            .matcher dual.cap dual.target))
+  | _, _, _, .ctor find inst args, exprEq, contextFind => by
+      rename_i targets scheme
+      injection exprEq with nameEq exprsEq
+      subst nameEq
+      subst exprsEq
+      have pinned : some scheme = some packScheme := find.symm.trans rfl
+      injection pinned with pinned
+      subst pinned
+      obtain ⟨C, T, _, _, argsEq, _⟩ := inst
+      cases args with
+      | cons argTyping argsNil =>
+      rename_i argTarget restTargets
+      injection argsEq with headEq _
+      have headEq' : argTarget =
+          .matcher (C 0) (((Ty.var 0).applyCapability C).applyTarget T) :=
+        headEq.symm
+      cases argTyping with
+      | var findX instX =>
+          rename_i schemeX
+          have pinnedX : some schemeX = some (Scheme.mono domain) :=
+            findX.symm.trans contextFind
+          injection pinnedX with pinnedX
+          subst pinnedX
+          exact Or.inl ⟨_, _, instX.mono_eq.symm.trans headEq'⟩
+      | coerceProductMatcher premise =>
+          cases premise with
+          | var findX instX =>
+              rename_i schemeX
+              have pinnedX : some schemeX = some (Scheme.mono domain) :=
+                findX.symm.trans contextFind
+              injection pinnedX with pinnedX
+              subst pinnedX
+              exact Or.inr ⟨_, instX.mono_eq.symm⟩
+      | coerceMatcherToSlot _ _ _ => nomatch headEq'
+      | checkSlotToSlot _ _ _ => nomatch headEq'
+      | coerceSlotTuple _ => nomatch headEq'
+  | _, _, _, .coerceMatcherToSlot premise _ _, exprEq, contextFind =>
+      packCtor_domain_shape premise exprEq contextFind
+  | _, _, _, .checkSlotToSlot premise _ _, exprEq, contextFind =>
+      packCtor_domain_shape premise exprEq contextFind
+  | _, _, _, .coerceProductMatcher premise, exprEq, contextFind =>
+      packCtor_domain_shape premise exprEq contextFind
+  | _, _, _, .coerceSlotTuple premise, exprEq, contextFind =>
+      packCtor_domain_shape premise exprEq contextFind
+  | _, _, _, .var _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .lam _, exprEq, _ => nomatch exprEq
+  | _, _, _, .app _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .letE _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .fixE _ _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .lit, exprEq, _ => nomatch exprEq
+  | _, _, _, .tuple _, exprEq, _ => nomatch exprEq
+  | _, _, _, .prim _ _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .something, exprEq, _ => nomatch exprEq
+  | _, _, _, .matchAll _ _ _ _, exprEq, _ => nomatch exprEq
+  | _, _, _, .matcher _ _ _ _ _ _ _, exprEq, _ => nomatch exprEq
+
+/-- The two divergent uses admit no declarative typing: no λ-domain choice
+serves both an `Any`-capped and a `con`-capped consumer under the
+variable-only value-flow condition. -/
+theorem letCapFreezeProgram_not_hasTy :
+    ¬ HasTy packSignature letCapContext letCapFreezeProgram
+      (.prod [.data "Packed" [], .data "Packed" []]) := by
+  intro typing
+  cases typing with
+  | letE hvalue hbody =>
+  cases hbody with
+  | tuple hcomponents =>
+  cases hcomponents with
+  | cons hfirst hrest =>
+  cases hrest with
+  | cons hsecond hnil =>
+  cases hfirst with
+  | app hfun1 harg1 =>
+  cases hfun1 with
+  | var hfind1 hinst1 =>
+  rename_i domain1 scheme1
+  have pinned1 :
+      some scheme1 = some (packSignature.generalize letCapContext _) :=
+    hfind1.symm.trans rfl
+  injection pinned1 with pinned1
+  subst pinned1
+  obtain ⟨C₁, T₁, inst1⟩ := hinst1
+  cases hsecond with
+  | app hfun2 harg2 =>
+  cases hfun2 with
+  | var hfind2 hinst2 =>
+  rename_i domain2 scheme2
+  have pinned2 :
+      some scheme2 = some (packSignature.generalize letCapContext _) :=
+    hfind2.symm.trans rfl
+  injection pinned2 with pinned2
+  subst pinned2
+  obtain ⟨C₂, T₂, inst2⟩ := hinst2
+  cases hvalue with
+  | lam hlamBody =>
+    rename_i domain codomain
+    rcases packCtor_domain_shape hlamBody rfl rfl with
+      ⟨dc, dt, rfl⟩ | ⟨duals, rfl⟩
+    · -- matcher-headed domain: the two instances force divergent caps
+      have valueEq1 := inst1.result
+      injection valueEq1 with domainEq1 _
+      have headForm1 :
+          Ty.matcher (dc.apply C₁) ((dt.applyCapability C₁).applyTarget T₁) =
+            domain1 := domainEq1
+      have valueEq2 := inst2.result
+      injection valueEq2 with domainEq2 _
+      have headForm2 :
+          Ty.matcher (dc.apply C₂) ((dt.applyCapability C₂).applyTarget T₂) =
+            domain2 := domainEq2
+      have cap1 : dc.apply C₁ = .any :=
+        something_matcher_cap harg1 headForm1.symm
+      have cap2 : dc.apply C₂ = .con "c" [] :=
+        m2var_matcher_cap rfl harg2 headForm2.symm
+      cases dc with
+      | any => nomatch cap2
+      | var κ =>
+          have binderMem :
+              κ ∈ (packSignature.generalize letCapContext
+                (.fn (.matcher (.var κ) dt) codomain)).capBinders := by
+            apply mem_generalize_capBinders
+            · simp [Ty.fcv, Cap.fcv]
+            · exact fun h => nomatch h
+          obtain ⟨image, imageEq⟩ := inst1.capBinderVariable κ binderMem
+          have capVar1 : C₁ κ = Cap.any := cap1
+          nomatch imageEq.symm.trans capVar1
+      | skolem _ => nomatch cap1
+      | con _ _ => nomatch cap1
+      | prod _ => nomatch cap1
+    · -- product-of-matchers domain: `something` has no product typing
+      have valueEq1 := inst1.result
+      injection valueEq1 with domainEq1 _
+      rw [← domainEq1] at harg1
+      cases harg1
+  | coerceMatcherToSlot _ _ _ => nomatch inst1.result
+  | checkSlotToSlot _ _ _ => nomatch inst1.result
+  | coerceProductMatcher _ => nomatch inst1.result
+  | coerceSlotTuple _ => nomatch inst1.result
+
+/-- The `let`-generalized boundary in one statement: mid-derivation
+generalization quantifies the instance capability, both uses structure it
+divergently in the demand-directed judgment, and no declarative derivation
+exists.  The forgetting-side freeze condition cannot be a context-side
+predicate alone. -/
+theorem letCapFreeze_forgetting_gap :
+    DDTyping packSignature letCapContext letCapFreezeProgram
+        (.prod [.data "Packed" [], .data "Packed" []]) ∧
+      ¬ HasTy packSignature letCapContext letCapFreezeProgram
+        (.prod [.data "Packed" [], .data "Packed" []]) :=
+  ⟨letCapFreezeProgram_ddTyping, letCapFreezeProgram_not_hasTy⟩
+
 /-! ## Pattern layer: the or-pattern `matchAll` program
 
 The same or-pattern program whose executable acceptance is pinned by
