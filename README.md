@@ -151,7 +151,8 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
 - `WideAnnotationFree` — 恒久的に反証済み（上述）．
 - `nestedCapProgram`（と swapped 版）— demand の無い位置の coercion に依存する例．
   拒否が意図された挙動であり，`nestedCapProgram` が `DDTyping` に導出を持たないことは
-  inversion で固定済み（`nestedCapProgram_no_ddTyping`；swapped 版は未）．`let` 多相化
+  inversion で固定済み（`nestedCapProgram_no_ddTyping`／swapped 版
+  `nestedCapSwappedProgram_no_ddTyping`）．`let` 多相化
   した `nestedCapLetProgram` は受理される正例で，`DDTyping` 導出も持つ．
 - matcher-expected 位置への product-of-matchers 渡し — 意図された拒否
   （段階 3-0 で負の回帰として固定済み）．
@@ -235,7 +236,10 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    最汎 ∧ 制約変数外は恒等）へ強化済み（具体 witness は全部 exact）．境界例も固定済み:
    `nestedCapLetProgram` の `DDTyping` 導出は実行 raw result shape と同じ型で閉じ，
    `nestedCapProgram` には任意の published type・任意の最汎 delta 選択に対して導出が
-   存在しない（`nestedCapProgram_no_ddTyping`；swapped 版は未）．**freeze 軸が忘却にも
+   存在しない（`nestedCapProgram_no_ddTyping`；swapped 版
+   `nestedCapSwappedProgram_no_ddTyping` は鏡像の強制連鎖 — 先行する product 引数が
+   domain を product 頭へ固定し，後続の bare matcher raw が衝突する — で同じく不在）．
+   **freeze 軸が忘却にも
    要ることは判定済み**: 量化 matcher producer `m : ∀κ α. Matcher κ α` を束縛した文脈上で
    `(λh. (h something, h m)) (λz. z)` は，`m` の fresh instance capability を ordinary
    matcher-pair solve が `Any` へ構造化して `DDTyping` で閉じるが，宣言側は value-flow

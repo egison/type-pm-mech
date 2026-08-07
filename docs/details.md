@@ -728,7 +728,10 @@ executable regression とその正負境界．削るときは対応する設計�
   solve・実行 raw result shape と同じ型で閉じる）と，`nestedCapProgram` の不在
   inversion `nestedCapProgram_no_ddTyping`（no-guess 定理で第一引数 check の coercion
   分岐を除外し，強制された matcher 頭期待への `prod`／`matcher` 構成子衝突で全分岐を
-  閉じる；delta 選択に依存しない）．value-flow transport 境界
+  閉じる；delta 選択に依存しない）・swapped 版の不在 inversion
+  `nestedCapSwappedProgram_no_ddTyping`（鏡像の強制連鎖：先行する product 引数の
+  ordinary 整合が domain を product 頭へ固定し，後続の bare matcher raw が
+  `matcher`／`prod` 衝突で全分岐を閉じる）．value-flow transport 境界
   `valueFlow_transport_needs_exactness`：`?1 ≐ Int` の最汎解でありながら無関係な
   `?3`／`?9` を交換する `swappingDelta` は正真の `PairedMGU`（un-swap で全 unifier が
   因子化）で，部分一般化 scheme `∀9. 9 → 3`（`capturedScheme`）の instance

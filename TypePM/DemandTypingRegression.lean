@@ -496,6 +496,148 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   rename_i delta5
   nomatch secondArgMGU.1.1.trans (congrArg (Subst.apply delta5) hdom.symm)
 
+/-- The swapped order has no demand-directed derivation either, for any
+published type and any choice of most general solve deltas.  The forced
+chain is the mirror image: the first argument is now the product of
+matcher producers, whose only available alignment against the
+variable-headed domain expectation is ordinary, pinning the shared domain
+to a *product* head; the second use then feeds the bare `something` — a
+matcher-headed raw — into that product-headed expectation, where every
+coercion branch of `DDAlign` is unavailable and ordinary alignment fails
+on the `matcher`/`prod` constructor clash. -/
+theorem nestedCapSwappedProgram_no_ddTyping (target : Ty) :
+    ¬ DDTyping emptySignature []
+      AcceptanceGapRegression.nestedCapSwappedProgram target := by
+  rintro ⟨raw, q', S', synth, -⟩
+  cases synth with
+  | app functionSynth outerAlign outerCheck =>
+  cases functionSynth with
+  | lam bodySynth =>
+  cases bodySynth with
+  | tuple componentsSynth =>
+  cases componentsSynth with
+  | cons firstSynth restSynth =>
+  cases restSynth with
+  | cons secondSynth nilSynth =>
+  -- First application: pin the lookup and force the fresh-domain alignment.
+  cases firstSynth with
+  | app fSynth firstAlign firstCheck =>
+  cases fSynth with
+  | var lookup =>
+  rename_i scheme1
+  have pinned1 : some scheme1 =
+      some ((Scheme.mono (Ty.var 0)).applySubst Subst.id) :=
+    lookup.symm.trans rfl
+  injection pinned1 with pinnedScheme1
+  subst pinnedScheme1
+  cases firstAlign with
+  | matcherPair hleft _ _ _ => nomatch hleft
+  | slotPair hleft _ _ _ => nomatch hleft
+  | ordinary hclass1 firstMGU =>
+  rename_i delta1
+  have firstMGU' : PairedMGU (Ty.var 0) (.fn (.var 1) (.var 2)) delta1 :=
+    firstMGU.1
+  obtain ⟨w, hw⟩ :=
+    firstMGU'.varConstraint_target_image_var (by decide)
+      (varId := 1) (by decide)
+  -- First argument check: the raw product of matchers meets a variable
+  -- expectation, so only ordinary alignment fits, and it pins the shared
+  -- domain to a product head.
+  cases firstCheck with
+  | mk tupleSynth firstArgAlign =>
+  cases tupleSynth with
+  | tuple pairSynth =>
+  cases pairSynth with
+  | cons s1 rest1 =>
+  cases s1 with
+  | something =>
+  cases rest1 with
+  | cons s2 rest2 =>
+  cases s2 with
+  | something =>
+  cases rest2 with
+  | nil =>
+  cases firstArgAlign with
+  | productMatcherLift _ hslot _ =>
+      nomatch hw.symm.trans (show delta1.target 1 = _ from hslot)
+  | slotTupleLift _ _ hslot _ _ =>
+      nomatch hw.symm.trans (show delta1.target 1 = _ from hslot)
+  | matcherToSlot hraw _ _ => nomatch hraw
+  | slotToSlot hraw _ _ _ => nomatch hraw
+  | ordinary hclassA firstArgAligned =>
+  cases firstArgAligned with
+  | matcherPair hleft _ _ _ => nomatch hleft
+  | slotPair hleft _ _ _ => nomatch hleft
+  | ordinary hpairA firstArgMGU =>
+  rename_i delta3
+  have factC :
+      (Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 1) =
+        .prod [.matcher .any
+            ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+              (Ty.var 3)),
+          .matcher .any
+            ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+              (Ty.var 4))] :=
+    firstArgMGU.1.1.symm
+  have factA :
+      (Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 0) =
+        .fn ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 1))
+          ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+            (Ty.var 2)) :=
+    congrArg (Subst.apply delta3) firstMGU'.1
+  have domainResolved :
+      (Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply (Ty.var 0) =
+        .fn (.prod [.matcher .any
+              ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+                (Ty.var 3)),
+            .matcher .any
+              ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+                (Ty.var 4))])
+          ((Subst.seq delta3 (Subst.seq delta1 Subst.id)).apply
+            (Ty.var 2)) := by
+    rw [factA, factC]
+  -- Second application: the consumer's resolved type now has a
+  -- product-headed domain.
+  cases secondSynth with
+  | app fSynth2 secondAlign secondCheck =>
+  cases fSynth2 with
+  | var lookup2 =>
+  rename_i scheme2
+  have pinned2 : some scheme2 =
+      some ((Scheme.mono (Ty.var 0)).applySubst
+        (Subst.seq delta3 (Subst.seq delta1 Subst.id))) :=
+    lookup2.symm.trans rfl
+  injection pinned2 with pinnedScheme2
+  subst pinnedScheme2
+  rw [instantiateScheme_monoApplySubst_value] at secondAlign
+  rw [domainResolved] at secondAlign
+  cases secondAlign with
+  | matcherPair hleft _ _ _ => nomatch hleft
+  | slotPair hleft _ _ _ => nomatch hleft
+  | ordinary hclassB secondMGU =>
+  rename_i delta4
+  have components := secondMGU.1.1
+  injection components with hdom hcod
+  -- `hdom` pins the resolved shared domain to a product head, for every
+  -- delta choice.  The second argument check: the bare matcher raw meets
+  -- that product-headed expectation and every branch fails.
+  cases secondCheck with
+  | mk somethingSynth secondArgAlign =>
+  cases somethingSynth with
+  | something =>
+  cases secondArgAlign with
+  | productMatcherLift _ hslot _ => nomatch hdom.trans hslot
+  | slotTupleLift _ _ hslot _ _ => nomatch hdom.trans hslot
+  | matcherToSlot _ hslot _ => nomatch hdom.trans hslot
+  | slotToSlot hraw _ _ _ => nomatch hraw
+  | ordinary hclassC secondArgAligned =>
+  cases secondArgAligned with
+  | matcherPair _ hright _ _ => nomatch hdom.trans hright
+  | slotPair hleft _ _ _ => nomatch hleft
+  | ordinary hpairC secondArgMGU =>
+  rename_i delta5
+  nomatch secondArgMGU.1.1.trans (congrArg (Subst.apply delta5) hdom.symm)
+
 /-! ## Boundary: bare most-generality does not transport value flow
 
 The no-guess theorems bound every most general solve delta to at most a

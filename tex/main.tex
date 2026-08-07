@@ -1706,8 +1706,10 @@ $\mathsf{nestedCapProgram}$ が $\mathsf{DDTyping}$ に導出を持たないこ�
 しか写せないので，第一引数の check は ordinary alignment に限られ，それが共有 domain を
 matcher 頭へ固定する．第二引数の raw product-of-matchers は matcher 頭の期待に遭遇し，
 coercion 分岐は slot 頭を要求して閉じ，ordinary alignment は $\mathsf{prod}$／matcher の
-構成子衝突で閉じる．この連鎖は solve delta の選び方に依存しない．swapped 版の inversion は
-同型の議論で今後固定する．raw-source／freeze の条件を外しても両者は拒否境界に残る．一方，$\mathsf{nestedCapLetProgram}$ は
+構成子衝突で閉じる．この連鎖は solve delta の選び方に依存しない．swapped 版の inversion も
+鏡像の強制連鎖 — 先行する product 引数の ordinary 整合が共有 domain を product 頭へ固定し，
+後続の bare matcher raw が matcher／$\mathsf{prod}$ の構成子衝突で全分岐を閉じる — で
+機械化済みである．raw-source／freeze の条件を外しても両者は拒否境界に残る．一方，$\mathsf{nestedCapLetProgram}$ は
 $\mathtt{let}$ 多相化が利用ごとに独立な fresh instance を与える positive control で，公開 W の
 受理，三つの相異なる raw target variable，producer-to-slot solve の不在を既に検査している．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
