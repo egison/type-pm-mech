@@ -1,6 +1,7 @@
 import TypePM.DemandTyping
 import TypePM.CertifiedInferenceRegression
 import TypePM.AcceptanceGapRegression
+import TypePM.RecursiveExamples
 
 /-!
 # Demand-directed judgment regressions
@@ -1010,6 +1011,42 @@ demand-directed derivation mirrors an actually accepted program. -/
 theorem delegatingMatcher_accepted :
     Inference.inferenceSucceeds emptySignature [] delegatingMatcher = true := by
   native_decide
+
+/-! ## Signature closedness and the bounded published type
+
+The signature-closedness hypothesis of the freshness sweep is not vacuous:
+the empty signature holds it trivially, the generic list signature holds it
+by one decidable check per table, and the flagship polymorphic-let
+derivation instantiates the closed-wrapper corollary.
+-/
+
+/-- The empty signature is closed. -/
+theorem emptySignature_schemesClosed : emptySignature.SchemesClosed :=
+  FrozenSig.SchemesClosed.of_entries (fun _ mem => nomatch mem)
+    (fun _ mem => nomatch mem) (fun _ mem => nomatch mem)
+    (fun _ mem => nomatch mem)
+
+/-- The generic list signature is closed: every constructor and
+pattern-constructor scheme quantifies all of its variables. -/
+theorem listSignature_schemesClosed :
+    RecursiveExamples.listSignature.SchemesClosed :=
+  FrozenSig.SchemesClosed.of_entries (by decide) (by decide) (by decide)
+    (by decide)
+
+/-- The multiset signature is closed as well. -/
+theorem multisetSignature_schemesClosed :
+    RecursiveExamples.multisetSignature.SchemesClosed :=
+  FrozenSig.SchemesClosed.of_entries (by decide) (by decide) (by decide)
+    (by decide)
+
+/-- The flagship polymorphic-let derivation publishes a type bounded by a
+terminal supply extending the initial supply: the freshness sweep fires on
+a concrete end-to-end derivation. -/
+theorem dmLet_published_boundedBy :
+    ∃ q', SupplyExtends
+        (Inference.initialSupply emptySignature []) q' ∧
+      Ty.BoundedBy q' Ty.int :=
+  DDTyping.published_boundedBy dmLet_ddTyping emptySignature_schemesClosed
 
 end DemandTypingRegression
 end TypePM

@@ -4673,6 +4673,12 @@ theorem DualScheme.Closed.boundedBy {q : InferenceBase.FreshSupply}
     rw [closed.2] at mem
     exact nomatch mem
 
+instance : DecidablePred CtorScheme.Closed := fun scheme =>
+  decidable_of_iff (scheme.fcv = [] ∧ scheme.ftv = []) Iff.rfl
+
+instance : DecidablePred DualScheme.Closed := fun scheme =>
+  decidable_of_iff (scheme.fcv = [] ∧ scheme.ftv = []) Iff.rfl
+
 /-- Every scheme reachable from the frozen lookup tables is closed.  This
 is the signature-closedness condition of the freshness invariant: a frozen
 signature never leaks an ambient inference metavariable. -/
@@ -4686,6 +4692,54 @@ structure FrozenSig.SchemesClosed (signature : FrozenSig) : Prop where
     signature.findPatternFun name = some scheme → scheme.Closed
   primitives : ∀ {op : PrimOp} {scheme : CtorScheme},
     signature.findPrimitive op = some scheme → scheme.Closed
+
+/-- Entry-wise sufficient condition for signature closedness: for a
+concrete frozen signature every table is a finite literal, so each
+hypothesis is decidable. -/
+theorem FrozenSig.SchemesClosed.of_entries {signature : FrozenSig}
+    (dataClosed : ∀ entry ∈ signature.dataCtors, entry.2.Closed)
+    (patternClosed : ∀ entry ∈ signature.patternCtors,
+      entry.2.scheme.Closed)
+    (funClosed : ∀ entry ∈ signature.patternFuns, entry.2.Closed)
+    (primClosed : ∀ entry ∈ signature.primitives, entry.2.Closed) :
+    signature.SchemesClosed := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro name scheme hfind
+    unfold FrozenSig.findDataCtor at hfind
+    cases hlist : List.find? (fun entry => entry.1 == name)
+        signature.dataCtors with
+    | none => rw [hlist] at hfind; exact nomatch hfind
+    | some entry =>
+        rw [hlist] at hfind
+        cases hfind
+        exact dataClosed entry (List.mem_of_find?_eq_some hlist)
+  · intro name entry hfind
+    unfold FrozenSig.findPatternCtor at hfind
+    cases hlist : List.find? (fun entry => entry.1 == name)
+        signature.patternCtors with
+    | none => rw [hlist] at hfind; exact nomatch hfind
+    | some found =>
+        rw [hlist] at hfind
+        cases hfind
+        exact patternClosed found (List.mem_of_find?_eq_some hlist)
+  · intro name scheme hfind
+    unfold FrozenSig.findPatternFun at hfind
+    cases hlist : List.find? (fun entry => entry.1 == name)
+        signature.patternFuns with
+    | none => rw [hlist] at hfind; exact nomatch hfind
+    | some entry =>
+        rw [hlist] at hfind
+        cases hfind
+        exact funClosed entry (List.mem_of_find?_eq_some hlist)
+  · intro op scheme hfind
+    unfold FrozenSig.findPrimitive at hfind
+    cases hlist : List.find? (fun entry => entry.1 == op)
+        signature.primitives with
+    | none => rw [hlist] at hfind; exact nomatch hfind
+    | some entry =>
+        rw [hlist] at hfind
+        cases hfind
+        exact primClosed entry (List.mem_of_find?_eq_some hlist)
 
 /-! ### Boundedness of contexts -/
 
