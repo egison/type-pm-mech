@@ -119,7 +119,8 @@ def ExactCapMGU (left right : Cap) (subst : CapSubst) : Prop :=
 def ExactTargetMGU (left right : Ty) (subst : TySubst) : Prop :=
   TargetMGU left right subst ∧
   subst.SupportWithin (left.ftv ++ right.ftv) ∧
-  subst.RangeWithin (left.ftv ++ right.ftv)
+  subst.RangeWithin (left.ftv ++ right.ftv) ∧
+  subst.CapRangeWithin (left.ftv ++ right.ftv) (left.fcv ++ right.fcv)
 
 /-- An exact most general paired solution: exact in both sorts, with the
 images of constraint variables confined to the constraint. -/
@@ -442,7 +443,8 @@ theorem ExactCapMGU.varRight (capability : Cap) (varId : CapVar)
 /-- Identity is an exact most general unifier of equal targets. -/
 theorem ExactTargetMGU.refl (target : Ty) :
     ExactTargetMGU target target TySubst.id :=
-  ⟨TargetMGU.refl target, fun _ _ => rfl, TySubst.id_rangeWithin _⟩
+  ⟨TargetMGU.refl target, fun _ _ => rfl, TySubst.id_rangeWithin _,
+    TySubst.id_capRangeWithin _ _⟩
 
 /-- The single binding is an exact most general target solution. -/
 theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
@@ -451,6 +453,8 @@ theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
       (Unification.TySubst.single varId target) := by
   refine ⟨TargetMGU.varLeft varId target notMem, ?_,
     tySingle_rangeWithin
+      (fun image mem => List.mem_append.mpr (Or.inr mem)),
+    tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem))⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
@@ -465,6 +469,8 @@ theorem ExactTargetMGU.varRight (target : Ty) (varId : TypePM.TyVar)
       (Unification.TySubst.single varId target) := by
   refine ⟨TargetMGU.varRight target varId notMem, ?_,
     tySingle_rangeWithin
+      (fun image mem => List.mem_append.mpr (Or.inl mem)),
+    tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem))⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by

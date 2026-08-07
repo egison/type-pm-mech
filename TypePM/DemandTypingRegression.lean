@@ -131,7 +131,7 @@ two component targets. -/
 theorem pairTargetDelta_exact :
     ExactTargetMGU (.prod [.var 0, .var 1]) (.prod [.int, .int])
       pairTargetDelta := by
-  refine ⟨pairTargetDelta_targetMGU, ?_, ?_⟩
+  refine ⟨pairTargetDelta_targetMGU, ?_, ?_, ?_⟩
   · intro candidate outside
     have hzero : ¬ candidate = 0 := fun h => outside (by
       cases h
@@ -156,6 +156,23 @@ theorem pairTargetDelta_exact :
           rw [if_neg hzero, if_neg hone]] at imageMem
         have h : image = candidate := by simpa [Ty.ftv] using imageMem
         simpa [h] using mem
+  · intro candidate mem image imageMem
+    by_cases hzero : candidate = 0
+    · subst hzero
+      rw [show pairTargetDelta 0 = Ty.int from rfl] at imageMem
+      nomatch imageMem
+    · by_cases hone : candidate = 1
+      · subst hone
+        rw [show pairTargetDelta 1 = Ty.int from rfl] at imageMem
+        nomatch imageMem
+      · rw [show pairTargetDelta candidate = .var candidate from by
+          show (if candidate = 0 then Ty.int
+            else if candidate = 1 then Ty.int
+            else .var candidate) = .var candidate
+          rw [if_neg hzero, if_neg hone]] at imageMem
+        have empty : (Ty.var candidate).fcv = ([] : List CapVar) := rfl
+        rw [empty] at imageMem
+        nomatch imageMem
 
 /-- Terminal substitution of the positive slot-demand coercion. -/
 def somethingPairTerminal : Subst :=
