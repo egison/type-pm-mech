@@ -146,6 +146,63 @@ theorem PairedMGU.varRight (target : Ty) (varId : TypePM.TyVar)
   obtain ⟨sound, universal⟩ := PairedMGU.varLeft varId target notMem
   exact ⟨sound.symm, fun U unifies => universal U unifies.symm⟩
 
+/-- The diagonal function-alignment delta: solve `fn ?a ?a ≐ fn ?b ?c` by
+mapping the shared variable to the fresh domain and collapsing the fresh
+codomain onto the same image. -/
+def fnDiagonalDelta (shared domain codomain : TypePM.TyVar) : TySubst :=
+  fun candidate =>
+    if candidate = shared then .var domain
+    else if candidate = codomain then .var domain
+    else .var candidate
+
+/-- The diagonal delta is a most general paired solution of the
+application-function alignment against a fresh domain/codomain pair. -/
+theorem PairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
+    (domainNeShared : domain ≠ shared) (domainNeCodomain : domain ≠ codomain)
+    (codomainNeShared : codomain ≠ shared) :
+    PairedMGU (.fn (.var shared) (.var shared))
+      (.fn (.var domain) (.var codomain))
+      ⟨CapSubst.id, fnDiagonalDelta shared domain codomain⟩ := by
+  have evalShared :
+      fnDiagonalDelta shared domain codomain shared = .var domain := by
+    simp [fnDiagonalDelta]
+  have evalDomain :
+      fnDiagonalDelta shared domain codomain domain = .var domain := by
+    simp [fnDiagonalDelta, domainNeShared, domainNeCodomain]
+  have evalCodomain :
+      fnDiagonalDelta shared domain codomain codomain = .var domain := by
+    simp [fnDiagonalDelta, codomainNeShared]
+  constructor
+  · show Ty.fn (fnDiagonalDelta shared domain codomain shared)
+        (fnDiagonalDelta shared domain codomain shared) =
+      Ty.fn (fnDiagonalDelta shared domain codomain domain)
+        (fnDiagonalDelta shared domain codomain codomain)
+    rw [evalShared, evalDomain, evalCodomain]
+  · intro U unifies
+    have components :
+        Ty.fn (U.target shared) (U.target shared) =
+          Ty.fn (U.target domain) (U.target codomain) := unifies
+    have domainEq : U.target shared = U.target domain := by
+      injection components
+    have codomainEq : U.target shared = U.target codomain := by
+      injection components with _ codomainEq
+    refine ⟨U, congrArg (Subst.mk U.cap) ?_⟩
+    funext candidate
+    show U.target candidate =
+      U.apply (fnDiagonalDelta shared domain codomain candidate)
+    by_cases hshared : candidate = shared
+    · rw [show fnDiagonalDelta shared domain codomain candidate =
+        .var domain by simp [fnDiagonalDelta, hshared], hshared]
+      exact domainEq
+    · by_cases hcodomain : candidate = codomain
+      · rw [show fnDiagonalDelta shared domain codomain candidate =
+          .var domain by
+            simp [fnDiagonalDelta, hcodomain, codomainNeShared], hcodomain]
+        exact codomainEq.symm.trans domainEq
+      · rw [show fnDiagonalDelta shared domain codomain candidate =
+          .var candidate by simp [fnDiagonalDelta, hshared, hcodomain]]
+        rfl
+
 /-! ## Deterministic branch classifiers
 
 Checking dispatches on cut-resolved views only.  The classifiers make the

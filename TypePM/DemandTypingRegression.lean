@@ -41,35 +41,12 @@ theorem identity_ddTyping :
 
 /-- The most general paired solution of the application-function alignment
 `fn ?0 ?0 ≐ fn ?1 ?2`. -/
-def applicationDelta : TySubst := fun candidate =>
-  if candidate = 0 then .var 1
-  else if candidate = 2 then .var 1
-  else .var candidate
+def applicationDelta : TySubst := fnDiagonalDelta 0 1 2
 
 theorem applicationDelta_pairedMGU :
     PairedMGU (.fn (.var 0) (.var 0)) (.fn (.var 1) (.var 2))
-      ⟨CapSubst.id, applicationDelta⟩ := by
-  constructor
-  · rfl
-  · intro U unifies
-    have components :
-        Ty.fn (U.target 0) (U.target 0) = Ty.fn (U.target 1) (U.target 2) :=
-      unifies
-    have headEq : U.target 0 = U.target 1 := by
-      injection components
-    have tailEq : U.target 0 = U.target 2 := by
-      injection components with _ tailEq
-    refine ⟨U, congrArg (Subst.mk U.cap) ?_⟩
-    funext candidate
-    by_cases hzero : candidate = 0
-    · subst hzero
-      exact headEq
-    · by_cases htwo : candidate = 2
-      · subst htwo
-        simp only [applicationDelta, if_neg hzero]
-        exact tailEq.symm.trans headEq
-      · simp only [applicationDelta, if_neg hzero, if_neg htwo]
-        rfl
+      ⟨CapSubst.id, applicationDelta⟩ :=
+  PairedMGU.fnDiagonal 0 1 2 (by decide) (by decide) (by decide)
 
 /-- Terminal substitution of `(λx. x) 1`: the function alignment followed by
 the argument solve. -/
@@ -173,6 +150,67 @@ theorem somethingPairRaw_no_matcher_expected_cut :
   | matcherPair rawView _ _ _ => nomatch rawView
   | slotPair rawView _ _ _ => nomatch rawView
   | ordinary _ mgu => nomatch mgu.1
+
+/-! ## Polymorphic `let`: generalization and quantified instantiation -/
+
+/-- The Damas–Milner witness `let id = λx. x in (id id) 1`. -/
+def dmLetProgram : Expr :=
+  .letE "id" identityExpr (.app (.app (.var "id") (.var "id")) (.lit 1))
+
+/-- The generalized scheme of `id` computed at the `let` cut. -/
+def dmIdScheme : Scheme := ⟨[], [0], .fn (.var 0) (.var 0)⟩
+
+/-- Prevailing substitution after the inner function alignment
+`fn ?1 ?1 ≐ fn ?2 ?3`. -/
+def dmAlign1 : Subst :=
+  Subst.seq ⟨CapSubst.id, fnDiagonalDelta 1 2 3⟩ Subst.id
+
+/-- Prevailing substitution after the inner argument solve fixes the inner
+domain to the second instance `fn ?4 ?4`. -/
+def dmInner : Subst :=
+  Subst.seq ⟨CapSubst.id,
+    Unification.TySubst.single 2 (.fn (.var 4) (.var 4))⟩ dmAlign1
+
+/-- Prevailing substitution after the outer function alignment
+`fn ?4 ?4 ≐ fn ?5 ?6`. -/
+def dmAlign2 : Subst :=
+  Subst.seq ⟨CapSubst.id, fnDiagonalDelta 4 5 6⟩ dmInner
+
+/-- Terminal substitution of the witness: the literal-argument solve after
+the three preceding cuts. -/
+def dmLetTerminal : Subst :=
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 5 .int⟩ dmAlign2
+
+/-- `id id` under the generalized scheme: both uses instantiate the
+quantified scheme at distinct fresh images (`?1` and `?4`), and the argument
+check resolves the inner domain by an ordinary demand-free alignment. -/
+theorem dmInnerApp_ddSynth :
+    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
+      (.app (.var "id") (.var "id")) (.var 3) ⟨0, 5⟩ dmInner := by
+  exact DDSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id) (S₂ := dmAlign1)
+    (functionTarget := .fn (.var 1) (.var 1))
+    (DDSynth.var (scheme := dmIdScheme) rfl)
+    (.ordinary rfl
+      (PairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
+    (.mk (DDSynth.var (scheme := dmIdScheme) rfl)
+      (.ordinary rfl (.ordinary rfl
+        (PairedMGU.varRight (.fn (.var 4) (.var 4)) 2 (by decide)))))
+
+/-- The polymorphic-`let` witness closes at `Int` through the demand-directed
+judgment: the `let` rule generalizes the value type in the substituted
+context, and each use of `id` instantiates the quantified scheme at a fresh
+supply-indexed image. -/
+theorem dmLet_ddTyping :
+    DDTyping emptySignature [] dmLetProgram .int := by
+  refine ⟨.var 6, ⟨0, 7⟩, dmLetTerminal, ?_, rfl⟩
+  refine .letE identity_ddSynth ?_
+  exact DDSynth.app (q₁ := ⟨0, 5⟩) (S₁ := dmInner) (S₂ := dmAlign2)
+    (functionTarget := .var 3)
+    dmInnerApp_ddSynth
+    (.ordinary rfl
+      (PairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
+    (.mk .lit (.ordinary rfl (.ordinary rfl
+      (PairedMGU.varRight .int 5 (by decide)))))
 
 end DemandTypingRegression
 end TypePM

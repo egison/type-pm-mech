@@ -607,7 +607,9 @@ executable regression とその正負境界．削るときは対応する設計�
   application の宣言導出は wide 包絡の意図された受理ギャップ（公開 inference は拒否）．
 - [`TypePM/DemandTypingRegression.lean`](../TypePM/DemandTypingRegression.lean):
   demand-directed judgment の具体導出と境界対．solve-free な `λx.x` の synthesis と
-  wrapper，domain 整合＋引数 solve を伴う `(λx.x) 1 : Int` の `DDTyping`，
+  wrapper，domain 整合＋引数 solve を伴う `(λx.x) 1 : Int` の `DDTyping`，多相 `let`
+  証人 `let id = λx.x in (id id) 1 : Int` の `DDTyping`（`let` cut での一般化と，
+  量化 scheme の supply-indexed な二重 fresh instantiation を行使），
   `(something, something)` を aggregate slot 期待で検査する product-matcher lift の
   正例（lift が両 `something` target を `Int` へ解決することも固定），同じ raw product
   に対する matcher 頭期待の checking cut 不在（`DDAlign` の全分岐反証）．
