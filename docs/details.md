@@ -341,9 +341,17 @@ slot 頭の expected を要求する），`DDAlign.slotDemand`／`DDAlign.matche
 delta 列による因子化，pattern 層 family と全整合関係を含む全 judgment），supply 単調性
 （`SupplyExtends`，全 judgment；supply twin ごとの単調性補題込み），反射・単一束縛の
 MGU witness（`PairedMGU.refl`／`varLeft`／`varRight`，`CapMGU.varLeft`／`varRight`，
-`TargetMGU.varLeft`／`varRight` ほか）．
-非主張：`HasTy` への忘却，`CoherentExpr` への変換，freshness／solve relevance の
-不変量，受理定理（段階 3-2／3-3）．
+`TargetMGU.varLeft`／`varRight` ほか），**no-guess 定理**（MGU 仕様の普遍性だけから：
+`image_var_of_fixing_unifier`＝ある unifier が固定する変数は最汎解で必ず変数像を持つ，
+`outside_image_var`＝制約外変数は高々リネーム，`outside_injective`＝相異なる制約外
+変数は衝突しない — `CapMGU`／`TargetMGU` と `PairedMGU` の両 sort，
+`PairedMGU.varConstraint_target_image_var`＝occurs-free な var-vs-type 制約では他の
+変数は必ず変数像，対称性 `symm` 三種；補助に変数像からの逆進
+`Cap.eq_var_of_apply_var`／`Ty.eq_var_of_applyTarget_var`／`Ty.eq_var_of_apply_var` と
+`Ty.applyTarget_eq_of_ftv_agree`），空 binder scheme の instantiation 計算
+（`instantiateScheme_noBinder_value`／`instantiateScheme_monoApplySubst_value`）．
+非主張：`HasTy` への忘却，`CoherentExpr` への変換，freshness 不変量，受理定理
+（段階 3-2／3-3）．
 
 ### capability origin ledger と origin-aware paired solver
 
@@ -486,11 +494,20 @@ instance／alignment／generalization check を通す trace invariant の一般�
   を使う一つの宣言的 `HasTy` 導出と，公開推論器による拒否である．この対が広い前提の
   `WideAnnotationFree` を恒久反証する（`wideAnnotationFree_refuted`）．全 `HasTy`
   導出が同じ coercion に依存するという inversion は未証明で，将来も回帰の主張に
-  含めない（`DDTyping` に導出が無いことは将来 inversion で示す）．`let` 多相化した
+  含めない．一方 `nestedCapProgram` が `DDTyping` に導出を持たないことは inversion で
+  機械化済みである（`nestedCapProgram_no_ddTyping`：最初の function alignment は
+  no-guess 定理により fresh domain を高々変数へしか写せないので第一引数の check は
+  ordinary alignment に限られ，それが共有 domain を matcher 頭へ固定し，第二引数の
+  raw product-of-matchers は matcher 頭の期待に遭遇して `DDAlign` の全分岐が構成子
+  衝突で閉じる；任意の published type・任意の最汎 delta 選択に対して成立し，swapped
+  版は未）．`let` 多相化した
   `nestedCapLetProgram` は各利用が fresh domain instance を持つため受理される正例で，
   結果が三つの相異なる target 変数を持つ raw shape のままであること
   （`nestedCapLetProgram_raw_target_shape`）と raw solve trace に `producerToSlot` が
-  無いこと（`nestedCapLetProgram_raw_has_no_producerToSlot`）も固定する．
+  無いこと（`nestedCapLetProgram_raw_has_no_producerToSlot`），さらに `DDTyping` 導出
+  （`nestedCapLetProgram_ddTyping`）が同じ raw shape の型
+  `prod [Matcher Any ?4, prod [Matcher Any ?8, Matcher Any ?9]]` で閉じることも
+  固定する．
 - **matcher-expected への product 渡し（恒久的境界例・意図された拒否）**:
   matcher 引数を宣言した署名 ctor や matcher 頭 domain の関数へ product-of-matchers を
   渡す形は，matcher expectation が slot demand でないため lift されず拒否される．
@@ -641,7 +658,12 @@ executable regression とその正負境界．削るときは対応する設計�
   matcher literal `[$ something [(v → matchAll 0 something $y y)]]` の `DDTyping`
   （hole slot の one-way 充足・arm body の `List Int ≐ List ?0` 整合・executable
   finalization 検査群の消費で `Matcher Any Int` で閉じる；`native_decide` による
-  executable 受理 pin つき）．
+  executable 受理 pin つき）．nested-capability 境界対：`nestedCapLetProgram` の
+  `DDTyping`（利用ごとの fresh instance・両引数とも変数期待への ordinary demand-free
+  solve・実行 raw result shape と同じ型で閉じる）と，`nestedCapProgram` の不在
+  inversion `nestedCapProgram_no_ddTyping`（no-guess 定理で第一引数 check の coercion
+  分岐を除外し，強制された matcher 頭期待への `prod`／`matcher` 構成子衝突で全分岐を
+  閉じる；delta 選択に依存しない）．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の

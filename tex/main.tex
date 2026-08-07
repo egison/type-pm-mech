@@ -1324,7 +1324,13 @@ $\mathtt{something}$ が one-way に満たす delegating matcher literal
 $\delta$ は対応する producer-stable solution とし，constraint に無関係な metavariable を同時に
 束縛する transition は許さない．この exactness／relevance が no-guess 条件である．一度
 $S\rho$ に matcher／slot の外側構成子が露出すれば，任意の後続 state extension でもその頭が保存される
-ことは substitution の構成子保存と MGU factorization から別補題として示す．
+ことは substitution の構成子保存と MGU factorization から別補題として示す．no-guess の核は
+MGU 性そのものから定理として従うことも機械化済みである：MGU の普遍性だけから，ある unifier が
+固定する変数はどの最汎解でも変数像を持ち，したがって constraint の外の変数は高々リネームされ
+（構造化されず），相異なる外部変数が一つの像へ衝突することもない（capability／target／paired の
+各 sort）．特に occurs-free な variable-versus-type constraint では，型側に現れる他の変数も
+必ず変数像を持つ．これが fresh domain／codomain alignment が fresh metavariable を高々
+リネームしかできないことの根拠である．
 
 $\mathsf{DDCheck}$ は syntax／signature ごとの coercion 規則を持たず，必ず次の一つの
 一般 checking schema を使う．まず同じ $q,S$ から $e$ を synthesize して
@@ -1664,9 +1670,13 @@ $\mathsf{FreezeCompatible}$ を外す．完成形は
 acceptance completeness を証明する．これらを full principality や広い $\mathsf{HasTy}$ の
 completeness とは呼ばない．
 
-$\mathsf{nestedCapProgram}$ とその swapped 版は，fresh monomorphic domain を第一利用の raw 型へ
-通常 alignment する $\mathsf{DDTyping}$ には導出を持たないことを inversion で示す対象であり，
-raw-source／freeze の条件を外しても拒否境界に残る．一方，$\mathsf{nestedCapLetProgram}$ は
+$\mathsf{nestedCapProgram}$ が $\mathsf{DDTyping}$ に導出を持たないことは inversion で
+機械化済みである：最初の function alignment は no-guess 定理により fresh domain を高々変数へ
+しか写せないので，第一引数の check は ordinary alignment に限られ，それが共有 domain を
+matcher 頭へ固定する．第二引数の raw product-of-matchers は matcher 頭の期待に遭遇し，
+coercion 分岐は slot 頭を要求して閉じ，ordinary alignment は $\mathsf{prod}$／matcher の
+構成子衝突で閉じる．この連鎖は solve delta の選び方に依存しない．swapped 版の inversion は
+同型の議論で今後固定する．raw-source／freeze の条件を外しても両者は拒否境界に残る．一方，$\mathsf{nestedCapLetProgram}$ は
 $\mathtt{let}$ 多相化が利用ごとに独立な fresh instance を与える positive control で，公開 W の
 受理，三つの相異なる raw target variable，producer-to-slot solve の不在を既に検査している．
 COERCE-PRODUCT-MATCHER は tuple literal 専用ではなく，product-of-matchers 型を持つ任意の式への
