@@ -110,20 +110,34 @@ def TySubst.CapRangeWithin (S : TySubst) (tyVars : List TypePM.TyVar)
     (capVars : List CapVar) : Prop :=
   ∀ varId ∈ tyVars, ∀ image ∈ (S varId).fcv, image ∈ capVars
 
+/-- Applying twice is applying once: the capability solved-form condition. -/
+def CapSubst.Idempotent (S : CapSubst) : Prop :=
+  ∀ capability : Cap, (capability.apply S).apply S = capability.apply S
+
+/-- Applying twice is applying once: the target solved-form condition. -/
+def TySubst.Idempotent (S : TySubst) : Prop :=
+  ∀ target : Ty, (target.applyTarget S).applyTarget S = target.applyTarget S
+
+/-- Applying twice is applying once: the paired solved-form condition. -/
+def Subst.Idempotent (S : Subst) : Prop :=
+  ∀ target : Ty, S.apply (S.apply target) = S.apply target
+
 def ExactCapMGU (left right : Cap) (subst : CapSubst) : Prop :=
   CapMGU left right subst ∧
   subst.SupportWithin (left.fcv ++ right.fcv) ∧
-  subst.RangeWithin (left.fcv ++ right.fcv)
+  subst.RangeWithin (left.fcv ++ right.fcv) ∧
+  subst.Idempotent
 
 /-- An exact most general target solution. -/
 def ExactTargetMGU (left right : Ty) (subst : TySubst) : Prop :=
   TargetMGU left right subst ∧
   subst.SupportWithin (left.ftv ++ right.ftv) ∧
   subst.RangeWithin (left.ftv ++ right.ftv) ∧
-  subst.CapRangeWithin (left.ftv ++ right.ftv) (left.fcv ++ right.fcv)
+  subst.CapRangeWithin (left.ftv ++ right.ftv) (left.fcv ++ right.fcv) ∧
+  subst.Idempotent
 
 /-- An exact most general paired solution: exact in both sorts, with the
-images of constraint variables confined to the constraint. -/
+images of constraint variables confined to the constraint, in solved form. -/
 def ExactPairedMGU (left right : Ty) (subst : Subst) : Prop :=
   PairedMGU left right subst ∧
   subst.cap.SupportWithin (left.fcv ++ right.fcv) ∧
@@ -131,7 +145,8 @@ def ExactPairedMGU (left right : Ty) (subst : Subst) : Prop :=
   subst.cap.RangeWithin (left.fcv ++ right.fcv) ∧
   subst.target.RangeWithin (left.ftv ++ right.ftv) ∧
   subst.target.CapRangeWithin (left.ftv ++ right.ftv)
-    (left.fcv ++ right.fcv)
+    (left.fcv ++ right.fcv) ∧
+  subst.Idempotent
 
 /-- The exact one-way producer-to-slot solution: the capability component is
 the restricted `matchCap` binding substitution (exact by construction), and
@@ -406,11 +421,120 @@ theorem tySingle_capRangeWithin {varId : TypePM.TyVar} {target : Ty}
     rw [empty] at imageMem
     nomatch imageMem
 
+/-! ### Solved-form (idempotency) helpers
+
+Exactness confines a delta's support and range to its constraint, but a
+renaming that is its own inverse on two constraint variables still satisfies
+both confinement clauses on a trivially satisfied constraint.  The
+solved-form clause removes exactly that residue: applying a delta twice is
+applying it once, which is what prevailing-substitution absorption
+(`Subst.seq_absorbs_of_idempotent`) needs. -/
+
+/-- Pointwise fixed images make a capability substitution idempotent. -/
+theorem CapSubst.idempotent_of_pointwise {S : CapSubst}
+    (fixed : ∀ varId, (S varId).apply S = S varId) : S.Idempotent := by
+  intro capability
+  rw [← Cap.apply_comp]
+  congr 1
+  funext varId
+  exact fixed varId
+
+/-- Pointwise fixed images make a target substitution idempotent. -/
+theorem TySubst.idempotent_of_pointwise {S : TySubst}
+    (fixed : ∀ varId, (S varId).applyTarget S = S varId) : S.Idempotent := by
+  intro target
+  rw [← Ty.applyTarget_comp]
+  congr 1
+  funext varId
+  exact fixed varId
+
+/-- The identity capability substitution is idempotent. -/
+theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
+  intro capability
+  simp [Cap.apply_id]
+
+/-- The identity target substitution is idempotent. -/
+theorem TySubst.id_idempotent : TySubst.id.Idempotent := by
+  intro target
+  simp [Ty.applyTarget_id]
+
+/-- The identity paired substitution is idempotent. -/
+theorem Subst.id_idempotent : Subst.Idempotent Subst.id := by
+  intro target
+  simp [Subst.apply_id]
+
+/-- A capability-identity paired delta is idempotent exactly when its target
+component is. -/
+theorem Subst.idempotent_of_capId {T : TySubst} (idem : T.Idempotent) :
+    Subst.Idempotent ⟨CapSubst.id, T⟩ := by
+  intro target
+  show (((target.applyCapability CapSubst.id).applyTarget T).applyCapability
+      CapSubst.id).applyTarget T =
+    (target.applyCapability CapSubst.id).applyTarget T
+  rw [Ty.applyCapability_id, Ty.applyCapability_id]
+  exact idem target
+
+/-- The single capability binding is idempotent under its occurs condition. -/
+theorem capSingle_idempotent {varId : CapVar} {capability : Cap}
+    (notMem : varId ∉ capability.fcv) :
+    (Unification.CapSubst.single varId capability).Idempotent := by
+  apply CapSubst.idempotent_of_pointwise
+  intro candidate
+  by_cases hcase : varId = candidate
+  · subst hcase
+    rw [show Unification.CapSubst.single varId capability varId = capability
+      from if_pos rfl]
+    exact Unification.Cap.apply_single_of_not_mem varId capability capability
+      notMem
+  · rw [show Unification.CapSubst.single varId capability candidate =
+      .var candidate from if_neg hcase]
+    show Unification.CapSubst.single varId capability candidate =
+      .var candidate
+    exact if_neg hcase
+
+/-- The single target binding is idempotent under its occurs condition. -/
+theorem tySingle_idempotent {varId : TypePM.TyVar} {target : Ty}
+    (notMem : varId ∉ target.ftv) :
+    (Unification.TySubst.single varId target).Idempotent := by
+  apply TySubst.idempotent_of_pointwise
+  intro candidate
+  by_cases hcase : varId = candidate
+  · subst hcase
+    rw [show Unification.TySubst.single varId target varId = target
+      from if_pos rfl]
+    exact Unification.Ty.applyTarget_single_of_not_mem varId target target
+      notMem
+  · rw [show Unification.TySubst.single varId target candidate =
+      .var candidate from if_neg hcase]
+    show Unification.TySubst.single varId target candidate = .var candidate
+    exact if_neg hcase
+
+/-- Sequencing any later substitution onto an idempotent prevailing
+substitution absorbs the prevailing action: the composite does not see the
+earlier substitution twice. -/
+theorem Subst.seq_absorbs_of_idempotent {S : Subst}
+    (idem : S.Idempotent) (U : Subst) (target : Ty) :
+    (Subst.seq U S).apply (S.apply target) = (Subst.seq U S).apply target := by
+  rw [Subst.seq_apply, Subst.seq_apply, idem]
+
+/-- A solved-form delta whose composite images stay fixed by the prevailing
+substitution keeps the composite in solved form.  The fixedness premise is
+where freshness discharges: the delta's constraint variables and images are
+prevailing-resolved, so the prevailing substitution does not move them. -/
+theorem Subst.seq_idempotent {S delta : Subst}
+    (idemDelta : delta.Idempotent)
+    (fixed : ∀ target : Ty,
+      S.apply (delta.apply (S.apply target)) =
+        delta.apply (S.apply target)) :
+    (Subst.seq delta S).Idempotent := by
+  intro target
+  rw [Subst.seq_apply, Subst.seq_apply, fixed, idemDelta]
+
 /-- Identity is an exact most general unifier of equal capabilities. -/
 theorem ExactCapMGU.refl (capability : Cap) :
     ExactCapMGU capability capability CapSubst.id :=
   ⟨CapMGU.refl capability, CapSubst.id_supportWithin _,
-    CapSubst.id_rangeWithin _⟩
+    CapSubst.id_rangeWithin _, CapSubst.id_idempotent⟩
 
 /-- The single binding is an exact most general capability solution. -/
 theorem ExactCapMGU.varLeft (varId : CapVar) (capability : Cap)
@@ -419,7 +543,8 @@ theorem ExactCapMGU.varLeft (varId : CapVar) (capability : Cap)
       (Unification.CapSubst.single varId capability) := by
   refine ⟨CapMGU.varLeft varId capability notMem, ?_,
     capSingle_rangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inr mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inr mem)),
+    capSingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -433,7 +558,8 @@ theorem ExactCapMGU.varRight (capability : Cap) (varId : CapVar)
       (Unification.CapSubst.single varId capability) := by
   refine ⟨CapMGU.varRight capability varId notMem, ?_,
     capSingle_rangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inl mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inl mem)),
+    capSingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -444,7 +570,7 @@ theorem ExactCapMGU.varRight (capability : Cap) (varId : CapVar)
 theorem ExactTargetMGU.refl (target : Ty) :
     ExactTargetMGU target target TySubst.id :=
   ⟨TargetMGU.refl target, fun _ _ => rfl, TySubst.id_rangeWithin _,
-    TySubst.id_capRangeWithin _ _⟩
+    TySubst.id_capRangeWithin _ _, TySubst.id_idempotent⟩
 
 /-- The single binding is an exact most general target solution. -/
 theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
@@ -455,7 +581,8 @@ theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
     tySingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
     tySingle_capRangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inr mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inr mem)),
+    tySingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -471,7 +598,8 @@ theorem ExactTargetMGU.varRight (target : Ty) (varId : TypePM.TyVar)
     tySingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
     tySingle_capRangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inl mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inl mem)),
+    tySingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -483,7 +611,7 @@ theorem ExactPairedMGU.refl (target : Ty) :
     ExactPairedMGU target target Subst.id :=
   ⟨PairedMGU.refl target, CapSubst.id_supportWithin _, fun _ _ => rfl,
     CapSubst.id_rangeWithin _, TySubst.id_rangeWithin _,
-    TySubst.id_capRangeWithin _ _⟩
+    TySubst.id_capRangeWithin _ _, Subst.id_idempotent⟩
 
 /-- The single target binding is an exact most general paired solution. -/
 theorem ExactPairedMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
@@ -495,7 +623,8 @@ theorem ExactPairedMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
     tySingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
     tySingle_capRangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inr mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inr mem)),
+    Subst.idempotent_of_capId (tySingle_idempotent notMem)⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -512,7 +641,8 @@ theorem ExactPairedMGU.varRight (target : Ty) (varId : TypePM.TyVar)
     tySingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
     tySingle_capRangeWithin
-      (fun image mem => List.mem_append.mpr (Or.inl mem))⟩
+      (fun image mem => List.mem_append.mpr (Or.inl mem)),
+    Subst.idempotent_of_capId (tySingle_idempotent notMem)⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -526,9 +656,32 @@ theorem ExactPairedMGU.fnDiagonal (shared domain codomain : TypePM.TyVar)
     ExactPairedMGU (.fn (.var shared) (.var shared))
       (.fn (.var domain) (.var codomain))
       ⟨CapSubst.id, fnDiagonalDelta shared domain codomain⟩ := by
+  have deltaIdem : (fnDiagonalDelta shared domain codomain).Idempotent := by
+    apply TySubst.idempotent_of_pointwise
+    intro candidate
+    have imageFixed :
+        fnDiagonalDelta shared domain codomain domain = .var domain := by
+      simp [fnDiagonalDelta, domainNeShared, domainNeCodomain]
+    by_cases hshared : candidate = shared
+    · subst hshared
+      rw [show fnDiagonalDelta candidate domain codomain candidate =
+        .var domain from by simp [fnDiagonalDelta]]
+      exact imageFixed
+    · by_cases hcodomain : candidate = codomain
+      · subst hcodomain
+        rw [show fnDiagonalDelta shared domain candidate candidate =
+          .var domain from by
+            simp [fnDiagonalDelta, fun h : candidate = shared =>
+              codomainNeShared h]]
+        exact imageFixed
+      · rw [show fnDiagonalDelta shared domain codomain candidate =
+          .var candidate from by simp [fnDiagonalDelta, hshared, hcodomain]]
+        show fnDiagonalDelta shared domain codomain candidate =
+          .var candidate
+        simp [fnDiagonalDelta, hshared, hcodomain]
   refine ⟨PairedMGU.fnDiagonal shared domain codomain domainNeShared
     domainNeCodomain codomainNeShared, CapSubst.id_supportWithin _, ?_,
-    CapSubst.id_rangeWithin _, ?_, ?_⟩
+    CapSubst.id_rangeWithin _, ?_, ?_, Subst.idempotent_of_capId deltaIdem⟩
   · intro candidate outside
     have hshared : ¬ candidate = shared := fun h => outside (by
       cases h
@@ -635,8 +788,37 @@ theorem ExactPairedMGU.fnFresh (domainImage codomainImage : Ty)
             domainVarFreshRight (h ▸ membership)),
           if_neg (fun h : candidate = codomainVar =>
             codomainVarFreshRight (h ▸ membership))])
+  have deltaIdem :
+      (fnFreshDelta domainImage codomainImage domainVar
+        codomainVar).Idempotent := by
+    apply TySubst.idempotent_of_pointwise
+    intro candidate
+    by_cases hdomain : candidate = domainVar
+    · subst hdomain
+      rw [show fnFreshDelta domainImage codomainImage candidate codomainVar
+        candidate = domainImage from if_pos rfl]
+      exact fixesDomain
+    · by_cases hcodomain : candidate = codomainVar
+      · subst hcodomain
+        rw [show fnFreshDelta domainImage codomainImage domainVar candidate
+          candidate = codomainImage from by
+            show (if candidate = domainVar then domainImage
+              else if candidate = candidate then codomainImage
+              else .var candidate) = codomainImage
+            rw [if_neg hdomain, if_pos rfl]]
+        exact fixesCodomain
+      · rw [show fnFreshDelta domainImage codomainImage domainVar codomainVar
+          candidate = .var candidate from by
+            show (if candidate = domainVar then domainImage
+              else if candidate = codomainVar then codomainImage
+              else .var candidate) = .var candidate
+            rw [if_neg hdomain, if_neg hcodomain]]
+        show (if candidate = domainVar then domainImage
+          else if candidate = codomainVar then codomainImage
+          else .var candidate) = .var candidate
+        rw [if_neg hdomain, if_neg hcodomain]
   refine ⟨⟨?_, ?_⟩, CapSubst.id_supportWithin _, ?_,
-    CapSubst.id_rangeWithin _, ?_, ?_⟩
+    CapSubst.id_rangeWithin _, ?_, ?_, Subst.idempotent_of_capId deltaIdem⟩
   · show Ty.fn
         ((domainImage.applyCapability CapSubst.id).applyTarget
           (fnFreshDelta domainImage codomainImage domainVar codomainVar))
@@ -786,8 +968,36 @@ theorem ExactPairedMGU.fnSharedFresh (sharedVar : TypePM.TyVar) (image : Ty)
             sharedFresh (h ▸ membership)),
           if_neg (fun h : candidate = codomainVar =>
             codomainFresh (h ▸ membership))])
+  have deltaIdem :
+      (fnSharedFreshDelta sharedVar image codomainVar).Idempotent := by
+    apply TySubst.idempotent_of_pointwise
+    intro candidate
+    by_cases hshared : candidate = sharedVar
+    · subst hshared
+      rw [show fnSharedFreshDelta candidate image codomainVar candidate =
+        image from if_pos rfl]
+      exact fixesImage
+    · by_cases hcodomain : candidate = codomainVar
+      · subst hcodomain
+        rw [show fnSharedFreshDelta sharedVar image candidate candidate =
+          image from by
+            show (if candidate = sharedVar then image
+              else if candidate = candidate then image
+              else .var candidate) = image
+            rw [if_neg hshared, if_pos rfl]]
+        exact fixesImage
+      · rw [show fnSharedFreshDelta sharedVar image codomainVar candidate =
+          .var candidate from by
+            show (if candidate = sharedVar then image
+              else if candidate = codomainVar then image
+              else .var candidate) = .var candidate
+            rw [if_neg hshared, if_neg hcodomain]]
+        show (if candidate = sharedVar then image
+          else if candidate = codomainVar then image
+          else .var candidate) = .var candidate
+        rw [if_neg hshared, if_neg hcodomain]
   refine ⟨⟨?_, ?_⟩, CapSubst.id_supportWithin _, ?_,
-    CapSubst.id_rangeWithin _, ?_, ?_⟩
+    CapSubst.id_rangeWithin _, ?_, ?_, Subst.idempotent_of_capId deltaIdem⟩
   · show Ty.fn
         (if sharedVar = sharedVar then image
           else if sharedVar = codomainVar then image else .var sharedVar)
@@ -3478,7 +3688,7 @@ theorem ExactCapMGU.boundedBy_pair {left right : Cap} {subst : CapSubst}
   · intro varId below image imageMem
     have imageMem' : image ∈ (subst varId).fcv := imageMem
     by_cases inConstraint : varId ∈ left.fcv ++ right.fcv
-    · have := exact.2.2 varId inConstraint image imageMem'
+    · have := exact.2.2.1 varId inConstraint image imageMem'
       rcases List.mem_append.mp this with h | h
       · exact leftBounded image h
       · exact rightBounded image h
@@ -3523,7 +3733,7 @@ theorem ExactTargetMGU.boundedBy_pair {left right : Ty} {subst : TySubst}
     by_cases inConstraint : varId ∈ left.ftv ++ right.ftv
     · constructor
       · intro image imageMem
-        have := exact.2.2.2 varId inConstraint image
+        have := exact.2.2.2.1 varId inConstraint image
           (show image ∈ (subst varId).fcv from imageMem)
         rcases List.mem_append.mp this with h | h
         · exact leftBounded.caps image h
@@ -3571,7 +3781,7 @@ theorem ExactPairedMGU.boundedBy {left right : Ty} {subst : Subst}
     by_cases inConstraint : varId ∈ left.ftv ++ right.ftv
     · constructor
       · intro image imageMem
-        have := exact.2.2.2.2.2 varId inConstraint image imageMem
+        have := exact.2.2.2.2.2.1 varId inConstraint image imageMem
         rcases List.mem_append.mp this with h | h
         · exact leftBounded.caps image h
         · exact rightBounded.caps image h

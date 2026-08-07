@@ -132,7 +132,26 @@ two component targets. -/
 theorem pairTargetDelta_exact :
     ExactTargetMGU (.prod [.var 0, .var 1]) (.prod [.int, .int])
       pairTargetDelta := by
-  refine ⟨pairTargetDelta_targetMGU, ?_, ?_, ?_⟩
+  have deltaIdem : pairTargetDelta.Idempotent := by
+    apply TySubst.idempotent_of_pointwise
+    intro candidate
+    by_cases hzero : candidate = 0
+    · subst hzero
+      rfl
+    · by_cases hone : candidate = 1
+      · subst hone
+        rfl
+      · rw [show pairTargetDelta candidate = .var candidate from by
+          show (if candidate = 0 then Ty.int
+            else if candidate = 1 then Ty.int
+            else .var candidate) = .var candidate
+          rw [if_neg hzero, if_neg hone]]
+        show pairTargetDelta candidate = .var candidate
+        show (if candidate = 0 then Ty.int
+          else if candidate = 1 then Ty.int
+          else .var candidate) = .var candidate
+        rw [if_neg hzero, if_neg hone]
+  refine ⟨pairTargetDelta_targetMGU, ?_, ?_, ?_, deltaIdem⟩
   · intro candidate outside
     have hzero : ¬ candidate = 0 := fun h => outside (by
       cases h
@@ -743,6 +762,154 @@ theorem valueFlow_transport_needs_exactness :
         (swappingDelta.apply (.fn .int (.var 3))) :=
   ⟨swappingDelta_pairedMGU, capturedScheme_instance,
     capturedScheme_transport_refuted⟩
+
+/-! ## Boundary: in-constraint swaps force the solved-form clause
+
+Support and range confinement remove renamings of variables outside a solve
+delta's constraint, but not within it.  On the trivially satisfied
+constraint `fn ?0 ?1 ≐ fn ?0 ?1` the involutive swap of `?0` and `?1` is
+sound, most general (every unifier factors by un-swapping), and both
+supported and ranged within the constraint — yet applying it twice undoes
+it.  Such a delta breaks prevailing-substitution absorption
+(`Subst.seq_absorbs_of_idempotent` needs idempotency): a mid-derivation
+view of an already-threaded type disagrees with the terminal view, so
+context types would not transport to the terminal `HasTy` statement of the
+stage 3-2 forgetting map.  The solved-form clause is the exactness
+condition that rejects exactly this residue. -/
+
+/-- The involutive swap of `?0` and `?1`. -/
+def inConstraintSwap : Subst :=
+  ⟨CapSubst.id, fun candidate =>
+    if candidate = 0 then .var 1
+    else if candidate = 1 then .var 0
+    else .var candidate⟩
+
+/-- The trivially satisfied constraint side. -/
+def swapConstraint : Ty := .fn (.var 0) (.var 1)
+
+/-- The swap is a genuine most general paired solution of the trivial
+constraint: every unifier factors through it by un-swapping. -/
+theorem inConstraintSwap_pairedMGU :
+    PairedMGU swapConstraint swapConstraint inConstraintSwap := by
+  constructor
+  · rfl
+  · intro U _
+    refine ⟨⟨U.cap, fun candidate =>
+      if candidate = 0 then U.target 1
+      else if candidate = 1 then U.target 0
+      else U.target candidate⟩, ?_⟩
+    have targetEq : U.target = fun candidate =>
+        Subst.apply
+          ⟨U.cap, fun candidate =>
+            if candidate = 0 then U.target 1
+            else if candidate = 1 then U.target 0
+            else U.target candidate⟩
+          (inConstraintSwap.target candidate) := by
+      funext candidate
+      by_cases hzero : candidate = 0
+      · subst hzero
+        simp [inConstraintSwap, Subst.apply, Ty.applyCapability,
+          Ty.applyTarget]
+      · by_cases hone : candidate = 1
+        · subst hone
+          simp [inConstraintSwap, Subst.apply, Ty.applyCapability,
+            Ty.applyTarget]
+        · simp [inConstraintSwap, hzero, hone, Subst.apply,
+            Ty.applyCapability, Ty.applyTarget]
+    exact congrArg (Subst.mk U.cap) targetEq
+
+/-- The swap's target action is supported within the constraint. -/
+theorem inConstraintSwap_supportWithin :
+    inConstraintSwap.target.SupportWithin
+      (swapConstraint.ftv ++ swapConstraint.ftv) := by
+  intro candidate outside
+  have hzero : ¬ candidate = 0 := fun h => outside (by
+    cases h
+    simp [swapConstraint, Ty.ftv])
+  have hone : ¬ candidate = 1 := fun h => outside (by
+    cases h
+    simp [swapConstraint, Ty.ftv])
+  simp [inConstraintSwap, hzero, hone]
+
+/-- The swap's target images stay within the constraint. -/
+theorem inConstraintSwap_rangeWithin :
+    inConstraintSwap.target.RangeWithin
+      (swapConstraint.ftv ++ swapConstraint.ftv) := by
+  intro candidate mem image imageMem
+  by_cases hzero : candidate = 0
+  · subst hzero
+    have h : image = 1 := by
+      simpa [inConstraintSwap, Ty.ftv] using imageMem
+    subst h
+    simp [swapConstraint, Ty.ftv]
+  · by_cases hone : candidate = 1
+    · subst hone
+      have h : image = 0 := by
+        simpa [inConstraintSwap, Ty.ftv] using imageMem
+      subst h
+      simp [swapConstraint, Ty.ftv]
+    · have h : image = candidate := by
+        simpa [inConstraintSwap, hzero, hone, Ty.ftv] using imageMem
+      simpa [h] using mem
+
+/-- The swap's images carry no capability variables. -/
+theorem inConstraintSwap_capRangeWithin :
+    inConstraintSwap.target.CapRangeWithin
+      (swapConstraint.ftv ++ swapConstraint.ftv)
+      (swapConstraint.fcv ++ swapConstraint.fcv) := by
+  intro candidate _ image imageMem
+  by_cases hzero : candidate = 0
+  · subst hzero
+    nomatch imageMem
+  · by_cases hone : candidate = 1
+    · subst hone
+      nomatch imageMem
+    · rw [show inConstraintSwap.target candidate = .var candidate from by
+        simp [inConstraintSwap, hzero, hone]] at imageMem
+      nomatch imageMem
+
+/-- Applying the swap twice undoes it: it is not in solved form. -/
+theorem inConstraintSwap_not_idempotent :
+    ¬ Subst.Idempotent inConstraintSwap := by
+  intro idem
+  nomatch idem (.var 0)
+
+/-- Concrete absorption failure: with the identity continuation, the
+composite substitution disagrees on the prevailing view of `?0`. -/
+theorem inConstraintSwap_breaks_absorption :
+    (Subst.seq Subst.id inConstraintSwap).apply
+        (inConstraintSwap.apply (.var 0)) ≠
+      (Subst.seq Subst.id inConstraintSwap).apply (.var 0) := by
+  intro h
+  nomatch h
+
+/-- The strengthened exactness rejects the swap. -/
+theorem inConstraintSwap_exact_refuted :
+    ¬ ExactPairedMGU swapConstraint swapConstraint inConstraintSwap :=
+  fun exact => inConstraintSwap_not_idempotent exact.2.2.2.2.2.2
+
+/-- The boundary in one statement: the in-constraint swap satisfies
+soundness, most-generality, and every confinement clause of exactness, yet
+is not idempotent — the solved-form clause is what rejects it. -/
+theorem inConstraintSwap_forces_solvedForm :
+    PairedMGU swapConstraint swapConstraint inConstraintSwap ∧
+      inConstraintSwap.cap.SupportWithin
+        (swapConstraint.fcv ++ swapConstraint.fcv) ∧
+      inConstraintSwap.target.SupportWithin
+        (swapConstraint.ftv ++ swapConstraint.ftv) ∧
+      inConstraintSwap.cap.RangeWithin
+        (swapConstraint.fcv ++ swapConstraint.fcv) ∧
+      inConstraintSwap.target.RangeWithin
+        (swapConstraint.ftv ++ swapConstraint.ftv) ∧
+      inConstraintSwap.target.CapRangeWithin
+        (swapConstraint.ftv ++ swapConstraint.ftv)
+        (swapConstraint.fcv ++ swapConstraint.fcv) ∧
+      ¬ Subst.Idempotent inConstraintSwap ∧
+      ¬ ExactPairedMGU swapConstraint swapConstraint inConstraintSwap :=
+  ⟨inConstraintSwap_pairedMGU, CapSubst.id_supportWithin _,
+    inConstraintSwap_supportWithin, CapSubst.id_rangeWithin _,
+    inConstraintSwap_rangeWithin, inConstraintSwap_capRangeWithin,
+    inConstraintSwap_not_idempotent, inConstraintSwap_exact_refuted⟩
 
 /-! ## Boundary: the capability-freeze axis reaches the forgetting map
 
@@ -1435,7 +1602,8 @@ theorem delegating_bodyMGU_exact :
   refine ⟨delegating_bodyMGU, CapSubst.id_supportWithin _, ?_,
     CapSubst.id_rangeWithin _,
     tySingle_rangeWithin (fun image mem => nomatch mem),
-    tySingle_capRangeWithin (fun image mem => nomatch mem)⟩
+    tySingle_capRangeWithin (fun image mem => nomatch mem),
+    Subst.idempotent_of_capId (tySingle_idempotent (by decide))⟩
   intro candidate outside
   have hne : ¬ (0 : TypePM.TyVar) = candidate := fun h => outside (by
     cases h
