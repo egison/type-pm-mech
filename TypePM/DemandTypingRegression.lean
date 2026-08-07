@@ -447,6 +447,112 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   rename_i delta5
   nomatch secondArgMGU.1.trans (congrArg (Subst.apply delta5) hdom.symm)
 
+/-! ## Boundary: bare most-generality does not transport value flow
+
+The no-guess theorems bound every most general solve delta to at most a
+renaming of variables outside its constraint.  That residual freedom is
+already enough to break delta-wise transport of declarative value-flow
+instances: a most general solution of `?1 ≐ Int` may additionally swap the
+unrelated variables `?3` and `?9`.  If `?9` is the binder of a partially
+generalized scheme with `?3` free, the masked scheme substitution captures
+— `∀9. 9 → 3` becomes `∀9. 9 → 9` — while the transported instance
+`Int → ?9` is no instance of the captured scheme.  This fixes, as a
+boundary theorem, why the forgetting map to `HasTy` cannot be proved by
+transporting instances along bare `PairedMGU` deltas, and it motivates the
+exactness strengthening (identity outside the constraint) of the
+judgment's solve deltas: the swap is exactly what exactness removes. -/
+
+/-- A most general solution of `?1 ≐ Int` that additionally swaps the
+unrelated variables `?3` and `?9`. -/
+def swappingDelta : Subst :=
+  ⟨CapSubst.id, fun candidate =>
+    if candidate = 1 then .int
+    else if candidate = 3 then .var 9
+    else if candidate = 9 then .var 3
+    else .var candidate⟩
+
+/-- The swap delta is a genuine most general paired solution: any unifier
+factors through it by un-swapping. -/
+theorem swappingDelta_pairedMGU : PairedMGU (.var 1) .int swappingDelta := by
+  constructor
+  · rfl
+  · intro U unifies
+    have fixesOne : U.target 1 = .int := unifies
+    refine ⟨⟨U.cap, fun candidate =>
+      if candidate = 3 then U.target 9
+      else if candidate = 9 then U.target 3
+      else U.target candidate⟩, ?_⟩
+    have targetEq : U.target = fun candidate =>
+        Subst.apply
+          ⟨U.cap, fun candidate =>
+            if candidate = 3 then U.target 9
+            else if candidate = 9 then U.target 3
+            else U.target candidate⟩
+          (swappingDelta.target candidate) := by
+      funext candidate
+      by_cases hone : candidate = 1
+      · subst hone
+        simpa [swappingDelta] using fixesOne
+      · by_cases hthree : candidate = 3
+        · subst hthree
+          simp [swappingDelta, Subst.apply, Ty.applyCapability,
+            Ty.applyTarget]
+        · by_cases hnine : candidate = 9
+          · subst hnine
+            simp [swappingDelta, Subst.apply, Ty.applyCapability,
+              Ty.applyTarget]
+          · simp [swappingDelta, hone, hthree, hnine, Subst.apply,
+              Ty.applyCapability, Ty.applyTarget]
+    exact congrArg (Subst.mk U.cap) targetEq
+
+/-- The partially generalized scheme `∀9. 9 → 3`: `?9` is quantified,
+`?3` is shared with the ambient context. -/
+def capturedScheme : Scheme := ⟨[], [9], .fn (.var 9) (.var 3)⟩
+
+/-- Before transport: `Int → ?3` is a value-flow instance. -/
+theorem capturedScheme_instance :
+    capturedScheme.ValueFlowInst (.fn .int (.var 3)) := by
+  refine ⟨CapSubst.id, fun candidate =>
+    if candidate = 9 then .int else .var candidate, ?_⟩
+  refine
+    { capSupport := CapSubst.id_supportWithin _
+      tySupport := ?_
+      capBinderVariable := ?_
+      result := ?_ }
+  · intro candidate outside
+    have : ¬ candidate = 9 := by
+      intro h
+      exact outside (by simp [capturedScheme, h])
+    simp [this]
+  · intro varId membership
+    nomatch membership
+  · rfl
+
+/-- After transport by the swap delta the instance is gone: the masked
+scheme substitution captured the binder. -/
+theorem capturedScheme_transport_refuted :
+    ¬ (capturedScheme.applySubst swappingDelta).ValueFlowInst
+      (swappingDelta.apply (.fn .int (.var 3))) := by
+  rintro ⟨C, T, inst⟩
+  have components := inst.result
+  have captured :
+      Ty.fn (((Ty.var 9).applyCapability C).applyTarget T)
+        (((Ty.var 9).applyCapability C).applyTarget T) =
+      Ty.fn .int (.var 9) := components
+  injection captured with domainEq codomainEq
+  rw [domainEq] at codomainEq
+  nomatch codomainEq
+
+/-- The boundary in one statement: the swap delta is most general, the
+instance holds before transport, and fails after. -/
+theorem valueFlow_transport_needs_exactness :
+    PairedMGU (.var 1) .int swappingDelta ∧
+      capturedScheme.ValueFlowInst (.fn .int (.var 3)) ∧
+      ¬ (capturedScheme.applySubst swappingDelta).ValueFlowInst
+        (swappingDelta.apply (.fn .int (.var 3))) :=
+  ⟨swappingDelta_pairedMGU, capturedScheme_instance,
+    capturedScheme_transport_refuted⟩
+
 /-! ## Pattern layer: the or-pattern `matchAll` program
 
 The same or-pattern program whose executable acceptance is pinned by
