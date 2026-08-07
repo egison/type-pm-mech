@@ -290,16 +290,36 @@ matcher literal を含まない **match-free 断片では任意の surface typin
 型付けは埋め込みを経て coherent judgment に入る（`dm_coherent`）．これらを
 algorithmic completeness や principality とは呼ばない．
 
-### demand-directed judgment（式層）
+### demand-directed judgment
 
 [`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) は，README の設計原理節が
-固定した demand-directed judgment を式層（pattern-free 断片）に対して定義する．
-mutual family は `DDSynth`／`DDSynths`／`DDCheck`／`DDChecks` の 4 judgment で，
-fresh supply と prevailing paired substitution を入出力で thread する．`DDCheck` の
-規則は一つ（synthesize してから出力 cut で `DDAlign`）であり，`matcher` literal・
-`matchAll`・matcher-bodied `fix` には規則がない（pattern 層 family はロードマップ
-段階 3-1 の残り）．capability freeze／export ledger の軸は判断に含めない（段階 3-3
-の `FreezeCompatible` 対応条件）．
+固定した demand-directed judgment を全構文層に対して定義する．主 mutual family は
+`DDSynth`／`DDSynths`／`DDCheck`／`DDChecks`／`DDPattern`／`DDPatterns`／`DDArms`／
+`DDClause`／`DDClauses` の 9 judgment で，fresh supply と prevailing paired
+substitution を入出力で thread する（`DDPattern` は monomorphic binding context も
+左から右へ thread する）．式を参照しない `DDPPat`／`DDPPats`（primitive pattern，
+holes＋bindings 出力）と `DDDPat`／`DDDPats`（data pattern）は主 mutual block の外で
+閉じる自己完結対である．`DDCheck` の規則は一つ（synthesize してから出力 cut で
+`DDAlign`）．capability freeze／export ledger の軸は判断に含めない（段階 3-3 の
+`FreezeCompatible` 対応条件）．
+
+pattern 層は実行走査を次の二層で写す．fresh 割当は supply-indexed な純関数 twin —
+`freshTargetsSupply`（tuple 成分 target）・`freshenSkeletonSupply`（skeleton
+freshening，masked／list 版込み）・`patternCtorAssignmentsSupply`（shared result
+assignment）・`fixMatcherPlaceholderSupply`（matcher-bodied 再帰 binder の
+placeholder）— として，solver 列は関係的整合 — `DDAlignDual`（capability 先行の
+dual 整合）・`DDAlignDualList`・`DDAlignTargetList`（constructor field 整合）・
+`DDAlignBindings`（or-alternative の名前位置照合＋型単一化）・`DDAlignCtorCaps`
+（shared demand への capability solve）・`DDPatternCtorCap`（pattern-constructor
+capability の exact-projection fast path／shared-skeleton fallback の二経路）—
+として表す．`DDSynth.matchAll` は target synthesis・pattern 推論・match-target
+alignment の後に matcher 式へ slot expectation（`.slot dual.cap targetTy`）を
+demand し，`DDSynth.matcher` は共有 target を確保して全 clause を走査した後，宣言
+規則と同一の executable 検査群（`collectClauseEvidence`・`Shape.inferShape`・
+`clauseCapsListCheck`・`catchAllLastCheck`・`matcherBindersCheck`・
+`armExhaustiveCheck`・`coverageCheck`，terminal hole caps は `terminalHoleCaps`）を
+消費して finalize する．`DDSynth.fixMatcher` は非 matcher template の `fix` 規則と
+`NonMatcherBody` で排他になる．
 
 solve delta は実行ソルバに言及しない関係的仕様で制約する：`CapMGU`／`TargetMGU`／
 `PairedMGU`（soundness＋全 unifier の因子化＝kernel certificate と同形）と，exact
@@ -318,10 +338,12 @@ capability を先に解いてから capability 適用後の target を解き，�
 証明済み：`demandClass_slotDemand`／`demandClass_matcherExpected`（非 ordinary 分岐は
 slot 頭の expected を要求する），`DDAlign.slotDemand`／`DDAlign.matcherExpected`
 （判断レベルの slot-demand 境界），prevailing replay（`ReplayExtends`＝chronological
-delta 列による因子化，全 judgment），supply 単調性（`SupplyExtends`，全 judgment），
-反射・単一束縛の MGU witness（`PairedMGU.refl`／`varLeft`／`varRight` ほか）．
-非主張：pattern 層の規則，`HasTy` への忘却，`CoherentExpr` への変換，freshness／solve
-relevance の不変量，受理定理（段階 3-2／3-3）．
+delta 列による因子化，pattern 層 family と全整合関係を含む全 judgment），supply 単調性
+（`SupplyExtends`，全 judgment；supply twin ごとの単調性補題込み），反射・単一束縛の
+MGU witness（`PairedMGU.refl`／`varLeft`／`varRight`，`CapMGU.varLeft`／`varRight`，
+`TargetMGU.varLeft`／`varRight` ほか）．
+非主張：`HasTy` への忘却，`CoherentExpr` への変換，freshness／solve relevance の
+不変量，受理定理（段階 3-2／3-3）．
 
 ### capability origin ledger と origin-aware paired solver
 
@@ -612,7 +634,14 @@ executable regression とその正負境界．削るときは対応する設計�
   量化 scheme の supply-indexed な二重 fresh instantiation を行使），
   `(something, something)` を aggregate slot 期待で検査する product-matcher lift の
   正例（lift が両 `something` target を `Int` へ解決することも固定），同じ raw product
-  に対する matcher 頭期待の checking cut 不在（`DDAlign` の全分岐反証）．
+  に対する matcher 頭期待の checking cut 不在（`DDAlign` の全分岐反証）．pattern 層の
+  旗艦二本：`AcceptanceGapRegression.orProgram` の `DDTyping`（両 or-alternative の
+  独立 fresh dual を `DDAlignDual`＋`DDAlignBindings` で整合し，`something` を
+  one-way producer-to-slot で slot 期待に合わせて `List Int` で閉じる），delegating
+  matcher literal `[$ something [(v → matchAll 0 something $y y)]]` の `DDTyping`
+  （hole slot の one-way 充足・arm body の `List Int ≐ List ?0` 整合・executable
+  finalization 検査群の消費で `Matcher Any Int` で閉じる；`native_decide` による
+  executable 受理 pin つき）．
 - [`TypePM/ElaborationRegression.lean`](../TypePM/ElaborationRegression.lean): principality
   反例の product 型を canonical root synthesis として固定し，product matcher view を
   明示的 `CoercionPlan` として replay する．`let` を越えた変数利用位置への unary lift の

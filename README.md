@@ -23,9 +23,9 @@ Lean の public import surface は [`TypePM.lean`](TypePM.lean) にある．
   (infer signature [] e).isSome
 ```
 
-`DDTyping` は式層（pattern-free 断片）に対して
-[`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean) で定義済みである（pattern 層の
-規則と受理完全性定理は未）．内部には fresh supply `q` と prevailing
+`DDTyping` は pattern 層 family を含む全構文層に対して
+[`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean) で定義済みである（受理完全性
+定理は未）．内部には fresh supply `q` と prevailing
 substitution `S` を入出力で thread する synthesis／checking の二判断を置く：
 
 ```text
@@ -201,16 +201,20 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    head 不一致」へ変わったが，拒否自体は不変である．原則そのものも selector の定理
    （`expectedCoercionSource_slotDemand`／`expectedCoercionSource_matcherExpected`）
    として機械化した．
-1. **式層済** `DDTyping` の定義 — 推論器から独立な帰納的 `DDSynth`／`DDCheck`
-   （[`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean)）を式層（pattern-free
-   断片）に対して定義した．設計原理節のとおり synthesis-first・slot-demand（分岐は
-   cut-resolved view 上の決定的 `demandClass`）・no-guess（各 solve delta は当該
-   constraint の関係的 MGU か exact one-way 解）で，実行関数や
-   `ElaborableHasTy := ∃ CoreTyping` を定義に含めない．closed wrapper `DDTyping`，
-   prevailing replay（`ReplayExtends`）と supply 単調性，判断レベルの slot-demand
-   定理（`DDAlign.slotDemand`／`DDAlign.matcherExpected`），coercion 正例と
-   matcher-expected 拒否の対（`DemandTypingRegression`）まで機械化済み．
-   残: pattern 層 family（`matchAll`・matcher literal・matcher-bodied `fix`）の規則．
+1. **済** `DDTyping` の定義 — 推論器から独立な帰納的 `DDSynth`／`DDCheck`
+   （[`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean)）を，pattern 層 family
+   （user pattern・primitive pattern・data pattern・arm・clause）と `matchAll`・
+   matcher literal・matcher-bodied `fix` の規則を含む全構文層に対して定義した．
+   設計原理節のとおり synthesis-first・slot-demand（分岐は cut-resolved view 上の
+   決定的 `demandClass`）・no-guess（各 solve delta は当該 constraint の関係的 MGU か
+   exact one-way 解）で，実行関数や `ElaborableHasTy := ∃ CoreTyping` を定義に
+   含めない．pattern 層の fresh 割当は実行走査の supply-indexed 純関数 twin として
+   写し，matcher literal の finalization は宣言規則と同一の executable coverage
+   検査群を消費する．closed wrapper `DDTyping`，prevailing replay（`ReplayExtends`）
+   と supply 単調性（全 judgment），判断レベルの slot-demand 定理
+   （`DDAlign.slotDemand`／`DDAlign.matcherExpected`），coercion 正例と
+   matcher-expected 拒否の対，or-pattern `matchAll` program と delegating matcher
+   literal の旗艦導出（`DemandTypingRegression`）まで機械化済み．
 2. 未: `DDTyping` の基本メタ理論 — state extension・prevailing replay・freshness・solve
    delta の relevance・`HasTy` への忘却・`CoherentExpr` への変換．境界例は
    `nestedCapProgram` の不在 inversion と `nestedCapLetProgram` の構成で固定する．
@@ -243,10 +247,10 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping`, `DemandTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing，反証済み wide 注釈不要性境界，式層の demand-directed judgment（`DDSynth`／`DDCheck`／`DDTyping`） |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping`, `DemandTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing，反証済み wide 注釈不要性境界，全構文層の demand-directed judgment（`DDSynth`／`DDCheck`／`DDTyping`・pattern 層 family） |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceLedgerAdmissibility`, `InferenceLocalFactorization`, `InferenceTraversalLocalFactorization`, `InferenceTraceFactorization`, `InferenceFreezeTransport`, `InferenceAdmissibleTrace`, `InferenceTraversalAdmissibleTrace`, `InferenceInput`, `InferenceHistory`, `InferenceStateExtension`, `InferenceTraversalStateExtension`, `InferenceRunInvariants`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，origin-admissible local solve／全 traversal の局所因子化証明書／scoped trace 合成／selective freeze 輸送／全 traversal 不変量の統合，入力整形性，append-only history，全 traversal の supply／producer state extension，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `AcceptanceGapRegression`, `DMTerminalAcceptance`, `ApplicationCoercionRegression`, `DemandTypingRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，DM 多相 let の terminal 受理，demand-directed judgment の具体導出と slot-demand 境界対，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `AcceptanceGapRegression`, `DMTerminalAcceptance`, `ApplicationCoercionRegression`, `DemandTypingRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，DM 多相 let の terminal 受理，demand-directed judgment の具体導出と slot-demand 境界対（or-pattern `matchAll`・delegating matcher の旗艦込み），recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．各モジュールの詳細仕様と回帰の正負境界は
 [`docs/details.md`](docs/details.md)．

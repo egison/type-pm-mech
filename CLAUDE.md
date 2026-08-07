@@ -92,10 +92,13 @@ commit／push はその都度の明示指示がある場合に限るという規
   先に立て，canonical boundary を定義してから条件付き一意性を扱う．proof-indexed な
   derivation property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で
   代用しない．
-- `DDTyping` は式層（pattern-free 断片）に対して定義済みで，pattern 層の規則と
-  受理完全性定理は未である．未定義・未証明の部分を成立済みとは主張しない．
+- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みで，受理完全性定理は
+  未である．未定義・未証明の部分を成立済みとは主張しない．
   `DDAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
   分岐を判断側へ持ち込まない（raw visibility は段階 3-3 の対応条件 `RawSourceVisible`）．
+  pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の
+  一致を崩す規則変更をしない．matcher literal の finalization 検査群を DD 側だけ
+  弱めない．
 
 ### 動的安全性
 
