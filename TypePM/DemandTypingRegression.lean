@@ -131,15 +131,31 @@ two component targets. -/
 theorem pairTargetDelta_exact :
     ExactTargetMGU (.prod [.var 0, .var 1]) (.prod [.int, .int])
       pairTargetDelta := by
-  refine ⟨pairTargetDelta_targetMGU, ?_⟩
-  intro candidate outside
-  have hzero : ¬ candidate = 0 := fun h => outside (by
-    cases h
-    simp [Ty.ftv, Ty.ftvList])
-  have hone : ¬ candidate = 1 := fun h => outside (by
-    cases h
-    simp [Ty.ftv, Ty.ftvList])
-  simp [pairTargetDelta, hzero, hone]
+  refine ⟨pairTargetDelta_targetMGU, ?_, ?_⟩
+  · intro candidate outside
+    have hzero : ¬ candidate = 0 := fun h => outside (by
+      cases h
+      simp [Ty.ftv, Ty.ftvList])
+    have hone : ¬ candidate = 1 := fun h => outside (by
+      cases h
+      simp [Ty.ftv, Ty.ftvList])
+    simp [pairTargetDelta, hzero, hone]
+  · intro candidate mem image imageMem
+    by_cases hzero : candidate = 0
+    · subst hzero
+      rw [show pairTargetDelta 0 = Ty.int from rfl] at imageMem
+      nomatch imageMem
+    · by_cases hone : candidate = 1
+      · subst hone
+        rw [show pairTargetDelta 1 = Ty.int from rfl] at imageMem
+        nomatch imageMem
+      · rw [show pairTargetDelta candidate = .var candidate from by
+          show (if candidate = 0 then Ty.int
+            else if candidate = 1 then Ty.int
+            else .var candidate) = .var candidate
+          rw [if_neg hzero, if_neg hone]] at imageMem
+        have h : image = candidate := by simpa [Ty.ftv] using imageMem
+        simpa [h] using mem
 
 /-- Terminal substitution of the positive slot-demand coercion. -/
 def somethingPairTerminal : Subst :=
@@ -916,7 +932,10 @@ theorem delegating_bodyMGU :
 theorem delegating_bodyMGU_exact :
     ExactPairedMGU (Ty.listT .int) (Ty.listT (.var 0))
       ⟨CapSubst.id, Unification.TySubst.single 0 .int⟩ := by
-  refine ⟨delegating_bodyMGU, CapSubst.id_supportWithin _, ?_⟩
+  refine ⟨delegating_bodyMGU, CapSubst.id_supportWithin _, ?_,
+    CapSubst.id_rangeWithin _,
+    tySingle_rangeWithin (fun image mem => nomatch mem),
+    tySingle_capRangeWithin (fun image mem => nomatch mem)⟩
   intro candidate outside
   have hne : ¬ (0 : TypePM.TyVar) = candidate := fun h => outside (by
     cases h
