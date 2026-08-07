@@ -35,13 +35,17 @@ Design commitments realized here:
   deterministic supply-indexed instantiation helpers and the pure syntactic
   recognizers shared with the rest of the development.
 
-The judgments cover the expression layer whose subterms stay outside the
-pattern fragment: `matcher` literals, `matchAll`, and the matcher-bodied
-`fix` template have no rules yet, so derivations exist only for programs
-avoiding those forms.  The pattern-layer families are the remaining part of
-roadmap stage 3-1.  The capability-freeze/export ledger axis is deliberately
-absent: it is the separate `FreezeCompatible` correspondence condition of
-stage 3-3, not part of the demand specification.
+The judgments cover the full core syntax.  The pattern layer mirrors the
+executable traversal through supply-indexed pure twins of its fresh
+allocators (`freshTargetsSupply`, `freshenSkeletonSupply`,
+`patternCtorAssignmentsSupply`, `fixMatcherPlaceholderSupply`) and
+relational forms of its solver sequences (`DDAlignDual`,
+`DDAlignTargetList`, `DDAlignBindings`, `DDAlignCtorCaps`,
+`DDPatternCtorCap`); matcher-literal finalization consumes the same
+executable coverage checks as the declarative rule.  The
+capability-freeze/export ledger axis is deliberately absent: it is the
+separate `FreezeCompatible` correspondence condition of stage 3-3, not part
+of the demand specification.
 -/
 
 namespace TypePM
@@ -385,10 +389,358 @@ theorem DDAlign.matcherExpected {S : Subst} {raw expected : Ty} {S' : Subst}
       rw [matcherView] at slotView; cases slotView
   | ordinary _ aligned => exact aligned
 
+/-! ## Supply-threaded deterministic allocation helpers
+
+The pattern layer reuses the executable traversal's fresh-allocation
+discipline through pure supply-indexed twins of the state-threading helpers.
+Each function is deterministic in the incoming supply, so the judgment stays
+independent of `InferState` while pinning the exact allocation order of the
+executable traversal.
+-/
+
+/-- Allocate `count` consecutive fresh target metas. -/
+def freshTargetsSupply :
+    Nat → InferenceBase.FreshSupply → List Ty × InferenceBase.FreshSupply
+  | 0, q => ([], q)
+  | count + 1, q =>
+      (.var q.nextTy ::
+        (freshTargetsSupply count { q with nextTy := q.nextTy + 1 }).1,
+        (freshTargetsSupply count { q with nextTy := q.nextTy + 1 }).2)
+
+mutual
+
+/-- Supply twin of skeleton freshening: replace observable, structurally
+unknown leaves by fresh capability metas and canonicalize unobservable
+constructor fields to `Any`. -/
+def freshenSkeletonSupply (observable : Shape.Observability) :
+    Shape.Evidence → InferenceBase.FreshSupply →
+      Option (Cap × InferenceBase.FreshSupply)
+  | .unseen, q =>
+      some (.var ⟨q.nextCap⟩, { q with nextCap := q.nextCap + 1 })
+  | .known leaf, q => some (leaf.toCap, q)
+  | .con name children, q =>
+      match observable name with
+      | none => none
+      | some mask =>
+          match freshenSkeletonMaskedSupply observable mask children q with
+          | none => none
+          | some (capabilities, q') => some (.con name capabilities, q')
+  | .prod components, q =>
+      match freshenSkeletonListSupply observable components q with
+      | none => none
+      | some (capabilities, q') => some (.prod capabilities, q')
+
+/-- List form of `freshenSkeletonSupply`. -/
+def freshenSkeletonListSupply (observable : Shape.Observability) :
+    List Shape.Evidence → InferenceBase.FreshSupply →
+      Option (List Cap × InferenceBase.FreshSupply)
+  | [], q => some ([], q)
+  | evidence :: rest, q =>
+      match freshenSkeletonSupply observable evidence q with
+      | none => none
+      | some (head, q) =>
+          match freshenSkeletonListSupply observable rest q with
+          | none => none
+          | some (tail, q') => some (head :: tail, q')
+
+/-- Masked form of `freshenSkeletonSupply`: only observable fields freshen,
+the rest canonicalize to `Any`. -/
+def freshenSkeletonMaskedSupply (observable : Shape.Observability) :
+    List Bool → List Shape.Evidence → InferenceBase.FreshSupply →
+      Option (List Cap × InferenceBase.FreshSupply)
+  | [], [], q => some ([], q)
+  | isObservable :: mask, evidence :: rest, q =>
+      match
+        if isObservable then freshenSkeletonSupply observable evidence q
+        else some (Cap.any, q)
+      with
+      | none => none
+      | some (head, q) =>
+          match freshenSkeletonMaskedSupply observable mask rest q with
+          | none => none
+          | some (tail, q') => some (head :: tail, q')
+  | _, _, _ => none
+
+end
+
+/-- Supply twin of the shared pattern-constructor result assignments: one
+fresh capability leaf per observable result variable. -/
+def patternCtorAssignmentsSupply :
+    List TypePM.TyVar → InferenceBase.FreshSupply →
+      Projection.Assignments × InferenceBase.FreshSupply
+  | [], q => ([], q)
+  | varId :: variables, q =>
+      ((varId, Shape.ofCap (.var ⟨q.nextCap⟩)) ::
+        (patternCtorAssignmentsSupply variables
+          { q with nextCap := q.nextCap + 1 }).1,
+        (patternCtorAssignmentsSupply variables
+          { q with nextCap := q.nextCap + 1 }).2)
+
+/-- Supply twin of the matcher-bodied recursive-binder placeholder: freshen
+the skeleton capability inferred from actual clause syntax alone, reuse its
+first capability leaf as the argument capability (or allocate one), and
+allocate the argument and producer targets. -/
+def fixMatcherPlaceholderSupply (signature : FrozenSig)
+    (clauses : List Clause) (q : InferenceBase.FreshSupply) :
+    Option (Ty × Ty × InferenceBase.FreshSupply) :=
+  match Inference.matcherSkeletonEvidence signature.toMatcherSig clauses with
+  | none => none
+  | some evidence =>
+      match
+        match evidence with
+        | .unseen => some (Cap.any, q)
+        | evidence => freshenSkeletonSupply signature.observability evidence q
+      with
+      | none => none
+      | some (capability, q) =>
+          match capability.fcv with
+          | first :: _ =>
+              some (.slot (Cap.var first) (.var q.nextTy),
+                .matcher capability (.var (q.nextTy + 1)),
+                { q with nextTy := q.nextTy + 2 })
+          | [] =>
+              some (.slot (Cap.var ⟨q.nextCap⟩) (.var q.nextTy),
+                .matcher capability (.var (q.nextTy + 1)),
+                { q with
+                    nextCap := q.nextCap + 1
+                    nextTy := q.nextTy + 2 })
+
+/-- The terminal per-clause hole capabilities consumed by matcher
+finalization. -/
+def terminalHoleCaps (S : Subst) (rawHoleLists : List (List Dual)) :
+    List (List Cap) :=
+  rawHoleLists.map fun holes => (holes.map (Dual.applySubst S)).map Dual.cap
+
+/-! ## Pattern-layer alignment relations
+
+Each relation mirrors one executable solver sequence in relational form: the
+capability sort is solved on cut-resolved views first, and each delta is a
+most general solution of exactly the constraint resolved at its cut.
+-/
+
+/-- Dual alignment at one cut: capability solve on the resolved views, then
+ordinary alignment of the raw targets under the extended substitution. -/
+inductive DDAlignDual : Subst → Dual → Dual → Subst → Prop where
+  | mk {S : Subst} {left right : Dual} {capDelta : CapSubst} {S' : Subst} :
+      CapMGU (left.cap.apply S.cap) (right.cap.apply S.cap) capDelta →
+      DDAlignTypes (Subst.seq ⟨capDelta, TySubst.id⟩ S)
+        left.target right.target S' →
+      DDAlignDual S left right S'
+
+/-- Pointwise dual-list alignment. -/
+inductive DDAlignDualList : Subst → List Dual → List Dual → Subst → Prop where
+  | nil {S : Subst} : DDAlignDualList S [] [] S
+  | cons {S : Subst} {left right : Dual} {lefts rights : List Dual}
+      {S₁ S' : Subst} :
+      DDAlignDual S left right S₁ →
+      DDAlignDualList S₁ lefts rights S' →
+      DDAlignDualList S (left :: lefts) (right :: rights) S'
+
+/-- Pointwise alignment of pattern-result targets against instantiated
+constructor fields. -/
+inductive DDAlignTargetList : Subst → List Dual → List Ty → Subst → Prop where
+  | nil {S : Subst} : DDAlignTargetList S [] [] S
+  | cons {S : Subst} {dual : Dual} {expected : Ty} {duals : List Dual}
+      {expecteds : List Ty} {S₁ S' : Subst} :
+      DDAlignTypes S dual.target expected S₁ →
+      DDAlignTargetList S₁ duals expecteds S' →
+      DDAlignTargetList S (dual :: duals) (expected :: expecteds) S'
+
+/-- Entrywise or-alternative binding alignment: binder names must coincide
+positionally while the bound types are unified. -/
+inductive DDAlignBindings : Subst → MonoCtx → MonoCtx → Subst → Prop where
+  | nil {S : Subst} : DDAlignBindings S [] [] S
+  | cons {S : Subst} {left right : String × Ty} {lefts rights : MonoCtx}
+      {S₁ S' : Subst} :
+      left.1 = right.1 →
+      DDAlignTypes S left.2 right.2 S₁ →
+      DDAlignBindings S₁ lefts rights S' →
+      DDAlignBindings S (left :: lefts) (right :: rights) S'
+
+/-- Consumer-side pattern-constructor capability solving against the shared
+structural demands; a field with no observable path to a result variable
+contributes no constraint. -/
+inductive DDAlignCtorCaps :
+    Subst → List Cap → List (Option Cap) → Subst → Prop where
+  | nil {S : Subst} : DDAlignCtorCaps S [] [] S
+  | skip {S : Subst} {child : Cap} {children : List Cap}
+      {demands : List (Option Cap)} {S' : Subst} :
+      DDAlignCtorCaps S children demands S' →
+      DDAlignCtorCaps S (child :: children) (none :: demands) S'
+  | solve {S : Subst} {child expected : Cap} {children : List Cap}
+      {demands : List (Option Cap)} {capDelta : CapSubst} {S' : Subst} :
+      CapMGU (child.apply S.cap) (expected.apply S.cap) capDelta →
+      DDAlignCtorCaps (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands
+        S' →
+      DDAlignCtorCaps S (child :: children) (some expected :: demands) S'
+
+/-- Pattern-constructor capability inference from actual child consumers:
+exact projection on the resolved children is the fast path; otherwise one
+shared result skeleton is allocated, the induced field demands are solved,
+and exact projection reruns on the re-resolved children. -/
+inductive DDPatternCtorCap (signature : FrozenSig)
+    (entry : PatternCtorScheme signature.observability) :
+    InferenceBase.FreshSupply → Subst → List Cap → Cap →
+      InferenceBase.FreshSupply → Subst → Prop where
+  | project {q : InferenceBase.FreshSupply} {S : Subst} {childCaps : List Cap}
+      {projected : Shape.Evidence} {capability : Cap}
+      {q' : InferenceBase.FreshSupply} :
+      Projection.projectSignature entry.projection
+        ((childCaps.map fun child => child.apply S.cap).map Shape.ofCap) =
+          some projected →
+      freshenSkeletonSupply signature.observability projected q =
+        some (capability, q') →
+      DDPatternCtorCap signature entry q S childCaps capability q' S
+  | fallback {q : InferenceBase.FreshSupply} {S : Subst} {childCaps : List Cap}
+      {resultVariables : List TypePM.TyVar} {demands : List (Option Cap)}
+      {S₁ : Subst} {projected : Shape.Evidence} {capability : Cap}
+      {q' : InferenceBase.FreshSupply} :
+      Projection.projectSignature entry.projection
+        ((childCaps.map fun child => child.apply S.cap).map Shape.ofCap) =
+          none →
+      Projection.relevantVars signature.observability
+        (Projection.targetVars entry.projection.resultType)
+        entry.projection.resultType = some resultVariables →
+      Inference.patternCtorFieldDemands signature.observability
+        resultVariables.eraseDups
+        (patternCtorAssignmentsSupply resultVariables.eraseDups q).1
+        entry.projection.fieldTypes = some demands →
+      DDAlignCtorCaps S childCaps demands S₁ →
+      Projection.projectSignature entry.projection
+        ((childCaps.map fun child => child.apply S₁.cap).map Shape.ofCap) =
+          some projected →
+      freshenSkeletonSupply signature.observability projected
+        (patternCtorAssignmentsSupply resultVariables.eraseDups q).2 =
+        some (capability, q') →
+      DDPatternCtorCap signature entry q S childCaps capability q' S₁
+
+/-! ## Primitive-pattern and data-pattern layers
+
+Both families are expression-free, so they close outside the main mutual
+block.  Targets flow inward: each pattern is checked against one expected
+target, allocating fresh component targets only at tuple nodes and fresh
+hole capabilities only at primitive holes.
+-/
+
+mutual
+
+/-- Demand-directed primitive data-pattern checking
+`q; S ⊢ dp ⇐ τ ⇒ Δ ⊣ q'; S'`. -/
+inductive DDDPat (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → DPat → Ty → MonoCtx →
+      InferenceBase.FreshSupply → Subst → Prop where
+  | var {q : InferenceBase.FreshSupply} {S : Subst} {name : String}
+      {expectedTarget : Ty} :
+      DDDPat signature q S (.var name) expectedTarget
+        [(name, expectedTarget)] q S
+  | wild {q : InferenceBase.FreshSupply} {S : Subst} {expectedTarget : Ty} :
+      DDDPat signature q S .wild expectedTarget [] q S
+  | ctor {q : InferenceBase.FreshSupply} {S : Subst} {name : String}
+      {patterns : List DPat} {expectedTarget : Ty} {scheme : CtorScheme}
+      {S₁ : Subst} {bindings : MonoCtx} {q' : InferenceBase.FreshSupply}
+      {S' : Subst} :
+      signature.findDataCtor name = some scheme →
+      DDAlignTypes S (InferenceBase.instantiateCtorScheme q scheme).value.2
+        expectedTarget S₁ →
+      DDDPats signature (InferenceBase.instantiateCtorScheme q scheme).supply
+        S₁ patterns (InferenceBase.instantiateCtorScheme q scheme).value.1
+        bindings q' S' →
+      DDDPat signature q S (.ctor name patterns) expectedTarget bindings q' S'
+  | tuple {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List DPat}
+      {expectedTarget : Ty} {S₁ : Subst} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
+        expectedTarget S₁ →
+      DDDPats signature (freshTargetsSupply patterns.length q).2 S₁ patterns
+        (freshTargetsSupply patterns.length q).1 bindings q' S' →
+      DDDPat signature q S (.tuple patterns) expectedTarget bindings q' S'
+
+/-- Equal-length data-pattern/target list checking with disjoint binders. -/
+inductive DDDPats (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → List DPat → List Ty → MonoCtx →
+      InferenceBase.FreshSupply → Subst → Prop where
+  | nil {q : InferenceBase.FreshSupply} {S : Subst} :
+      DDDPats signature q S [] [] [] q S
+  | cons {q : InferenceBase.FreshSupply} {S : Subst} {pattern : DPat}
+      {patterns : List DPat} {target : Ty} {targets : List Ty}
+      {bindings restBindings : MonoCtx} {q₁ : InferenceBase.FreshSupply}
+      {S₁ : Subst} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDDPat signature q S pattern target bindings q₁ S₁ →
+      DDDPats signature q₁ S₁ patterns targets restBindings q' S' →
+      (∀ name, name ∈ bindings.names → name ∉ restBindings.names) →
+      DDDPats signature q S (pattern :: patterns) (target :: targets)
+        (bindings ++ restBindings) q' S'
+
+end
+
+mutual
+
+/-- Demand-directed primitive-pattern checking against one shared matcher
+target `q; S ⊢ pp ⇐ τ ⇒ holes; Δ ⊣ q'; S'`. -/
+inductive DDPPat (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → PPat → Ty → List Dual → MonoCtx →
+      InferenceBase.FreshSupply → Subst → Prop where
+  | hole {q : InferenceBase.FreshSupply} {S : Subst} {expectedTarget : Ty} :
+      DDPPat signature q S .hole expectedTarget
+        [⟨.var ⟨q.nextCap⟩, expectedTarget⟩] []
+        { q with nextCap := q.nextCap + 1 } S
+  | wild {q : InferenceBase.FreshSupply} {S : Subst} {expectedTarget : Ty} :
+      DDPPat signature q S .wild expectedTarget [] [] q S
+  | pval {q : InferenceBase.FreshSupply} {S : Subst} {name : String}
+      {expectedTarget : Ty} :
+      DDPPat signature q S (.pval name) expectedTarget []
+        [(name, expectedTarget)] q S
+  | ctor {q : InferenceBase.FreshSupply} {S : Subst} {name : String}
+      {patterns : List PPat} {expectedTarget : Ty}
+      {entry : PatternCtorScheme signature.observability} {S₁ : Subst}
+      {holes : List Dual} {bindings : MonoCtx}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      signature.findPatternCtor name = some entry →
+      DDAlignTypes S
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2
+        expectedTarget S₁ →
+      DDPPats signature
+        (InferenceBase.instantiateCtorScheme q entry.scheme).supply S₁
+        patterns (InferenceBase.instantiateCtorScheme q entry.scheme).value.1
+        holes bindings q' S' →
+      DDPPat signature q S (.ctor name patterns) expectedTarget holes bindings
+        q' S'
+  | tuple {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List PPat}
+      {expectedTarget : Ty} {S₁ : Subst} {holes : List Dual}
+      {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
+        expectedTarget S₁ →
+      DDPPats signature (freshTargetsSupply patterns.length q).2 S₁ patterns
+        (freshTargetsSupply patterns.length q).1 holes bindings q' S' →
+      DDPPat signature q S (.tuple patterns) expectedTarget holes bindings
+        q' S'
+
+/-- Equal-length primitive-pattern/target list checking with disjoint
+binders. -/
+inductive DDPPats (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → List PPat → List Ty → List Dual →
+      MonoCtx → InferenceBase.FreshSupply → Subst → Prop where
+  | nil {q : InferenceBase.FreshSupply} {S : Subst} :
+      DDPPats signature q S [] [] [] [] q S
+  | cons {q : InferenceBase.FreshSupply} {S : Subst} {pattern : PPat}
+      {patterns : List PPat} {target : Ty} {targets : List Ty}
+      {holes restHoles : List Dual} {bindings restBindings : MonoCtx}
+      {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDPPat signature q S pattern target holes bindings q₁ S₁ →
+      DDPPats signature q₁ S₁ patterns targets restHoles restBindings q' S' →
+      (∀ name, name ∈ bindings.names → name ∉ restBindings.names) →
+      DDPPats signature q S (pattern :: patterns) (target :: targets)
+        (holes ++ restHoles) (bindings ++ restBindings) q' S'
+
+end
+
 /-! ## The demand-directed judgments -/
 
-/-- The synthesis-order recursive-binder placeholder is restricted to the
-non-matcher template while the pattern layer is outside the fragment. -/
+/-- The synthesis-order recursive-binder placeholder selector: the
+non-matcher `fix` template applies exactly when the body is not a matcher
+literal; matcher-bodied binders take the skeleton placeholder of
+`fixMatcherPlaceholderSupply` instead. -/
 abbrev NonMatcherBody (body : Expr) : Prop :=
   matcherProducingRoot body = false
 
@@ -400,8 +752,11 @@ Rules mirror the left-to-right synthesis traversal: context lookup applies
 the prevailing substitution first, λ and application domains are fresh
 metavariables, `let` generalizes the value type in the substituted context,
 and constructor/primitive arguments are checked against the supply-indexed
-instantiation of the declared scheme.  `matcher` literals and `matchAll`
-have no rules yet (pattern layer, roadmap stage 3-1). -/
+instantiation of the declared scheme.  `matchAll` synthesizes its target,
+infers the pattern, aligns the pattern target, and demands a slot from the
+matcher expression; `matcher` literals allocate one shared target, traverse
+every clause, and finalize through the same executable coverage checks
+consumed by the declarative rule. -/
 inductive DDSynth (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → Expr → Ty →
       InferenceBase.FreshSupply → Subst → Prop where
@@ -481,6 +836,53 @@ inductive DDSynth (signature : FrozenSig) :
   | something {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} :
       DDSynth signature q S Γ .something (.matcher .any (.var q.nextTy))
         { q with nextTy := q.nextTy + 1 } S
+  | matcher {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {clauses : List Clause} {rawHoleLists : List (List Dual)}
+      {q' : InferenceBase.FreshSupply} {S' : Subst}
+      {evidence : List Shape.Evidence} {capability : Cap} :
+      DDClauses signature { q with nextTy := q.nextTy + 1 } S Γ clauses
+        (.var q.nextTy) rawHoleLists q' S' →
+      Inference.collectClauseEvidence signature.toMatcherSig clauses
+        (terminalHoleCaps S' rawHoleLists) = some evidence →
+      Shape.inferShape signature.observability evidence = some capability →
+      Inference.clauseCapsListCheck signature capability clauses
+        (terminalHoleCaps S' rawHoleLists) = true →
+      Inference.catchAllLastCheck clauses = true →
+      Inference.matcherBindersCheck clauses = true →
+      Inference.armExhaustiveCheck signature clauses
+        (S'.apply (.var q.nextTy)) = true →
+      Inference.coverageCheck signature.toMatcherSig clauses capability =
+        true →
+      DDSynth signature q S Γ (.matcher clauses)
+        (.matcher capability (.var q.nextTy)) q' S'
+  | matchAll {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {target matcher : Expr} {pattern : Pattern} {body : Expr}
+      {targetTarget : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {dual : Dual} {Δ : MonoCtx} {q₂ : InferenceBase.FreshSupply}
+      {S₂ S₃ : Subst} {q₃ : InferenceBase.FreshSupply} {S₄ : Subst}
+      {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDSynth signature q S Γ target targetTarget q₁ S₁ →
+      DDPattern signature q₁ S₁ Γ [] [] pattern dual Δ q₂ S₂ →
+      DDAlignTypes S₂ dual.target targetTarget S₃ →
+      DDCheck signature q₂ S₃ Γ matcher (.slot dual.cap targetTarget) q₃ S₄ →
+      DDSynth signature q₃ S₄ (Δ.toContext ++ Γ) body bodyTarget q' S' →
+      DDSynth signature q S Γ (.matchAll target matcher pattern body)
+        (Ty.listT bodyTarget) q' S'
+  | fixMatcher {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {self argument : String} {clauses : List Clause} {domain codomain : Ty}
+      {q₀ : InferenceBase.FreshSupply} {bodyTarget : Ty}
+      {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst} :
+      self ≠ argument →
+      DirectSelf.Holds self (.matcher clauses) →
+      fixMatcherPlaceholderSupply signature clauses q =
+        some (domain, codomain, q₀) →
+      DDSynth signature q₀ S
+        ((argument, Scheme.mono domain) ::
+          (self, Scheme.mono (.fn domain codomain)) :: Γ)
+        (.matcher clauses) bodyTarget q₁ S₁ →
+      DDAlignTypes S₁ bodyTarget codomain S' →
+      DDSynth signature q S Γ (.fix self argument (.matcher clauses))
+        (.fn domain codomain) q₁ S'
 
 /-- Left-to-right synthesis of an expression list. -/
 inductive DDSynths (signature : FrozenSig) :
@@ -523,6 +925,174 @@ inductive DDChecks (signature : FrozenSig) :
       DDChecks signature q₁ S₁ Γ expressions expecteds q' S' →
       DDChecks signature q S Γ (expression :: expressions)
         (expected :: expecteds) q' S'
+
+/-- Demand-directed user-pattern synthesis
+`q; S; Γ; Φ; Δ ⊢ p ⇒ dual ⊣ Δ'; q'; S'`, threading the monomorphic binding
+context left to right. -/
+inductive DDPattern (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → Context → PatternCtx → MonoCtx →
+      Pattern → Dual → MonoCtx → InferenceBase.FreshSupply → Subst →
+      Prop where
+  | pvar {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {name : String} :
+      name ∉ Δ.names →
+      DDPattern signature q S Γ Φ Δ (.pvar name)
+        ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ (Δ ++ [(name, .var q.nextTy)])
+        { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+  | wild {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} :
+      DDPattern signature q S Γ Φ Δ .wild
+        ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ Δ
+        { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+  | pval {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {expression : Expr} {target : Ty}
+      {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} :
+      DDSynth signature q S (Δ.toContext ++ Γ) expression target q₁ S₁ →
+      DDPattern signature q S Γ Φ Δ (.pval expression)
+        ⟨.var ⟨q₁.nextCap⟩, target⟩ Δ
+        { q₁ with nextCap := q₁.nextCap + 1 } S₁
+  | embed {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {name : String} {dual : Dual} :
+      Φ.find? name = some dual →
+      DDPattern signature q S Γ Φ Δ (.embed name) dual Δ q S
+  | ptuple {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {patterns : List Pattern}
+      {duals : List Dual} {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply}
+      {S' : Subst} :
+      DDPatterns signature q S Γ Φ Δ patterns duals Δ' q' S' →
+      DDPattern signature q S Γ Φ Δ (.ptuple patterns)
+        ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ Δ' q' S'
+  | pctor {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {name : String}
+      {patterns : List Pattern}
+      {entry : PatternCtorScheme signature.observability}
+      {duals : List Dual} {Δ' : MonoCtx} {q₁ : InferenceBase.FreshSupply}
+      {S₁ S₂ : Subst} {capability : Cap} {q₂ : InferenceBase.FreshSupply}
+      {S₃ : Subst} :
+      signature.findPatternCtor name = some entry →
+      DDPatterns signature
+        (InferenceBase.instantiateCtorScheme q entry.scheme).supply S Γ Φ Δ
+        patterns duals Δ' q₁ S₁ →
+      DDAlignTargetList S₁ duals
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂ →
+      DDPatternCtorCap signature entry q₁ S₂ (duals.map Dual.cap) capability
+        q₂ S₃ →
+      Inference.capCompatibleCheck entry
+        ((duals.map Dual.cap).map fun child => child.apply S₃.cap)
+        (capability.apply S₃.cap) = true →
+      DDPattern signature q S Γ Φ Δ (.pctor name patterns)
+        ⟨capability,
+          (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩
+        Δ' q₂ S₃
+  | pand {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {left right : Pattern}
+      {leftDual : Dual} {Δₗ : MonoCtx} {q₁ : InferenceBase.FreshSupply}
+      {S₁ : Subst} {rightDual : Dual} {Δ' : MonoCtx}
+      {q₂ : InferenceBase.FreshSupply} {S₂ S' : Subst} :
+      DDPattern signature q S Γ Φ Δ left leftDual Δₗ q₁ S₁ →
+      DDPattern signature q₁ S₁ Γ Φ Δₗ right rightDual Δ' q₂ S₂ →
+      DDAlignDual S₂ leftDual rightDual S' →
+      DDPattern signature q S Γ Φ Δ (.pand left right) leftDual Δ' q₂ S'
+  | por {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {left right : Pattern}
+      {leftDual : Dual} {Δₗ : MonoCtx} {q₁ : InferenceBase.FreshSupply}
+      {S₁ : Subst} {rightDual : Dual} {Δᵣ : MonoCtx}
+      {q₂ : InferenceBase.FreshSupply} {S₂ S₃ S' : Subst} :
+      DDPattern signature q S Γ Φ Δ left leftDual Δₗ q₁ S₁ →
+      DDPattern signature q₁ S₁ Γ Φ Δ right rightDual Δᵣ q₂ S₂ →
+      DDAlignDual S₂ leftDual rightDual S₃ →
+      DDAlignBindings S₃ Δₗ Δᵣ S' →
+      DDPattern signature q S Γ Φ Δ (.por left right) leftDual Δₗ q₂ S'
+  | papp {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {name : String}
+      {patterns : List Pattern} {scheme : DualScheme} {duals : List Dual}
+      {Δ' : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst} :
+      signature.findPatternFun name = some scheme →
+      DDPatterns signature
+        (InferenceBase.instantiateDualScheme q scheme).supply S Γ Φ Δ
+        patterns duals Δ' q₁ S₁ →
+      DDAlignDualList S₁ duals
+        (InferenceBase.instantiateDualScheme q scheme).value.1 S' →
+      DDPattern signature q S Γ Φ Δ (.papp name patterns)
+        (InferenceBase.instantiateDualScheme q scheme).value.2 Δ' q₁ S'
+
+/-- Left-to-right user-pattern list synthesis threading the binding
+context. -/
+inductive DDPatterns (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → Context → PatternCtx → MonoCtx →
+      List Pattern → List Dual → MonoCtx → InferenceBase.FreshSupply →
+      Subst → Prop where
+  | nil {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} :
+      DDPatterns signature q S Γ Φ Δ [] [] Δ q S
+  | cons {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {Φ : PatternCtx} {Δ : MonoCtx} {pattern : Pattern}
+      {patterns : List Pattern} {dual : Dual} {duals : List Dual}
+      {Δ₁ : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDPattern signature q S Γ Φ Δ pattern dual Δ₁ q₁ S₁ →
+      DDPatterns signature q₁ S₁ Γ Φ Δ₁ patterns duals Δ' q' S' →
+      DDPatterns signature q S Γ Φ Δ (pattern :: patterns) (dual :: duals)
+        Δ' q' S'
+
+/-- Check every arm of one clause against its decomposition-result type. -/
+inductive DDArms (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → Context → MonoCtx → List Arm → Ty →
+      Ty → InferenceBase.FreshSupply → Subst → Prop where
+  | nil {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {ppBindings : MonoCtx} {clauseTarget bodyTarget : Ty} :
+      DDArms signature q S Γ ppBindings [] clauseTarget bodyTarget q S
+  | cons {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {ppBindings : MonoCtx} {dataPattern : DPat} {body : Expr}
+      {arms : List Arm} {clauseTarget bodyTarget : Ty}
+      {armBindings : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {q₂ : InferenceBase.FreshSupply} {S₂ : Subst}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDDPat signature q S dataPattern clauseTarget armBindings q₁ S₁ →
+      (∀ name, name ∈ armBindings.names → name ∉ ppBindings.names) →
+      DDCheck signature q₁ S₁
+        (armBindings.toContext ++ ppBindings.toContext ++ Γ) body bodyTarget
+        q₂ S₂ →
+      DDArms signature q₂ S₂ Γ ppBindings arms clauseTarget bodyTarget
+        q' S' →
+      DDArms signature q S Γ ppBindings (.mk dataPattern body :: arms)
+        clauseTarget bodyTarget q' S'
+
+/-- Infer one matcher clause under the shared target: primitive pattern,
+next-matcher slots, then every arm. -/
+inductive DDClause (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → Context → Clause → Ty → List Dual →
+      InferenceBase.FreshSupply → Subst → Prop where
+  | mk {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {pp : PPat}
+      {next : Expr} {arms : List Arm} {sharedTarget : Ty}
+      {holes : List Dual} {ppBindings : MonoCtx} {nextMatchers : List Expr}
+      {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {q₂ : InferenceBase.FreshSupply} {S₂ : Subst}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDPPat signature q S pp sharedTarget holes ppBindings q₁ S₁ →
+      decomposeME next holes.length = some nextMatchers →
+      DDChecks signature q₁ S₁ Γ nextMatchers
+        (holes.map fun hole => .slot hole.cap hole.target) q₂ S₂ →
+      DDArms signature q₂ S₂ Γ ppBindings arms sharedTarget
+        (Ty.listT (prodTy (holes.map Dual.target))) q' S' →
+      DDClause signature q S Γ (.mk pp next arms) sharedTarget holes q' S'
+
+/-- Left-to-right clause-list inference under one shared target. -/
+inductive DDClauses (signature : FrozenSig) :
+    InferenceBase.FreshSupply → Subst → Context → List Clause → Ty →
+      List (List Dual) → InferenceBase.FreshSupply → Subst → Prop where
+  | nil {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {sharedTarget : Ty} :
+      DDClauses signature q S Γ [] sharedTarget [] q S
+  | cons {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+      {clause : Clause} {clauses : List Clause} {sharedTarget : Ty}
+      {holes : List Dual} {holeLists : List (List Dual)}
+      {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+      {q' : InferenceBase.FreshSupply} {S' : Subst} :
+      DDClause signature q S Γ clause sharedTarget holes q₁ S₁ →
+      DDClauses signature q₁ S₁ Γ clauses sharedTarget holeLists q' S' →
+      DDClauses signature q S Γ (clause :: clauses) sharedTarget
+        (holes :: holeLists) q' S'
 
 end
 
@@ -598,6 +1168,112 @@ theorem DDAlign.replayExtends {S : Subst} {raw expected : Ty} {S' : Subst}
   | slotToSlot _ _ _ _ => exact ⟨[⟨_, TySubst.id⟩, _], rfl⟩
   | ordinary _ aligned => exact aligned.replayExtends
 
+/-- Dual alignment extends the prevailing substitution by replay. -/
+theorem DDAlignDual.replayExtends {S : Subst} {left right : Dual}
+    {S' : Subst} (aligned : DDAlignDual S left right S') :
+    ReplayExtends S S' := by
+  cases aligned with
+  | mk _ typesAligned =>
+      exact (ReplayExtends.solve _).trans typesAligned.replayExtends
+
+/-- Dual-list alignment extends the prevailing substitution by replay. -/
+theorem DDAlignDualList.replayExtends {S : Subst} {lefts rights : List Dual}
+    {S' : Subst} :
+    DDAlignDualList S lefts rights S' → ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail => (head.replayExtends).trans tail.replayExtends
+
+/-- Target-list alignment extends the prevailing substitution by replay. -/
+theorem DDAlignTargetList.replayExtends {S : Subst} {duals : List Dual}
+    {expecteds : List Ty} {S' : Subst} :
+    DDAlignTargetList S duals expecteds S' → ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail => (head.replayExtends).trans tail.replayExtends
+
+/-- Binding alignment extends the prevailing substitution by replay. -/
+theorem DDAlignBindings.replayExtends {S : Subst} {lefts rights : MonoCtx}
+    {S' : Subst} :
+    DDAlignBindings S lefts rights S' → ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons _ head tail => (head.replayExtends).trans tail.replayExtends
+
+/-- Constructor-capability demand solving extends the substitution by
+replay. -/
+theorem DDAlignCtorCaps.replayExtends {S : Subst} {children : List Cap}
+    {demands : List (Option Cap)} {S' : Subst} :
+    DDAlignCtorCaps S children demands S' → ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .skip rest => rest.replayExtends
+  | .solve _ rest => (ReplayExtends.solve _).trans rest.replayExtends
+
+/-- Pattern-constructor capability inference extends the substitution by
+replay. -/
+theorem DDPatternCtorCap.replayExtends {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {q : InferenceBase.FreshSupply} {S : Subst} {childCaps : List Cap}
+    {capability : Cap} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPatternCtorCap signature entry q S childCaps capability q' S' →
+      ReplayExtends S S'
+  | .project _ _ => ReplayExtends.refl _
+  | .fallback _ _ _ aligned _ _ => aligned.replayExtends
+
+mutual
+
+/-- Primitive-pattern checking extends the substitution by replay. -/
+theorem DDPPat.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {pattern : PPat}
+    {expectedTarget : Ty} {holes : List Dual} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPPat signature q S pattern expectedTarget holes bindings q' S' →
+      ReplayExtends S S'
+  | .hole => ReplayExtends.refl _
+  | .wild => ReplayExtends.refl _
+  | .pval => ReplayExtends.refl _
+  | .ctor _ aligned children =>
+      (aligned.replayExtends).trans children.replayExtends
+  | .tuple aligned children =>
+      (aligned.replayExtends).trans children.replayExtends
+
+/-- Primitive-pattern list checking extends the substitution by replay. -/
+theorem DDPPats.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List PPat}
+    {targets : List Ty} {holes : List Dual} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPPats signature q S patterns targets holes bindings q' S' →
+      ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail _ => (head.replayExtends).trans tail.replayExtends
+
+end
+
+mutual
+
+/-- Data-pattern checking extends the substitution by replay. -/
+theorem DDDPat.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {pattern : DPat}
+    {expectedTarget : Ty} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDDPat signature q S pattern expectedTarget bindings q' S' →
+      ReplayExtends S S'
+  | .var => ReplayExtends.refl _
+  | .wild => ReplayExtends.refl _
+  | .ctor _ aligned children =>
+      (aligned.replayExtends).trans children.replayExtends
+  | .tuple aligned children =>
+      (aligned.replayExtends).trans children.replayExtends
+
+/-- Data-pattern list checking extends the substitution by replay. -/
+theorem DDDPats.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List DPat}
+    {targets : List Ty} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDDPats signature q S patterns targets bindings q' S' →
+      ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail _ => (head.replayExtends).trans tail.replayExtends
+
+end
+
 mutual
 
 /-- Synthesis extends the prevailing substitution by chronological replay. -/
@@ -619,6 +1295,13 @@ theorem DDSynth.replayExtends {signature : FrozenSig}
   | .letE value body =>
       (value.replayExtends).trans body.replayExtends
   | .something => ReplayExtends.refl _
+  | .matcher clauses _ _ _ _ _ _ _ => clauses.replayExtends
+  | .matchAll target pattern aligned matcher body =>
+      ((((target.replayExtends).trans pattern.replayExtends).trans
+        aligned.replayExtends).trans matcher.replayExtends).trans
+        body.replayExtends
+  | .fixMatcher _ _ _ body aligned =>
+      (body.replayExtends).trans aligned.replayExtends
 
 /-- List synthesis extends the prevailing substitution by replay. -/
 theorem DDSynths.replayExtends {signature : FrozenSig}
@@ -647,6 +1330,75 @@ theorem DDChecks.replayExtends {signature : FrozenSig}
   | .nil => ReplayExtends.refl _
   | .cons head tail =>
       (head.replayExtends).trans tail.replayExtends
+
+/-- Pattern synthesis extends the prevailing substitution by replay. -/
+theorem DDPattern.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {Φ : PatternCtx} {Δ : MonoCtx} {pattern : Pattern} {dual : Dual}
+    {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPattern signature q S Γ Φ Δ pattern dual Δ' q' S' →
+      ReplayExtends S S'
+  | .pvar _ => ReplayExtends.refl _
+  | .wild => ReplayExtends.refl _
+  | .pval value => value.replayExtends
+  | .embed _ => ReplayExtends.refl _
+  | .ptuple patterns => patterns.replayExtends
+  | .pctor _ patterns aligned ctorCap _ =>
+      ((patterns.replayExtends).trans aligned.replayExtends).trans
+        ctorCap.replayExtends
+  | .pand left right aligned =>
+      ((left.replayExtends).trans right.replayExtends).trans
+        aligned.replayExtends
+  | .por left right aligned alignedBindings =>
+      (((left.replayExtends).trans right.replayExtends).trans
+        aligned.replayExtends).trans alignedBindings.replayExtends
+  | .papp _ patterns aligned =>
+      (patterns.replayExtends).trans aligned.replayExtends
+
+/-- Pattern-list synthesis extends the prevailing substitution by replay. -/
+theorem DDPatterns.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {Φ : PatternCtx} {Δ : MonoCtx} {patterns : List Pattern}
+    {duals : List Dual} {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} :
+    DDPatterns signature q S Γ Φ Δ patterns duals Δ' q' S' →
+      ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail => (head.replayExtends).trans tail.replayExtends
+
+/-- Arm checking extends the prevailing substitution by replay. -/
+theorem DDArms.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {ppBindings : MonoCtx} {arms : List Arm} {clauseTarget bodyTarget : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDArms signature q S Γ ppBindings arms clauseTarget bodyTarget q' S' →
+      ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons dataPattern _ body rest =>
+      ((dataPattern.replayExtends).trans body.replayExtends).trans
+        rest.replayExtends
+
+/-- Clause inference extends the prevailing substitution by replay. -/
+theorem DDClause.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {clause : Clause} {sharedTarget : Ty} {holes : List Dual}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDClause signature q S Γ clause sharedTarget holes q' S' →
+      ReplayExtends S S'
+  | .mk pp _ nextMatchers arms =>
+      ((pp.replayExtends).trans nextMatchers.replayExtends).trans
+        arms.replayExtends
+
+/-- Clause-list inference extends the prevailing substitution by replay. -/
+theorem DDClauses.replayExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {clauses : List Clause} {sharedTarget : Ty}
+    {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} :
+    DDClauses signature q S Γ clauses sharedTarget holeLists q' S' →
+      ReplayExtends S S'
+  | .nil => ReplayExtends.refl _
+  | .cons head tail => (head.replayExtends).trans tail.replayExtends
 
 end
 
@@ -681,6 +1433,226 @@ theorem SupplyExtends.instantiateCtorScheme
     SupplyExtends q (InferenceBase.instantiateCtorScheme q scheme).supply :=
   ⟨Nat.le_add_right _ _, Nat.le_add_right _ _⟩
 
+/-- Dual-scheme instantiation only advances both counters. -/
+theorem SupplyExtends.instantiateDualScheme
+    (q : InferenceBase.FreshSupply) (scheme : DualScheme) :
+    SupplyExtends q (InferenceBase.instantiateDualScheme q scheme).supply :=
+  ⟨Nat.le_add_right _ _, Nat.le_add_right _ _⟩
+
+theorem SupplyExtends.bumpCap (q : InferenceBase.FreshSupply) (count : Nat) :
+    SupplyExtends q { q with nextCap := q.nextCap + count } :=
+  ⟨Nat.le_add_right _ _, Nat.le_refl _⟩
+
+theorem SupplyExtends.bumpBoth (q : InferenceBase.FreshSupply)
+    (capCount tyCount : Nat) :
+    SupplyExtends q
+      { q with nextCap := q.nextCap + capCount
+               nextTy := q.nextTy + tyCount } :=
+  ⟨Nat.le_add_right _ _, Nat.le_add_right _ _⟩
+
+/-- Consecutive fresh-target allocation only advances the target counter. -/
+theorem SupplyExtends.freshTargets (count : Nat)
+    (q : InferenceBase.FreshSupply) :
+    SupplyExtends q (freshTargetsSupply count q).2 := by
+  induction count generalizing q with
+  | zero => exact SupplyExtends.refl _
+  | succ count ih => exact (SupplyExtends.bumpTy q 1).trans (ih _)
+
+/-- Shared result-assignment allocation only advances the capability
+counter. -/
+theorem SupplyExtends.patternCtorAssignments
+    (variables : List TypePM.TyVar) (q : InferenceBase.FreshSupply) :
+    SupplyExtends q (patternCtorAssignmentsSupply variables q).2 := by
+  induction variables generalizing q with
+  | nil => exact SupplyExtends.refl _
+  | cons varId variables ih =>
+      exact (SupplyExtends.bumpCap q 1).trans (ih _)
+
+mutual
+
+/-- Skeleton freshening only advances the capability counter. -/
+theorem SupplyExtends.freshenSkeleton {observable : Shape.Observability} :
+    ∀ {evidence : Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capability : Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonSupply observable evidence q = some (capability, q') →
+      SupplyExtends q q'
+  | .unseen, q, _, _, freshened => by
+      cases freshened
+      exact SupplyExtends.bumpCap q 1
+  | .known _, _, _, _, freshened => by
+      cases freshened
+      exact SupplyExtends.refl _
+  | .con _ children, q, _, _, freshened => by
+      simp only [freshenSkeletonSupply] at freshened
+      split at freshened
+      · cases freshened
+      · split at freshened
+        · cases freshened
+        · rename_i capabilities middleSupply maskedEq
+          cases freshened
+          exact SupplyExtends.freshenSkeletonMasked maskedEq
+  | .prod components, q, _, _, freshened => by
+      simp only [freshenSkeletonSupply] at freshened
+      split at freshened
+      · cases freshened
+      · rename_i capabilities middleSupply listedEq
+        cases freshened
+        exact SupplyExtends.freshenSkeletonList listedEq
+
+/-- List skeleton freshening only advances the capability counter. -/
+theorem SupplyExtends.freshenSkeletonList {observable : Shape.Observability} :
+    ∀ {evidences : List Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capabilities : List Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonListSupply observable evidences q =
+        some (capabilities, q') →
+      SupplyExtends q q'
+  | [], _, _, _, freshened => by
+      cases freshened
+      exact SupplyExtends.refl _
+  | evidence :: rest, q, _, _, freshened => by
+      simp only [freshenSkeletonListSupply] at freshened
+      split at freshened
+      · cases freshened
+      · rename_i headCap headSupply headEq
+        split at freshened
+        · cases freshened
+        · rename_i tailCaps tailSupply tailEq
+          cases freshened
+          exact (SupplyExtends.freshenSkeleton headEq).trans
+            (SupplyExtends.freshenSkeletonList tailEq)
+
+/-- Masked skeleton freshening only advances the capability counter. -/
+theorem SupplyExtends.freshenSkeletonMasked
+    {observable : Shape.Observability} :
+    ∀ {mask : List Bool} {evidences : List Shape.Evidence}
+      {q : InferenceBase.FreshSupply} {capabilities : List Cap}
+      {q' : InferenceBase.FreshSupply},
+      freshenSkeletonMaskedSupply observable mask evidences q =
+        some (capabilities, q') →
+      SupplyExtends q q'
+  | [], [], _, _, _, freshened => by
+      cases freshened
+      exact SupplyExtends.refl _
+  | isObservable :: mask, evidence :: rest, q, _, _, freshened => by
+      simp only [freshenSkeletonMaskedSupply] at freshened
+      split at freshened
+      · cases freshened
+      · rename_i headCap headSupply headEq
+        split at freshened
+        · cases freshened
+        · rename_i tailCaps tailSupply tailEq
+          cases freshened
+          refine SupplyExtends.trans ?_
+            (SupplyExtends.freshenSkeletonMasked tailEq)
+          cases isObservable with
+          | true =>
+              exact SupplyExtends.freshenSkeleton (by simpa using headEq)
+          | false =>
+              have collapsed : some (Cap.any, q) =
+                  some (headCap, headSupply) := by simpa using headEq
+              cases collapsed
+              exact SupplyExtends.refl _
+  | [], _ :: _, _, _, _, freshened => by cases freshened
+  | _ :: _, [], _, _, _, freshened => by cases freshened
+
+end
+
+/-- The matcher-bodied placeholder only advances both counters. -/
+theorem SupplyExtends.fixMatcherPlaceholder {signature : FrozenSig}
+    {clauses : List Clause} {q : InferenceBase.FreshSupply}
+    {domain codomain : Ty} {q₀ : InferenceBase.FreshSupply}
+    (built : fixMatcherPlaceholderSupply signature clauses q =
+      some (domain, codomain, q₀)) :
+    SupplyExtends q q₀ := by
+  unfold fixMatcherPlaceholderSupply at built
+  split at built
+  · cases built
+  · split at built
+    · cases built
+    · rename_i middleCap middleSupply middleEq
+      have middleExtends : SupplyExtends q middleSupply := by
+        split at middleEq
+        · cases middleEq
+          exact SupplyExtends.refl _
+        all_goals exact SupplyExtends.freshenSkeleton middleEq
+      refine middleExtends.trans ?_
+      split at built <;> cases built
+      · exact SupplyExtends.bumpTy _ 2
+      · exact SupplyExtends.bumpBoth _ 1 2
+
+/-- Pattern-constructor capability inference only advances the supply. -/
+theorem DDPatternCtorCap.supplyExtends {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {q : InferenceBase.FreshSupply} {S : Subst} {childCaps : List Cap}
+    {capability : Cap} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPatternCtorCap signature entry q S childCaps capability q' S' →
+      SupplyExtends q q'
+  | .project _ freshened => SupplyExtends.freshenSkeleton freshened
+  | .fallback (resultVariables := resultVariables) _ _ _ _ _ freshened =>
+      (SupplyExtends.patternCtorAssignments resultVariables.eraseDups _).trans
+        (SupplyExtends.freshenSkeleton freshened)
+
+mutual
+
+/-- Primitive-pattern checking only advances the fresh supply. -/
+theorem DDPPat.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {pattern : PPat}
+    {expectedTarget : Ty} {holes : List Dual} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPPat signature q S pattern expectedTarget holes bindings q' S' →
+      SupplyExtends q q'
+  | .hole => SupplyExtends.bumpCap _ 1
+  | .wild => SupplyExtends.refl _
+  | .pval => SupplyExtends.refl _
+  | .ctor (entry := entry) _ _ children =>
+      (SupplyExtends.instantiateCtorScheme _ entry.scheme).trans
+        children.supplyExtends
+  | .tuple (patterns := patterns) _ children =>
+      (SupplyExtends.freshTargets patterns.length _).trans
+        children.supplyExtends
+
+/-- Primitive-pattern list checking only advances the fresh supply. -/
+theorem DDPPats.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List PPat}
+    {targets : List Ty} {holes : List Dual} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPPats signature q S patterns targets holes bindings q' S' →
+      SupplyExtends q q'
+  | .nil => SupplyExtends.refl _
+  | .cons head tail _ => (head.supplyExtends).trans tail.supplyExtends
+
+end
+
+mutual
+
+/-- Data-pattern checking only advances the fresh supply. -/
+theorem DDDPat.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {pattern : DPat}
+    {expectedTarget : Ty} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDDPat signature q S pattern expectedTarget bindings q' S' →
+      SupplyExtends q q'
+  | .var => SupplyExtends.refl _
+  | .wild => SupplyExtends.refl _
+  | .ctor (scheme := scheme) _ _ children =>
+      (SupplyExtends.instantiateCtorScheme _ scheme).trans
+        children.supplyExtends
+  | .tuple (patterns := patterns) _ children =>
+      (SupplyExtends.freshTargets patterns.length _).trans
+        children.supplyExtends
+
+/-- Data-pattern list checking only advances the fresh supply. -/
+theorem DDDPats.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List DPat}
+    {targets : List Ty} {bindings : MonoCtx}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDDPats signature q S patterns targets bindings q' S' →
+      SupplyExtends q q'
+  | .nil => SupplyExtends.refl _
+  | .cons head tail _ => (head.supplyExtends).trans tail.supplyExtends
+
+end
+
 mutual
 
 /-- Synthesis only advances the fresh supply. -/
@@ -707,6 +1679,13 @@ theorem DDSynth.supplyExtends {signature : FrozenSig}
   | .letE value body =>
       (value.supplyExtends).trans body.supplyExtends
   | .something => SupplyExtends.bumpTy _ 1
+  | .matcher clauses _ _ _ _ _ _ _ =>
+      (SupplyExtends.bumpTy _ 1).trans clauses.supplyExtends
+  | .matchAll target pattern _ matcher body =>
+      (target.supplyExtends).trans ((pattern.supplyExtends).trans
+        ((matcher.supplyExtends).trans body.supplyExtends))
+  | .fixMatcher _ _ built body _ =>
+      (SupplyExtends.fixMatcherPlaceholder built).trans body.supplyExtends
 
 /-- List synthesis only advances the fresh supply. -/
 theorem DDSynths.supplyExtends {signature : FrozenSig}
@@ -734,6 +1713,72 @@ theorem DDChecks.supplyExtends {signature : FrozenSig}
   | .nil => SupplyExtends.refl _
   | .cons head tail =>
       (head.supplyExtends).trans tail.supplyExtends
+
+/-- Pattern synthesis only advances the fresh supply. -/
+theorem DDPattern.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {Φ : PatternCtx} {Δ : MonoCtx} {pattern : Pattern} {dual : Dual}
+    {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDPattern signature q S Γ Φ Δ pattern dual Δ' q' S' →
+      SupplyExtends q q'
+  | .pvar _ => SupplyExtends.bumpBoth _ 1 1
+  | .wild => SupplyExtends.bumpBoth _ 1 1
+  | .pval value => (value.supplyExtends).trans (SupplyExtends.bumpCap _ 1)
+  | .embed _ => SupplyExtends.refl _
+  | .ptuple patterns => patterns.supplyExtends
+  | .pctor (entry := entry) _ patterns _ ctorCap _ =>
+      (SupplyExtends.instantiateCtorScheme _ entry.scheme).trans
+        ((patterns.supplyExtends).trans ctorCap.supplyExtends)
+  | .pand left right _ => (left.supplyExtends).trans right.supplyExtends
+  | .por left right _ _ => (left.supplyExtends).trans right.supplyExtends
+  | .papp (scheme := scheme) _ patterns _ =>
+      (SupplyExtends.instantiateDualScheme _ scheme).trans
+        patterns.supplyExtends
+
+/-- Pattern-list synthesis only advances the fresh supply. -/
+theorem DDPatterns.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {Φ : PatternCtx} {Δ : MonoCtx} {patterns : List Pattern}
+    {duals : List Dual} {Δ' : MonoCtx} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} :
+    DDPatterns signature q S Γ Φ Δ patterns duals Δ' q' S' →
+      SupplyExtends q q'
+  | .nil => SupplyExtends.refl _
+  | .cons head tail => (head.supplyExtends).trans tail.supplyExtends
+
+/-- Arm checking only advances the fresh supply. -/
+theorem DDArms.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {ppBindings : MonoCtx} {arms : List Arm} {clauseTarget bodyTarget : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDArms signature q S Γ ppBindings arms clauseTarget bodyTarget q' S' →
+      SupplyExtends q q'
+  | .nil => SupplyExtends.refl _
+  | .cons dataPattern _ body rest =>
+      (dataPattern.supplyExtends).trans
+        ((body.supplyExtends).trans rest.supplyExtends)
+
+/-- Clause inference only advances the fresh supply. -/
+theorem DDClause.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {clause : Clause} {sharedTarget : Ty} {holes : List Dual}
+    {q' : InferenceBase.FreshSupply} {S' : Subst} :
+    DDClause signature q S Γ clause sharedTarget holes q' S' →
+      SupplyExtends q q'
+  | .mk pp _ nextMatchers arms =>
+      (pp.supplyExtends).trans
+        ((nextMatchers.supplyExtends).trans arms.supplyExtends)
+
+/-- Clause-list inference only advances the fresh supply. -/
+theorem DDClauses.supplyExtends {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
+    {clauses : List Clause} {sharedTarget : Ty}
+    {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} :
+    DDClauses signature q S Γ clauses sharedTarget holeLists q' S' →
+      SupplyExtends q q'
+  | .nil => SupplyExtends.refl _
+  | .cons head tail => (head.supplyExtends).trans tail.supplyExtends
 
 end
 
