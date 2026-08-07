@@ -34,16 +34,15 @@ behaviour and permanently refute `WideAnnotationFree`
 origin-aware unifier.  The accepted idiom — let-polymorphism giving each
 use its own domain instance — is pinned as `nestedCapLetProgram_accepted`.
 
-The third gap — constructor instance capabilities pinned by the producer
-guard — is pinned below as well: `Pack : ∀κ α. Matcher κ α → Packed`
-declaratively instantiates `κ := Any`, so `Pack something` is typed, but the
-executable pipeline records the fresh instance capability as a protected
-producer variable and the guard rejects the solver step that would bind it,
-so the program is rejected.  The control signature that fixes the field
-capability to `Any` in the scheme itself is accepted.  This is the
-`structuralFlexible`-versus-`protectedCaps` discrepancy that the
-origin-aware ledger (`CapabilityOrigin`) already records as shadow
-metadata; switching the guard to the ledger is the scheduled fix.
+The former third gap — constructor instance capabilities pinned before their
+local argument solve — is closed below.  For
+`Pack : ∀κ α. Matcher κ α → Packed`, the fresh instance of `κ` is marked
+`structuralFlexible`, the paired solver specializes it to `Any`, and the
+export boundary freezes only variable leaves that survive in the prevailing
+result.  Since `Packed` exports no capability, this instance leaves no frozen
+leaf.  A separate structured-image regression shows that if a local image
+does survive, its prevailing leaf is frozen to `renameOnly` and cannot later
+be structurally strengthened.
 -/
 
 namespace TypePM
@@ -114,7 +113,7 @@ private theorem something_slot_typed :
   exact
     { matched := rfl
       capSubstitution := rfl
-      targetUnified := rfl
+      targetUnified := Unification.mguTy_self _
       rangeFixed := Subst.id_rangeFixed }
 
 /-- Declaratively the or-pattern program is typed at `List Integer`. -/
@@ -163,7 +162,7 @@ private theorem something_sharedSlot_typed :
   exact
     { matched := rfl
       capSubstitution := rfl
-      targetUnified := rfl
+      targetUnified := Unification.mguTy_self _
       rangeFixed := Subst.id_rangeFixed }
 
 /-- The tuple of `something`s lifts to a product matcher. -/
@@ -189,7 +188,7 @@ private theorem tuple_sharedSlot_typed :
   exact
     { matched := rfl
       capSubstitution := rfl
-      targetUnified := rfl
+      targetUnified := Unification.mguTy_self _
       rangeFixed := Subst.id_rangeFixed }
 
 /-- The shared consumer variable at its monomorphic type. -/
@@ -355,7 +354,7 @@ def packMonoSignature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
-/-- The freeze-gap program. -/
+/-- The former freeze-gap program. -/
 def packProgram : Expr := .ctor "Pack" [.something]
 
 /-- Declaratively the constructor instance may choose `κ := Any`, so the
@@ -375,32 +374,140 @@ theorem packProgram_typed :
         Cap.apply, Unification.CapSubst.single, Unification.TySubst.single]
   · exact ExprsTy.cons HasTy.something ExprsTy.nil
 
-/-- Raw W already rejects the instance: the fresh capability of the value
-producer instance is protected and the guard refuses to bind it. -/
-theorem packProgram_raw_rejected :
-    (Inference.inferRaw packSignature [] packProgram).isSome = false := by
+/-- Raw W accepts the local structural specialization. -/
+theorem packProgram_raw_accepted :
+    (Inference.inferRaw packSignature [] packProgram).isSome = true := by
   native_decide
 
-/-- Public inference rejects the freeze-gap program. -/
-theorem packProgram_rejected :
-    Inference.inferenceSucceeds packSignature [] packProgram = false := by
+/-- Certified public inference accepts the former freeze-gap program. -/
+theorem packProgram_accepted :
+    Inference.inferenceSucceeds packSignature [] packProgram = true := by
+  native_decide
+
+/-- The concrete successful public result, extracted from the executable
+acceptance check. -/
+def packResult : Inference.ExprResult :=
+  (Inference.infer packSignature [] packProgram).get packProgram_accepted
+
+/-- The public result equation retained for soundness and coherence reuse. -/
+theorem packProgram_result :
+    Inference.infer packSignature [] packProgram = some packResult :=
+  Inference.option_eq_some_get_of_isSome _ packProgram_accepted
+
+/-- The accepted program has the constructor's declared result type. -/
+theorem packProgram_result_type :
+    packResult.resolvedTarget = .data "Packed" [] := by
+  native_decide
+
+/-- Acceptance carries the recursive coherent reconstruction certificate. -/
+theorem packProgram_coherent :
+    Coherent.CoherentExpr packSignature [] packProgram
+      packResult.resolvedTarget := by
+  simpa [Inference.ResolvedContext, Context.applySubst] using
+    Coherent.infer_success_coherent packProgram_result
+
+/-- The public soundness eliminator independently recovers the advertised
+surface typing from the executable success equation. -/
+theorem packProgram_typed_by_inference :
+    HasTy packSignature [] packProgram (.data "Packed" []) := by
+  have typing := Inference.infer_success_sound packProgram_result
+  rw [packProgram_result_type] at typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+
+/-- The local `κ = Any` solve observes `κ` as structurally flexible at that
+exact chronological cut. -/
+def packTraceHasFlexibleCapabilitySolve : Bool :=
+  match Inference.inferRaw packSignature [] packProgram with
+  | none => false
+  | some result =>
+      result.state.trace.solves.any fun step =>
+        match step.constraint with
+        | .capEq (.var varId) .any
+        | .capEq .any (.var varId) =>
+            step.ledgerSnapshot.originOf varId ==
+              .structuralFlexible &&
+                step.delta.cap varId == .any
+        | _ => false
+
+theorem packProgram_uses_flexible_capability_solve :
+    packTraceHasFlexibleCapabilitySolve = true := by
+  native_decide
+
+/-- `Pack` exports no capability, so its nonempty raw binder-image list
+produces an empty export-freeze leaf list. -/
+def packTraceHasEmptyExportLeaves : Bool :=
+  match Inference.inferRaw packSignature [] packProgram with
+  | none => false
+  | some result =>
+      result.state.trace.events.any fun event =>
+        match event with
+        | .capabilityExportFreeze _ capImages _ _ leaves =>
+            !capImages.isEmpty && leaves.isEmpty
+        | _ => false
+
+theorem packProgram_freezes_no_dead_capability_leaf :
+    packTraceHasEmptyExportLeaves = true := by
   native_decide
 
 /-- Fixing the capability in the scheme itself is accepted, so the
-rejection is exactly about the protected fresh instance capability. -/
+monomorphic control remains accepted. -/
 theorem packMonoProgram_accepted :
     Inference.inferenceSucceeds packMonoSignature [] packProgram = true := by
   native_decide
 
-/-- The freeze gap independently refutes the same wide annotation-freeness
-envelope for the current inferencer. -/
-theorem wideAnnotationFree_refuted_by_freeze :
-    ¬ Coherent.WideAnnotationFree := by
-  intro hfree
-  have haccept :=
-    hfree packSignature packProgram (.data "Packed" []) packProgram_typed
-  rw [packProgram_rejected] at haccept
-  cases haccept
+/-! ### Prevailing-image leaves are frozen, not the dead local root -/
+
+/-- A synthetic local constructor solve in which binder `κ₀` receives the
+structured image `List κ₁`; both variables are local and flexible. -/
+def structuredExportStart : Inference.InferState :=
+  { Inference.InferState.empty with
+    capabilityOrigins :=
+      [(0, .structuralFlexible), (1, .structuralFlexible)] }
+
+def structuredExportOrigin : Inference.ConstraintOrigin :=
+  ⟨.expression, [], "structured export regression"⟩
+
+theorem structuredExportSolve_present :
+    (Inference.runResolvedConstraint structuredExportStart
+      structuredExportOrigin
+      (.capEq (.var 0) (.con "List" [.var 1]))).isSome = true := by
+  native_decide
+
+def structuredExportSolved : Inference.InferState :=
+  (Inference.runResolvedConstraint structuredExportStart
+    structuredExportOrigin
+    (.capEq (.var 0) (.con "List" [.var 1]))).get
+      structuredExportSolve_present
+
+/-- Model a pattern result whose result target itself exports no capability,
+but whose binding-like second payload component still contains `κ₀`. -/
+def structuredExportPayload : Ty :=
+  Inference.capabilityExportPayload []
+    [.data "PatternResult" [], .matcher (.var 0) .int]
+
+/-- The raw root `κ₀` has disappeared; the binding-like exported payload
+exposes exactly the prevailing image leaf `κ₁`. -/
+theorem structuredExport_prevailing_leaves :
+    Inference.capabilityExportLeaves structuredExportSolved [0]
+      structuredExportPayload = [1] := by
+  native_decide
+
+def structuredExportFrozen : Inference.InferState :=
+  structuredExportSolved.freezeCapabilityExport [0]
+    structuredExportPayload
+
+theorem structuredExport_freezes_image_leaf :
+    structuredExportFrozen.protectedCaps = [1] ∧
+      structuredExportFrozen.capabilityOrigins.originOf 1 =
+        .renameOnly := by
+  native_decide
+
+/-- Once exported, the surviving leaf cannot be structurally strengthened. -/
+theorem structuredExport_rejects_later_strengthening :
+    (Inference.runResolvedConstraint structuredExportFrozen
+      structuredExportOrigin
+      (.capEq (.var 1) (.con "Tree" []))).isSome = false := by
+  native_decide
 
 end AcceptanceGapRegression
 end TypePM

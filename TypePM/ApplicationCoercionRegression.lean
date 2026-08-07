@@ -79,7 +79,7 @@ private theorem concretePairMatcher_toSlot_raw :
       rangeFixed := ?_ }
   · rfl
   · rfl
-  · rfl
+  · simp
   · exact Subst.id_rangeFixed
 
 /-- Observable canonical evidence chooses the whole-product lift before the

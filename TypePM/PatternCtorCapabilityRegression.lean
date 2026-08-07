@@ -22,7 +22,9 @@ def childCapabilities : List Cap := [.var 0, .var 1]
 protected producer entry whose ledger must not be changed. -/
 def initialState : InferState :=
   { InferState.empty { nextCap := 2, nextTy := 1 } with
-    protectedCaps := [99] }
+    protectedCaps := [99]
+    capabilityOrigins :=
+      [(0, .structuralFlexible), (1, .structuralFlexible)] }
 
 def origin : ConstraintOrigin :=
   { phase := .pattern
@@ -211,8 +213,9 @@ theorem protected_tail_image_recorded :
       protectedTailState.protectedCaps = [99, 2] := by
   native_decide
 
-/-- The raw capability unifier can construct the forbidden strengthening
-delta; the producer-protection filter is what rejects it. -/
+/-- The legacy symmetric capability unifier can construct the forbidden
+strengthening delta.  This pins the candidate that the origin-oriented path
+must reject before it enters the chronological trace. -/
 def protectedStrengtheningStep : SolveStep :=
   (solveResolved protectedTailState.trace.solves.length origin
     (.capEq protectedTailDual.cap (.con "List" [.any]))).get
@@ -228,8 +231,8 @@ theorem protected_strengthening_constraint_rejected :
       (.capEq protectedTailDual.cap (.con "List" [.any])) = none := by
   native_decide
 
-/-- Placing that protected image in the second child makes the fallback demand
-`List kappa`; satisfying it would structurally strengthen the producer. -/
+/-- Placing that rename-only image in the second child makes the fallback
+demand `List kappa`; satisfying it would structurally strengthen the producer. -/
 theorem protected_child_direct_solver_rejected :
     solvePatternCtorCapability publicSignature
       RecursiveExamples.consPatternCtor origin

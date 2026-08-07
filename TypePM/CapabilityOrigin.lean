@@ -223,12 +223,86 @@ def AdmissibleCapPost
             ledger.originOf image ≠ .structuralFlexible
     | .structuralFlexible => True
 
+/-- Check origin admissibility on an explicit finite support.  Variables
+outside `supportVars` are handled by the accompanying `SupportWithin`
+certificate, so this traversal is executable despite substitutions being
+represented as total functions. -/
+def admissibleCapPostCheck
+    (ledger : CapabilityOriginLedger) (post : CapSubst)
+    (supportVars : List CapVar) : Bool :=
+  supportVars.all fun varId =>
+    match ledger.originOf varId with
+    | .rigid => decide (post varId = .var varId)
+    | .renameOnly =>
+        match post varId with
+        | .var image =>
+            decide (ledger.originOf image ≠ .structuralFlexible)
+        | _ => false
+    | .structuralFlexible => true
+
 /-- A paired post whose capability component respects the origin ledger. -/
 structure AdmissiblePost
     (ledger : CapabilityOriginLedger) (post : Subst) : Prop where
   cap : AdmissibleCapPost ledger post.cap
 
 namespace AdmissibleCapPost
+
+/-- The pointwise finite check implies the origin policy at the checked
+variable. -/
+private theorem checkAt_sound
+    {ledger : CapabilityOriginLedger} {post : CapSubst} {varId : CapVar}
+    (checked :
+      (match ledger.originOf varId with
+       | .rigid => decide (post varId = .var varId)
+       | .renameOnly =>
+           match post varId with
+           | .var image =>
+               decide (ledger.originOf image ≠ .structuralFlexible)
+           | _ => false
+       | .structuralFlexible => true) = true) :
+    match ledger.originOf varId with
+    | .rigid => post varId = .var varId
+    | .renameOnly =>
+        ∃ image,
+          post varId = .var image ∧
+            ledger.originOf image ≠ .structuralFlexible
+    | .structuralFlexible => True := by
+  cases origin : ledger.originOf varId with
+  | rigid =>
+      simpa [origin] using checked
+  | renameOnly =>
+      cases imageEquation : post varId with
+      | any => simp [origin, imageEquation] at checked
+      | var image =>
+          have imageSafeCheck :
+              decide (ledger.originOf image ≠ .structuralFlexible) = true := by
+            simpa [origin, imageEquation] using checked
+          exact ⟨image, rfl, of_decide_eq_true imageSafeCheck⟩
+      | skolem name => simp [origin, imageEquation] at checked
+      | con name children => simp [origin, imageEquation] at checked
+      | prod components => simp [origin, imageEquation] at checked
+  | structuralFlexible =>
+      trivial
+
+/-- Passing the executable check on a certified finite support is sound for
+the semantic, whole-substitution admissibility judgment. -/
+theorem check_sound
+    {ledger : CapabilityOriginLedger} {post : CapSubst}
+    {supportVars : List CapVar}
+    (support : post.SupportWithin supportVars)
+    (checked : admissibleCapPostCheck ledger post supportVars = true) :
+    AdmissibleCapPost ledger post := by
+  intro varId
+  by_cases member : varId ∈ supportVars
+  · apply checkAt_sound
+    exact (List.all_eq_true.mp checked) varId member
+  · have fixed := support varId member
+    rw [fixed]
+    cases origin : ledger.originOf varId with
+    | rigid => rfl
+    | renameOnly =>
+        exact ⟨varId, rfl, by simp [origin]⟩
+    | structuralFlexible => trivial
 
 /-- Eliminate admissibility at a rigid variable. -/
 theorem rigid

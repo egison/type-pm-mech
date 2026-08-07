@@ -1,7 +1,7 @@
 import TypePM.InferenceBase
 import TypePM.Recursion
 import TypePM.SourceSubstitution
-import TypePM.CapabilityOrigin
+import TypePM.PairedUnification
 
 /-!
 # Executable inference trace foundation
@@ -10,7 +10,8 @@ This module is the syntax-directed, terminating foundation for Algorithm W over
 the two-sorted specification.  It deliberately separates
 three layers:
 
-* certified local solving (`mguCap`, `mguTy`, and producer-stable `matchCap`),
+* certified local solving (origin-oriented capability equality, paired target
+  equality, and producer-stable `matchCap`),
 * chronological replay of one prevailing paired substitution, and
 * a complete traversal of the mutually recursive source syntax.
 
@@ -125,8 +126,7 @@ def LocallySound (constraint : Constraint) (delta : Subst) : Prop :=
       delta.target = TySubst.id /\
       left.apply delta.cap = right.apply delta.cap
   | .targetEq left right =>
-      delta.cap = CapSubst.id /\
-      left.applyTarget delta.target = right.applyTarget delta.target
+      delta.apply left = delta.apply right
   | .producerToSlot producerCap producerTarget consumerCap consumerTarget =>
       OneWayAt delta.cap producerCap consumerCap /\
       (producerTarget.applyCapability delta.cap).applyTarget delta.target =
@@ -135,15 +135,25 @@ def LocallySound (constraint : Constraint) (delta : Subst) : Prop :=
 /-- The concrete executable solver branch that produced a local delta.
 Unlike extensional local soundness, this certificate retains the exact
 `mgu`/`matchCap` equations required by source reconstruction. -/
-inductive SolveCertificate : Constraint -> Subst -> Prop where
+inductive SolveCertificate
+    (ledger : CapabilityOriginLedger) : Constraint -> Subst -> Prop where
   | capEq {left right capabilitySubst} :
       Unification.mguCap left right = some capabilitySubst ->
-      SolveCertificate (.capEq left right)
+      SolveCertificate ledger (.capEq left right)
         ⟨capabilitySubst, TySubst.id⟩
+  | capEqOriented {left right result} :
+      PairedUnification.solveCap (Unification.capFuel left right) ledger
+        left right = some result ->
+      SolveCertificate ledger (.capEq left right)
+        ⟨result.subst, TySubst.id⟩
   | targetEq {left right targetSubst} :
       Unification.mguTy left right = some targetSubst ->
-      SolveCertificate (.targetEq left right)
+      SolveCertificate ledger (.targetEq left right)
         ⟨CapSubst.id, targetSubst⟩
+  | targetEqPaired {left right result} :
+      PairedUnification.solvePairedTy (Unification.tyFuel left right) ledger
+        left right = some result ->
+      SolveCertificate ledger (.targetEq left right) result.subst
   | producerToSlot
       {producerCap producerTarget consumerCap consumerTarget bindings
        targetSubst} :
@@ -153,7 +163,7 @@ inductive SolveCertificate : Constraint -> Subst -> Prop where
           (bindings.toSubstWithin consumerCap.fcv))
         (consumerTarget.applyCapability
           (bindings.toSubstWithin consumerCap.fcv)) = some targetSubst ->
-      SolveCertificate
+      SolveCertificate ledger
         (.producerToSlot producerCap producerTarget consumerCap consumerTarget)
         ⟨bindings.toSubstWithin consumerCap.fcv, targetSubst⟩
 
@@ -161,12 +171,14 @@ inductive SolveCertificate : Constraint -> Subst -> Prop where
 structure SolveStep where
   solveCount : Nat
   origin : ConstraintOrigin
+  /-- Origin policy observed at the exact solve cut. -/
+  ledgerSnapshot : CapabilityOriginLedger
   constraint : Constraint
   delta : Subst
   /-- Finite support of the target component, produced by target mgu. -/
   targetDomain : List TypePM.TyVar
   targetSupport : delta.target.SupportWithin targetDomain
-  certificate : SolveCertificate constraint delta
+  certificate : SolveCertificate ledgerSnapshot constraint delta
   locallySound : LocallySound constraint delta
 
 /-- The exact restricted substitution returned by `matchCap` is one-way. -/
@@ -181,7 +193,8 @@ theorem matchCap_restricted_sound
 Solve an already-resolved primitive constraint.  Every success contains the
 corresponding unifier/matcher soundness proof; failure is explicit.
 -/
-def solveResolved
+def solveResolvedAt
+    (ledger : CapabilityOriginLedger)
     (solveCount : Nat) (origin : ConstraintOrigin) (constraint : Constraint) :
     Option SolveStep :=
   match constraint with
@@ -192,6 +205,7 @@ def solveResolved
           some {
             solveCount := solveCount
             origin := origin
+            ledgerSnapshot := ledger
             constraint := .capEq left right
             delta := ⟨capabilitySubst, TySubst.id⟩
             targetDomain := []
@@ -206,12 +220,19 @@ def solveResolved
           some {
             solveCount := solveCount
             origin := origin
+            ledgerSnapshot := ledger
             constraint := .targetEq left right
             delta := ⟨CapSubst.id, targetSubst⟩
             targetDomain := Unification.mguTySupport left right
             targetSupport := Unification.mguTy_support hsolve
             certificate := .targetEq hsolve
-            locallySound := ⟨rfl, Unification.mguTy_sound hsolve⟩
+            locallySound := by
+              change
+                (Subst.mk CapSubst.id targetSubst).apply left =
+                  (Subst.mk CapSubst.id targetSubst).apply right
+              rw [Subst.apply, Subst.apply, Ty.applyCapability_id,
+                Ty.applyCapability_id]
+              exact Unification.mguTy_sound hsolve
           }
   | .producerToSlot producerCap producerTarget consumerCap consumerTarget =>
       match hmatch : CapMatch.matchCap producerCap consumerCap with
@@ -227,6 +248,7 @@ def solveResolved
               some {
                 solveCount := solveCount
                 origin := origin
+                ledgerSnapshot := ledger
                 constraint := .producerToSlot
                   producerCap producerTarget consumerCap consumerTarget
                 delta := ⟨capabilitySubst, targetSubst⟩
@@ -239,6 +261,109 @@ def solveResolved
                   ⟨matchCap_restricted_sound hmatch,
                     Unification.mguTy_sound hsolve⟩
               }
+
+/-- Legacy symmetric solver, retained for specification-level regressions and
+raw candidate inspection.  Executable W uses the ledger-aware entry below. -/
+def solveResolved
+    (solveCount : Nat) (origin : ConstraintOrigin) (constraint : Constraint) :
+    Option SolveStep :=
+  solveResolvedAt [] solveCount origin constraint
+
+/-- Ledger-aware origin-oriented capability equality solving. -/
+def solveCapEqWithLedger
+    (ledger : CapabilityOriginLedger)
+    (solveCount : Nat) (origin : ConstraintOrigin)
+    (left right : Cap) : Option SolveStep :=
+  match hsolve : PairedUnification.solveCap
+      (Unification.capFuel left right) ledger left right with
+  | none => none
+  | some result =>
+      some {
+        solveCount := solveCount
+        origin := origin
+        ledgerSnapshot := ledger
+        constraint := .capEq left right
+        delta := ⟨result.subst, TySubst.id⟩
+        targetDomain := []
+        targetSupport := TySubst.id_supportWithin []
+        certificate := .capEqOriented hsolve
+        locallySound := ⟨rfl, result.sound⟩
+      }
+
+/-- Ledger-aware recursive paired target equality solving. -/
+def solveTargetEqWithLedger
+    (ledger : CapabilityOriginLedger)
+    (solveCount : Nat) (origin : ConstraintOrigin)
+    (left right : Ty) : Option SolveStep :=
+  match hsolve : PairedUnification.solvePairedTy
+      (Unification.tyFuel left right) ledger left right with
+  | none => none
+  | some result =>
+      some {
+        solveCount := solveCount
+        origin := origin
+        ledgerSnapshot := ledger
+        constraint := .targetEq left right
+        delta := result.subst
+        targetDomain := result.targetSupportVars
+        targetSupport := result.targetSupport
+        certificate := .targetEqPaired hsolve
+        locallySound := result.sound
+      }
+
+/-- Ledger-checked form of the dedicated one-way producer-to-slot solver.
+The exact restricted `CapMatch` substitution is checked before target
+unification and before a chronological step is emitted. -/
+def solveProducerToSlotWithLedger
+    (ledger : CapabilityOriginLedger)
+    (solveCount : Nat) (origin : ConstraintOrigin)
+    (producerCap : Cap) (producerTarget : Ty)
+    (consumerCap : Cap) (consumerTarget : Ty) : Option SolveStep :=
+  match hmatch : CapMatch.matchCap producerCap consumerCap with
+  | none => none
+  | some bindings =>
+      let capabilitySubst := bindings.toSubstWithin consumerCap.fcv
+      if admissibleCapPostCheck ledger capabilitySubst consumerCap.fcv then
+        match hsolve : Unification.mguTy
+            (producerTarget.applyCapability capabilitySubst)
+            (consumerTarget.applyCapability capabilitySubst) with
+        | none => none
+        | some targetSubst =>
+            some {
+              solveCount := solveCount
+              origin := origin
+              ledgerSnapshot := ledger
+              constraint := .producerToSlot
+                producerCap producerTarget consumerCap consumerTarget
+              delta := ⟨capabilitySubst, targetSubst⟩
+              targetDomain := Unification.mguTySupport
+                (producerTarget.applyCapability capabilitySubst)
+                (consumerTarget.applyCapability capabilitySubst)
+              targetSupport := Unification.mguTy_support hsolve
+              certificate := .producerToSlot hmatch hsolve
+              locallySound :=
+                ⟨matchCap_restricted_sound hmatch,
+                  Unification.mguTy_sound hsolve⟩
+            }
+      else
+        none
+
+/-- Resolve a primitive equality at one origin-ledger cut.  Capability
+equality uses the oriented capability kernel, while ordinary equality uses
+the recursive paired kernel so nested matcher/slot annotations observe the
+same origin policy.  Producer-to-slot remains the dedicated one-way solver. -/
+def solveResolvedWithLedger
+    (ledger : CapabilityOriginLedger)
+    (solveCount : Nat) (origin : ConstraintOrigin) (constraint : Constraint) :
+    Option SolveStep :=
+  match constraint with
+  | .capEq left right =>
+      solveCapEqWithLedger ledger solveCount origin left right
+  | .targetEq left right =>
+      solveTargetEqWithLedger ledger solveCount origin left right
+  | .producerToSlot producerCap producerTarget consumerCap consumerTarget =>
+      solveProducerToSlotWithLedger ledger solveCount origin
+        producerCap producerTarget consumerCap consumerTarget
 
 /-! ## Cumulative replay -/
 
@@ -431,6 +556,12 @@ inductive TraceEvent where
       Context -> PatternCtx -> MonoCtx -> Context -> PatternCtx -> MonoCtx ->
       List CapVar -> List TypePM.TyVar -> List CapVar -> List TypePM.TyVar ->
       List Dual -> Dual -> List CapVar -> List TypePM.TyVar -> TraceEvent
+  /-- Constructor/primitive-local capability binders are frozen only after
+  their use is solved.  The event retains the raw images, exported payload,
+  its cut-local resolved form, and the surviving image leaves that changed
+  from structural flexibility to rename-only. -/
+  | capabilityExportFreeze : Nat -> List CapVar -> Ty -> Ty ->
+      List CapVar -> TraceEvent
 deriving Repr
 
 /-- Chronological solver and reconstruction traces. -/
@@ -483,9 +614,9 @@ structure InferState where
   /-- Inference-owned capability variables exported by value-producing
   instantiations or finalized matcher producers. -/
   protectedCaps : List CapVar
-  /-- Shadow metadata for the future origin-sensitive solver.  The current
-  producer guard remains `protectedCaps`; this ledger does not yet affect
-  constraint acceptance or terminal trace validation. -/
+  /-- Capability policy at the current chronological cut.  Equality solving
+  reads this ledger directly; `protectedCaps` remains the legacy one-way and
+  terminal-audit bridge for already exported producer leaves. -/
   capabilityOrigins : CapabilityOriginLedger
 
 /-- Empty state at caller-supplied fresh lower bounds. -/
@@ -808,11 +939,15 @@ def runConstraint
     (state : InferState) (origin : ConstraintOrigin)
     (raw : Constraint) : Option InferState := do
   let resolved := raw.resolve state.prevailing
-  let step <- solveResolved state.trace.solves.length origin resolved
-  if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
-    pure (state.recordSolve step)
-  else
-    none
+  let step <- solveResolvedWithLedger state.capabilityOrigins
+    state.trace.solves.length origin resolved
+  match resolved with
+  | .producerToSlot _ _ _ _ =>
+      if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
+        pure (state.recordSolve step)
+      else
+        none
+  | _ => pure (state.recordSolve step)
 
 /-- Allocate and trace one fresh target meta. -/
 def InferState.freshTy
@@ -1744,11 +1879,15 @@ def finishExpr
 def runResolvedConstraint
     (state : InferState) (origin : ConstraintOrigin)
     (constraint : Constraint) : Option InferState := do
-  let step <- solveResolved state.trace.solves.length origin constraint
-  if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
-    pure (state.recordSolve step)
-  else
-    none
+  let step <- solveResolvedWithLedger state.capabilityOrigins
+    state.trace.solves.length origin constraint
+  match constraint with
+  | .producerToSlot _ _ _ _ =>
+      if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
+        pure (state.recordSolve step)
+      else
+        none
+  | _ => pure (state.recordSolve step)
 
 /--
 Align full types, solving matcher/slot capabilities in their own sort before
@@ -2114,7 +2253,10 @@ def instantiateSchemeInState
       incomingSupply scheme name rawContext normalizedContext fixedCaps fixedTys
       reservedCaps reservedTys instantiation.value protectedIds targetImages))
 
-/-- Instantiate a constructor/primitive scheme and advance both counters. -/
+/-- Instantiate a constructor/primitive scheme and advance both counters.
+Capability images remain structurally flexible during the local argument or
+pattern solve.  Their externally surviving prevailing-image leaves are frozen
+by `freezeCapabilityExport` at the corresponding use boundary. -/
 def instantiateCtorInState
     (state : InferState) (scheme : CtorScheme) :
     (List Ty × Ty) × InferState :=
@@ -2124,12 +2266,83 @@ def instantiateCtorInState
   let state :=
     { state with
       supply := instantiation.supply
-      protectedCaps := state.protectedCaps ++ protectedIds
       capabilityOrigins := state.capabilityOrigins.setOrigins protectedIds
         .structuralFlexible }
   (instantiation.value,
     state.recordEvent (.ctorInstantiation state.trace.solves.length incomingSupply
       scheme instantiation.value.1 instantiation.value.2 protectedIds))
+
+/-- Encode the capability and target components of an exported result in one
+type payload.  A matcher over `unit` carries each standalone capability
+without adding target variables; the surrounding product then exposes exactly
+the union of the capability-list and target-list free capability variables to
+the ordinary `Ty.fcv` traversal. -/
+def capabilityExportPayload
+    (capabilities : List Cap) (targets : List Ty) : Ty :=
+  .prod ((capabilities.map fun capability => .matcher capability .unit) ++
+    targets)
+
+/-- Variable leaves in the prevailing images of a constructor's fresh
+capability binders that still occur in its exported payload.  Only leaves that
+remain structurally flexible at this cut are selected: rigid external leaves
+must never be downgraded, and already frozen leaves need no second event. -/
+def capabilityExportLeaves
+    (state : InferState) (capImages : List CapVar)
+    (exportedPayload : Ty) : List CapVar :=
+  let exportedVars := (state.prevailing.apply exportedPayload).fcv
+  let imageLeaves := capImages.flatMap fun varId =>
+    (state.prevailing.cap varId).fcv
+  (imageLeaves.filter fun varId => varId ∈ exportedVars).eraseDups.filter
+    fun varId =>
+      state.capabilityOrigins.originOf varId == .structuralFlexible
+
+/-- Freeze exactly the surviving structural leaves of one completed
+constructor/primitive instance and record the solve cut that determined the
+prevailing images. -/
+def InferState.freezeCapabilityExport
+    (state : InferState) (capImages : List CapVar)
+    (exportedPayload : Ty) : InferState :=
+  let leaves := capabilityExportLeaves state capImages exportedPayload
+  let resolvedPayload := state.prevailing.apply exportedPayload
+  let frozen :=
+    { state with
+      protectedCaps := state.protectedCaps ++ leaves
+      capabilityOrigins := state.capabilityOrigins.setOrigins leaves
+        .renameOnly }
+  frozen.recordEvent (.capabilityExportFreeze state.trace.solves.length
+    capImages exportedPayload resolvedPayload leaves)
+
+@[simp] theorem InferState.freezeCapabilityExport_protectedCaps
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    (state.freezeCapabilityExport capImages exportedPayload).protectedCaps =
+      state.protectedCaps ++
+        capabilityExportLeaves state capImages exportedPayload := by
+  rfl
+
+theorem InferState.freezeCapabilityExport_origin_of_mem
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty)
+    (varId : CapVar)
+    (membership :
+      varId ∈ capabilityExportLeaves state capImages exportedPayload) :
+    ((state.freezeCapabilityExport capImages exportedPayload).capabilityOrigins
+        ).originOf varId = .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    state.capabilityOrigins
+    (capabilityExportLeaves state capImages exportedPayload) varId
+    .renameOnly membership
+
+/-- Export freezing changes only the producer ledgers and appends its explicit
+cut event, so all prior solver and event history is preserved. -/
+theorem InferState.historyPrefix_freezeCapabilityExport
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    state.HistoryPrefix
+      (state.freezeCapabilityExport capImages exportedPayload) := by
+  refine ⟨[], [TraceEvent.capabilityExportFreeze
+    state.trace.solves.length capImages exportedPayload
+    (state.prevailing.apply exportedPayload)
+    (capabilityExportLeaves state capImages exportedPayload)], ?_, ?_⟩
+  · simp [InferState.freezeCapabilityExport, InferState.recordEvent]
+  · simp [InferState.freezeCapabilityExport, InferState.recordEvent]
 
 /-- Instantiate a dual scheme and advance both counters. -/
 def instantiateDualInState
@@ -2617,23 +2830,31 @@ def inferExprFuel :
           match signature.findDataCtor name with
           | none => none
           | some scheme =>
+              let incomingSupply := state.supply
+              let capImages := freshCapImages incomingSupply scheme.capBinders
               let ((expected, resultTarget), state) :=
                 instantiateCtorInState state scheme
               match checkExprsFuel fuel signature context selfEnv path 0
                   expressions expected state with
               | none => none
               | some state =>
+                  let state :=
+                    state.freezeCapabilityExport capImages resultTarget
                   some (finishExpr expression path resultTarget state)
       | .prim op expressions =>
           match signature.findPrimitive op with
           | none => none
           | some scheme =>
+              let incomingSupply := state.supply
+              let capImages := freshCapImages incomingSupply scheme.capBinders
               let ((expected, resultTarget), state) :=
                 instantiateCtorInState state scheme
               match checkExprsFuel fuel signature context selfEnv path 0
                   expressions expected state with
               | none => none
               | some state =>
+                  let state :=
+                    state.freezeCapabilityExport capImages resultTarget
                   some (finishExpr expression path resultTarget state)
       | .letE name value body =>
           match inferExprFuel fuel signature context selfEnv
@@ -2811,6 +3032,9 @@ def inferPatternFuel :
           match signature.findPatternCtor name with
           | none => none
           | some entry =>
+              let incomingSupply := state.supply
+              let capImages :=
+                freshCapImages incomingSupply entry.scheme.capBinders
               let ((expectedTargets, resultTarget), state) :=
                 instantiateCtorInState state entry.scheme
               match inferPatternsFuel fuel signature context parameters bindings
@@ -2839,6 +3063,12 @@ def inferPatternFuel :
                           if capCompatibleCheck entry resolvedChildren
                               resolvedCapability then
                             let dual := Dual.mk capability resultTarget
+                            let exportPayload := capabilityExportPayload
+                              [dual.cap]
+                              (dual.target :: results.bindings.map fun entry =>
+                                entry.2)
+                            let state := state.freezeCapabilityExport
+                              capImages exportPayload
                             some ⟨dual, results.bindings,
                               (state.recordEvent
                                   (.patternCtorCompatibility
@@ -3004,6 +3234,9 @@ def inferPPatFuel :
           match signature.findPatternCtor name with
           | none => none
           | some entry =>
+              let incomingSupply := state.supply
+              let capImages :=
+                freshCapImages incomingSupply entry.scheme.capBinders
               let ((fieldTargets, resultTarget), state) :=
                 instantiateCtorInState state entry.scheme
               match alignTypes state
@@ -3015,8 +3248,15 @@ def inferPPatFuel :
                       fieldTargets state with
                   | none => none
                   | some results =>
+                      let exportPayload := capabilityExportPayload
+                        (results.holes.map Dual.cap)
+                        (results.holes.map Dual.target ++
+                          expectedTarget :: results.bindings.map fun entry =>
+                            entry.2)
+                      let state := results.state.freezeCapabilityExport
+                        capImages exportPayload
                       some ⟨expectedTarget, results.holes, results.bindings,
-                        (visit results.state .ppatCtor path).recordEvent
+                        (visit state .ppatCtor path).recordEvent
                           (.inferredPPat pattern expectedTarget results.holes
                             results.bindings path)⟩
       | .tuple patterns =>
@@ -3089,6 +3329,8 @@ def inferDPatFuel :
           match signature.findDataCtor name with
           | none => none
           | some scheme =>
+              let incomingSupply := state.supply
+              let capImages := freshCapImages incomingSupply scheme.capBinders
               let ((fieldTargets, resultTarget), state) :=
                 instantiateCtorInState state scheme
               match alignTypes state
@@ -3100,8 +3342,13 @@ def inferDPatFuel :
                       fieldTargets state with
                   | none => none
                   | some results =>
+                      let exportPayload := capabilityExportPayload []
+                        (expectedTarget :: results.bindings.map fun entry =>
+                          entry.2)
+                      let state := results.state.freezeCapabilityExport
+                        capImages exportPayload
                       some ⟨expectedTarget, results.bindings,
-                        (visit results.state .dpatCtor path).recordEvent
+                        (visit state .dpatCtor path).recordEvent
                           (.inferredDPat pattern expectedTarget
                             results.bindings path)⟩
       | .tuple patterns =>
@@ -3644,16 +3891,24 @@ theorem runResolvedConstraint_historyPrefix
     (success : runResolvedConstraint state origin constraint = some result) :
     state.HistoryPrefix result := by
   unfold runResolvedConstraint at success
-  cases stepEquation : solveResolved state.trace.solves.length origin constraint with
+  cases stepEquation : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin constraint with
   | none => simp [stepEquation] at success
   | some step =>
       simp only [stepEquation] at success
-      change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
-        then some (state.recordSolve step) else none) = some result at success
-      split at success <;> try contradiction
-      have equality := Option.some.inj success
-      subst result
-      exact state.historyPrefix_recordSolve step
+      cases constraint with
+      | capEq _ _ | targetEq _ _ =>
+          change some (state.recordSolve step) = some result at success
+          exact (state.historyPrefix_recordSolve step).right_congr
+            (Option.some.inj success)
+      | producerToSlot _ _ _ _ =>
+          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+            then some (state.recordSolve step) else none) =
+              some result at success
+          split at success <;> try contradiction
+          have equality := Option.some.inj success
+          subst result
+          exact state.historyPrefix_recordSolve step
 
 theorem alignTypesCore_historyPrefix
     {state result : InferState} {origin : ConstraintOrigin} {left right : Ty}
@@ -3957,6 +4212,7 @@ theorem inferPPatFuel_historyPrefix
         InferState.historyPrefix_freshCap,
         instantiateCtorInState_historyPrefix,
         instantiateCtorInState_historyPrefix_of_eq,
+        InferState.historyPrefix_freezeCapabilityExport,
         alignTypes_historyPrefix,
         freshTargets_historyPrefix,
         visit_historyPrefix,
@@ -4037,6 +4293,7 @@ theorem inferDPatFuel_historyPrefix
         InferState.HistoryPrefix.right_congr,
         instantiateCtorInState_historyPrefix,
         instantiateCtorInState_historyPrefix_of_eq,
+        InferState.historyPrefix_freezeCapabilityExport,
         alignTypes_historyPrefix,
         freshTargets_historyPrefix,
         visit_historyPrefix,
@@ -4208,6 +4465,7 @@ theorem inferExprFuel_historyPrefix
         InferState.historyPrefix_freshTy,
         InferState.historyPrefix_freshCap,
         InferState.historyPrefix_protectMatcherCapability,
+        InferState.historyPrefix_freezeCapabilityExport,
         InferState.historyPrefix_recordEvent,
         InferState.historyPrefix_recordSource,
         alignTypes_historyPrefix,

@@ -1666,9 +1666,19 @@ theorem inferPPatFuel_terminalAt
       primitiveHoles terminalHistory
     have childrenHistory : alignedState.HistoryPrefix results.state :=
       inferPPatsFuel_historyPrefix childrenEq
+    let exportPayload := capabilityExportPayload
+      (results.holes.map Dual.cap)
+      (results.holes.map Dual.target ++
+        expectedTarget :: results.bindings.map fun entry => entry.2)
     have resultHistory : results.state.HistoryPrefix terminal :=
-      (visit_historyPrefix results.state .ppatCtor path').trans
-        ((InferState.historyPrefix_recordEvent _ _).trans terminalHistory)
+      (InferState.historyPrefix_freezeCapabilityExport results.state
+        (freshCapImages initial.supply entry.scheme.capBinders)
+        exportPayload).trans
+        ((visit_historyPrefix
+          (results.state.freezeCapabilityExport
+            (freshCapImages initial.supply entry.scheme.capBinders)
+            exportPayload) .ppatCtor path').trans
+          ((InferState.historyPrefix_recordEvent _ _).trans terminalHistory))
     have alignmentHistory : alignedState.HistoryPrefix terminal :=
       childrenHistory.trans resultHistory
     have instantiationHistory : instState.HistoryPrefix terminal :=
@@ -1785,9 +1795,17 @@ theorem inferDPatFuel_reconstructAt
       ⟨solveCount, supply, capImages, instantiationMembership⟩
     have childrenHistory : alignedState.HistoryPrefix results.state :=
       inferDPatsFuel_historyPrefix childrenEq
+    let exportPayload := capabilityExportPayload []
+      (expectedTarget :: results.bindings.map fun entry => entry.2)
     have resultHistory : results.state.HistoryPrefix terminal :=
-      (visit_historyPrefix results.state .dpatCtor path').trans
-        ((InferState.historyPrefix_recordEvent _ _).trans terminalHistory)
+      (InferState.historyPrefix_freezeCapabilityExport results.state
+        (freshCapImages initial.supply scheme.capBinders)
+        exportPayload).trans
+        ((visit_historyPrefix
+          (results.state.freezeCapabilityExport
+            (freshCapImages initial.supply scheme.capBinders)
+            exportPayload) .dpatCtor path').trans
+          ((InferState.historyPrefix_recordEvent _ _).trans terminalHistory))
     have alignmentHistory : alignedState.HistoryPrefix terminal :=
       childrenHistory.trans resultHistory
     have instantiationHistory : instState.HistoryPrefix terminal :=
@@ -2113,8 +2131,13 @@ theorem inferExprFuel_reconstructAt
       scheme lookup expecteds resultTarget instState checkedState checkEq visited
       terminal instEq listIH bridge' terminalHistory
     have checkedHistory : checkedState.HistoryPrefix terminal :=
-      (finishExpr_historyPrefix (.ctor name expressions) path' resultTarget
-        checkedState).trans terminalHistory
+      (InferState.historyPrefix_freezeCapabilityExport checkedState
+        (freshCapImages (visit initial .exprCtor path').supply
+          scheme.capBinders) resultTarget).trans
+        ((finishExpr_historyPrefix (.ctor name expressions) path' resultTarget
+          (checkedState.freezeCapabilityExport
+            (freshCapImages (visit initial .exprCtor path').supply
+              scheme.capBinders) resultTarget)).trans terminalHistory)
     have instHistory : instState.HistoryPrefix terminal :=
       (checkExprsFuel_historyPrefix checkEq).trans checkedHistory
     rcases instantiateCtorInState_event_mem_of_eq instEq with
@@ -2128,8 +2151,13 @@ theorem inferExprFuel_reconstructAt
       scheme lookup expecteds resultTarget instState checkedState checkEq visited
       terminal instEq listIH bridge' terminalHistory
     have checkedHistory : checkedState.HistoryPrefix terminal :=
-      (finishExpr_historyPrefix (.prim op expressions) path' resultTarget
-        checkedState).trans terminalHistory
+      (InferState.historyPrefix_freezeCapabilityExport checkedState
+        (freshCapImages (visit initial .exprPrim path').supply
+          scheme.capBinders) resultTarget).trans
+        ((finishExpr_historyPrefix (.prim op expressions) path' resultTarget
+          (checkedState.freezeCapabilityExport
+            (freshCapImages (visit initial .exprPrim path').supply
+              scheme.capBinders) resultTarget)).trans terminalHistory)
     have instHistory : instState.HistoryPrefix terminal :=
       (checkExprsFuel_historyPrefix checkEq).trans checkedHistory
     rcases instantiateCtorInState_event_mem_of_eq instEq with
@@ -2364,14 +2392,22 @@ theorem inferExprFuel_reconstructAt
       patternsIH resultEq bridge' terminalHistory
     simp only [if_pos trivial, Option.some.injEq] at resultEq
     subst result
+    let exportPayload := capabilityExportPayload [capability]
+      (resultTarget :: results.bindings.map fun entry => entry.2)
+    let frozenState := solvedState.freezeCapabilityExport
+      (freshCapImages initial.supply entry.scheme.capBinders) exportPayload
     let compatibilityEvent := TraceEvent.patternCtorCompatibility
-      solvedState.trace.solves.length name childCaps capability
+      frozenState.trace.solves.length name childCaps capability
     let inferredEvent := TraceEvent.inferredPattern (.pctor name patterns)
       ⟨capability, resultTarget⟩ results.bindings path'
     have solvedHistory : solvedState.HistoryPrefix terminal :=
-      (InferState.historyPrefix_recordEvent solvedState compatibilityEvent).trans
-        ((InferState.historyPrefix_recordEvent _ inferredEvent).trans
-          terminalHistory)
+      (InferState.historyPrefix_freezeCapabilityExport solvedState
+        (freshCapImages initial.supply entry.scheme.capBinders)
+        exportPayload).trans
+        ((InferState.historyPrefix_recordEvent frozenState
+          compatibilityEvent).trans
+          ((InferState.historyPrefix_recordEvent _ inferredEvent).trans
+            terminalHistory))
     have alignedHistory : alignedState.HistoryPrefix terminal :=
       (solvePatternCtorCapability_historyPrefix capabilityEq).trans
         solvedHistory
@@ -2389,9 +2425,10 @@ theorem inferExprFuel_reconstructAt
       (instHistory.event_mem localInstantiation)
     rw [← targetsAligned] at instantiated
     have localCompatibility : compatibilityEvent ∈
-        ((solvedState.recordEvent compatibilityEvent).recordEvent
+        ((frozenState.recordEvent compatibilityEvent).recordEvent
           inferredEvent).trace.events := by
-      simp [compatibilityEvent, inferredEvent, InferState.recordEvent]
+      simp [frozenState, compatibilityEvent, inferredEvent,
+        InferState.recordEvent]
     have capabilityCompatible := tracePatternCtorCheck_final
       bridge'.patternCtors (terminalHistory.event_mem localCompatibility) lookup
     have capabilityCompatible' : entry.CapCompatible

@@ -97,11 +97,11 @@ lambda-domainと上記のsolve順序から `nestedCapProgram` に `DDTyping` が
 等価から binder 名の照合＋型の単一化（`alignBindings`）へ改めたことで解消し，
 受理側の regression として固定した
 （[`TypePM/AcceptanceGapRegression.lean`](TypePM/AcceptanceGapRegression.lean)）．
-残る真の受理ギャップは constructor instance capability の producer guard による固定
-（`packProgram` = `Pack something`，`∀κ α. Matcher κ α → Packed` の宣言的
-`κ := Any` instance を guard が拒否）の一系統で，現行推論器への反証
-（`wideAnnotationFree_refuted_by_freeze`）を伴い，origin-aware paired unifier への
-切替（guard の ledger 化）で解消予定である．principality と異なり，受理完全性は
+constructor instance capability の producer guard による固定も解消した．
+`packProgram` = `Pack something`（`∀κ α. Matcher κ α → Packed`）では，fresh `κ` を
+局所 solve 中だけ `structuralFlexible` として `Any` へ特殊化し，export 時には prevailing
+result に生存する変数 leaf だけを `renameOnly` へ freeze するため，raw／public の両方で
+受理される．principality と異なり，受理完全性は
 `(something, something)` の機械化反例と両立する：反例が否定するのは推論結果からの
 代入による全型付けの回収であって，受理そのものではない．
 
@@ -114,8 +114,9 @@ lambda-domainと上記のsolve順序から `nestedCapProgram` に `DDTyping` が
 `InferenceInputWF` 入力に限定した主張より強く，`WBridgeWF` は validator が内部で
 構成する証明書であって呼び出し側の仮定ではない．
 
-段階の詳細は次節ロードマップにまとめる．現在は段階 1 が完了し，段階 2 は宣言側と
-MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ全体の検証は主張しない．
+段階の詳細は次節ロードマップにまとめる．現在は段階 1 が完了し，段階 2 は宣言側，
+対称 MGU の公開 wrapper 完全性，origin-aware 局所 solve，全 W traversal の状態／
+admissibility 不変量まで進んでいる．core の一意性と Egison コンパイラ全体の検証は主張しない．
 
 ## ロードマップ
 
@@ -173,32 +174,48 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    `nestedCapLetProgram` の受理に加え，結果が三つの相異なる target 変数を持つ raw
    producer-level shape のままであること（`nestedCapLetProgram_raw_target_shape`）と，raw solve
    trace に `producerToSlot` が無いこと（`nestedCapLetProgram_raw_has_no_producerToSlot`）を
-   control として固定した．capability freeze は `packProgram`
-   （`Pack : ∀κ α. Matcher κ α → Packed` に `Pack something`）：宣言的には
-   `κ := Any` の instance で型付くが，fresh instance capability が protected
-   producer として記録され guard が束縛を拒否する（capability を scheme 側で
-   `Any` に固定した control は受理）．こちらは真のギャップで，現行推論器への反証
-   （`wideAnnotationFree_refuted_by_freeze`）を伴う．
+   control として固定した．旧 capability-freeze 反例 `packProgram`
+   （`Pack : ∀κ α. Matcher κ α → Packed` に `Pack something`）は paired W 配線後の
+   raw／public 受理，結果型 `Packed`，coherent reconstruction，solve-cut の flexible
+   ledger snapshot，dead export leaf の非 freeze を固定する正例へ反転した．さらに
+   `κ₀ ↦ List κ₁` の prevailing image を export すると生存 leaf `κ₁` だけが
+   `renameOnly` になり，後続の構造的 strengthening が拒否される回帰を持つ．
 3. **済** or-pattern binder の整合 — or の分岐結果を raw metavariable ID の構文的
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
    結果 Δ＋prevailing 像の等価 premise」へ緩和した（宣言的 Terminal or は不変）．
-4. **一部済** origin-aware な再帰的 paired unifier — kernel slice は
+4. **大半済** origin-aware な再帰的 paired unifier — kernel slice は
    [`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) に機械化済み：
    `solvePairedTy` が型構造を再帰しながら capability／target の二 sort を同時に
    解き，matcher／slot 注釈は origin-oriented capability solver（`renameOnly` は
    構造化禁止・rename 像は非 flexible 限定・`structuralFlexible` は構造化許可・
    未登録は rigid）へ送る．全成功は soundness と `AdmissiblePost` 準拠を運ぶ
    proof-carrying certificate（`mguPairedTy_sound`／`mguPairedTy_admissible`）で，
-   二 sort 合成は `Subst.seq` の閉性による．`mguTy` が rigid 比較で拒否する同じ
+   capability／target 両 component の有限 support certificate も返す．二 sort 合成は
+   `Subst.seq` の閉性による．さらに任意の admissible competitor が結果を吸収する
+   origin-relative factorization（`mguOrientedCap_universal`／
+   `mguPairedTy_universal`）を証明した．`mguTy` が rigid 比較で拒否する同じ
    注釈制約を flexible ledger の下で解く対照回帰
-   （`paired_solves_flexible_annotation`／`symmetric_still_rigid`）つき．残るは
-   W への配線：solve cut ごとの ledger snapshot・export 時点の prevailing image
-   freeze event・producer guard の ledger 化．配線の解消対象は capability freeze
-   ギャップ（`packProgram`）のみであり，受理挙動の変更を伴うため freeze 系反例の
-   反転とセットで行う．`nestedCapProgram` は demand-directed 原則下の意図された
-   拒否であり，配線で受理側へ反転させる対象ではない．
-5. **一部済** fuel 単調性と solvability — 単調性（成功は任意のより大きい fuel で
+   （`paired_solves_flexible_annotation`／`symmetric_still_rigid`）つき．W の
+   `capEq`／`targetEq` もこの solver へ接続し，各 `SolveStep` が cut-local ledger
+   snapshot を保持する．constructor／primitive binder は local solve 中だけ flexible，
+   完了時には raw binder でなく prevailing image と exported payload の共通 leaf だけを
+   freeze し，明示的 export event を残す．payload は expression result に加え，pattern
+   result capability／target／bindings，PPat の holes／bindings，DPat bindings まで含む．
+   これにより `packProgram` は受理へ反転した．
+   `producerToSlot` も exact `CapMatch` substitution の finite support 上で
+   `admissibleCapPostCheck` を実行し，`solveResolvedWithLedger_admissible` は三 constraint
+   共通に cut-local `AdmissiblePost` を返す．既存 one-way reconstruction certificate と
+   `protectedCaps` terminal bridge は維持する．`InferenceLocalFactorization.lean` は
+   origin-relative universality と one-way uniqueness から三 branch の ledger-aware 単制約因子化を与える．
+   `InferenceTraceFactorization.lean` は evolving residual の scoped 条件の下で一段 snoc する．
+   `InferenceFreezeTransport.lean` は selected leaf が更新後 ledger 上で safe rename であるという
+   条件付き frozen-residual bridge を与える．残るのはその条件を全 traversal で
+   保存する trace-level factorization と，legacy terminal guard を safe rename へ繋ぐことである．
+   oriented Cap／Cap-list／paired Ty／Ty-list の
+   成功 fuel 単調性と public bound への成功再生は証明済みだが，solvability completeness は
+   まだ主張しない．`nestedCapProgram` は demand-directed 原則下の意図された拒否である．
+5. **大半済** fuel 単調性と solvability — 単調性（成功は任意のより大きい fuel で
    同じ substitution のまま保存される：`mguCapFuel_mono`／`mguTyFuel_mono`，
    list 版含む）と **∃fuel solvability completeness**（可解な制約はある fuel で
    成功する：`mguCapFuel_complete`／`mguTyFuel_complete`／list 版，可解性との同値
@@ -208,18 +225,63 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    equality により閉じる．完全性は（残 budget 変数数，構造 weight）の辞書式
    well-founded 帰納で，真に不等な head の解が budget 変数を一つ消去することを
    kernel 成功 run の range／elimination certificate
-   （`solveCapPair_varCert`／`solveTyPair_varCert`）が供給する．残るは，公開
-   `infer` が呼ぶ固定 fuel の `mguCap`／`mguTy`（構造 bound）の十分性を証明するか，
-   well-founded な total solver に置き換えること．
-6. 未: `inferRaw` の状態不変量と trace-level factorization — 単制約の `universal`
+   （`solveCapPair_varCert`／`solveTyPair_varCert`）が供給する．公開対称 wrapper はこの
+   well-founded 帰納と同じ入力依存の `mguCapCompleteFuel`／`mguTyCompleteFuel`
+   （list 版含む）を使う形へ切り替え，`mguCap_complete`／`mguTy_complete`
+   （list 版含む）が可解入力での公開 wrapper の成功を証明し，
+   `mguCap_isSome_iff_unifiable`／`mguTy_isSome_iff_unifiable`（list 版含む）で逆向きと合わせる．
+   origin-aware kernel 側も `solveCap_success_mono`／`solvePairedTy_success_mono`（各 list 版含む）により
+   成功を任意のより大きい fuel へ同一 substitution のまま再生でき，
+   `mguOrientedCap_of_fuel_le`／`mguPairedTy_of_fuel_le` が公開 bound 以下の run を wrapper へ繋ぐ．
+   残るのは，旧 `capFuel`／`tyFuel` の全 admissible-solvable 入力に対する十分性，
+   または input-directed complete driver への置き換えである．逐次 substitution が構造 weight を
+   増やし得るため，対称 kernel と同様の変数消去 budget 証明が必要である．
+6. **一部済** `inferRaw` の状態不変量と trace-level factorization — 単制約の `universal`
    を，`Subst.seq` で連結された solve trace・capability／target の相互作用・
    one-way `CapMatch`・origin／freeze admissibility・relevant variable 上の因子化
    へ格上げする（段階 2 最大の作業）．履歴側の語彙は
    [`TypePM/InferenceHistory.lean`](TypePM/InferenceHistory.lean) に既設
    （`InferState.HistoryPrefix` の refl／trans／`prevailing_eq`＝prevailing の
-   replay 因子化と，各 traversal の prefix 補題群）で，不足は supply と
-   `protectedCaps` の単調性補題のみ．
-7. 未: terminal validator の受理 — DM 断片の raw 成功で `wBridgeCheck` が通ること．
+   replay 因子化と，各 traversal の prefix 補題群）．さらに
+   [`TypePM/InferenceStateExtension.lean`](TypePM/InferenceStateExtension.lean) は
+   history prefix，二つの fresh supply，`protectedCaps` 包含を束ねる強い
+   `StateExtension`，refl／trans，record／fresh／protect／instantiate／export-freeze／
+   単制約成功の extension 補題を持つ．
+   [`TypePM/InferenceTraversalStateExtension.lean`](TypePM/InferenceTraversalStateExtension.lean)
+   は alignment，expression／pattern／clause／matcher の全相互再帰 helper を持ち上げ，
+   最終 `inferRaw_stateExtension` まで supply／producer 単調性を証明する．
+   [`TypePM/InferenceAdmissibleTrace.lean`](TypePM/InferenceAdmissibleTrace.lean) は各
+   `SolveStep` が自身の ledger snapshot に admissible である invariant，local solver snapshot
+   の一致，raw／resolved 単制約実行の保存，history prefix/suffix の代数を与える．
+   [`TypePM/InferenceTraversalAdmissibleTrace.lean`](TypePM/InferenceTraversalAdmissibleTrace.lean)
+   はこの invariant を全 mutual traversal と protected-result filter へ持ち上げ，初期 empty
+   state からの `inferRaw_admissibleTrace` まで証明する．
+   [`TypePM/InferenceLocalFactorization.lean`](TypePM/InferenceLocalFactorization.lean) は oriented
+   Cap／paired target の relative universality と `CapMatch` の support-restricted uniqueness を組み合わせ，
+   `solveResolvedWithLedger` の三 branch すべてに admissible competitor の局所因子化を与える．
+   [`TypePM/InferenceTraversalLocalFactorization.lean`](TypePM/InferenceTraversalLocalFactorization.lean) は
+   各 `SolveStep` が自身の snapshot／resolved constraint／delta に対する `HasLocalFactorization` を
+   持つ `FactorizingTrace` を定義し，全 mutual traversal と terminal protected-result filter へ持ち上げ，
+   `inferRaw_factorizingTrace` まで証明する．
+   [`TypePM/InferenceRunInvariants.lean`](TypePM/InferenceRunInvariants.lean) の
+   `inferRaw_runInvariants` は `StateExtension`／`AdmissibleTrace`／`FactorizingTrace` を raw W 成功時の
+   一つの証明書に束ねる．
+   [`TypePM/InferenceTraceFactorization.lean`](TypePM/InferenceTraceFactorization.lean) は
+   `TraceFactorization` を定義し，prefix residual が次の ledger snapshot に admissible でその
+   resolved constraint を解くことを明示前提として，局所因子化を snoc／
+   `recordSolve`／`runResolvedConstraint`／`runConstraint` へ安全に合成する．
+   [`TypePM/InferenceFreezeTransport.lean`](TypePM/InferenceFreezeTransport.lean) は export で選択した
+   leaf の residual 像が更新後 ledger で safe variable rename であるという正確な局所条件の下，
+   選択的 `renameOnly` transition 後へ admissibility と scoped trace factorization を同時に輸送する．
+   現行 `FixesCapVars` はその強い十分条件として接続済みである．残るのは
+   substitution agreement-on-scope，次の residual の admissibility／solvability，export の safe-rename 条件を
+   mutual traversal 全体で保存する証明である．
+7. **一部済** terminal validator の受理 —
+   [`TypePM/DMTerminalAcceptance.lean`](TypePM/DMTerminalAcceptance.lean) は多相 `let` の具体証人
+   `let id = λx.x in (id id) 1` について，exact raw result への `inferRaw` 成功，
+   `wBridgeCheck = true`，そこからの `WBridgeWF` 構成，結果型 `Int`，公開受理を一本の
+   nontrivial 境界として固定する．任意の DM raw 成功に対する validator 受理には，
+   instance／alignment／generalization check を通す trace invariant の一般証明がまだ必要である．
 8. 到達点: `DM.HasTy → infer 受理`（古典的 ML の注釈不要性保証）．
 
 ### 段階 3: `DDTyping` と条件付き受理完全性
@@ -256,9 +318,12 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
 1. 未: solve-cut event（cut-indexed coercion event）を導入し，prevailing substitution 後に
    初めて product head が現れる正当な case も selector が扱えるようにして，中間定理から
    `RawSourceVisible` を外す．
-2. 未: W を origin-aware paired solver へ切り替え，solve cut ごとの ledger snapshot と
-   export 時点の freeze event を接続して，中間定理から `FreezeCompatible` を外す．これは
-   `packProgram` の producer-freeze ギャップを解消するが，`nestedCapProgram` の拒否は変えない．
+2. **大半済** W を origin-aware paired solver へ切り替え，solve cut ごとの ledger snapshot と
+   export 時点の prevailing-image freeze event を接続した．`packProgram` の
+   producer-freeze ギャップは解消し，`nestedCapProgram` の拒否は不変である．残るのは
+   safe rename の terminal bridge と，trace factorization から中間定理の
+   `FreezeCompatible` 仮定を実際に除去する証明である（one-way branch の finite-support
+   ledger certificate は済）．
 3. 未: canonical core judgment の critical pair を解消し，canonical boundary 下の full plan
    uniqueness と置換に対する naturality を証明する．
 4. 到達点: `DDTyping signature [] e τ → (infer signature [] e).isSome`．受理完全性の前提は
@@ -410,7 +475,8 @@ delta が protected producer を固定することも検査する．さらに ta
 capability の rigid head が衝突する pctor を `inferRaw` と公開 `infer` が拒否し，capability
 だけを整合させた control twin が公開 `infer` と `infer_success_sound` を通ることを対で固定する．
 pattern-function instantiation が実際に ledger へ登録した protected variable を `cons` の
-tail child に置く負例では，raw unifier が作る structural delta を producer guard が拒否する
+tail child に置く負例では，legacy symmetric unifier が作れる structural delta を
+cut-local origin solver が `renameOnly` policy により拒否する
 ことを，直接 solver と raw/public inference の両方で検査する．
 
 公開 entry point `infer` は，停止する二 sort W 走査 `inferRaw` の結果に
@@ -496,16 +562,17 @@ ledger 全体の freeze，freeze 後に既存 `VariablePost` 境界へ入る bri
 `VariablePost` へ接続する．現段階の `AdmissiblePost` が制約するのは capability component だけで，
 target component は意図的に制約していない．これは
 constructor／primitive の局所 structural instantiation と既存 producer の非強化を区別する
-代数的基礎である．W の `InferState.capabilityOrigins` はこの ledger を shadow metadata として保持し，
+代数的基礎である．W の `InferState.capabilityOrigins` はこの ledger を solver policy として保持し，
 一般 fresh capability と constructor／primitive image を `structuralFlexible`，context scheme／
-pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．ただし
-constraint acceptance と terminal audit は従来の `protectedCaps` をそのまま使うため，受理挙動はまだ
-変えていない．この producer-freeze 用 ledger は `DDTyping` の coercion demand に別証人を要求する
-仕組みではない．unifier の origin-aware orientation は
+pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．
+`capEq`／`targetEq` acceptance は cut-local ledger に従い，legacy `protectedCaps` は one-way
+`producerToSlot` と terminal audit の bridge にだけ残る．この producer-freeze 用 ledger は
+`DDTyping` の coercion demand に別証人を要求する仕組みではない．unifier の origin-aware orientation は
 [`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) の kernel slice として
-機械化済みで，切り替えに残るのは solve cut ごとの ledger snapshot と，raw binder ではなく
-局所 solve 後に外へ生存する prevailing image の leaf を freeze する export event である．
-切替が解消するのは producer guard による freeze ギャップ（`packProgram`）であり，
+機械化済みで，W の各 equality solve は ledger snapshot を証明書へ保存し，constructor／primitive
+完了時には raw binder ではなく局所 solve 後に外へ生存する prevailing image の leaf を
+freeze する export event を記録する．これにより producer guard の freeze ギャップ
+（`packProgram`）は解消した．
 `nestedCapProgram` について提示した demand-free coercion を使う wide 導出を受理するために，
 推論器の拒否を変えるものではない．
 
@@ -607,8 +674,9 @@ signature 上の二 sort 宣言体系へ埋め込まれる**こと（`DM.HasTy.e
 `let` の一般化は二 sort generalizer と可換（`generalize_emb`）．多相 `let` の証人
 `let id = λx.x in (id id) 1` の DM 導出とその埋め込みも固定する．受理の宣言側の準備として，
 DM の全型付けが coherent judgment へ入ること（`Coherent.dm_coherent`）は
-`CoherentTyping.lean` で証明済みである．逆方向（conservativity）と algorithmic acceptance
-（公開 `infer` が DM program を全受理すること）は主張しない．
+`CoherentTyping.lean` で証明済みである．`DMTerminalAcceptance.lean` は上の多相 `let` 証人に
+対する raw 成功，terminal bridge check，公開受理を固定する．逆方向（conservativity）と
+一般の algorithmic acceptance（公開 `infer` が全 DM program を受理すること）はまだ主張しない．
 
 [`TypePM/PrincipalityCounterexample.lean`](TypePM/PrincipalityCounterexample.lean) は，
 宣言体系のprincipalityが**そのままの形では偽**であることを機械化された反例で確定する．
@@ -731,8 +799,8 @@ producer へ置き換えた control twin が成功することを対で検査す
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
 | elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing，反証済み wide 注釈不要性境界 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
-| W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
-| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
+| W | `InferenceBase`, `Inference`, `InferenceLedgerAdmissibility`, `InferenceLocalFactorization`, `InferenceTraversalLocalFactorization`, `InferenceTraceFactorization`, `InferenceFreezeTransport`, `InferenceAdmissibleTrace`, `InferenceTraversalAdmissibleTrace`, `InferenceInput`, `InferenceHistory`, `InferenceStateExtension`, `InferenceTraversalStateExtension`, `InferenceRunInvariants`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，origin-admissible local solve／全 traversal の局所因子化証明書／scoped trace 合成／selective freeze 輸送／全 traversal 不変量の統合，入力整形性，append-only history，全 traversal の supply／producer state extension，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
+| 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `AcceptanceGapRegression`, `DMTerminalAcceptance`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，DM 多相 let の terminal 受理，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |
 
 各ファイルは `TypePM/` 以下にある．
 

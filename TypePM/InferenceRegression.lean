@@ -44,8 +44,17 @@ theorem inferPatternFuel_pctor_threads_child_state
       path (.pctor name patterns) state =
         some
           ⟨⟨capability, resultTarget⟩, results.bindings,
-            (finalState.recordEvent
-                (.patternCtorCompatibility finalState.trace.solves.length name
+            ((finalState.freezeCapabilityExport
+                (freshCapImages state.supply entry.scheme.capBinders)
+                (capabilityExportPayload [capability]
+                  (resultTarget :: results.bindings.map fun entry =>
+                    entry.2))).recordEvent
+                (.patternCtorCompatibility
+                  (finalState.freezeCapabilityExport
+                    (freshCapImages state.supply entry.scheme.capBinders)
+                    (capabilityExportPayload [capability]
+                      (resultTarget :: results.bindings.map fun entry =>
+                        entry.2))).trace.solves.length name
                   (results.duals.map Dual.cap) capability)).recordEvent
               (.inferredPattern (.pctor name patterns)
                 ⟨capability, resultTarget⟩ results.bindings path)⟩ := by

@@ -279,7 +279,7 @@ private theorem solveStep_producerToSlot_raw
     ∃ bindings, MatcherToSlotRawCert producerCap consumerCap producerTarget
       consumerTarget bindings step.delta.cap step.delta.target := by
   rcases step with
-    ⟨solveCount, origin, constraint, delta, targetDomain, targetSupport,
+    ⟨solveCount, origin, ledgerSnapshot, constraint, delta, targetDomain, targetSupport,
       certificate, locallySound⟩
   dsimp only at constraintEq rangeFixed ⊢
   subst constraint

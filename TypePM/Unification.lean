@@ -15,11 +15,12 @@ solver on the capability-zonked target types.
 
 The certified kernels below recurse on explicit fuel and are proof carrying:
 every success certifies both soundness and most generality of the returned
-substitution.  Their public wrappers choose a structural fuel bound.  Failure
-includes fuel exhaustion, an occurs check, unequal rigid skolems, unequal
+substitution.  Their public wrappers compute an input-directed complete fuel;
+the caller-supplied fuel interfaces may additionally fail from exhaustion.
+Other failures include an occurs check, unequal rigid skolems, unequal
 constructor heads, unequal capability annotations in target types, and
-unequal constructor/product arities.  Solvability completeness on unifiable
-inputs is not claimed.
+unequal constructor/product arities.  The public wrappers are complete on
+unifiable inputs.
 -/
 
 namespace TypePM
@@ -1086,6 +1087,307 @@ private theorem solveTyPair_mono_succ :
         | _ :: _, [] =>
             cases hrun
 
+/-! ## Well-founded complete fuel drivers
+
+The structural bounds `capFuel` and `tyFuel` remain the shared conservative
+bounds used by the origin-aware paired kernels.  The symmetric Robinson
+wrappers below use separate, input-directed fuel drivers.  These drivers run
+the already certified head kernel at sequential cuts and recurse with a
+decremented variable budget whenever a genuinely unequal head succeeds.
+Thus their recursion follows the same lexicographic measure used by the
+solvability proof: remaining variables first, then structural weight.
+-/
+
+mutual
+
+/-- Sufficient fuel calculated for one symmetric capability constraint,
+relative to a remaining variable budget. -/
+private def completeCapFuelAux :
+    (budget : Nat) -> (left right : Cap) -> Nat
+  | budget, left, right =>
+      if left = right then
+        1
+      else
+        match left, right with
+        | .con leftName leftChildren, .con rightName rightChildren =>
+            if leftName = rightName then
+              completeCapListFuelAux budget leftChildren rightChildren + 1
+            else
+              1
+        | .prod leftComponents, .prod rightComponents =>
+            completeCapListFuelAux budget leftComponents rightComponents + 1
+        | _, _ => 1
+termination_by
+  budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.right <;> omega
+
+/-- Sufficient fuel calculated for symmetric capability-list unification.
+An unequal successful head consumes one unit of the variable budget before
+the head substitution is followed into the tail. -/
+private def completeCapListFuelAux :
+    (budget : Nat) -> (left right : List Cap) -> Nat
+  | budget, leftHead :: leftTail, rightHead :: rightTail =>
+      if leftHead = rightHead then
+        1 + completeCapListFuelAux budget leftTail rightTail + 1
+      else
+        match budget with
+        | 0 => 1
+        | remaining + 1 =>
+            let headFuel :=
+              completeCapFuelAux (remaining + 1) leftHead rightHead
+            match solveCap headFuel leftHead rightHead with
+            | none => 1
+            | some headResult =>
+                headFuel +
+                  completeCapListFuelAux remaining
+                    (Cap.applyList headResult.subst leftTail)
+                    (Cap.applyList headResult.subst rightTail) + 1
+  | _, _, _ => 1
+
+termination_by
+  budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       omega)
+    | (apply Prod.Lex.left
+       omega)
+
+end
+
+mutual
+
+/-- Sufficient fuel calculated for one symmetric target constraint,
+relative to a remaining target-variable budget. -/
+private def completeTyFuelAux :
+    (budget : Nat) -> (left right : Ty) -> Nat
+  | budget, left, right =>
+      if left = right then
+        1
+      else
+        match left, right with
+        | .data leftName leftFields, .data rightName rightFields =>
+            if leftName = rightName then
+              completeTyListFuelAux budget leftFields rightFields + 1
+            else
+              1
+        | .prod leftComponents, .prod rightComponents =>
+            completeTyListFuelAux budget leftComponents rightComponents + 1
+        | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
+            if leftDomain = rightDomain then
+              1 + completeTyFuelAux budget leftCodomain rightCodomain + 1
+            else
+              match budget with
+              | 0 => 1
+              | remaining + 1 =>
+                  let domainFuel :=
+                    completeTyFuelAux (remaining + 1)
+                      leftDomain rightDomain
+                  match solveTy domainFuel leftDomain rightDomain with
+                  | none => 1
+                  | some domainResult =>
+                      domainFuel +
+                        completeTyFuelAux remaining
+                          (leftCodomain.applyTarget domainResult.subst)
+                          (rightCodomain.applyTarget domainResult.subst) + 1
+        | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
+            if leftCap = rightCap then
+              completeTyFuelAux budget leftTarget rightTarget + 1
+            else
+              1
+        | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+            if leftCap = rightCap then
+              completeTyFuelAux budget leftTarget rightTarget + 1
+            else
+              1
+        | _, _ => 1
+termination_by
+  budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       omega)
+    | (apply Prod.Lex.left
+       omega)
+
+/-- Sufficient fuel calculated for symmetric target-list unification. -/
+private def completeTyListFuelAux :
+    (budget : Nat) -> (left right : List Ty) -> Nat
+  | budget, leftHead :: leftTail, rightHead :: rightTail =>
+      if leftHead = rightHead then
+        1 + completeTyListFuelAux budget leftTail rightTail + 1
+      else
+        match budget with
+        | 0 => 1
+        | remaining + 1 =>
+            let headFuel :=
+              completeTyFuelAux (remaining + 1) leftHead rightHead
+            match solveTy headFuel leftHead rightHead with
+            | none => 1
+            | some headResult =>
+                headFuel +
+                  completeTyListFuelAux remaining
+                    (Ty.applyTargetList headResult.subst leftTail)
+                    (Ty.applyTargetList headResult.subst rightTail) + 1
+  | _, _, _ => 1
+termination_by
+  budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       omega)
+    | (apply Prod.Lex.left
+       omega)
+
+end
+
+/-- Complete, input-directed fuel for the symmetric capability kernel. -/
+def mguCapCompleteFuel (left right : Cap) : Nat :=
+  completeCapFuelAux (left.fcv ++ right.fcv).length left right
+
+/-- Complete, input-directed fuel for the symmetric capability-list kernel. -/
+def mguCapListCompleteFuel (left right : List Cap) : Nat :=
+  completeCapListFuelAux
+    (Cap.fcvList left ++ Cap.fcvList right).length left right
+
+/-- Complete, input-directed fuel for the symmetric target kernel. -/
+def mguTyCompleteFuel (left right : Ty) : Nat :=
+  completeTyFuelAux (left.ftv ++ right.ftv).length left right
+
+/-- Complete, input-directed fuel for the symmetric target-list kernel. -/
+def mguTyListCompleteFuel (left right : List Ty) : Nat :=
+  completeTyListFuelAux
+    (Ty.ftvList left ++ Ty.ftvList right).length left right
+
+/-! Small equations used to connect the capability driver to certified runs. -/
+
+@[simp] private theorem completeCapFuelAux_self
+    (budget : Nat) (capability : Cap) :
+    completeCapFuelAux budget capability capability = 1 := by
+  cases capability <;> rw [completeCapFuelAux] <;> simp
+
+@[simp] private theorem completeCapFuelAux_var_left
+    (budget : Nat) (varId : CapVar) (right : Cap) :
+    completeCapFuelAux budget (.var varId) right = 1 := by
+  simpa using completeCapFuelAux.eq_3 budget (.var varId) right
+    (by simp) (by simp)
+
+@[simp] private theorem completeCapFuelAux_var_right
+    (budget : Nat) (left : Cap) (varId : CapVar) :
+    completeCapFuelAux budget left (.var varId) = 1 := by
+  simpa using completeCapFuelAux.eq_3 budget left (.var varId)
+    (by simp) (by simp)
+
+@[simp] private theorem completeCapListFuelAux_nil
+    (budget : Nat) :
+    completeCapListFuelAux budget [] [] = 1 := by
+  exact completeCapListFuelAux.eq_3 budget [] [] (by simp)
+
+private theorem completeCapListFuelAux_cons_eq
+    (budget : Nat) (head : Cap) (leftTail rightTail : List Cap) :
+    completeCapListFuelAux budget (head :: leftTail) (head :: rightTail) =
+      1 + completeCapListFuelAux budget leftTail rightTail + 1 := by
+  cases budget with
+  | zero => simpa using
+      completeCapListFuelAux.eq_1 head leftTail head rightTail
+  | succ remaining => simpa using
+      completeCapListFuelAux.eq_2 head leftTail head rightTail remaining
+
+private theorem completeCapListFuelAux_cons_ne
+    (remaining : Nat) (leftHead rightHead : Cap)
+    (leftTail rightTail : List Cap)
+    (hne : leftHead ≠ rightHead)
+    (headResult : CapResult leftHead rightHead)
+    (hrun : solveCap
+      (completeCapFuelAux (remaining + 1) leftHead rightHead)
+      leftHead rightHead = some headResult) :
+    completeCapListFuelAux (remaining + 1)
+        (leftHead :: leftTail) (rightHead :: rightTail) =
+      completeCapFuelAux (remaining + 1) leftHead rightHead +
+        completeCapListFuelAux remaining
+          (Cap.applyList headResult.subst leftTail)
+          (Cap.applyList headResult.subst rightTail) + 1 := by
+  simpa [hne, hrun] using
+    completeCapListFuelAux.eq_2 leftHead leftTail rightHead rightTail remaining
+
+/-! Small equations used to connect the target driver to certified runs. -/
+
+@[simp] private theorem completeTyFuelAux_self
+    (budget : Nat) (target : Ty) :
+    completeTyFuelAux budget target target = 1 := by
+  rw [completeTyFuelAux.eq_def]
+  simp
+
+@[simp] private theorem completeTyFuelAux_var_left
+    (budget : Nat) (varId : TypePM.TyVar) (right : Ty) :
+    completeTyFuelAux budget (.var varId) right = 1 := by
+  rw [completeTyFuelAux.eq_def]
+  simp
+
+@[simp] private theorem completeTyFuelAux_var_right
+    (budget : Nat) (left : Ty) (varId : TypePM.TyVar) :
+    completeTyFuelAux budget left (.var varId) = 1 := by
+  cases left <;> simp [completeTyFuelAux.eq_def]
+
+@[simp] private theorem completeTyListFuelAux_nil
+    (budget : Nat) :
+    completeTyListFuelAux budget [] [] = 1 := by
+  rw [completeTyListFuelAux.eq_def]
+
+private theorem completeTyFuelAux_fn_domain_eq
+    (budget : Nat) (domain leftCodomain rightCodomain : Ty)
+    (hne : Ty.fn domain leftCodomain ≠ Ty.fn domain rightCodomain) :
+    completeTyFuelAux budget
+        (.fn domain leftCodomain) (.fn domain rightCodomain) =
+      1 + completeTyFuelAux budget leftCodomain rightCodomain + 1 := by
+  rw [completeTyFuelAux.eq_def]
+  simp [hne]
+
+private theorem completeTyFuelAux_fn_domain_ne
+    (remaining : Nat) (leftDomain leftCodomain rightDomain rightCodomain : Ty)
+    (hne : leftDomain ≠ rightDomain)
+    (domainResult : TyResult leftDomain rightDomain)
+    (hrun : solveTy
+      (completeTyFuelAux (remaining + 1) leftDomain rightDomain)
+      leftDomain rightDomain = some domainResult) :
+    completeTyFuelAux (remaining + 1)
+        (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain) =
+      completeTyFuelAux (remaining + 1) leftDomain rightDomain +
+        completeTyFuelAux remaining
+          (leftCodomain.applyTarget domainResult.subst)
+          (rightCodomain.applyTarget domainResult.subst) + 1 := by
+  rw [completeTyFuelAux.eq_def]
+  simp [hne, hrun]
+
+private theorem completeTyListFuelAux_cons_eq
+    (budget : Nat) (head : Ty) (leftTail rightTail : List Ty) :
+    completeTyListFuelAux budget (head :: leftTail) (head :: rightTail) =
+      1 + completeTyListFuelAux budget leftTail rightTail + 1 := by
+  rw [completeTyListFuelAux.eq_def]
+  simp
+
+private theorem completeTyListFuelAux_cons_ne
+    (remaining : Nat) (leftHead rightHead : Ty)
+    (leftTail rightTail : List Ty)
+    (hne : leftHead ≠ rightHead)
+    (headResult : TyResult leftHead rightHead)
+    (hrun : solveTy
+      (completeTyFuelAux (remaining + 1) leftHead rightHead)
+      leftHead rightHead = some headResult) :
+    completeTyListFuelAux (remaining + 1)
+        (leftHead :: leftTail) (rightHead :: rightTail) =
+      completeTyFuelAux (remaining + 1) leftHead rightHead +
+        completeTyListFuelAux remaining
+          (Ty.applyTargetList headResult.subst leftTail)
+          (Ty.applyTargetList headResult.subst rightTail) + 1 := by
+  rw [completeTyListFuelAux.eq_def]
+  simp [hne, hrun]
+
 /-! ## Executable public interfaces and soundness -/
 
 /-- Run capability unification with caller-supplied fuel. -/
@@ -1113,29 +1415,43 @@ def mguTyListFuel
     (fuel : Nat) (left right : List Ty) : Option TySubst :=
   (solveTyList fuel left right).map TyListResult.subst
 
-/-- The specification-level capability unifier with a structural fuel bound. -/
+/-- The complete specification-level capability unifier. -/
 def mguCap (left right : Cap) : Option CapSubst :=
-  mguCapFuel (capFuel left right) left right
+  mguCapFuel (mguCapCompleteFuel left right) left right
 
-/-- Capability-list unification with a structural fuel bound. -/
+/-- Complete capability-list unification. -/
 def mguCapList (left right : List Cap) : Option CapSubst :=
-  mguCapListFuel
-    (2 * (Cap.unificationWeightList left +
-      Cap.unificationWeightList right + 1)) left right
+  mguCapListFuel (mguCapListCompleteFuel left right) left right
 
-/-- The specification-level target unifier with a structural fuel bound. -/
+/-- The complete specification-level target unifier. -/
 def mguTy (left right : Ty) : Option TySubst :=
-  mguTyFuel (tyFuel left right) left right
+  mguTyFuel (mguTyCompleteFuel left right) left right
 
 /-- Finite support of the specification-level target unifier. -/
 def mguTySupport (left right : Ty) : List TypePM.TyVar :=
-  mguTySupportFuel (tyFuel left right) left right
+  mguTySupportFuel (mguTyCompleteFuel left right) left right
 
-/-- Target-list unification with a structural fuel bound. -/
+/-- Complete target-list unification. -/
 def mguTyList (left right : List Ty) : Option TySubst :=
-  mguTyListFuel
-    (2 * (Ty.unificationWeightList left +
-      Ty.unificationWeightList right + 1)) left right
+  mguTyListFuel (mguTyListCompleteFuel left right) left right
+
+/-- The public capability unifier returns identity on a reflexive constraint. -/
+@[simp] theorem mguCap_self (capability : Cap) :
+    mguCap capability capability = some CapSubst.id := by
+  unfold mguCap mguCapCompleteFuel
+  rw [completeCapFuelAux_self]
+  unfold mguCapFuel
+  rw [solveCap, dif_pos rfl]
+  rfl
+
+/-- The public target unifier returns identity on a reflexive constraint. -/
+@[simp] theorem mguTy_self (target : Ty) :
+    mguTy target target = some TySubst.id := by
+  unfold mguTy mguTyCompleteFuel
+  rw [completeTyFuelAux_self]
+  unfold mguTyFuel
+  rw [solveTy, dif_pos rfl]
+  rfl
 
 /-- Every substitution returned by fuelled capability unification is sound. -/
 theorem mguCapFuel_sound
@@ -1248,9 +1564,8 @@ theorem mguTyList_sound
 
 The kernels are proof carrying, so every successful run also certifies that
 the returned substitution is a most general unifier: any unifier of the same
-constraint factors through it.  These theorems hold at every fuel; they say
-nothing about solvability, so completeness of the fuel-bounded wrappers on
-unifiable inputs remains a separate open question. -/
+constraint factors through it.  These theorems hold at every fuel; totality
+of the complete public wrappers is established separately below. -/
 
 /-- Every substitution returned by fuelled capability unification is most
 general. -/
@@ -1353,9 +1668,9 @@ theorem mguTyList_universal
 /-! ## Fuel monotonicity of the public fuelled interfaces
 
 Success of a fuelled kernel is stable under enlarging the fuel, with the same
-returned substitution.  Together with the most-generality certificates this
-sharpens the remaining solvability question to the existence of one
-sufficient fuel: no larger fuel can change or lose an established solution. -/
+returned substitution.  Thus no larger fuel can change or lose an established
+solution, and any successful smaller run agrees with the complete public
+wrapper whenever it lies below the computed complete fuel. -/
 
 /-- Success of fuelled capability unification is preserved by one more unit
 of fuel. -/
@@ -1477,20 +1792,20 @@ theorem mguTyListFuel_mono
   | succ gap ih =>
       exact mguTyListFuel_mono_succ (ih (Nat.le_add_right fuel gap))
 
-/-- Any fuelled capability success at fuel below the structural bound is
+/-- Any fuelled capability success at fuel below the complete bound is
 already the specification-level answer. -/
 theorem mguCap_of_fuel_le
     {fuel : Nat} {left right : Cap} {S : CapSubst}
-    (hle : fuel ≤ capFuel left right)
+    (hle : fuel ≤ mguCapCompleteFuel left right)
     (hsuccess : mguCapFuel fuel left right = some S) :
     mguCap left right = some S :=
   mguCapFuel_mono hle hsuccess
 
-/-- Any fuelled target success at fuel below the structural bound is already
+/-- Any fuelled target success at fuel below the complete bound is already
 the specification-level answer. -/
 theorem mguTy_of_fuel_le
     {fuel : Nat} {left right : Ty} {S : TySubst}
-    (hle : fuel ≤ tyFuel left right)
+    (hle : fuel ≤ mguTyCompleteFuel left right)
     (hsuccess : mguTyFuel fuel left right = some S) :
     mguTy left right = some S :=
   mguTyFuel_mono hle hsuccess
@@ -3193,6 +3508,284 @@ end
 
 mutual
 
+/-- Any unifiable capability constraint whose variables live in `budget`
+succeeds at the input-directed complete fuel. -/
+private theorem solveCap_completeFuel
+    (budget : List CapVar) (left right : Cap)
+    (hbudget : ∀ v, v ∈ left.fcv ++ right.fcv → v ∈ budget)
+    (U : CapSubst) (hunify : left.apply U = right.apply U) :
+    ∃ result : CapResult left right,
+      solveCap (completeCapFuelAux budget.length left right) left right =
+        some result := by
+  by_cases hequal : left = right
+  · subst right
+    exact ⟨_, by
+      rw [completeCapFuelAux_self, solveCap, dif_pos rfl]⟩
+  · match left, right with
+    | .var varId, right =>
+        by_cases hoccurs : varId ∈ right.fcv
+        · exact absurd hunify
+            (Cap.not_unifiable_of_occurs varId right (Ne.symm hequal)
+              hoccurs U)
+        · exact ⟨_, by
+            rw [completeCapFuelAux_var_left, solveCap, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .con leftName leftChildren, .var varId =>
+        by_cases hoccurs : varId ∈ (Cap.con leftName leftChildren).fcv
+        · exact absurd hunify.symm
+            (Cap.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeCapFuelAux_var_right, solveCap, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .prod leftComponents, .var varId =>
+        by_cases hoccurs : varId ∈ (Cap.prod leftComponents).fcv
+        · exact absurd hunify.symm
+            (Cap.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeCapFuelAux_var_right, solveCap, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .any, .var varId =>
+        by_cases hoccurs : varId ∈ Cap.any.fcv
+        · exact absurd hunify.symm
+            (Cap.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeCapFuelAux_var_right, solveCap, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .skolem name, .var varId =>
+        by_cases hoccurs : varId ∈ (Cap.skolem name).fcv
+        · exact absurd hunify.symm
+            (Cap.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeCapFuelAux_var_right, solveCap, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .con leftName leftChildren, .con rightName rightChildren =>
+        simp only [Cap.apply, Cap.con.injEq] at hunify
+        obtain ⟨hname, hchildrenU⟩ := hunify
+        obtain ⟨childResult, hchildren⟩ :=
+          solveCapList_completeFuel budget leftChildren rightChildren
+            (fun v hv => hbudget v hv) U hchildrenU
+        exact ⟨_, by
+          rw [completeCapFuelAux.eq_1, if_neg hequal, if_pos hname]
+          rw [solveCap, dif_neg hequal]
+          simp only []
+          rw [dif_pos hname, hchildren]⟩
+    | .prod leftComponents, .prod rightComponents =>
+        simp only [Cap.apply, Cap.prod.injEq] at hunify
+        obtain ⟨componentResult, hcomponents⟩ :=
+          solveCapList_completeFuel budget leftComponents rightComponents
+            (fun v hv => hbudget v hv) U hunify
+        exact ⟨_, by
+          rw [completeCapFuelAux.eq_2, if_neg hequal]
+          rw [solveCap, dif_neg hequal]
+          simp only []
+          rw [hcomponents]⟩
+    | .any, .any => exact absurd rfl hequal
+    | .any, .skolem _ => simp [Cap.apply] at hunify
+    | .any, .con _ _ => simp [Cap.apply] at hunify
+    | .any, .prod _ => simp [Cap.apply] at hunify
+    | .skolem _, .any => simp [Cap.apply] at hunify
+    | .skolem _, .skolem _ => simp_all [Cap.apply]
+    | .skolem _, .con _ _ => simp [Cap.apply] at hunify
+    | .skolem _, .prod _ => simp [Cap.apply] at hunify
+    | .con _ _, .any => simp [Cap.apply] at hunify
+    | .con _ _, .prod _ => simp [Cap.apply] at hunify
+    | .prod _, .any => simp [Cap.apply] at hunify
+    | .prod _, .skolem _ => simp [Cap.apply] at hunify
+    | .prod _, .con _ _ => simp [Cap.apply] at hunify
+termination_by
+  (budget.length, Cap.unificationWeight left + Cap.unificationWeight right)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.right
+  all_goals simp only [Cap.unificationWeight]
+  all_goals omega
+
+/-- Any unifiable capability-list constraint whose variables live in
+`budget` succeeds at the input-directed complete fuel. -/
+private theorem solveCapList_completeFuel
+    (budget : List CapVar) (left right : List Cap)
+    (hbudget : ∀ v, v ∈ Cap.fcvList left ++ Cap.fcvList right → v ∈ budget)
+    (U : CapSubst)
+    (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ result : CapListResult left right,
+      solveCapList (completeCapListFuelAux budget.length left right)
+        left right = some result := by
+  match left, right with
+  | [], [] => exact ⟨_, by
+      rw [completeCapListFuelAux_nil, solveCapList]⟩
+  | [], _ :: _ => simp [Cap.applyList] at hunify
+  | _ :: _, [] => simp [Cap.applyList] at hunify
+  | leftHead :: leftTail, rightHead :: rightTail =>
+      simp only [Cap.applyList, List.cons.injEq] at hunify
+      obtain ⟨hheadU, htailU⟩ := hunify
+      let fuelHead :=
+        completeCapFuelAux budget.length leftHead rightHead
+      obtain ⟨headResult, hheadRun⟩ :=
+        solveCap_completeFuel budget leftHead rightHead
+          (fun v hv => hbudget v (by
+            simp only [Cap.fcvList, List.mem_append] at hv ⊢
+            rcases hv with h | h
+            · exact Or.inl (Or.inl h)
+            · exact Or.inr (Or.inl h))) U hheadU
+      change solveCap fuelHead leftHead rightHead = some headResult at hheadRun
+      obtain ⟨headRange, headElim⟩ :=
+        (solveCapPair_varCert fuelHead).1 _ _ headResult hheadRun
+      obtain ⟨R, hR⟩ := headResult.universal U hheadU
+      rw [hR, Cap.applyList_comp, Cap.applyList_comp] at htailU
+      by_cases hheadEq : leftHead = rightHead
+      · subst hheadEq
+        have hfuelHead : fuelHead = 1 := by
+          simp [fuelHead]
+        have hid := solveCap_eq_self hheadRun
+        rw [hid, Cap.applyList_id, Cap.applyList_id] at htailU
+        let fuelTail :=
+          completeCapListFuelAux budget.length leftTail rightTail
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveCapList_completeFuel budget leftTail rightTail
+            (fun v hv => hbudget v (by
+              simp only [Cap.fcvList, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inr h)
+              · exact Or.inr (Or.inr h))) R htailU
+        change solveCapList fuelTail leftTail rightTail = some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveCap_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : CapListResult
+            (Cap.applyList headResult'.subst leftTail)
+            (Cap.applyList headResult'.subst rightTail),
+            solveCapList (fuelHead + fuelTail)
+                (Cap.applyList headResult'.subst leftTail)
+                (Cap.applyList headResult'.subst rightTail) =
+              some resultP := by
+          rw [hheadSubst', hid, Cap.applyList_id, Cap.applyList_id]
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveCapList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have houter : ∃ outerResult : CapListResult
+            (leftHead :: leftTail) (leftHead :: rightTail),
+            solveCapList (fuelHead + fuelTail + 1)
+              (leftHead :: leftTail) (leftHead :: rightTail) =
+                some outerResult := by
+          rw [solveCapList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [completeCapListFuelAux_cons_eq]
+        simpa [hfuelHead, fuelTail] using houterRun
+      · obtain ⟨v, hvmem, hvelim⟩ := headElim hheadEq
+        have hvBudget : v ∈ budget := by
+          refine hbudget v ?_
+          simp only [List.mem_append] at hvmem
+          simp only [Cap.fcvList, List.mem_append]
+          rcases hvmem with h | h
+          · exact Or.inl (Or.inl h)
+          · exact Or.inr (Or.inl h)
+        let remaining := (budget.erase v).length
+        have hbudgetLength : budget.length = remaining + 1 := by
+          dsimp [remaining]
+          have herase := List.length_erase_of_mem hvBudget
+          have hpositive := List.length_pos_of_mem hvBudget
+          omega
+        let fuelTail := completeCapListFuelAux remaining
+          (Cap.applyList headResult.subst leftTail)
+          (Cap.applyList headResult.subst rightTail)
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveCapList_completeFuel (budget.erase v)
+            (Cap.applyList headResult.subst leftTail)
+            (Cap.applyList headResult.subst rightTail)
+            (fun w hw => by
+              have hwne : w ≠ v := by
+                rintro rfl
+                rcases List.mem_append.mp hw with hw | hw
+                · exact hvelim.not_mem_applyList _ hw
+                · exact hvelim.not_mem_applyList _ hw
+              have hwBudget : w ∈ budget := by
+                refine hbudget w ?_
+                rcases List.mem_append.mp hw with hw | hw
+                · rcases headRange.applyList_mem hw with h | h
+                  · simp only [Cap.fcvList, List.mem_append]
+                    exact Or.inl (Or.inr h)
+                  · simp only [Cap.fcvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+                · rcases headRange.applyList_mem hw with h | h
+                  · simp only [Cap.fcvList, List.mem_append]
+                    exact Or.inr (Or.inr h)
+                  · simp only [Cap.fcvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+              exact (List.mem_erase_of_ne hwne).mpr hwBudget) R htailU
+        change solveCapList fuelTail
+            (Cap.applyList headResult.subst leftTail)
+            (Cap.applyList headResult.subst rightTail) = some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveCap_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : CapListResult
+            (Cap.applyList headResult'.subst leftTail)
+            (Cap.applyList headResult'.subst rightTail),
+            solveCapList (fuelHead + fuelTail)
+                (Cap.applyList headResult'.subst leftTail)
+                (Cap.applyList headResult'.subst rightTail) =
+              some resultP := by
+          rw [hheadSubst']
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveCapList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have hheadRunRemaining :
+            solveCap (completeCapFuelAux (remaining + 1)
+              leftHead rightHead) leftHead rightHead = some headResult := by
+          rw [← hbudgetLength]
+          exact hheadRun
+        have hfuelHead :
+            completeCapFuelAux (remaining + 1) leftHead rightHead =
+              fuelHead := by
+          rw [← hbudgetLength]
+        have houter : ∃ outerResult : CapListResult
+            (leftHead :: leftTail) (rightHead :: rightTail),
+            solveCapList (fuelHead + fuelTail + 1)
+              (leftHead :: leftTail) (rightHead :: rightTail) =
+                some outerResult := by
+          rw [solveCapList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [hbudgetLength,
+          completeCapListFuelAux_cons_ne remaining leftHead rightHead
+            leftTail rightTail hheadEq headResult hheadRunRemaining,
+          hfuelHead]
+        change solveCapList (fuelHead + fuelTail + 1)
+          (leftHead :: leftTail) (rightHead :: rightTail) = some outerResult
+        exact houterRun
+termination_by
+  (budget.length,
+    Cap.unificationWeightList left + Cap.unificationWeightList right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       simp only [Cap.unificationWeightList]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       exact Nat.sub_lt (List.length_pos_of_mem hvBudget) (by omega))
+
+end
+
+mutual
+
 /-- Any unifiable target constraint whose variables live in `budget`
 succeeds at some fuel. -/
 private theorem solveTy_complete
@@ -3646,6 +4239,575 @@ decreasing_by
 
 end
 
+mutual
+
+/-- Any unifiable target constraint whose variables live in `budget`
+succeeds at the input-directed complete fuel. -/
+private theorem solveTy_completeFuel
+    (budget : List TypePM.TyVar) (left right : Ty)
+    (hbudget : ∀ v, v ∈ left.ftv ++ right.ftv → v ∈ budget)
+    (U : TySubst) (hunify : left.applyTarget U = right.applyTarget U) :
+    ∃ result : TyResult left right,
+      solveTy (completeTyFuelAux budget.length left right) left right =
+        some result := by
+  by_cases hequal : left = right
+  · subst right
+    exact ⟨_, by rw [completeTyFuelAux_self, solveTy, dif_pos rfl]⟩
+  · match left, right with
+    | .var varId, right =>
+        by_cases hoccurs : varId ∈ right.ftv
+        · exact absurd hunify
+            (Ty.not_unifiable_of_occurs varId right (Ne.symm hequal)
+              hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_left, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .skolem skName, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.skolem skName).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .unit, .var varId =>
+        by_cases hoccurs : varId ∈ Ty.unit.ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .int, .var varId =>
+        by_cases hoccurs : varId ∈ Ty.int.ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .bool, .var varId =>
+        by_cases hoccurs : varId ∈ Ty.bool.ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .data dName dFields, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.data dName dFields).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .prod pComponents, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.prod pComponents).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .fn fDomain fCodomain, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.fn fDomain fCodomain).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .matcher mCap mTarget, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.matcher mCap mTarget).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .slot sCap sTarget, .var varId =>
+        by_cases hoccurs : varId ∈ (Ty.slot sCap sTarget).ftv
+        · exact absurd hunify.symm
+            (Ty.not_unifiable_of_occurs varId _ hequal hoccurs U)
+        · exact ⟨_, by
+            rw [completeTyFuelAux_var_right, solveTy, dif_neg hequal]
+            simp only []
+            rw [dif_neg hoccurs]⟩
+    | .data leftName leftFields, .data rightName rightFields =>
+        simp only [Ty.applyTarget, Ty.data.injEq] at hunify
+        obtain ⟨hname, hfieldsU⟩ := hunify
+        obtain ⟨fieldResult, hfields⟩ :=
+          solveTyList_completeFuel budget leftFields rightFields
+            (fun v hv => hbudget v hv) U hfieldsU
+        exact ⟨_, by
+          rw [completeTyFuelAux.eq_1, if_neg hequal, if_pos hname]
+          rw [solveTy, dif_neg hequal]
+          simp only []
+          rw [dif_pos hname, hfields]⟩
+    | .prod leftComponents, .prod rightComponents =>
+        simp only [Ty.applyTarget, Ty.prod.injEq] at hunify
+        obtain ⟨componentResult, hcomponents⟩ :=
+          solveTyList_completeFuel budget leftComponents rightComponents
+            (fun v hv => hbudget v hv) U hunify
+        exact ⟨_, by
+          rw [completeTyFuelAux.eq_2, if_neg hequal]
+          rw [solveTy, dif_neg hequal]
+          simp only []
+          rw [hcomponents]⟩
+    | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
+        simp only [Ty.applyTarget, Ty.fn.injEq] at hunify
+        obtain ⟨hdomainU, hcodomainU⟩ := hunify
+        let fuelDomain :=
+          completeTyFuelAux budget.length leftDomain rightDomain
+        obtain ⟨domainResult, hdomainRun⟩ :=
+          solveTy_completeFuel budget leftDomain rightDomain
+            (fun v hv => hbudget v (by
+              simp only [Ty.ftv, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inl h)
+              · exact Or.inr (Or.inl h))) U hdomainU
+        change solveTy fuelDomain leftDomain rightDomain =
+          some domainResult at hdomainRun
+        obtain ⟨domainRange, domainElim⟩ :=
+          (solveTyPair_varCert fuelDomain).1 _ _ domainResult hdomainRun
+        obtain ⟨R, hR⟩ := domainResult.universal U hdomainU
+        rw [hR, Ty.applyTarget_comp, Ty.applyTarget_comp] at hcodomainU
+        by_cases hdomainEq : leftDomain = rightDomain
+        · subst hdomainEq
+          have hfuelDomain : fuelDomain = 1 := by simp [fuelDomain]
+          have hid := solveTy_eq_self hdomainRun
+          rw [hid, Ty.applyTarget_id, Ty.applyTarget_id] at hcodomainU
+          let fuelCodomain :=
+            completeTyFuelAux budget.length leftCodomain rightCodomain
+          obtain ⟨codomainResult, hcodomainRun⟩ :=
+            solveTy_completeFuel budget leftCodomain rightCodomain
+              (fun v hv => hbudget v (by
+                simp only [Ty.ftv, List.mem_append] at hv ⊢
+                rcases hv with h | h
+                · exact Or.inl (Or.inr h)
+                · exact Or.inr (Or.inr h))) R hcodomainU
+          change solveTy fuelCodomain leftCodomain rightCodomain =
+            some codomainResult at hcodomainRun
+          obtain ⟨domainResult', hdomainRun', hdomainSubst'⟩ :=
+            solveTy_mono_le (Nat.le_add_right fuelDomain fuelCodomain)
+              hdomainRun
+          have happlied : ∃ resultP : TyResult
+              (leftCodomain.applyTarget domainResult'.subst)
+              (rightCodomain.applyTarget domainResult'.subst),
+              solveTy (fuelDomain + fuelCodomain)
+                  (leftCodomain.applyTarget domainResult'.subst)
+                  (rightCodomain.applyTarget domainResult'.subst) =
+                some resultP := by
+            rw [hdomainSubst', hid, Ty.applyTarget_id, Ty.applyTarget_id]
+            obtain ⟨codomainResult', hcodomainRun', _⟩ :=
+              solveTy_mono_le (Nat.le_add_left fuelCodomain fuelDomain)
+                hcodomainRun
+            exact ⟨codomainResult', hcodomainRun'⟩
+          obtain ⟨resultP, hrunP⟩ := happlied
+          have houter : ∃ outerResult : TyResult
+              (.fn leftDomain leftCodomain) (.fn leftDomain rightCodomain),
+              solveTy (fuelDomain + fuelCodomain + 1)
+                (.fn leftDomain leftCodomain)
+                (.fn leftDomain rightCodomain) = some outerResult := by
+            rw [solveTy, dif_neg hequal]
+            simp only []
+            rw [hdomainRun']
+            simp only []
+            rw [hrunP]
+            exact ⟨_, rfl⟩
+          obtain ⟨outerResult, houterRun⟩ := houter
+          refine ⟨outerResult, ?_⟩
+          rw [completeTyFuelAux_fn_domain_eq budget.length leftDomain
+            leftCodomain rightCodomain hequal]
+          simpa [hfuelDomain, fuelCodomain] using houterRun
+        · obtain ⟨v, hvmem, hvelim⟩ := domainElim hdomainEq
+          have hvBudget : v ∈ budget := by
+            refine hbudget v ?_
+            simp only [List.mem_append] at hvmem
+            simp only [Ty.ftv, List.mem_append]
+            rcases hvmem with h | h
+            · exact Or.inl (Or.inl h)
+            · exact Or.inr (Or.inl h)
+          let remaining := (budget.erase v).length
+          have hbudgetLength : budget.length = remaining + 1 := by
+            dsimp [remaining]
+            have herase := List.length_erase_of_mem hvBudget
+            have hpositive := List.length_pos_of_mem hvBudget
+            omega
+          let fuelCodomain := completeTyFuelAux remaining
+            (leftCodomain.applyTarget domainResult.subst)
+            (rightCodomain.applyTarget domainResult.subst)
+          obtain ⟨codomainResult, hcodomainRun⟩ :=
+            solveTy_completeFuel (budget.erase v)
+              (leftCodomain.applyTarget domainResult.subst)
+              (rightCodomain.applyTarget domainResult.subst)
+              (fun w hw => by
+                have hwne : w ≠ v := by
+                  rintro rfl
+                  rcases List.mem_append.mp hw with hw | hw
+                  · exact hvelim.not_mem_applyTarget _ hw
+                  · exact hvelim.not_mem_applyTarget _ hw
+                have hwBudget : w ∈ budget := by
+                  refine hbudget w ?_
+                  rcases List.mem_append.mp hw with hw | hw
+                  · rcases domainRange.applyTarget_mem hw with h | h
+                    · simp only [Ty.ftv, List.mem_append]
+                      exact Or.inl (Or.inr h)
+                    · simp only [Ty.ftv, List.mem_append]
+                      rcases List.mem_append.mp h with h | h
+                      · exact Or.inl (Or.inl h)
+                      · exact Or.inr (Or.inl h)
+                  · rcases domainRange.applyTarget_mem hw with h | h
+                    · simp only [Ty.ftv, List.mem_append]
+                      exact Or.inr (Or.inr h)
+                    · simp only [Ty.ftv, List.mem_append]
+                      rcases List.mem_append.mp h with h | h
+                      · exact Or.inl (Or.inl h)
+                      · exact Or.inr (Or.inl h)
+                exact (List.mem_erase_of_ne hwne).mpr hwBudget) R hcodomainU
+          change solveTy fuelCodomain
+            (leftCodomain.applyTarget domainResult.subst)
+            (rightCodomain.applyTarget domainResult.subst) =
+              some codomainResult at hcodomainRun
+          obtain ⟨domainResult', hdomainRun', hdomainSubst'⟩ :=
+            solveTy_mono_le (Nat.le_add_right fuelDomain fuelCodomain)
+              hdomainRun
+          have happlied : ∃ resultP : TyResult
+              (leftCodomain.applyTarget domainResult'.subst)
+              (rightCodomain.applyTarget domainResult'.subst),
+              solveTy (fuelDomain + fuelCodomain)
+                  (leftCodomain.applyTarget domainResult'.subst)
+                  (rightCodomain.applyTarget domainResult'.subst) =
+                some resultP := by
+            rw [hdomainSubst']
+            obtain ⟨codomainResult', hcodomainRun', _⟩ :=
+              solveTy_mono_le (Nat.le_add_left fuelCodomain fuelDomain)
+                hcodomainRun
+            exact ⟨codomainResult', hcodomainRun'⟩
+          obtain ⟨resultP, hrunP⟩ := happlied
+          have hdomainRunRemaining :
+              solveTy
+                (completeTyFuelAux (remaining + 1)
+                  leftDomain rightDomain)
+                leftDomain rightDomain = some domainResult := by
+            rw [← hbudgetLength]
+            exact hdomainRun
+          have hfuelDomain :
+              completeTyFuelAux (remaining + 1) leftDomain rightDomain =
+                fuelDomain := by
+            rw [← hbudgetLength]
+          have houter : ∃ outerResult : TyResult
+              (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain),
+              solveTy (fuelDomain + fuelCodomain + 1)
+                (.fn leftDomain leftCodomain)
+                (.fn rightDomain rightCodomain) = some outerResult := by
+            rw [solveTy, dif_neg hequal]
+            simp only []
+            rw [hdomainRun']
+            simp only []
+            rw [hrunP]
+            exact ⟨_, rfl⟩
+          obtain ⟨outerResult, houterRun⟩ := houter
+          refine ⟨outerResult, ?_⟩
+          rw [hbudgetLength,
+            completeTyFuelAux_fn_domain_ne remaining leftDomain leftCodomain
+              rightDomain rightCodomain hdomainEq domainResult
+                hdomainRunRemaining,
+            hfuelDomain]
+          change solveTy (fuelDomain + fuelCodomain + 1)
+            (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain) =
+              some outerResult
+          exact houterRun
+    | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
+        simp only [Ty.applyTarget, Ty.matcher.injEq] at hunify
+        obtain ⟨hcap, htargetU⟩ := hunify
+        obtain ⟨targetResult, htargetRun⟩ :=
+          solveTy_completeFuel budget leftTarget rightTarget
+            (fun v hv => hbudget v hv) U htargetU
+        exact ⟨_, by
+          rw [completeTyFuelAux.eq_5, if_neg hequal, if_pos hcap]
+          rw [solveTy, dif_neg hequal]
+          simp only []
+          rw [dif_pos hcap, htargetRun]⟩
+    | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+        simp only [Ty.applyTarget, Ty.slot.injEq] at hunify
+        obtain ⟨hcap, htargetU⟩ := hunify
+        obtain ⟨targetResult, htargetRun⟩ :=
+          solveTy_completeFuel budget leftTarget rightTarget
+            (fun v hv => hbudget v hv) U htargetU
+        exact ⟨_, by
+          rw [completeTyFuelAux.eq_6, if_neg hequal, if_pos hcap]
+          rw [solveTy, dif_neg hequal]
+          simp only []
+          rw [dif_pos hcap, htargetRun]⟩
+    | .skolem _, .skolem _ => simp_all [Ty.applyTarget]
+    | .skolem _, .unit => simp [Ty.applyTarget] at hunify
+    | .skolem _, .int => simp [Ty.applyTarget] at hunify
+    | .skolem _, .bool => simp [Ty.applyTarget] at hunify
+    | .skolem _, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .skolem _, .prod _ => simp [Ty.applyTarget] at hunify
+    | .skolem _, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .skolem _, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .skolem _, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .unit, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .unit, .unit => exact absurd rfl hequal
+    | .unit, .int => simp [Ty.applyTarget] at hunify
+    | .unit, .bool => simp [Ty.applyTarget] at hunify
+    | .unit, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .unit, .prod _ => simp [Ty.applyTarget] at hunify
+    | .unit, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .unit, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .unit, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .int, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .int, .unit => simp [Ty.applyTarget] at hunify
+    | .int, .int => exact absurd rfl hequal
+    | .int, .bool => simp [Ty.applyTarget] at hunify
+    | .int, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .int, .prod _ => simp [Ty.applyTarget] at hunify
+    | .int, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .int, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .int, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .bool, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .bool, .unit => simp [Ty.applyTarget] at hunify
+    | .bool, .int => simp [Ty.applyTarget] at hunify
+    | .bool, .bool => exact absurd rfl hequal
+    | .bool, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .bool, .prod _ => simp [Ty.applyTarget] at hunify
+    | .bool, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .bool, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .bool, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .data _ _, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .data _ _, .unit => simp [Ty.applyTarget] at hunify
+    | .data _ _, .int => simp [Ty.applyTarget] at hunify
+    | .data _ _, .bool => simp [Ty.applyTarget] at hunify
+    | .data _ _, .prod _ => simp [Ty.applyTarget] at hunify
+    | .data _ _, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .data _ _, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .data _ _, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .prod _, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .prod _, .unit => simp [Ty.applyTarget] at hunify
+    | .prod _, .int => simp [Ty.applyTarget] at hunify
+    | .prod _, .bool => simp [Ty.applyTarget] at hunify
+    | .prod _, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .prod _, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .prod _, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .prod _, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .unit => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .int => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .bool => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .prod _ => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .matcher _ _ => simp [Ty.applyTarget] at hunify
+    | .fn _ _, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .unit => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .int => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .bool => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .prod _ => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .matcher _ _, .slot _ _ => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .skolem _ => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .unit => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .int => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .bool => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .data _ _ => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .prod _ => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .fn _ _ => simp [Ty.applyTarget] at hunify
+    | .slot _ _, .matcher _ _ => simp [Ty.applyTarget] at hunify
+termination_by
+  (budget.length, Ty.unificationWeight left + Ty.unificationWeight right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       simp only [Ty.unificationWeight]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       exact Nat.sub_lt (List.length_pos_of_mem hvBudget) (by omega))
+
+/-- Any unifiable target-list constraint whose variables live in `budget`
+succeeds at the input-directed complete fuel. -/
+private theorem solveTyList_completeFuel
+    (budget : List TypePM.TyVar) (left right : List Ty)
+    (hbudget : ∀ v, v ∈ Ty.ftvList left ++ Ty.ftvList right → v ∈ budget)
+    (U : TySubst)
+    (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
+    ∃ result : TyListResult left right,
+      solveTyList (completeTyListFuelAux budget.length left right)
+        left right = some result := by
+  match left, right with
+  | [], [] => exact ⟨_, by
+      rw [completeTyListFuelAux_nil, solveTyList]⟩
+  | [], _ :: _ => simp [Ty.applyTargetList] at hunify
+  | _ :: _, [] => simp [Ty.applyTargetList] at hunify
+  | leftHead :: leftTail, rightHead :: rightTail =>
+      simp only [Ty.applyTargetList, List.cons.injEq] at hunify
+      obtain ⟨hheadU, htailU⟩ := hunify
+      let fuelHead := completeTyFuelAux budget.length leftHead rightHead
+      obtain ⟨headResult, hheadRun⟩ :=
+        solveTy_completeFuel budget leftHead rightHead
+          (fun v hv => hbudget v (by
+            simp only [Ty.ftvList, List.mem_append] at hv ⊢
+            rcases hv with h | h
+            · exact Or.inl (Or.inl h)
+            · exact Or.inr (Or.inl h))) U hheadU
+      change solveTy fuelHead leftHead rightHead = some headResult at hheadRun
+      obtain ⟨headRange, headElim⟩ :=
+        (solveTyPair_varCert fuelHead).1 _ _ headResult hheadRun
+      obtain ⟨R, hR⟩ := headResult.universal U hheadU
+      rw [hR, Ty.applyTargetList_comp, Ty.applyTargetList_comp] at htailU
+      by_cases hheadEq : leftHead = rightHead
+      · subst hheadEq
+        have hfuelHead : fuelHead = 1 := by simp [fuelHead]
+        have hid := solveTy_eq_self hheadRun
+        rw [hid, Ty.applyTargetList_id, Ty.applyTargetList_id] at htailU
+        let fuelTail := completeTyListFuelAux budget.length leftTail rightTail
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveTyList_completeFuel budget leftTail rightTail
+            (fun v hv => hbudget v (by
+              simp only [Ty.ftvList, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inr h)
+              · exact Or.inr (Or.inr h))) R htailU
+        change solveTyList fuelTail leftTail rightTail =
+          some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveTy_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : TyListResult
+            (Ty.applyTargetList headResult'.subst leftTail)
+            (Ty.applyTargetList headResult'.subst rightTail),
+            solveTyList (fuelHead + fuelTail)
+                (Ty.applyTargetList headResult'.subst leftTail)
+                (Ty.applyTargetList headResult'.subst rightTail) =
+              some resultP := by
+          rw [hheadSubst', hid, Ty.applyTargetList_id, Ty.applyTargetList_id]
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveTyList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have houter : ∃ outerResult : TyListResult
+            (leftHead :: leftTail) (leftHead :: rightTail),
+            solveTyList (fuelHead + fuelTail + 1)
+              (leftHead :: leftTail) (leftHead :: rightTail) =
+                some outerResult := by
+          rw [solveTyList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [completeTyListFuelAux_cons_eq]
+        simpa [hfuelHead, fuelTail] using houterRun
+      · obtain ⟨v, hvmem, hvelim⟩ := headElim hheadEq
+        have hvBudget : v ∈ budget := by
+          refine hbudget v ?_
+          simp only [List.mem_append] at hvmem
+          simp only [Ty.ftvList, List.mem_append]
+          rcases hvmem with h | h
+          · exact Or.inl (Or.inl h)
+          · exact Or.inr (Or.inl h)
+        let remaining := (budget.erase v).length
+        have hbudgetLength : budget.length = remaining + 1 := by
+          dsimp [remaining]
+          have herase := List.length_erase_of_mem hvBudget
+          have hpositive := List.length_pos_of_mem hvBudget
+          omega
+        let fuelTail := completeTyListFuelAux remaining
+          (Ty.applyTargetList headResult.subst leftTail)
+          (Ty.applyTargetList headResult.subst rightTail)
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveTyList_completeFuel (budget.erase v)
+            (Ty.applyTargetList headResult.subst leftTail)
+            (Ty.applyTargetList headResult.subst rightTail)
+            (fun w hw => by
+              have hwne : w ≠ v := by
+                rintro rfl
+                rcases List.mem_append.mp hw with hw | hw
+                · exact hvelim.not_mem_applyTargetList _ hw
+                · exact hvelim.not_mem_applyTargetList _ hw
+              have hwBudget : w ∈ budget := by
+                refine hbudget w ?_
+                rcases List.mem_append.mp hw with hw | hw
+                · rcases headRange.applyTargetList_mem hw with h | h
+                  · simp only [Ty.ftvList, List.mem_append]
+                    exact Or.inl (Or.inr h)
+                  · simp only [Ty.ftvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+                · rcases headRange.applyTargetList_mem hw with h | h
+                  · simp only [Ty.ftvList, List.mem_append]
+                    exact Or.inr (Or.inr h)
+                  · simp only [Ty.ftvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+              exact (List.mem_erase_of_ne hwne).mpr hwBudget) R htailU
+        change solveTyList fuelTail
+            (Ty.applyTargetList headResult.subst leftTail)
+            (Ty.applyTargetList headResult.subst rightTail) =
+          some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveTy_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : TyListResult
+            (Ty.applyTargetList headResult'.subst leftTail)
+            (Ty.applyTargetList headResult'.subst rightTail),
+            solveTyList (fuelHead + fuelTail)
+                (Ty.applyTargetList headResult'.subst leftTail)
+                (Ty.applyTargetList headResult'.subst rightTail) =
+              some resultP := by
+          rw [hheadSubst']
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveTyList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have hheadRunRemaining :
+            solveTy (completeTyFuelAux (remaining + 1) leftHead rightHead)
+              leftHead rightHead = some headResult := by
+          rw [← hbudgetLength]
+          exact hheadRun
+        have hfuelHead :
+            completeTyFuelAux (remaining + 1) leftHead rightHead =
+              fuelHead := by
+          rw [← hbudgetLength]
+        have houter : ∃ outerResult : TyListResult
+            (leftHead :: leftTail) (rightHead :: rightTail),
+            solveTyList (fuelHead + fuelTail + 1)
+              (leftHead :: leftTail) (rightHead :: rightTail) =
+                some outerResult := by
+          rw [solveTyList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [hbudgetLength,
+          completeTyListFuelAux_cons_ne remaining leftHead rightHead
+            leftTail rightTail hheadEq headResult hheadRunRemaining,
+          hfuelHead]
+        change solveTyList (fuelHead + fuelTail + 1)
+          (leftHead :: leftTail) (rightHead :: rightTail) = some outerResult
+        exact houterRun
+termination_by
+  (budget.length,
+    Ty.unificationWeightList left + Ty.unificationWeightList right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       simp only [Ty.unificationWeightList]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       exact Nat.sub_lt (List.length_pos_of_mem hvBudget) (by omega))
+
+end
+
 /-- Any unifiable capability constraint is solved at some fuel. -/
 theorem mguCapFuel_complete
     {left right : Cap} {U : CapSubst}
@@ -3666,6 +4828,42 @@ theorem mguCapListFuel_complete
     solveCapList_complete (Cap.fcvList left ++ Cap.fcvList right) left right
       (fun v hv => hv) U hunify
   exact ⟨fuel, result.subst, by simp [mguCapListFuel, hrun]⟩
+
+/-- Any unifiable capability constraint is solved by its computed complete fuel. -/
+theorem mguCapCompleteFuel_complete
+    {left right : Cap} {U : CapSubst}
+    (hunify : left.apply U = right.apply U) :
+    ∃ S : CapSubst,
+      mguCapFuel (mguCapCompleteFuel left right) left right = some S := by
+  obtain ⟨result, hrun⟩ :=
+    solveCap_completeFuel (left.fcv ++ right.fcv) left right
+      (fun v hv => hv) U hunify
+  refine ⟨result.subst, ?_⟩
+  change
+    (solveCap
+      (completeCapFuelAux (left.fcv ++ right.fcv).length left right)
+      left right).map CapResult.subst = some result.subst
+  rw [hrun]
+  rfl
+
+/-- Any unifiable capability-list constraint is solved by its computed complete fuel. -/
+theorem mguCapListCompleteFuel_complete
+    {left right : List Cap} {U : CapSubst}
+    (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ S : CapSubst,
+      mguCapListFuel (mguCapListCompleteFuel left right) left right = some S := by
+  obtain ⟨result, hrun⟩ :=
+    solveCapList_completeFuel
+      (Cap.fcvList left ++ Cap.fcvList right) left right
+      (fun v hv => hv) U hunify
+  refine ⟨result.subst, ?_⟩
+  change
+    (solveCapList
+      (completeCapListFuelAux
+        (Cap.fcvList left ++ Cap.fcvList right).length left right)
+      left right).map CapListResult.subst = some result.subst
+  rw [hrun]
+  rfl
 
 /-- Any unifiable target constraint is solved at some fuel. -/
 theorem mguTyFuel_complete
@@ -3688,6 +4886,111 @@ theorem mguTyListFuel_complete
       (fun v hv => hv) U hunify
   exact ⟨fuel, result.subst, by simp [mguTyListFuel, hrun]⟩
 
+/-- Any unifiable target constraint is solved by its computed complete fuel. -/
+theorem mguTyCompleteFuel_complete
+    {left right : Ty} {U : TySubst}
+    (hunify : left.applyTarget U = right.applyTarget U) :
+    ∃ S : TySubst,
+      mguTyFuel (mguTyCompleteFuel left right) left right = some S := by
+  obtain ⟨result, hrun⟩ :=
+    solveTy_completeFuel (left.ftv ++ right.ftv) left right
+      (fun v hv => hv) U hunify
+  refine ⟨result.subst, ?_⟩
+  change
+    (solveTy
+      (completeTyFuelAux (left.ftv ++ right.ftv).length left right)
+      left right).map TyResult.subst = some result.subst
+  rw [hrun]
+  rfl
+
+/-- Any unifiable target-list constraint is solved by its computed complete fuel. -/
+theorem mguTyListCompleteFuel_complete
+    {left right : List Ty} {U : TySubst}
+    (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
+    ∃ S : TySubst,
+      mguTyListFuel (mguTyListCompleteFuel left right) left right = some S := by
+  obtain ⟨result, hrun⟩ :=
+    solveTyList_completeFuel
+      (Ty.ftvList left ++ Ty.ftvList right) left right
+      (fun v hv => hv) U hunify
+  refine ⟨result.subst, ?_⟩
+  change
+    (solveTyList
+      (completeTyListFuelAux
+        (Ty.ftvList left ++ Ty.ftvList right).length left right)
+      left right).map TyListResult.subst = some result.subst
+  rw [hrun]
+  rfl
+
+/-- Every unifiable capability constraint is solved by the public wrapper. -/
+theorem mguCap_complete
+    {left right : Cap} {U : CapSubst}
+    (hunify : left.apply U = right.apply U) :
+    ∃ S : CapSubst, mguCap left right = some S := by
+  simpa [mguCap] using mguCapCompleteFuel_complete hunify
+
+/-- Every unifiable capability-list constraint is solved by the public wrapper. -/
+theorem mguCapList_complete
+    {left right : List Cap} {U : CapSubst}
+    (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ S : CapSubst, mguCapList left right = some S := by
+  simpa [mguCapList] using mguCapListCompleteFuel_complete hunify
+
+/-- Every unifiable target constraint is solved by the public wrapper. -/
+theorem mguTy_complete
+    {left right : Ty} {U : TySubst}
+    (hunify : left.applyTarget U = right.applyTarget U) :
+    ∃ S : TySubst, mguTy left right = some S := by
+  simpa [mguTy] using mguTyCompleteFuel_complete hunify
+
+/-- Every unifiable target-list constraint is solved by the public wrapper. -/
+theorem mguTyList_complete
+    {left right : List Ty} {U : TySubst}
+    (hunify : Ty.applyTargetList U left = Ty.applyTargetList U right) :
+    ∃ S : TySubst, mguTyList left right = some S := by
+  simpa [mguTyList] using mguTyListCompleteFuel_complete hunify
+
+/-- The public capability wrapper succeeds exactly on unifiable inputs. -/
+theorem mguCap_isSome_iff_unifiable (left right : Cap) :
+    (∃ S : CapSubst, mguCap left right = some S) ↔
+      ∃ U : CapSubst, left.apply U = right.apply U := by
+  constructor
+  · rintro ⟨S, success⟩
+    exact ⟨S, mguCap_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguCap_complete unifies
+
+/-- The public capability-list wrapper succeeds exactly on unifiable inputs. -/
+theorem mguCapList_isSome_iff_unifiable (left right : List Cap) :
+    (∃ S : CapSubst, mguCapList left right = some S) ↔
+      ∃ U : CapSubst, Cap.applyList U left = Cap.applyList U right := by
+  constructor
+  · rintro ⟨S, success⟩
+    exact ⟨S, mguCapList_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguCapList_complete unifies
+
+/-- The public target wrapper succeeds exactly on unifiable inputs. -/
+theorem mguTy_isSome_iff_unifiable (left right : Ty) :
+    (∃ S : TySubst, mguTy left right = some S) ↔
+      ∃ U : TySubst, left.applyTarget U = right.applyTarget U := by
+  constructor
+  · rintro ⟨S, success⟩
+    exact ⟨S, mguTy_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguTy_complete unifies
+
+/-- The public target-list wrapper succeeds exactly on unifiable inputs. -/
+theorem mguTyList_isSome_iff_unifiable (left right : List Ty) :
+    (∃ S : TySubst, mguTyList left right = some S) ↔
+      ∃ U : TySubst,
+        Ty.applyTargetList U left = Ty.applyTargetList U right := by
+  constructor
+  · rintro ⟨S, success⟩
+    exact ⟨S, mguTyList_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguTyList_complete unifies
+
 /-- A capability constraint has a unifier iff some fuel solves it. -/
 theorem mguCapFuel_isSome_iff_unifiable (left right : Cap) :
     (∃ (fuel : Nat) (S : CapSubst),
@@ -3698,6 +5001,18 @@ theorem mguCapFuel_isSome_iff_unifiable (left right : Cap) :
     exact ⟨S, mguCapFuel_sound hsuccess⟩
   · rintro ⟨U, hunify⟩
     exact mguCapFuel_complete hunify
+
+/-- A capability-list constraint has a unifier iff some fuel solves it. -/
+theorem mguCapListFuel_isSome_iff_unifiable
+    (left right : List Cap) :
+    (∃ (fuel : Nat) (S : CapSubst),
+        mguCapListFuel fuel left right = some S) ↔
+      ∃ U : CapSubst, Cap.applyList U left = Cap.applyList U right := by
+  constructor
+  · rintro ⟨fuel, S, success⟩
+    exact ⟨S, mguCapListFuel_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguCapListFuel_complete unifies
 
 /-- A target constraint has a unifier iff some fuel solves it. -/
 theorem mguTyFuel_isSome_iff_unifiable (left right : Ty) :
@@ -3710,6 +5025,19 @@ theorem mguTyFuel_isSome_iff_unifiable (left right : Ty) :
   · rintro ⟨U, hunify⟩
     exact mguTyFuel_complete hunify
 
+/-- A target-list constraint has a unifier iff some fuel solves it. -/
+theorem mguTyListFuel_isSome_iff_unifiable
+    (left right : List Ty) :
+    (∃ (fuel : Nat) (S : TySubst),
+        mguTyListFuel fuel left right = some S) ↔
+      ∃ U : TySubst,
+        Ty.applyTargetList U left = Ty.applyTargetList U right := by
+  constructor
+  · rintro ⟨fuel, S, success⟩
+    exact ⟨S, mguTyListFuel_sound success⟩
+  · rintro ⟨U, unifies⟩
+    exact mguTyListFuel_complete unifies
+
 /-! ## Executable regression checks -/
 
 /-- Capability unification solves variables on both sides and composes them. -/
@@ -3717,69 +5045,71 @@ theorem mguCap_composition_regression :
     (mguCap
       (.prod [.var 0, .var 1])
       (.prod [.con "List" [.any], .var 0])).isSome = true := by
-  rfl
+  native_decide
 
 /-- Target unification propagates the domain solution into the codomain. -/
 theorem mguTy_composition_regression :
     (mguTy
       (.fn (.var 0) (.var 1))
       (.fn .int (.var 0))).isSome = true := by
-  rfl
+  native_decide
 
 /-- Capability occurs checks reject cyclic substitutions. -/
 theorem mguCap_occurs_check_regression :
     mguCap (.var 0) (.con "List" [.var 0]) = none := by
-  rfl
+  native_decide
 
 /-- Target occurs checks reject cyclic substitutions. -/
 theorem mguTy_occurs_check_regression :
     mguTy (.var 0) (.fn (.var 0) .int) = none := by
-  rfl
+  native_decide
 
 /-- Distinct rigid capability skolems cannot be solved. -/
 theorem mguCap_skolem_regression :
     mguCap (.skolem 0) (.skolem 1) = none := by
-  rfl
+  native_decide
 
 /-- Distinct rigid target skolems cannot be solved. -/
 theorem mguTy_skolem_regression :
     mguTy (.skolem 0) (.skolem 1) = none := by
-  rfl
+  native_decide
 
 /-- Capability constructor heads are checked before their arguments. -/
 theorem mguCap_constructor_regression :
     mguCap (.con "List" [.any]) (.con "Tree" [.any]) = none := by
-  rfl
+  native_decide
 
 /-- Capability constructor arity mismatches are rejected. -/
 theorem mguCap_arity_regression :
     mguCap (.con "List" [.any]) (.con "List" [.any, .any]) = none := by
-  rfl
+  native_decide
 
 /-- Target constructor heads are checked before their arguments. -/
 theorem mguTy_constructor_regression :
     mguTy (.data "List" [.int]) (.data "Tree" [.int]) = none := by
-  rfl
+  native_decide
 
 /-- Target constructor arity mismatches are rejected. -/
 theorem mguTy_arity_regression :
     mguTy (.data "List" [.int]) (.data "List" [.int, .int]) = none := by
-  rfl
+  native_decide
 
 /-- Capability annotations are rigid inputs to the target-sort solver. -/
 theorem mguTy_capability_annotation_regression :
     mguTy (.matcher (.var 0) .int) (.matcher .any .int) = none := by
-  rfl
+  native_decide
 
 /-- `Any` is a rigid ground constructor for symmetric capability MGU. -/
 example : mguCap .any .any = some CapSubst.id := by
-  rfl
+  simp [mguCap, mguCapCompleteFuel, mguCapFuel, solveCap]
 
 example : mguCap .any (.con "K" []) = none := by
-  rfl
+  native_decide
 
 example : mguCap (.var 0) .any = some (CapSubst.single 0 .any) := by
-  rfl
+  apply mguCap_of_fuel_le (fuel := 1)
+  · simp [mguCapCompleteFuel]
+  · rfl
 
 end Unification
 end TypePM

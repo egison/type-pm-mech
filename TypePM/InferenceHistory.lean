@@ -190,6 +190,37 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                             split at success
                             · simp only [Option.some.injEq] at success
                               subst result
+                              let exportPayload := capabilityExportPayload
+                                [capability]
+                                (resultTarget ::
+                                  children.bindings.map fun entry => entry.2)
+                              let frozenState :=
+                                solvedState.freezeCapabilityExport
+                                  (freshCapImages state.supply
+                                    entry.scheme.capBinders)
+                                  exportPayload
+                              have frozenHistory :
+                                  solvedState.HistoryPrefix frozenState := by
+                                exact
+                                  InferState.historyPrefix_freezeCapabilityExport
+                                    solvedState
+                                    (freshCapImages state.supply
+                                      entry.scheme.capBinders)
+                                    exportPayload
+                              have finishedHistory :
+                                  solvedState.HistoryPrefix
+                                    ((frozenState.recordEvent
+                                      (.patternCtorCompatibility
+                                        frozenState.trace.solves.length name
+                                        (children.duals.map Dual.cap)
+                                        capability)).recordEvent
+                                      (.inferredPattern (.pctor name patterns)
+                                        ⟨capability, resultTarget⟩
+                                        children.bindings path)) := by
+                                exact frozenHistory.trans
+                                  ((InferState.historyPrefix_recordEvent
+                                    _ _).trans
+                                    (InferState.historyPrefix_recordEvent _ _))
                               exact (instantiateCtorInState_historyPrefix_of_eq
                                   instEq).trans
                                 ((visit_historyPrefix instState .patternCtor
@@ -198,11 +229,7 @@ private theorem patternHistoryAtFuel (fuel : Nat) : PatternHistoryAtFuel fuel :=
                                     ((alignPatternTargets_historyPrefix
                                       alignmentEq).trans
                                       ((solvePatternCtorCapability_historyPrefix
-                                        capabilityEq).trans
-                                        ((InferState.historyPrefix_recordEvent
-                                          _ _).trans
-                                          (InferState.historyPrefix_recordEvent
-                                            _ _))))))
+                                        capabilityEq).trans finishedHistory))))
                             · contradiction
         | pand left right =>
             simp only [inferPatternFuel] at success

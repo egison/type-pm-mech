@@ -112,14 +112,14 @@ $\mathtt{let}$ で多相化した形は，各 lookup が独立な fresh domain i
 その control は，結果が三つの相異なる target 変数を持つ raw producer-level shape のままであり，
 raw solve trace に producer-to-slot constraint が無いことも検査する．最初の具体反例だった
 or pattern の分岐別 freshening は，binder 名の照合と束縛型の単一化による整合へ改めて
-解消し，受理側の regression として固定した．既知の具体的な capability 側の真の受理ギャップは
-instance capability の producer guard による固定である：
+解消し，受理側の regression として固定した．instance capability の producer guard による
+旧ギャップも解消した：
 $\mathsf{Pack} : \forall\kappa\,\alpha.\ \mathsf{Matcher}\,\kappa\,\alpha \to
 \mathsf{Packed}$ に対する $\mathsf{Pack\ something}$ は宣言的には
-$\kappa := \Any$ の instance で型付くが，推論器は fresh instance capability を
-protected producer として記録し，guard がその束縛を拒否する（capability を scheme 側で
-$\Any$ に固定した control は受理される）．この反例は現行推論器に対する反証を伴い，
-origin-aware な paired unifier（guard の ledger 化）で解消させる．これは coercion demand の
+$\kappa := \Any$ の instance で型付き，推論器も raw／public の両境界で受理する．fresh instance
+capability は局所 solve 中だけ structural-flexible とし，constructor export 時には prevailing
+result に生存する image leaf だけを rename-only へ freeze する．このため $\mathsf{Packed}$ に
+capability が生存しないこの例では freeze leaf は空になる．これは coercion demand の
 可否とは独立な capability freeze／export の問題であり，$\mathsf{DDTyping}$ の selector 規則へ
 混ぜない．また current selector の raw-source blind spot は，この freeze gap とも別の
 completeness 軸として扱う．
@@ -398,8 +398,10 @@ $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であ
 （任意の別 unifier が成功結果を経由して factor すること），fuel 単調性
 （成功はより大きい任意の fuel で同じ substitution のまま保存されること），および
 可解な入力に対する $\exists$fuel 完全性（unifier を持つ制約はある fuel で成功し，
-可解性と $\exists$fuel 成功が同値になること）である．固定の構造 fuel bound を使う
-wrapper の十分性は含まない．
+可解性と $\exists$fuel 成功が同値になること）である．さらに対称 solver の公開 wrapper は，
+残り変数 budget と構造に基づく入力依存の十分 fuel を計算し，Cap／Ty とその list 制約の
+可解性から成功が従い，soundness と合わせて公開 wrapper の成功と可解性は同値になる．
+origin-aware paired solver が使う旧構造 fuel bound の十分性は含まない．
 $\Any$ はこの一方向 consumer relation でだけ wildcard であり，対称な $\mguCap$
 では通常の rigid ground constructor として扱う．従って $\mguCap(\Any,\Any)$ は
 成功するが，$\mguCap(\Any,K\overline\kappa)$ は失敗する（flexible variable を
@@ -1130,10 +1132,43 @@ premise とする oracle は置かない．
 
 raw traversal $\mathsf{inferRaw}$ は expression，pattern，primitive pattern，data
 pattern，clause，slot check を有限な fuel 再帰で実行し，成功時には全 solver step と
-source event を trace に保持する．fresh value instance の capability variable は
-protected producer として記録し，全 solver delta がそれらを固定することを実行時にも
-監査する．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
+source event を trace に保持する．各 equality solve は cut-local capability-origin ledger
+snapshot と proof-carrying delta を記録する．constructor／primitive の fresh capability
+instance は局所 solve 中 structural-flexible とし，完了時に prevailing exported payload へ生存する
+image leaf だけを rename-only へ freeze する．既存 value producer は rename-only として
+構造的 strengthening を拒否し，legacy protected ledger は one-way solve と terminal audit の
+bridge に残す．matcher literal の成功には $\CoverageOK$，catch-all，arm exhaustiveness，
 binder 線形性の各 checker の成功を要求する．
+
+二つの W state の強い extension relation は，solver／event trace の prefix，capability／target
+fresh counter の非減少，既に protected な capability の包含を同時に要求する．これは反射的・
+推移的であり，record，fresh allocation，producer protection，scheme／constructor／dual
+instantiation，export freeze，単制約の成功について保存される．origin ledger は structural-flexible
+から rename-only への policy transition を含み global な componentwise order を持たないため，
+この relation の field には含めない．alignment，freshening，expression／pattern／primitive pattern／
+data pattern，arm／clause／matcher の相互再帰 traversal もこの relation を保存し，最終的に
+$\mathsf{inferRaw}$ 成功が初期 state を拡張することを証明する．
+これと独立に，各 solver step の delta がその step に保存した ledger snapshot に admissible
+である trace invariant を置く．ledger-aware local solver は入力 ledger と保存 snapshot の一致，
+三 constraint すべての admissibility を与えるので，raw／resolved 単制約実行はこの invariant を
+保存する．invariant は history prefix へ制限でき，admissible な solve suffix で拡張できる．
+さらに全 mutual traversal，arm／clause／matcher，protected-result filter へ保存を持ち上げ，
+empty 初期 state からの $\mathsf{inferRaw}$ 成功 trace がこの invariant を満たすことを証明する．
+また単一 solve では，origin-relative universality と one-way matching の一意性を組み合わせ，
+同じ制約を解く admissible competitor が実行結果の delta を経由して因子化されることを
+三 constraint branch すべてに対して証明する．legacy symmetric certificate はこの定理の対象に含めない．
+各保存 solve step がこの局所因子化を持つ trace invariant を定義し，alignment，
+expression／pattern／arm／clause／matcher の全 traversal と terminal filter へ持ち上げ，
+$\mathsf{inferRaw}$ 成功 trace の全 step に対して証明する．
+raw W 境界では，これと state extension／per-snapshot admissibility を一つの
+run-invariant 証明書として同時に取り出せる．
+trace prefix に対する因子化で残った substitution が，次の solve snapshot に admissible で
+その resolved constraint を解くなら，局所因子化を一段 snoc した trace へ合成できる．
+この scoped theorem は record-solve と raw／resolved 単制約 run まで持ち上げる．
+export freeze で選択された leaf の residual 像が，更新後 ledger で非 structural な変数への
+rename であるなら，選択的 $\mathsf{renameOnly}$ transition の後へ residual admissibility と
+scoped trace factorization を同時に輸送できる．選択 leaf を固定する現行 terminal 条件は，
+この safe-rename 条件の強い十分条件として従う．
 
 Pattern constructor の capability inference は，まず zonk 済み child capability に対する
 exact projection を試みる．子 pattern が互いに独立な fresh consumer capability を持つために
@@ -1142,7 +1177,7 @@ result variable に一つの共有 fresh capability を割り当て，constructo
 展開した demand を作る．例えば generic list の $\mathtt{cons}$ では，二つの field に
 $\kappa$ と $\mathtt{List}\;\kappa$ を要求する．result variable へ到達しない field は
 constraint を生成せず，到達する field だけについて child consumer capability と demand の
-capability equality を protected-producer guard の下で解く．その後に child を再び zonk し，
+capability equality を origin ledger の下で解く．その後に child を再び zonk し，
 exact projection を再実行する．これは pattern consumer 間の制約解決であり，expected target
 や value producer capability を seed として構造化する経路ではない．
 共有 result variable に到達する field の内部では，到達しない observable subposition を
@@ -1158,8 +1193,9 @@ $\mathtt{List}\;\kappa$ となり，最終 $\capcompat$ が成功することを
 pattern constructor を raw/public inference がともに拒否し，capability だけを整合させた
 control twin が公開 inference と soundness elimination を通ることを対で検査する．量化
 pattern-function instance の protected capability variable を実際に $\mathtt{cons}$ の tail
-child に置く負例では，raw unifier が structural delta を作れる一方，producer guard がその
-delta，直接 fallback，raw inference，public inference をすべて fail closed にすることを固定する．
+child に置く負例では，legacy symmetric unifier が structural delta を作れる一方，cut-local
+origin solver が rename-only policy により constraint，直接 fallback，raw inference，public
+inference をすべて fail closed にすることを固定する．
 これらは solver／公開 acceptance 境界の回帰であり，W の completeness 主張ではない．
 
 各 clause が保持する raw hole dual は，literal
@@ -1460,8 +1496,10 @@ pattern を含まない $\lambda$／$\mathtt{let}$／direct-self $\mathtt{fix}$ 
 $f\ne x$ と $\DirectSelf(f,e)$ を要求し，この制限体系のすべての導出は閉じた frozen
 signature（$\mathsf{ftv}=[]$）上の二 sort 宣言体系の導出へ写る．埋め込みの下で
 capability binder は空であり，capability substitution は埋め込まれた型に自明に作用し，
-$\mathtt{let}$ の一般化は二 sort generalizer と可換である．逆方向（conservativity）と
-algorithmic acceptance は主張しない．
+$\mathtt{let}$ の一般化は二 sort generalizer と可換である．多相 identity の具体証人
+$\mathtt{let\ id}=\lambda x.x\;\mathtt{in}\;(\mathtt{id\ id})\;1$ については，raw W の exact result，
+terminal bridge check，そこから得る $\mathsf{WBridgeWF}$，結果型 $\mathsf{Int}$，公開受理までを
+固定する．逆方向（conservativity）と一般の algorithmic acceptance は主張しない．
 
 principality はそのままの形では成り立たない．閉じた式
 $(\mathtt{something},\mathtt{something})$ は T-TUPLE により matcher の product 型へ，
@@ -1497,23 +1535,41 @@ observable rule 列の一意性も証明する．raw certificate を含む plan 
 capability 後置換には rigid／rename-only／structural-flexible を区別する有限 ledger を用いる．
 admissible post は逐次合成で閉じ，freeze 後に既存の variable-only 境界へ接続できる．phased post は
 局所 structural phase と frozen residual phase を分離する．制約対象は capability component だけで，
-target component は無制約である．W state の shadow ledger は一般 fresh capability と
+target component は無制約である．W state の active ledger は一般 fresh capability と
 constructor／primitive image を structural-flexible，scheme image と finalized producer を
-rename-only と記録するが，solver と terminal audit は従来の protected-producer 検査を維持する．
+rename-only と記録する．equality solver はこの ledger を acceptance policy とし，従来の
+protected-producer 検査は one-way branch と terminal audit の bridge に残る．one-way
+producer-to-slot branch 自体も，exact $\matchCap$ substitution の有限 support 上で origin
+admissibility を実行時検査する．従って ledger-aware local solver の三 constraint branch は
+すべて cut-local admissible post を返す．
 origin-aware solver の kernel slice は機械化済みである：paired solver は型構造を再帰しながら
 capability／target の二 sort を同時に解き，matcher／slot 注釈は ledger で方向付けた
 capability solver（rename-only は構造化禁止・rename 像は非 flexible 限定・
 structural-flexible は構造化許可・未登録は rigid）へ送る．全成功は soundness と
-admissible-post 準拠を運ぶ proof-carrying certificate であり，二 sort 合成は逐次合成の
-閉性による．対称 solver が rigid 注釈比較で拒否する制約を flexible ledger の下で解く
-対照回帰も固定した．W への切替には cut ごとの snapshot，および raw binder でなく
-局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が残る．
-切替が解消するのは producer guard による freeze ギャップである．
+admissible-post 準拠に加えて capability／target 両 component の有限 support を運ぶ
+proof-carrying certificate であり，二 sort 合成は逐次合成の
+閉性による．任意の admissible competitor が返された substitution を吸収する
+origin-relative factorization も Cap／paired target の両 kernel で証明する．対称 solver が
+rigid 注釈比較で拒否する制約を flexible ledger の下で解く
+対照回帰も固定した．Cap／Cap-list／paired Ty／Ty-list の成功 run は，任意のより大きい
+fuel で同一 substitution のまま保存され，public bound 以下の成功は wrapper へ再生できる．
+W の equality branch はこの solver へ接続済みであり，各 solve は cut ごとの
+ledger snapshot を保持する．constructor／primitive 完了時には raw binder でなく，局所 solve 後に
+外へ残る prevailing-image leaf を freeze する export event を記録する．pattern 側の exported
+payload には result capability／target と bindings，primitive-pattern holes，data-pattern bindings
+を含めるため，result target だけに現れない生存 leaf も漏らさない．これにより producer guard
+による $\mathsf{Pack\ something}$ の freeze ギャップは解消した．
+$\mathsf{capEq}$／$\mathsf{targetEq}$ の origin-relative universality と one-way branch の
+support-restricted uniqueness を組み合わせることで，ledger-aware local solve の三 branch はすべて，
+同じ制約を解く admissible competitor の局所因子化を持つ．
 $\mathsf{FreezeCompatible}$ は，$\mathsf{DDTyping}$ derivation 中の instance，局所 solve，
 generalization，export がこの ledger の admissible post／freeze 条件を満たすことをいう独立な
-fragment 条件であり，coercion selector の head 判断ではない．実際，$\mathsf{Pack\ something}$ の
-拒否には head-changing coercion が一つも関与せず，raw-source visibility を改善しても解消しない．
-逆に，paired solver を ledger へ切り替えても，fresh monomorphic domain を共有する上の
+fragment 条件であり，coercion selector の head 判断ではない．実装側の export freeze と one-way
+ledger check，局所因子化，evolving residual を明示した一段 trace 合成は接続したが，
+scoped agreement と ledger transition を
+輸送する traversal 全体の trace factorization，およびそれからこの条件を除去する
+受理完全性証明は未完である．また paired solver を
+ledger へ切り替えても，fresh monomorphic domain を共有する上の
 nested-capability 境界例を受理側へ変えない．
 
 terminal pattern leaf の任意の actual context をまず
@@ -1561,8 +1617,10 @@ regression で固定した．deriv／threaded の or 規則は左右の raw 結�
 を示すことである．$\mathsf{RawSourceVisible}$ は selector と raw source の cut-local な対応，
 $\mathsf{FreezeCompatible}$ は capability substitution／export の admissibility であり，互いにも
 $\mathsf{DDTyping}$ の syntax-directed admissibility にも従属しない．次に，同じ cut の zonked
-source を記録して raw-source blind spot を除き，origin-aware paired solver と export freeze を
-公開 W へ接続して二条件を順に外す．完成形は
+source を記録して raw-source blind spot を除く．origin-aware paired solver と export freeze の
+公開 W 配線，および one-way finite-support ledger certificate は済んでいるため，safe rename の
+terminal bridge と trace factorization を完成して
+$\mathsf{FreezeCompatible}$ を外す．完成形は
 \[
 \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
 \Rightarrow
@@ -1589,13 +1647,16 @@ coercion の可否を遡及させない．空 product は両 recognizer に一�
 優先する．
 外側 plan から candidate syntax への論理的 normalization completeness は得られた．この先は，
 component-first 経路を含む critical pair の解消，full plan uniqueness（または適切な quotient），coercion の意味的同値，置換に対する naturality
-を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．二 sort unifier の
+を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．対称 Cap／Ty unifier の
 最汎性（返された substitution を任意の unifier が factor すること）は proof-carrying kernel の certificate
 として，fuel 単調性（成功が任意のより大きい fuel で同じ substitution のまま保存されること）は
 fuel の直接帰納として，$\exists$fuel solvability completeness（可解な制約はある fuel で
 成功すること）は「残り変数 budget と構造 weight」の辞書式 well-founded 帰納と，真に不等な
-head の解が budget 変数を一つ消去する variable-elimination certificate として機械化済みであり，
-残るのは固定の構造 fuel bound を使う公開 wrapper の十分性である．
+head の解が budget 変数を一つ消去する variable-elimination certificate として機械化済みである．
+その帰納と同じ入力依存の十分 fuel を計算する driver を Cap／Ty と list 制約に公開し，
+対称 solver の公開 wrapper の可解入力に対する成功と，公開成功と可解性の同値も証明した．
+残る fuel 課題は，
+旧構造 bound を用いる origin-aware oriented／paired kernel と W equality branch の十分性である．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 
