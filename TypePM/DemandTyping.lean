@@ -3317,6 +3317,93 @@ theorem Subst.BoundedBy.seq {q : InferenceBase.FreshSupply}
   · intro varId below
     exact deltaBounded.apply (bounded.targetImagesBounded varId below)
 
+/-! ### Boundedness of exact solve deltas -/
+
+/-- Split membership in the capability variables of a list. -/
+theorem Cap.mem_fcvList_split :
+    ∀ {caps : List Cap} {varId : CapVar}, varId ∈ Cap.fcvList caps →
+      ∃ capability, capability ∈ caps ∧ varId ∈ capability.fcv
+  | [], _, mem => nomatch mem
+  | cap :: caps, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact ⟨cap, by simp, here⟩
+      · obtain ⟨inner, innerMem, hMem⟩ := Cap.mem_fcvList_split there
+        exact ⟨inner, by simp [innerMem], hMem⟩
+
+/-- Split membership in the capability variables of a type list. -/
+theorem Ty.mem_fcvList_split :
+    ∀ {types : List Ty} {varId : CapVar}, varId ∈ Ty.fcvList types →
+      ∃ target, target ∈ types ∧ varId ∈ target.fcv
+  | [], _, mem => nomatch mem
+  | τ :: types, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact ⟨τ, by simp, here⟩
+      · obtain ⟨inner, innerMem, hMem⟩ := Ty.mem_fcvList_split there
+        exact ⟨inner, by simp [innerMem], hMem⟩
+
+/-- Split membership in the target variables of a type list. -/
+theorem Ty.mem_ftvList_split :
+    ∀ {types : List Ty} {varId : TypePM.TyVar}, varId ∈ Ty.ftvList types →
+      ∃ target, target ∈ types ∧ varId ∈ target.ftv
+  | [], _, mem => nomatch mem
+  | τ :: types, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact ⟨τ, by simp, here⟩
+      · obtain ⟨inner, innerMem, hMem⟩ := Ty.mem_ftvList_split there
+        exact ⟨inner, by simp [innerMem], hMem⟩
+
+/-- Components of a bounded matcher type are bounded. -/
+theorem Ty.BoundedBy.matcherParts {q : InferenceBase.FreshSupply}
+    {capability : Cap} {target : Ty}
+    (bounded : (Ty.matcher capability target).BoundedBy q) :
+    capability.BoundedBy q ∧ target.BoundedBy q := by
+  refine ⟨fun w hw => bounded.caps w ?_,
+    ⟨fun w hw => bounded.caps w ?_, fun w hw => bounded.targets w ?_⟩⟩
+  · exact List.mem_append.mpr (Or.inl hw)
+  · exact List.mem_append.mpr (Or.inr hw)
+  · exact hw
+
+/-- Components of a bounded slot type are bounded. -/
+theorem Ty.BoundedBy.slotParts {q : InferenceBase.FreshSupply}
+    {capability : Cap} {target : Ty}
+    (bounded : (Ty.slot capability target).BoundedBy q) :
+    capability.BoundedBy q ∧ target.BoundedBy q := by
+  refine ⟨fun w hw => bounded.caps w ?_,
+    ⟨fun w hw => bounded.caps w ?_, fun w hw => bounded.targets w ?_⟩⟩
+  · exact List.mem_append.mpr (Or.inl hw)
+  · exact List.mem_append.mpr (Or.inr hw)
+  · exact hw
+
+/-- A product of bounded types is bounded. -/
+theorem Ty.BoundedBy.prodOfForall {q : InferenceBase.FreshSupply}
+    {components : List Ty}
+    (bounded : ∀ target ∈ components, Ty.BoundedBy q target) :
+    (Ty.prod components).BoundedBy q := by
+  constructor
+  · intro w hw
+    obtain ⟨τ, τMem, hMem⟩ := Ty.mem_fcvList_split hw
+    exact (bounded τ τMem).caps w hMem
+  · intro w hw
+    obtain ⟨τ, τMem, hMem⟩ := Ty.mem_ftvList_split hw
+    exact (bounded τ τMem).targets w hMem
+
+/-- A member of a bounded product type is bounded. -/
+theorem Ty.BoundedBy.of_mem_prod {q : InferenceBase.FreshSupply}
+    {components : List Ty}
+    (bounded : (Ty.prod components).BoundedBy q) {target : Ty}
+    (mem : target ∈ components) : target.BoundedBy q :=
+  ⟨fun w hw => bounded.caps w (Ty.mem_fcvList_of_mem mem hw),
+    fun w hw => bounded.targets w (Ty.mem_ftvList_of_mem mem hw)⟩
+
+/-- A product of bounded capabilities is bounded. -/
+theorem Cap.BoundedBy.prodOfForall {q : InferenceBase.FreshSupply}
+    {components : List Cap}
+    (bounded : ∀ capability ∈ components, Cap.BoundedBy q capability) :
+    (Cap.prod components).BoundedBy q := by
+  intro w hw
+  obtain ⟨inner, innerMem, hMem⟩ := Cap.mem_fcvList_split hw
+  exact bounded inner innerMem w hMem
+
 /-- The exactness half of delta boundedness: an exact capability solution
 of a bounded constraint is the identity at and above the bound. -/
 theorem ExactCapMGU.fixedAbove {left right : Cap} {subst : CapSubst}
@@ -3372,5 +3459,483 @@ theorem ExactPairedMGU.fixedAbove {left right : Ty} {subst : Subst}
         (Nat.lt_of_lt_of_le (leftBounded.targets varId here) above)
     · exact Nat.lt_irrefl _
         (Nat.lt_of_lt_of_le (rightBounded.targets varId there) above)
+
+/-- An exact capability solution of a bounded constraint, paired with the
+identity target action, is a bounded substitution. -/
+theorem ExactCapMGU.boundedBy_pair {left right : Cap} {subst : CapSubst}
+    {q : InferenceBase.FreshSupply} (exact : ExactCapMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
+    Subst.BoundedBy q ⟨subst, TySubst.id⟩ := by
+  refine ⟨?_, ?_, fun _ _ => rfl, ?_⟩
+  · intro varId above
+    refine exact.2.1 varId ?_
+    intro mem
+    rcases List.mem_append.mp mem with here | there
+    · have := leftBounded varId here
+      omega
+    · have := rightBounded varId there
+      omega
+  · intro varId below image imageMem
+    have imageMem' : image ∈ (subst varId).fcv := imageMem
+    by_cases inConstraint : varId ∈ left.fcv ++ right.fcv
+    · have := exact.2.2 varId inConstraint image imageMem'
+      rcases List.mem_append.mp this with h | h
+      · exact leftBounded image h
+      · exact rightBounded image h
+    · rw [exact.2.1 varId inConstraint] at imageMem'
+      have h : image = varId := by simpa [Cap.fcv] using imageMem'
+      simpa [h] using below
+  · intro varId below
+    constructor
+    · intro image imageMem
+      have empty : (TySubst.id varId).fcv = ([] : List CapVar) := rfl
+      rw [show ((⟨subst, TySubst.id⟩ : Subst).target varId).fcv =
+        ([] : List CapVar) from empty] at imageMem
+      nomatch imageMem
+    · intro image imageMem
+      have h : image = varId := by
+        simpa [TySubst.id, Ty.ftv] using
+          (show image ∈ (TySubst.id varId).ftv from imageMem)
+      simpa [h] using below
+
+/-- An exact target solution of a bounded constraint is bounded in the
+target component; paired with the identity capability action it is a
+bounded substitution. -/
+theorem ExactTargetMGU.boundedBy_pair {left right : Ty} {subst : TySubst}
+    {q : InferenceBase.FreshSupply} (exact : ExactTargetMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
+    Subst.BoundedBy q ⟨CapSubst.id, subst⟩ := by
+  refine ⟨fun _ _ => rfl, ?_, ?_, ?_⟩
+  · intro varId below image imageMem
+    have h : image = varId := by
+      simpa [CapSubst.id, Cap.fcv] using
+        (show image ∈ (CapSubst.id varId).fcv from imageMem)
+    simpa [h] using below
+  · intro varId above
+    refine exact.2.1 varId ?_
+    intro mem
+    rcases List.mem_append.mp mem with here | there
+    · exact Nat.lt_irrefl _
+        (Nat.lt_of_lt_of_le (leftBounded.targets varId here) above)
+    · exact Nat.lt_irrefl _
+        (Nat.lt_of_lt_of_le (rightBounded.targets varId there) above)
+  · intro varId below
+    by_cases inConstraint : varId ∈ left.ftv ++ right.ftv
+    · constructor
+      · intro image imageMem
+        have := exact.2.2.2 varId inConstraint image
+          (show image ∈ (subst varId).fcv from imageMem)
+        rcases List.mem_append.mp this with h | h
+        · exact leftBounded.caps image h
+        · exact rightBounded.caps image h
+      · intro image imageMem
+        have := exact.2.2.1 varId inConstraint image
+          (show image ∈ (subst varId).ftv from imageMem)
+        rcases List.mem_append.mp this with h | h
+        · exact leftBounded.targets image h
+        · exact rightBounded.targets image h
+    · have fixed : subst varId = .var varId := exact.2.1 varId inConstraint
+      constructor
+      · intro image imageMem
+        have imageMem' : image ∈ (subst varId).fcv := imageMem
+        rw [fixed] at imageMem'
+        have empty : (Ty.var varId).fcv = ([] : List CapVar) := rfl
+        rw [empty] at imageMem'
+        nomatch imageMem'
+      · intro image imageMem
+        have imageMem' : image ∈ (subst varId).ftv := imageMem
+        rw [fixed] at imageMem'
+        have h : image = varId := by simpa [Ty.ftv] using imageMem'
+        simpa [h] using below
+
+/-- An exact paired solution of a bounded constraint is a bounded
+substitution. -/
+theorem ExactPairedMGU.boundedBy {left right : Ty} {subst : Subst}
+    {q : InferenceBase.FreshSupply} (exact : ExactPairedMGU left right subst)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
+    subst.BoundedBy q := by
+  obtain ⟨capAbove, targetAbove⟩ :=
+    exact.fixedAbove leftBounded rightBounded
+  refine ⟨capAbove, ?_, targetAbove, ?_⟩
+  · intro varId below image imageMem
+    by_cases inConstraint : varId ∈ left.fcv ++ right.fcv
+    · have := exact.2.2.2.1 varId inConstraint image imageMem
+      rcases List.mem_append.mp this with h | h
+      · exact leftBounded.caps image h
+      · exact rightBounded.caps image h
+    · have imageMem' : image ∈ (subst.cap varId).fcv := imageMem
+      rw [exact.2.1 varId inConstraint] at imageMem'
+      have h : image = varId := by simpa [Cap.fcv] using imageMem'
+      simpa [h] using below
+  · intro varId below
+    by_cases inConstraint : varId ∈ left.ftv ++ right.ftv
+    · constructor
+      · intro image imageMem
+        have := exact.2.2.2.2.2 varId inConstraint image imageMem
+        rcases List.mem_append.mp this with h | h
+        · exact leftBounded.caps image h
+        · exact rightBounded.caps image h
+      · intro image imageMem
+        have := exact.2.2.2.2.1 varId inConstraint image imageMem
+        rcases List.mem_append.mp this with h | h
+        · exact leftBounded.targets image h
+        · exact rightBounded.targets image h
+    · have fixed : subst.target varId = .var varId :=
+        exact.2.2.1 varId inConstraint
+      constructor
+      · intro image imageMem
+        have imageMem' : image ∈ (subst.target varId).fcv := imageMem
+        rw [fixed] at imageMem'
+        have empty : (Ty.var varId).fcv = ([] : List CapVar) := rfl
+        rw [empty] at imageMem'
+        nomatch imageMem'
+      · intro image imageMem
+        have imageMem' : image ∈ (subst.target varId).ftv := imageMem
+        rw [fixed] at imageMem'
+        have h : image = varId := by simpa [Ty.ftv] using imageMem'
+        simpa [h] using below
+
+/-- Capability boundedness is preserved by a bounded capability action. -/
+theorem Subst.BoundedBy.applyCapabilityTy {q : InferenceBase.FreshSupply}
+    {S : Subst} (bounded : S.BoundedBy q) {target : Ty}
+    (targetBounded : target.BoundedBy q) :
+    (target.applyCapability S.cap).BoundedBy q := by
+  constructor
+  · intro w hw
+    rw [Ty.fcv_applyCapability] at hw
+    simp only [List.mem_flatMap] at hw
+    obtain ⟨original, originalMem, imageMem⟩ := hw
+    exact bounded.capImagesBounded original
+      (targetBounded.caps original originalMem) w imageMem
+  · intro w hw
+    rw [Ty.ftv_applyCapability] at hw
+    exact targetBounded.targets w hw
+
+
+/-! ### Boundedness of the one-way solution and the checking cut -/
+
+mutual
+
+/-- Bindings produced by one-way matching map variables to producer
+subterms: every image variable lies within the ambient list containing the
+producer's variables. -/
+theorem matchCapAcc_imagesWithin (vars : List CapVar) :
+    ∀ (producer consumer : Cap) (acc bindings : CapMatch.Bindings),
+      CapMatch.matchCapAcc producer consumer acc = some bindings →
+      (∀ image ∈ producer.fcv, image ∈ vars) →
+      (∀ varId capability, CapMatch.Bindings.lookup varId acc =
+        some capability → ∀ image ∈ capability.fcv, image ∈ vars) →
+      ∀ varId capability, CapMatch.Bindings.lookup varId bindings =
+        some capability → ∀ image ∈ capability.fcv, image ∈ vars
+  | producer, .any, acc, bindings, run, _, accWithin => by
+      simp only [CapMatch.matchCapAcc] at run
+      cases run
+      exact accWithin
+  | producer, .var varId, acc, bindings, run, pWithin, accWithin => by
+      simp only [CapMatch.matchCapAcc] at run
+      unfold CapMatch.bindVar at run
+      split at run
+      · cases run
+        intro v capability lookupEq
+        rw [show CapMatch.Bindings.lookup v ((varId, producer) :: acc) =
+          (if v = varId then some producer
+            else CapMatch.Bindings.lookup v acc) from rfl] at lookupEq
+        by_cases hv : v = varId
+        · rw [if_pos hv] at lookupEq
+          cases lookupEq
+          exact pWithin
+        · rw [if_neg hv] at lookupEq
+          exact accWithin v capability lookupEq
+      · split at run
+        · cases run
+          exact accWithin
+        · cases run
+  | .skolem producerId, .skolem consumerId, acc, bindings, run, _,
+      accWithin => by
+      simp only [CapMatch.matchCapAcc] at run
+      split at run
+      · cases run
+        exact accWithin
+      · cases run
+  | .con producerName producerChildren, .con consumerName consumerChildren,
+      acc, bindings, run, pWithin, accWithin => by
+      simp only [CapMatch.matchCapAcc] at run
+      split at run
+      · exact matchCapListAcc_imagesWithin vars producerChildren
+          consumerChildren acc bindings run pWithin accWithin
+      · cases run
+  | .prod producerComponents, .prod consumerComponents, acc, bindings, run,
+      pWithin, accWithin => by
+      simp only [CapMatch.matchCapAcc] at run
+      exact matchCapListAcc_imagesWithin vars producerComponents
+        consumerComponents acc bindings run pWithin accWithin
+  | .any, .skolem _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .any, .con _ _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .any, .prod _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .var _, .skolem _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .var _, .con _ _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .var _, .prod _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .skolem _, .con _ _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .skolem _, .prod _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .con _ _, .skolem _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .con _ _, .prod _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .prod _, .skolem _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+  | .prod _, .con _ _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapAcc] at run
+      nomatch run
+
+/-- List form of `matchCapAcc_imagesWithin`. -/
+theorem matchCapListAcc_imagesWithin (vars : List CapVar) :
+    ∀ (producers consumers : List Cap) (acc bindings : CapMatch.Bindings),
+      CapMatch.matchCapListAcc producers consumers acc = some bindings →
+      (∀ image ∈ Cap.fcvList producers, image ∈ vars) →
+      (∀ varId capability, CapMatch.Bindings.lookup varId acc =
+        some capability → ∀ image ∈ capability.fcv, image ∈ vars) →
+      ∀ varId capability, CapMatch.Bindings.lookup varId bindings =
+        some capability → ∀ image ∈ capability.fcv, image ∈ vars
+  | [], [], acc, bindings, run, _, accWithin => by
+      simp only [CapMatch.matchCapListAcc] at run
+      cases run
+      exact accWithin
+  | producer :: producers, consumer :: consumers, acc, bindings, run,
+      pWithin, accWithin => by
+      simp only [CapMatch.matchCapListAcc] at run
+      split at run
+      next updated headRun =>
+        exact matchCapListAcc_imagesWithin vars producers consumers updated
+          bindings run
+          (fun image mem => pWithin image (List.mem_append.mpr (Or.inr mem)))
+          (matchCapAcc_imagesWithin vars producer consumer acc updated
+            headRun
+            (fun image mem => pWithin image (List.mem_append.mpr (Or.inl mem)))
+            accWithin)
+      next => cases run
+  | [], _ :: _, _, _, run, _, _ => by
+      simp only [CapMatch.matchCapListAcc] at run
+      nomatch run
+  | _ :: _, [], _, _, run, _, _ => by
+      simp only [CapMatch.matchCapListAcc] at run
+      nomatch run
+
+end
+
+/-- One-way match bindings map consumer variables to producer subterms. -/
+theorem matchCap_imagesWithin {producer consumer : Cap}
+    {bindings : CapMatch.Bindings}
+    (run : CapMatch.matchCap producer consumer = some bindings) :
+    ∀ varId capability, CapMatch.Bindings.lookup varId bindings =
+      some capability → ∀ image ∈ capability.fcv, image ∈ producer.fcv := by
+  obtain ⟨raw, -⟩ :=
+    (CapMatch.matchCap_eq_some_iff producer consumer bindings).mp run
+  exact matchCapAcc_imagesWithin producer.fcv producer consumer [] bindings
+    raw (fun _ mem => mem) (fun v c h => nomatch h)
+
+/-- The one-way producer-to-slot solution of a bounded constraint is a
+bounded substitution. -/
+theorem OneWayDelta.boundedBy {producerCap : Cap} {producerTarget : Ty}
+    {consumerCap : Cap} {consumerTarget : Ty} {delta : Subst}
+    {q : InferenceBase.FreshSupply}
+    (oneWay : OneWayDelta producerCap producerTarget consumerCap
+      consumerTarget delta)
+    (producerCapBounded : producerCap.BoundedBy q)
+    (producerTargetBounded : producerTarget.BoundedBy q)
+    (consumerCapBounded : consumerCap.BoundedBy q)
+    (consumerTargetBounded : consumerTarget.BoundedBy q) :
+    delta.BoundedBy q := by
+  obtain ⟨bindings, run, capEq, targetExact⟩ := oneWay
+  have capAbove : ∀ varId : CapVar, q.nextCap ≤ varId.id →
+      delta.cap varId = .var varId := by
+    intro v above
+    rw [capEq]
+    show (if v ∈ consumerCap.fcv then CapMatch.Bindings.toSubst bindings v
+      else .var v) = .var v
+    rw [if_neg (fun mem => Nat.lt_irrefl _
+      (Nat.lt_of_lt_of_le (consumerCapBounded v mem) above))]
+  have capImages : ∀ varId : CapVar, varId.id < q.nextCap →
+      Cap.BoundedBy q (delta.cap varId) := by
+    intro v below image imageMem
+    have imageMem' : image ∈ (delta.cap v).fcv := imageMem
+    rw [capEq] at imageMem'
+    by_cases hmem : v ∈ consumerCap.fcv
+    · rw [show CapMatch.Bindings.toSubstWithin consumerCap.fcv bindings v =
+        CapMatch.Bindings.toSubst bindings v from if_pos hmem] at imageMem'
+      cases hlook : CapMatch.Bindings.lookup v bindings with
+      | none =>
+          rw [show CapMatch.Bindings.toSubst bindings v = .var v from by
+            unfold CapMatch.Bindings.toSubst
+            rw [hlook]] at imageMem'
+          have h : image = v := by simpa [Cap.fcv] using imageMem'
+          simpa [h] using below
+      | some capability =>
+          rw [show CapMatch.Bindings.toSubst bindings v = capability from by
+            unfold CapMatch.Bindings.toSubst
+            rw [hlook]] at imageMem'
+          exact producerCapBounded image
+            (matchCap_imagesWithin run v capability hlook image imageMem')
+    · rw [show CapMatch.Bindings.toSubstWithin consumerCap.fcv bindings v =
+        .var v from if_neg hmem] at imageMem'
+      have h : image = v := by simpa [Cap.fcv] using imageMem'
+      simpa [h] using below
+  have capPairBounded : Subst.BoundedBy q ⟨delta.cap, TySubst.id⟩ := by
+    refine ⟨capAbove, capImages, fun _ _ => rfl, ?_⟩
+    intro varId below
+    constructor
+    · intro image imageMem
+      have empty : ((⟨delta.cap, TySubst.id⟩ : Subst).target varId).fcv =
+        ([] : List CapVar) := rfl
+      rw [empty] at imageMem
+      nomatch imageMem
+    · intro image imageMem
+      have h : image = varId := by
+        simpa [TySubst.id, Ty.ftv] using
+          (show image ∈ (TySubst.id varId).ftv from imageMem)
+      simpa [h] using below
+  have targetPairBounded : Subst.BoundedBy q ⟨CapSubst.id, delta.target⟩ :=
+    targetExact.boundedBy_pair
+      (capPairBounded.applyCapabilityTy producerTargetBounded)
+      (capPairBounded.applyCapabilityTy consumerTargetBounded)
+  exact ⟨capAbove, capImages, targetPairBounded.targetFixedAbove,
+    targetPairBounded.targetImagesBounded⟩
+
+/-- Ordinary equality alignment preserves boundedness of the prevailing
+substitution. -/
+theorem DDAlignTypes.boundedBy {S : Subst} {left right : Ty} {S' : Subst}
+    {q : InferenceBase.FreshSupply}
+    (aligned : DDAlignTypes S left right S') (Sb : S.BoundedBy q)
+    (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
+    S'.BoundedBy q := by
+  cases aligned with
+  | matcherPair hleft hright capMGU targetMGU =>
+      have resolvedLeft := Sb.apply leftBounded
+      have resolvedRight := Sb.apply rightBounded
+      rw [hleft] at resolvedLeft
+      rw [hright] at resolvedRight
+      obtain ⟨lcB, ltB⟩ := resolvedLeft.matcherParts
+      obtain ⟨rcB, rtB⟩ := resolvedRight.matcherParts
+      have capPairB := capMGU.boundedBy_pair lcB rcB
+      have targetB := targetMGU.boundedBy
+        (capPairB.applyCapabilityTy ltB) (capPairB.applyCapabilityTy rtB)
+      exact targetB.seq (capPairB.seq Sb)
+  | slotPair hleft hright capMGU targetMGU =>
+      have resolvedLeft := Sb.apply leftBounded
+      have resolvedRight := Sb.apply rightBounded
+      rw [hleft] at resolvedLeft
+      rw [hright] at resolvedRight
+      obtain ⟨lcB, ltB⟩ := resolvedLeft.slotParts
+      obtain ⟨rcB, rtB⟩ := resolvedRight.slotParts
+      have capPairB := capMGU.boundedBy_pair lcB rcB
+      have targetB := targetMGU.boundedBy
+        (capPairB.applyCapabilityTy ltB) (capPairB.applyCapabilityTy rtB)
+      exact targetB.seq (capPairB.seq Sb)
+  | ordinary hclass mgu =>
+      exact (mgu.boundedBy (Sb.apply leftBounded)
+        (Sb.apply rightBounded)).seq Sb
+
+/-- Every checking cut preserves boundedness of the prevailing
+substitution. -/
+theorem DDAlign.boundedBy {S : Subst} {raw expected : Ty} {S' : Subst}
+    {q : InferenceBase.FreshSupply} (aligned : DDAlign S raw expected S')
+    (Sb : S.BoundedBy q) (rawBounded : raw.BoundedBy q)
+    (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q := by
+  cases aligned with
+  | productMatcherLift hduals hslot oneWay =>
+      rename_i duals consumerCap consumerTarget delta
+      have resolvedRaw := Sb.apply rawBounded
+      have resolvedExpected := Sb.apply expectedBounded
+      rw [Inference.productMatcherDuals?_sound hduals] at resolvedRaw
+      rw [hslot] at resolvedExpected
+      obtain ⟨ccB, ctB⟩ := resolvedExpected.slotParts
+      have dualsB : ∀ dual ∈ duals,
+          Cap.BoundedBy q dual.cap ∧ Ty.BoundedBy q dual.target := by
+        intro dual dualMem
+        have memProd : (Ty.matcher dual.cap dual.target) ∈
+            duals.map (fun dual => Ty.matcher dual.cap dual.target) :=
+          List.mem_map.mpr ⟨dual, dualMem, rfl⟩
+        exact (resolvedRaw.of_mem_prod memProd).matcherParts
+      have producerCapB : Cap.BoundedBy q (.prod (duals.map Dual.cap)) := by
+        apply Cap.BoundedBy.prodOfForall
+        intro c cMem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp cMem
+        exact (dualsB dual dualMem).1
+      have producerTargetB :
+          Ty.BoundedBy q (.prod (duals.map Dual.target)) := by
+        apply Ty.BoundedBy.prodOfForall
+        intro τ τMem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp τMem
+        exact (dualsB dual dualMem).2
+      exact (oneWay.boundedBy producerCapB producerTargetB ccB ctB).seq Sb
+  | slotTupleLift hclass hduals hslot capMGU targetMGU =>
+      rename_i duals consumerCap consumerTarget capDelta targetDelta
+      have resolvedRaw := Sb.apply rawBounded
+      have resolvedExpected := Sb.apply expectedBounded
+      rw [Inference.productSlotDuals?_sound hduals] at resolvedRaw
+      rw [hslot] at resolvedExpected
+      obtain ⟨ccB, ctB⟩ := resolvedExpected.slotParts
+      have dualsB : ∀ dual ∈ duals,
+          Cap.BoundedBy q dual.cap ∧ Ty.BoundedBy q dual.target := by
+        intro dual dualMem
+        have memProd : (Ty.slot dual.cap dual.target) ∈
+            duals.map (fun dual => Ty.slot dual.cap dual.target) :=
+          List.mem_map.mpr ⟨dual, dualMem, rfl⟩
+        exact (resolvedRaw.of_mem_prod memProd).slotParts
+      have producerCapB : Cap.BoundedBy q (.prod (duals.map Dual.cap)) := by
+        apply Cap.BoundedBy.prodOfForall
+        intro c cMem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp cMem
+        exact (dualsB dual dualMem).1
+      have producerTargetB :
+          Ty.BoundedBy q (.prod (duals.map Dual.target)) := by
+        apply Ty.BoundedBy.prodOfForall
+        intro τ τMem
+        obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp τMem
+        exact (dualsB dual dualMem).2
+      have capPairB := capMGU.boundedBy_pair producerCapB ccB
+      have targetB := targetMGU.boundedBy
+        (capPairB.applyCapabilityTy producerTargetB)
+        (capPairB.applyCapabilityTy ctB)
+      exact targetB.seq (capPairB.seq Sb)
+  | matcherToSlot hraw hslot oneWay =>
+      have resolvedRaw := Sb.apply rawBounded
+      have resolvedExpected := Sb.apply expectedBounded
+      rw [hraw] at resolvedRaw
+      rw [hslot] at resolvedExpected
+      obtain ⟨pcB, ptB⟩ := resolvedRaw.matcherParts
+      obtain ⟨ccB, ctB⟩ := resolvedExpected.slotParts
+      exact (oneWay.boundedBy pcB ptB ccB ctB).seq Sb
+  | slotToSlot hraw hslot capMGU targetMGU =>
+      have resolvedRaw := Sb.apply rawBounded
+      have resolvedExpected := Sb.apply expectedBounded
+      rw [hraw] at resolvedRaw
+      rw [hslot] at resolvedExpected
+      obtain ⟨scB, stB⟩ := resolvedRaw.slotParts
+      obtain ⟨rcB, rtB⟩ := resolvedExpected.slotParts
+      have capPairB := capMGU.boundedBy_pair scB rcB
+      have targetB := targetMGU.boundedBy
+        (capPairB.applyCapabilityTy stB) (capPairB.applyCapabilityTy rtB)
+      exact targetB.seq (capPairB.seq Sb)
+  | ordinary hclass aligned =>
+      exact aligned.boundedBy Sb rawBounded expectedBounded
 
 end TypePM
