@@ -16,6 +16,7 @@ import TypePM.DirectSelf
 import TypePM.Unification
 import TypePM.Source
 import TypePM.CapabilityOrigin
+import TypePM.PairedUnification
 import TypePM.Elaboration
 import TypePM.CanonicalCoercion
 import TypePM.DamasMilner

@@ -100,11 +100,19 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    等価で比較する方式をやめ，`alignBindings` が binder 名を位置ごとに照合して
    束縛型を単一化する．certificate 側は deriv／threaded の or 規則を「左右の raw
    結果 Δ＋prevailing 像の等価 premise」へ緩和した（宣言的 Terminal or は不変）．
-4. 未: origin-aware な再帰的 paired unifier — `renameOnly` は構造化禁止・
-   `structuralFlexible` は局所 solve で構造化許可・export 時点で prevailing image を
-   freeze する．外側 `Matcher`／`Slot` だけでなく型構造を再帰しながら
-   capability／target の二 sort を同時に解き，nested matcher capability の rigid 比較
-   （現状は `mguTy` が capability を注釈として等値比較）も解消する．
+4. **一部済** origin-aware な再帰的 paired unifier — kernel slice は
+   [`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) に機械化済み：
+   `solvePairedTy` が型構造を再帰しながら capability／target の二 sort を同時に
+   解き，matcher／slot 注釈は origin-oriented capability solver（`renameOnly` は
+   構造化禁止・rename 像は非 flexible 限定・`structuralFlexible` は構造化許可・
+   未登録は rigid）へ送る．全成功は soundness と `AdmissiblePost` 準拠を運ぶ
+   proof-carrying certificate（`mguPairedTy_sound`／`mguPairedTy_admissible`）で，
+   二 sort 合成は `Subst.seq` の閉性による．`mguTy` が rigid 比較で拒否する同じ
+   注釈制約を flexible ledger の下で解く対照回帰
+   （`paired_solves_flexible_annotation`／`symmetric_still_rigid`）つき．残るは
+   W への配線：solve cut ごとの ledger snapshot・export 時点の prevailing image
+   freeze event・inference 内 rigid 比較の置換（受理挙動の変更を伴うため，
+   AcceptanceGapRegression の反例反転とセットで行う）．
 5. **一部済** fuel 単調性と solvability — 単調性（成功は任意のより大きい fuel で
    同じ substitution のまま保存される：`mguCapFuel_mono`／`mguTyFuel_mono`，
    list 版含む）と **∃fuel solvability completeness**（可解な制約はある fuel で
@@ -388,9 +396,10 @@ constructor／primitive の局所 structural instantiation と既存 producer �
 一般 fresh capability と constructor／primitive image を `structuralFlexible`，context scheme／
 pattern-function image と finalized matcher の visible producer を `renameOnly` と記録する．ただし
 constraint acceptance と terminal audit は従来の `protectedCaps` をそのまま使うため，受理挙動はまだ
-変えていない．origin-aware solver へ切り替えるには，solve cut ごとの ledger snapshot，unifier の
-origin-aware orientation，および raw binder ではなく局所 solve 後に外へ生存する prevailing image の
-leaf を freeze する export event が必要である．
+変えていない．unifier の origin-aware orientation は
+[`TypePM/PairedUnification.lean`](TypePM/PairedUnification.lean) の kernel slice として
+機械化済みで，切り替えに残るのは solve cut ごとの ledger snapshot と，raw binder ではなく
+局所 solve 後に外へ生存する prevailing image の leaf を freeze する export event である．
 
 `CoreTyping` 証明書の非 coercion head 分解と，外側 plan の `NormalPlan` への論理的 normalization
 completeness は得られた．canonical core judgment への強化に残る項目（critical pair の解消，
@@ -606,7 +615,7 @@ producer へ置き換えた control twin が成功することを対で検査す
 | 型代数 | `Syntax`, `Substitution`, `Relation`, `CapMatch`, `Unification` | 二 sort，代入，自然性，one-way match，solver |
 | capability | `Observability`, `Shape`, `Projection`, `Canonical`, `CapTarget`, `Recursion` | 観測可能性，evidence，projection，direct-self shape fold |
 | source | `Term`, `ClauseEvidence`, `Source`, `SourceSubstitution`, `SourceGeneralization`, `SourceMetatheory`, `PatternFunction` | concrete syntax と宣言的型付け，coverage，安全な一般化と輸送 |
-| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，pattern-local coherent surface 境界，mutual coherent surface typing と注釈不要性目標 |
+| elaboration | `Elaboration`, `CoreTyping`, `CanonicalCoercion`, `CapabilityOrigin`, `PairedUnification`, `CoherentSurface`, `CoherentTyping` | surface root factorization，raw-threaded recursive core head factorization，outer-plan normalization，origin-sensitive phased post，origin-aware paired solver kernel，pattern-local coherent surface 境界，mutual coherent surface typing と注釈不要性目標 |
 | runtime | `Semantics`, `Dynamic`, `Preservation`, `DynamicMetatheory`, `Reachability`, `Safety`, `RuntimeAgreementBridge` | 評価・matching semantics，state invariant，preservation/progress/safety，global agreement からの derivation-local mirror 構成 |
 | W | `InferenceBase`, `Inference`, `InferenceInput`, `InferenceHistory`, `Reconstruction`, `BridgeChecks`, `CertifiedInference`, `InferenceRegression`, `Soundness` | raw W 走査，入力整形性，append-only history，terminal validation，declarative reconstruction，公開 inference soundness，concrete safety composition |
 | 回帰 | `ClauseEvidenceExamples`, `GeneralizationRegression`, `CertifiedInferenceRegression`, `ApplicationCoercionRegression`, `RecursiveExamples`, `ProducerStrengtheningRegression`, `PatternCtorCapabilityRegression`, `DynamicSafetyRegression`, `DynamicCaptureRegression`, `DynamicDispatchRegression`, `PatternFunctionSafetyRegression` | evidence，source-level binder collision，domain-directed coercion，公開 inference soundness，recursive matcher の旗艦例と正負例，producer non-strengthening と PAT-CON の public control twin，空／非空 runtime signature，capture，型付き ordered dispatch を含む動的安全性の具体適用 |

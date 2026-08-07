@@ -1384,8 +1384,14 @@ admissible post は逐次合成で閉じ，freeze 後に既存の variable-only 
 target component は無制約である．W state の shadow ledger は一般 fresh capability と
 constructor／primitive image を structural-flexible，scheme image と finalized producer を
 rename-only と記録するが，solver と terminal audit は従来の protected-producer 検査を維持する．
-origin-aware solver への切替には cut ごとの snapshot，unifier orientation，および raw binder でなく
-局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が必要である．
+origin-aware solver の kernel slice は機械化済みである：paired solver は型構造を再帰しながら
+capability／target の二 sort を同時に解き，matcher／slot 注釈は ledger で方向付けた
+capability solver（rename-only は構造化禁止・rename 像は非 flexible 限定・
+structural-flexible は構造化許可・未登録は rigid）へ送る．全成功は soundness と
+admissible-post 準拠を運ぶ proof-carrying certificate であり，二 sort 合成は逐次合成の
+閉性による．対称 solver が rigid 注釈比較で拒否する制約を flexible ledger の下で解く
+対照回帰も固定した．W への切替には cut ごとの snapshot，および raw binder でなく
+局所 solve 後に外へ残る prevailing-image leaf を freeze する export event が残る．
 
 terminal pattern leaf の任意の actual context をまず
 $\mathsf{actualContext}=S\,\mathsf{rawContext}$ に限定し，leaf-local な coherent judgment，surface

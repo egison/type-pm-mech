@@ -112,8 +112,12 @@ commit／push はその都度の明示指示がある場合に限るという規
   閉性，freeze bridge の代数的基礎である．target component は現段階では制約しない．
   `InferState.capabilityOrigins` は fresh／instance／finalized producer の origin を shadow metadata
   として記録するが，constraint acceptance と terminal audit は既存 `protectedCaps` のままなので
-  挙動不変である．origin-aware solver への切替前に solve-cut ごとの ledger snapshot，MGU orientation，
-  prevailing image leaf を対象とする export freeze event を設計する．constructor／primitive の local
+  挙動不変である．origin-aware orientation の kernel slice は `PairedUnification.lean` に機械化済み：
+  `solvePairedTy` は型構造を再帰し matcher／slot 注釈を origin-oriented capability solver へ送り，
+  全成功が soundness＋`AdmissiblePost` 準拠の proof-carrying certificate を返す
+  （`mguPairedTy_sound`／`mguPairedTy_admissible`；oriented kernel の最汎性・単調性・solvability は
+  非主張）．W への切替前に残るのは solve-cut ごとの ledger snapshot と
+  prevailing image leaf を対象とする export freeze event である．constructor／primitive の local
   flexible instance が export 時に freeze される completeness はなお非主張とする．
   product-of-matchers の lift は tuple literal 専用へ戻さず，`let` 後の変数利用位置でも
   挿入できる unary `COERCE-PRODUCT-MATCHER` を維持する．sibling helper
