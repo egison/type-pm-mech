@@ -52,9 +52,11 @@ commit／push はその都度の明示指示がある場合に限るという規
   field で「返された substitution を任意の unifier が factor する」ことを構成し，
   `mguCapFuel_universal`／`mguTyFuel_universal`（list・spec-level 版含む）が公開定理である．
   これは成功時の性質であり，fuel 単調性（成功が任意のより大きい fuel で同じ
-  substitution のまま保存されること，`mguCapFuel_mono`／`mguTyFuel_mono` ほか list 版）も
-  機械化済みである．可解な入力で fuel-bounded wrapper が成功する solvability
-  completeness（および構造 fuel の十分性）は open のまま扱う．
+  substitution のまま保存されること，`mguCapFuel_mono`／`mguTyFuel_mono` ほか list 版）と
+  ∃fuel solvability completeness（可解な制約はある fuel で成功すること，
+  `mguCapFuel_complete`／`mguTyFuel_complete` ほか list 版・可解性 iff 版）も
+  機械化済みである．固定の構造 fuel bound を使う公開 `mguCap`／`mguTy` wrapper の
+  十分性は open のまま扱う．
   一意性／surface completeness も open として扱う．
   特に `TerminalPatternResolution` の leaf は `rawContext` と任意の `actualContext` を
   独立に持てるため，無条件の `HasTy → ExprDeriv` は主張しない．再帰的 completeness は

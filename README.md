@@ -94,14 +94,19 @@ MGU 最汎性まで済んでいる．core の一意性と Egison コンパイラ
    freeze する．外側 `Matcher`／`Slot` だけでなく型構造を再帰しながら
    capability／target の二 sort を同時に解き，nested matcher capability の rigid 比較
    （現状は `mguTy` が capability を注釈として等値比較）も解消する．
-5. **一部済** fuel 単調性と solvability — 単調性は機械化済み：成功は任意のより
-   大きい fuel で同じ substitution のまま保存される（`mguCapFuel_mono`／
-   `mguTyFuel_mono`，list 版含む）．kernel の非重複 match への再構成は不要だった：
-   branch 選択は fuel に依存しないので，fuel の直接帰納で fuel 非依存な行は
-   definitional equality により，再帰行は substitution 射影の輸送により閉じる．
-   残るは solvability：公開 `infer` は固定 fuel の `mguCap`／`mguTy` を呼ぶため，
-   「可解なら ∃fuel で成功」に加えて固定 bound の十分性を証明するか，
-   well-founded な total solver に置き換える．
+5. **一部済** fuel 単調性と solvability — 単調性（成功は任意のより大きい fuel で
+   同じ substitution のまま保存される：`mguCapFuel_mono`／`mguTyFuel_mono`，
+   list 版含む）と **∃fuel solvability completeness**（可解な制約はある fuel で
+   成功する：`mguCapFuel_complete`／`mguTyFuel_complete`／list 版，可解性との同値
+   `mguCapFuel_isSome_iff_unifiable`／`mguTyFuel_isSome_iff_unifiable`）は
+   機械化済み．kernel の非重複 match への再構成は不要だった：branch 選択は fuel に
+   依存しないので，単調性は fuel の直接帰納で fuel 非依存な行は definitional
+   equality により閉じる．完全性は（残 budget 変数数，構造 weight）の辞書式
+   well-founded 帰納で，真に不等な head の解が budget 変数を一つ消去することを
+   kernel 成功 run の range／elimination certificate
+   （`solveCapPair_varCert`／`solveTyPair_varCert`）が供給する．残るは，公開
+   `infer` が呼ぶ固定 fuel の `mguCap`／`mguTy`（構造 bound）の十分性を証明するか，
+   well-founded な total solver に置き換えること．
 6. 未: `inferRaw` の状態不変量と trace-level factorization — 単制約の `universal`
    を，`Subst.seq` で連結された solve trace・capability／target の相互作用・
    one-way `CapMatch`・origin／freeze admissibility・relevant variable 上の因子化

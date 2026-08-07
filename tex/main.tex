@@ -347,9 +347,11 @@ $\mguTy$ と $\mguCap$ はそれぞれの sort の決定的な部分関数であ
 両端を等しくする sound な unifier を返す．constructor／arity の不一致，occurs check の失敗，
 または rigid skolem を解く必要がある場合は失敗する．
 ここで主張するのは成功結果の soundness，関数としての決定性，置換普遍性
-（任意の別 unifier が成功結果を経由して factor すること），および fuel 単調性
-（成功はより大きい任意の fuel で同じ substitution のまま保存されること）である．
-可解な入力での成功（solvability completeness）と固定 fuel bound の十分性は含まない．
+（任意の別 unifier が成功結果を経由して factor すること），fuel 単調性
+（成功はより大きい任意の fuel で同じ substitution のまま保存されること），および
+可解な入力に対する $\exists$fuel 完全性（unifier を持つ制約はある fuel で成功し，
+可解性と $\exists$fuel 成功が同値になること）である．固定の構造 fuel bound を使う
+wrapper の十分性は含まない．
 $\Any$ はこの一方向 consumer relation でだけ wildcard であり，対称な $\mguCap$
 では通常の rigid ground constructor として扱う．従って $\mguCap(\Any,\Any)$ は
 成功するが，$\mguCap(\Any,K\overline\kappa)$ は失敗する（flexible variable を
@@ -1411,8 +1413,10 @@ component-first 経路を含む critical pair の解消，full plan uniqueness�
 を確定してから，core typing の一意性と coherent surface completeness へ進む必要がある．二 sort unifier の
 最汎性（返された substitution を任意の unifier が factor すること）は proof-carrying kernel の certificate
 として，fuel 単調性（成功が任意のより大きい fuel で同じ substitution のまま保存されること）は
-fuel の直接帰納として機械化済みであり，残るのは可解な入力に対する solvability completeness
-（一つの十分な fuel の存在と固定 bound の十分性）である．
+fuel の直接帰納として，$\exists$fuel solvability completeness（可解な制約はある fuel で
+成功すること）は「残り変数 budget と構造 weight」の辞書式 well-founded 帰納と，真に不等な
+head の解が budget 変数を一つ消去する variable-elimination certificate として機械化済みであり，
+残るのは固定の構造 fuel bound を使う公開 wrapper の十分性である．
 capture admissibility，任意の capability 輸送，抽象 runtime oracle，型付け済み外部
 list／multiset matcher は不要である．
 
