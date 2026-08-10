@@ -103,7 +103,7 @@ theorem infer_success_sound
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
-    HasTy signature (ResolvedContext result.state.prevailing context)
+    SemanticTyping signature (ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget :=
   (infer_success_reconstruct success).toHasTy
 

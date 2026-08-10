@@ -76,10 +76,10 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         scheme.ValueFlowInst target →
         ValueTy signature value target) →
       (self = none →
-        HasTy signature
+        SemanticTyping signature
           ((parameter, Scheme.mono domain) :: context) body codomain) →
       (∀ name, self = some name →
-        HasTy signature
+        SemanticTyping signature
           ((parameter, Scheme.mono domain) ::
             (name, Scheme.mono (.fn domain codomain)) :: context)
           body codomain) →
@@ -95,7 +95,7 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         Context.find? context name = some scheme →
         scheme.ValueFlowInst instanceTarget →
         ValueTy signature value instanceTarget) →
-      HasTy signature context (.matcher originalClauses)
+      SemanticTyping signature context (.matcher originalClauses)
         (.matcher capability target) →
       MatcherCursor currentClauses originalClauses →
       ValueTy signature

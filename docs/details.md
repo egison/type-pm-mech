@@ -25,7 +25,20 @@ consumer 変数 `κ` が一度 `Any` に束縛されても，二度目以降の�
 `mguCap` では `Any` は通常の rigid ground constructor であり，`Any = Any` のみが
 直接成功する（flexible variable を `Any` へ束縛することはできる）．
 
-## Source typing
+## Demand-directed source typing
+
+source program の型付け可能性を定義する唯一の judgment は `DDTyping` である．その本体は
+`DDSynth`／`DDCheck` と pattern・arm・clause の state-threaded family であり，fresh supply，
+prevailing paired substitution，exact MGU／one-way delta を左から右へ thread する．
+`DDCheck` は式を一度 synthesize し，その直後の cut で `DDAlign` を一度だけ行う．詳細な規則と
+証明状況は後述の「demand-directed judgment」にまとめる．
+
+## Semantic safety typing and frozen declarations
+
+歴史的な実装名 `HasTy`（役割名 `SemanticTyping`）は，runtime value typing，preservation，
+reconstruction soundness が消費する state-free な内部 certificate である．無条件の surface
+coercion を含むため `DDTyping` より広い方向がある一方，capability freeze 境界では逆向きの
+非包含もある．したがって source acceptance を定義する第二の typing discipline とは扱わない．
 
 対象構文: lambda，application，`let`，tuple，data constructor，primitive，
 `something`，matcher literal，`matchAll`，pattern function，`f ≠ x` と
@@ -144,10 +157,10 @@ generalization，coverage evidence を検査し，再構成に必要な `WBridge
 solver replay 自体は cross-sort-aware な `Subst.seq` の逐次合成から無条件に導く．
 公開 soundness の経路では，生成時の `FreshInstAt` を後続 solver cut ごとに輸送せず，
 終端の binder-local `ValueFlowInst`／`Inst` を有限 checker で直接構成する．
-その条件に `HasTy` 自体や同型の導出を oracle として含めない．
+その条件に `SemanticTyping` 自体や同型の導出を oracle として含めない．
 `infer signature context expression = some result` ならば，`infer_success_sound` が
 prevailing substitution で解決した context と結果型に対する concrete declarative
-`HasTy` を与える．`InferenceInputWF` は意図する frozen Egison core 入力の静的境界を
+`SemanticTyping` を与える．`InferenceInputWF` は意図する frozen Egison core 入力の静的境界を
 別途記述するが，fail-closed な validator により soundness 定理の追加前提にはならない．
 呼び出し側が bridge 証明書を渡す必要もない．
 後段 post の target component は前段 target range に後段 capability action も適用するため，
@@ -197,9 +210,10 @@ normalized product と後続 suffix を明示する cut-indexed coercion event �
 
 ## Coercion・elaboration 層
 
-### 宣言的 coercion 規則（wide `HasTy`）
+### Semantic envelope の coercion 規則（内部 `HasTy`）
 
-`HasTy` の coercion 規則は COERCE-MATCHER-TO-SLOT（producer-stable one-way check），
+内部 `SemanticTyping` の実装である `HasTy` の coercion 規則は
+COERCE-MATCHER-TO-SLOT（producer-stable one-way check），
 CHECK-SLOT-TO-SLOT，unary COERCE-PRODUCT-MATCHER，COERCE-SLOT-TUPLE である．
 これらは位置の demand と無関係に使える意図的に広い**動的安全性の包絡**であり，
 このまま維持する（受理完全性の前提には使わない）．product lift が unary であるため，
@@ -246,7 +260,7 @@ replay soundness に加え，`NormalPlan.comp` と `CoercionPlan.normalizable` �
 端点から一意に決まることも証明済みである．raw certificate を含む plan inhabitant 自体の
 一意性，および公開推論が observable plan data を直接返すことは未証明である．
 
-slot-demand 原則の下で demand 経路（selector／将来の `DDTyping`）が到達する非恒等
+slot-demand 原則の下で demand 経路（selector／公開 source typing `DDTyping`）が到達する非恒等
 plan は，終点が slot 頭の三形
 `[matcherToSlot]`／`[productMatcher, matcherToSlot]`／`[slotTuple]` に限られる．
 単独 `[productMatcher]`（Matcher 終点）は plan syntax としては残るが wide `HasTy`
@@ -425,7 +439,7 @@ pattern synthesis は dual と binding context，clause 層は hole ledger を�
 閉じる．closed wrapper の系は `initialSupply_context_boundedBy`（初期 supply は
 自 context を有界化する）と `DDTyping.published_boundedBy`（公開型は initialSupply
 を拡張する終端 supply で有界）．
-非主張：`HasTy` への忘却（freeze 側対応条件つきの形で段階 3-2；無条件形は
+非主張：`SemanticTyping` への semantic erasure（freeze 側対応条件つきの形で段階 3-2；無条件形は
 `capFreeze_forgetting_gap` により反証済みで，`let` 経由の
 `letCapFreeze_forgetting_gap` により文脈側条件だけの形も反証済み），
 `CoherentExpr` への変換，受理定理（段階 3-2／3-3）．
@@ -810,13 +824,13 @@ executable regression とその正負境界．削るときは対応する設計�
   direct-self 正例，coverage 不足 multiset 負例（`coverageCheck = false`・
   `¬ CoverageOK`・raw／公開 W 失敗），recursive list matcher を slot に適用して
   `cons $x $rest` の両束縛を body で使う静的な公開 inference 旗艦例（結果型 pin・
-  `infer_success_sound` による `HasTy` 再構成・coherent instance
+  `infer_success_sound` による `SemanticTyping` 再構成・coherent instance
   `listMatcherMatchAll_coherent`；動的実行は非主張），量化 binder と自由 capability の
   番号衝突下での ordered instance／let generalization，非空 pattern-constructor 表への
   非空虚な `FrozenSigWF`（`listSignature_wf`／`multisetSignature_wf`）．
 - [`TypePM/ProducerStrengtheningRegression.lean`](../TypePM/ProducerStrengtheningRegression.lean):
   polymorphic producer を公開 `infer` が拒否し，concrete producer の control twin が成功
-  する対（成功側は結果型 `Int` pin と `HasTy` 再構成つき）．
+  する対（成功側は結果型 `Int` pin と `SemanticTyping` 再構成つき）．
 - [`TypePM/PatternCtorCapabilityRegression.lean`](../TypePM/PatternCtorCapabilityRegression.lean):
   pattern-constructor capability fallback の exact projection 前後（独立な二 child
   consumer で旧 exact projection が失敗し，fallback 後は同じ fresh `kappa`／

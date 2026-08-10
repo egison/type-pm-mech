@@ -1,0 +1,276 @@
+\section{Pattern と matcher の規則}
+
+\subsection{ユーザーパターンの synthesis}
+
+$\DDPattern$ は pattern dual $\eta=\kappa\triangleright\tau$ と binding context を
+同時に合成する．$\Delta$ は左から右へ延長し，同じ branch 内の重複 binder を拒否する．
+\begin{mathpar}
+\inferrule{
+  x\notin\dom(\Delta)
+}{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,\$x,
+    \chi_{q_\kappa}\triangleright\alpha_{q_\tau},
+    \Delta,x:\alpha_{q_\tau},q+\langle1,1\rangle,S)
+}\rn{DD-PAT-VAR}
+
+\inferrule{ }{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,\_,
+    \chi_{q_\kappa}\triangleright\alpha_{q_\tau},\Delta,
+    q+\langle1,1\rangle,S)
+}\rn{DD-PAT-WILD}
+
+\inferrule{
+  q;S;\mono\Delta,\Gamma\vdash e\Rightarrow\tau\dashv q_1;S_1
+}{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,\#e,
+    \chi_{(q_1)_\kappa}\triangleright\tau,\Delta,
+    q_1+\langle1,0\rangle,S_1)
+}\rn{DD-PAT-VALUE}
+
+\inferrule{
+  \Phi(x)=\kappa\triangleright\tau
+}{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,\widetilde x,
+    \kappa\triangleright\tau,\Delta,q,S)
+}\rn{DD-PAT-EMBED}
+\end{mathpar}
+
+tuple と constructor は子 pattern を先に合成する．constructor は instantiated field target と
+子 target を align し，観測可能位置から result capability を決め，最後に
+$\capcompat$ を検査する．
+\begin{mathpar}
+\inferrule{
+  \DDPatterns_{\Sighat}(q,S,\Gamma,\Phi,\Delta,
+    \overline p,\overline\eta,\Delta',q',S')
+}{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,(\overline p),
+    (\overline{\eta.\kappa})\triangleright
+    (\overline{\eta.\tau}),\Delta',q',S')
+}\rn{DD-PAT-TUPLE}
+
+\inferrule{
+  \Inst_q(\Sighat_P(c))=(\overline\rho\Rightarrow_P\rho,q_0) \\
+  \DDPatterns_{\Sighat}(q_0,S,\Gamma,\Phi,\Delta,
+    \overline p,\overline\eta,\Delta',q_1,S_1) \\
+  \mathsf{DDAlignTargetList}(S_1,\overline\eta,\overline\rho,S_2) \\
+  \mathsf{DDPatternCtorCap}_{\Sighat}
+    (c,q_1,S_2,\overline{\eta.\kappa},\kappa,q_2,S_3) \\
+  \capcompat_{\Sighat}(c;S_3\overline{\eta.\kappa},S_3\kappa)
+}{
+  \DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,c\,\overline p,
+    \kappa\triangleright\rho,\Delta',q_2,S_3)
+}\rn{DD-PAT-CON}
+\end{mathpar}
+
+$p_1\mathbin\&p_2$ は左の bindings を右へ渡す．$p_1\mathbin|p_2$ は同じ入力
+$\Delta$ から両 alternative を調べ，dual と binder 名・binder type を最後に align する．
+\begin{mathpar}
+\inferrule{
+  \DDPattern(q,S,\Gamma,\Phi,\Delta,p_1,\eta_1,
+    \Delta_1,q_1,S_1) \\
+  \DDPattern(q_1,S_1,\Gamma,\Phi,\Delta_1,p_2,\eta_2,
+    \Delta_2,q_2,S_2) \\
+  \mathsf{DDAlignDual}(S_2,\eta_1,\eta_2,S')
+}{
+  \DDPattern(q,S,\Gamma,\Phi,\Delta,p_1\mathbin{\&}p_2,
+    \eta_1,\Delta_2,q_2,S')
+}\rn{DD-PAT-AND}
+
+\inferrule{
+  \DDPattern(q,S,\Gamma,\Phi,\Delta,p_1,\eta_1,
+    \Delta_1,q_1,S_1) \\
+  \DDPattern(q_1,S_1,\Gamma,\Phi,\Delta,p_2,\eta_2,
+    \Delta_2,q_2,S_2) \\
+  \mathsf{DDAlignDual}(S_2,\eta_1,\eta_2,S_3) \\
+  \mathsf{DDAlignBindings}(S_3,\Delta_1,\Delta_2,S')
+}{
+  \DDPattern(q,S,\Gamma,\Phi,\Delta,p_1\mathbin{|}p_2,
+    \eta_1,\Delta_1,q_2,S')
+}\rn{DD-PAT-OR}
+\end{mathpar}
+
+pattern-function scheme は freeze 済み signature から instantiate する．declaration の検査は
+source expression の $\mathsf{DDTyping}$ の外側であり，本稿に declaration typing rule は置かない．
+\begin{mathpar}
+\inferrule{
+  \InstDual_q(\Sighat_F(f))=(\overline\eta\Rightarrow\eta,q_0) \\
+  \DDPatterns(q_0,S,\Gamma,\Phi,\Delta,\overline p,
+    \overline\eta',\Delta',q_1,S_1) \\
+  \mathsf{DDAlignDualList}(S_1,\overline\eta',\overline\eta,S')
+}{
+  \DDPattern(q,S,\Gamma,\Phi,\Delta,f\,\overline p,
+    \eta,\Delta',q_1,S')
+}\rn{DD-PAT-APP}
+\end{mathpar}
+
+\subsection{MatchAll の型付け}
+
+$\mathtt{matchAll}$ は target を合成し，pattern target と align した後，matcher expression を
+slot type に対して check する．第四 premise は，\textsc{DD-MATCHALL} 自身が直接導入する唯一の
+slot demand である．ただし，これは導出木全体に demand が一つしかないという意味ではない．
+例えば $e_m$ が matcher literal なら，その synthesis 中に各 clause の next matcher が
+それぞれ別の slot に対して check される．各 checking cut が独立に，高々一度の coercion を行う．
+\begin{mathpar}
+\inferrule{
+  q;S;\Gamma\vdash e_t\Rightarrow\tau_t\dashv q_1;S_1 \\
+  \DDPattern(q_1,S_1,\Gamma,\varnothing,\varnothing,p,
+    \kappa_p\triangleright\tau_p,\Delta,q_2,S_2) \\
+  \DDAlignTypes(S_2,\tau_p,\tau_t,S_3) \\
+  q_2;S_3;\Gamma\vdash e_m\Leftarrow
+    \MatcherSlot{\kappa_p}{\tau_t}\dashv q_3;S_4 \\
+  q_3;S_4;\mono\Delta,\Gamma\vdash e\Rightarrow
+    \tau_r\dashv q';S'
+}{
+  q;S;\Gamma\vdash
+  \mathtt{matchAll}\ e_t\ \mathtt{as}\ e_m\
+  \mathtt{with}\ p\to e\Rightarrow
+  \ListTy{\tau_r}\dashv q';S'
+}\rn{DD-MATCHALL}
+\end{mathpar}
+
+\subsection{Primitive pattern と data pattern の検査}
+
+$\DDPPat$ は一つの shared matcher target に対して primitive pattern を check し，hole dual 列と
+bindings を返す．hole だけが fresh consumer capability を作る．
+\begin{mathpar}
+\inferrule{ }{
+  \DDPPat_{\Sighat}(q,S,\$,\tau,
+    [\chi_{q_\kappa}\triangleright\tau],\varnothing,
+    q+\langle1,0\rangle,S)
+}\rn{DD-PP-HOLE}
+
+\inferrule{ }{
+  \DDPPat_{\Sighat}(q,S,\_,\tau,[],\varnothing,q,S)
+}\rn{DD-PP-WILD}
+
+\inferrule{ }{
+  \DDPPat_{\Sighat}(q,S,\#\$x,\tau,[],x:\tau,q,S)
+}\rn{DD-PP-VALUE}
+\end{mathpar}
+
+constructor と tuple は result を expected target に align してから子へ expected target 列を渡す．
+$\mathsf{DDPPats}$ は hole 列を連結し，binder の disjointness を検査する．
+\begin{mathpar}
+\inferrule{
+  \Inst_q(\Sighat_P(c))=(\overline\rho\Rightarrow_P\rho,q_0) \\
+  \DDAlignTypes(S,\rho,\tau,S_1) \\
+  \mathsf{DDPPats}_{\Sighat}(q_0,S_1,\overline{pp},\overline\rho,
+    \overline\eta,\Delta,q',S')
+}{
+  \DDPPat_{\Sighat}(q,S,c\,\overline{pp},\tau,
+    \overline\eta,\Delta,q',S')
+}\rn{DD-PP-CON}
+
+\inferrule{
+  \mathsf{freshTargets}(n,q)=(\overline\alpha,q_0) \\
+  \DDAlignTypes(S,(\overline\alpha),\tau,S_1) \\
+  \mathsf{DDPPats}_{\Sighat}(q_0,S_1,\overline{pp},\overline\alpha,
+    \overline\eta,\Delta,q',S')
+}{
+  \DDPPat_{\Sighat}(q,S,(\overline{pp}),\tau,
+    \overline\eta,\Delta,q',S')
+}\rn{DD-PP-TUPLE}
+\end{mathpar}
+
+$\DDDPat$ は arm の data pattern を clause target に対して check し，bindings を返す．
+\begin{mathpar}
+\inferrule{ }{
+  \DDDPat_{\Sighat}(q,S,\$x,\tau,x:\tau,q,S)
+}\rn{DD-DP-VAR}
+
+\inferrule{ }{
+  \DDDPat_{\Sighat}(q,S,\_,\tau,\varnothing,q,S)
+}\rn{DD-DP-WILD}
+
+\inferrule{
+  \Inst_q(\Sighat_D(C))=(\overline\rho\to\rho,q_0) \\
+  \DDAlignTypes(S,\rho,\tau,S_1) \\
+  \mathsf{DDDPats}_{\Sighat}(q_0,S_1,\overline{dp},\overline\rho,
+    \Delta,q',S')
+}{
+  \DDDPat_{\Sighat}(q,S,C\,\overline{dp},\tau,\Delta,q',S')
+}\rn{DD-DP-CON}
+
+\inferrule{
+  \mathsf{freshTargets}(n,q)=(\overline\alpha,q_0) \\
+  \DDAlignTypes(S,(\overline\alpha),\tau,S_1) \\
+  \mathsf{DDDPats}_{\Sighat}(q_0,S_1,\overline{dp},\overline\alpha,
+    \Delta,q',S')
+}{
+  \DDDPat_{\Sighat}(q,S,(\overline{dp}),\tau,\Delta,q',S')
+}\rn{DD-DP-TUPLE}
+\end{mathpar}
+
+\subsection{Clause と matcher literal の型付け}
+
+一つの clause は primitive pattern，next-matcher 列，arm 列の順に処理する．
+$\decomposeME(M,n)$ は next expression を hole 数と同じ長さの expression 列へ展開する．
+各 next matcher は対応する hole slot に対して $\DDCheck$ される．
+\begin{mathpar}
+\inferrule{
+  \DDPPat_{\Sighat}(q,S,pp,\tau,\overline\eta,
+    \Delta_{pp},q_1,S_1) \\
+  \decomposeME(M,|\overline\eta|)=\mathsf{some}\;\overline M \\
+  \DDChecks_{\Sighat}(q_1,S_1,\Gamma,\overline M,
+    \overline{\MatcherSlot{\eta.\kappa}{\eta.\tau}},q_2,S_2) \\
+  \DDArms_{\Sighat}(q_2,S_2,\Gamma,\Delta_{pp},\overline a,
+    \tau,\ListTy{\prodty(\overline{\eta.\tau})},q',S')
+}{
+  \DDClause_{\Sighat}(q,S,\Gamma,
+    pp\ \mathtt{as}\ M\ \mathtt{with}\ \overline a,
+    \tau,\overline\eta,q',S')
+}\rn{DD-CLAUSE}
+\end{mathpar}
+$\DDArms$ は data-pattern bindings と primitive-pattern bindings の衝突を拒否し，arm body を
+$\ListTy{\prodty(\overline{\eta.\tau})}$ に対して check する．
+
+matcher literal は全 clause で一つの fresh target を共有する．最後の substitution で hole dual を
+一度だけ解決して evidence を再計算し，shape，catch-all，binder，arm exhaustiveness，coverage の
+全 checker を通した場合だけ matcher type を返す．
+\begin{mathpar}
+\inferrule{
+  \DDClauses_{\Sighat}(q+\langle0,1\rangle,S,\Gamma,\mathit{cls},
+    \alpha_{q_\tau},
+    \overline{\overline\eta},q',S') \\
+  \mathsf{collectClauseEvidence}_{\Sighat}
+    (\mathit{cls},\mathsf{terminalHoleCaps}(S',
+      \overline{\overline\eta}))=\mathsf{some}\;\overline{ev} \\
+  \mathsf{inferShape}_{\Sighat}(\overline{ev})=
+    \mathsf{some}\;\kappa \\
+  \mathsf{clauseCapsListCheck}_{\Sighat}
+    (\kappa,\mathit{cls},\mathsf{terminalHoleCaps}
+      (S',\overline{\overline\eta})) \\
+  \CatchAllLast(\mathit{cls})\quad
+  \mathsf{MatcherBindersCheck}(\mathit{cls}) \\
+  \ArmExhaustive_{\Sighat_D}(\mathit{cls},S'\alpha_{q_\tau})\quad
+  \CoverageOK_{\Sighat}(\mathit{cls},\kappa)
+}{
+  q;S;\Gamma\vdash
+  \mathtt{matcher}\;\mathit{cls}\Rightarrow
+  \Matcher{\kappa}{\alpha_{q_\tau}}\dashv q';S'
+}\rn{DD-MATCHER}
+\end{mathpar}
+
+$\CatchAllLast$ は bare-hole catch-all を最後の clause に限定する．
+$\ArmExhaustive$ は保守的で実行可能な checker であり，core では variable または wildcard arm
+があれば成功する．$\CoverageOK$ は observable structured capability ごとに必要な constructor
+clause があることを検査する．checker の失敗を warning に落とす mode は core に含めない．
+
+matcher literal を body に持つ recursion は clause skeleton から domain／codomain placeholder を
+決める専用規則を使う．
+\begin{mathpar}
+\inferrule{
+  f\ne x\quad\DirectSelf(f,\mathtt{matcher}\;\mathit{cls}) \\
+  \mathsf{fixMatcherPlaceholderSupply}_{\Sighat}
+    (\mathit{cls},q)=\mathsf{some}\;(\tau_d,\tau_c,q_0) \\
+  q_0;S;\Gamma,f:\mono{(\tau_d\to\tau_c)},x:\mono{\tau_d}
+    \vdash\mathtt{matcher}\;\mathit{cls}\Rightarrow
+      \rho\dashv q_1;S_1 \\
+  \DDAlignTypes(S_1,\rho,\tau_c,S')
+}{
+  q;S;\Gamma\vdash
+    \mathtt{fix}\ f\ x.(\mathtt{matcher}\;\mathit{cls})\Rightarrow
+      \tau_d\to\tau_c\dashv q_1;S'
+}\rn{DD-FIX-MATCHER}
+\end{mathpar}
+$\mathsf{NonMatcherBody}$ により通常の \textsc{DD-FIX} と排他的である．

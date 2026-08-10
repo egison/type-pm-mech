@@ -74,7 +74,8 @@ import TypePM.DemandTypingRegression
 /-!
 # Egison core with two-index matcher types
 
-This is the public import surface of the current formalization.  Every dynamic
-theorem is stated over the concrete source and runtime judgments in
-`TypePM`.
+This is the public import surface of the current formalization.  `DDTyping` is
+the source-language typing discipline.  `SemanticTyping` (implemented by the
+historical inductive relation `HasTy`) is the state-free certificate used
+internally by reconstruction and the dynamic metatheory.
 -/

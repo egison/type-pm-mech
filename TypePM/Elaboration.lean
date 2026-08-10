@@ -3,16 +3,18 @@ import TypePM.Source
 /-!
 # Surface elaboration and explicit coercion plans
 
-The source judgment `HasTy` deliberately includes the implicit matcher/slot
-coercions used by the surface language.  That makes it the right boundary for
-dynamic safety, but not the right judgment for an ordinary principal-type
-statement: a single expression may have derivable types with different head
-constructors.
+The internal semantic judgment `SemanticTyping` (implemented by `HasTy`)
+deliberately includes the implicit matcher/slot coercions used by the surface
+language.  That makes it the right boundary for dynamic safety, but not the
+public source-acceptance judgment and not the right relation for an ordinary
+principal-type statement: a single expression may have derivable types with
+different head constructors.
 
 This module starts the syntax-directed elaboration layer without changing the
 existing safety boundary.  `SynthHead` records one non-coercion source rule at
 the root, while `CoercionPlan` records the (possibly empty) outer coercion
-spine explicitly.  `HasTy.factorHead` proves that every surface typing admits
+spine explicitly.  `HasTy.factorHead` proves that every semantic-envelope
+typing admits
 this decomposition.
 
 The premises of `SynthHead` intentionally remain surface judgments here.

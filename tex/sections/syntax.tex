@@ -1,0 +1,157 @@
+\section{構文と判断}
+
+\subsection{型とスキーム}
+
+capability $\kappa$ と target type $\tau$ は別 sort である．matcher と slot は同じ二つの
+index を持つが，前者は producer，後者は consumer expectation を表す．
+\[
+\begin{array}{rcll}
+\kappa &::=& \Any\mid\chi\mid\hat{s}
+  \mid K\,\overline\kappa\mid(\kappa_1,\ldots,\kappa_n)
+  & \kappa:\CapSort,\\
+\tau &::=& \alpha\mid\hat a\mid\mathbf 1\mid\mathsf{Int}
+  \mid\mathsf{Bool}\mid K\,\overline\tau
+  \mid(\tau_1,\ldots,\tau_n)\mid\tau_1\to\tau_2
+  & \\
+&& \mid\Matcher{\kappa}{\tau}\mid\MatcherSlot{\kappa}{\tau}
+  & \tau:\Ty,\\
+\sigma &::=& \forall(\overline\chi:\CapSort).
+  \forall(\overline\alpha:\Ty).\tau
+  & \text{expression scheme},\\
+\eta &::=& \kappa\mathbin{\triangleright}\tau
+  & \text{pattern dual},\\
+\varsigma &::=& \forall(\overline\chi:\CapSort).
+  \forall(\overline\alpha:\Ty).
+  (\overline\eta\Rightarrow\eta)
+  & \text{pattern-function scheme}.
+\end{array}
+\]
+$\chi,\alpha$ は flexible metavariable，$\hat s,\hat a$ は rigid skolem である．
+$\Any$ は one-way capability matching の consumer 側でだけ wildcard として働き，
+対称 unification では通常の rigid constructor である．$\mono\tau$ は量化 binder を持たない
+scheme を表す．
+
+\subsection{ソース構文}
+
+\[
+\begin{array}{rcl}
+e &::=& x\mid\lambda x.e\mid e_1\,e_2
+  \mid\mathtt{let}\ x=e_1\ \mathtt{in}\ e_2
+  \mid\mathtt{fix}\ f\ x.e\mid n\\
+&&\mid(e_1,\ldots,e_n)\mid C\,\overline e
+  \mid op(\overline e)\mid\mathtt{something}\\
+&&\mid\mathtt{matcher}\;\mathit{cls}\\
+&&\mid\mathtt{matchAll}\ e_t\ \mathtt{as}\ e_m\
+       \mathtt{with}\ p\to e,\\[0.2em]
+p &::=& \$x\mid\_\mid\#e\mid\widetilde x
+  \mid c\,\overline p\mid p_1\mathbin{\&}p_2
+  \mid p_1\mathbin{|}p_2\mid f\,\overline p
+  \mid(\overline p),\\
+pp &::=& \$\mid\_\mid\#\$x\mid c\,\overline{pp}
+  \mid(\overline{pp}),\\
+dp &::=& \$x\mid\_\mid C\,\overline{dp}\mid(\overline{dp}),\\
+cl &::=& pp\ \mathtt{as}\ M\ \mathtt{with}\
+  [dp_j\to N_j]_{j=1}^{r},\\
+\mathit{cls} &::=& [cl_i]_{i=1}^{m}.
+\end{array}
+\]
+$c$ は pattern constructor，$C$ は data constructor である．surface
+$\mathtt{match}$ は $\mathtt{matchAll}$ と $\mathsf{head}$ への elaboration であり，
+core primitive ではない．pattern-function declaration は source expression の typing より前に
+freeze され，canonical signature の一部になる．
+
+\subsection{シグネチャ・文脈・状態}
+
+\[
+\begin{array}{c@{\qquad}l}
+\Sighat=(\Sighat_D,\Sighat_P,\Sighat_F,
+  \Sighat_{\mathit{prim}},\mathit{Obs}_{\Sighat})
+  & \text{freeze 済み canonical signature},\\
+\Gamma::=\varnothing\mid\Gamma,x:\sigma
+  & \text{expression scheme context},\\
+\Phi::=\varnothing\mid\Phi,x:\eta
+  & \text{pattern-parameter context},\\
+\Delta::=\varnothing\mid\Delta,x:\tau
+  & \text{monomorphic pattern bindings},\\
+q=(q_\kappa,q_\tau)
+  & \text{next capability／target variable numbers},\\
+S=(C,T)
+  & \text{prevailing paired substitution}.
+\end{array}
+\]
+\newpage
+$q_\kappa$ と $q_\tau$ は独立な自然数 counter であり，それぞれ次に未使用の
+capability metavariable と target metavariable の番号を保持する．以下では
+\[
+\chi_{q_\kappa}:\CapSort,
+\qquad
+\alpha_{q_\tau}:\Ty,
+\qquad
+q+\langle i,j\rangle=(q_\kappa+i,q_\tau+j)
+\]
+と書く．従って capability variable を一つ生成すれば supply は
+$q+\langle1,0\rangle$，target variable なら $q+\langle0,1\rangle$，両方を一つずつ
+生成する pattern variable 規則では $q+\langle1,1\rangle$ となる．番号空間は sort ごとに
+別なので，$\chi_3$ と $\alpha_3$ は別の変数である．closed wrapper の初期 supply は，
+signature と context に既出の番号より各 counter が大きくなるように選ぶ．
+
+$S$ の作用は capability を先に，target substitution を後に適用する．
+\[
+S\kappa=C\kappa,
+\qquad
+S\tau=T(C\tau),
+\qquad
+S\Gamma=\{x:S\sigma\mid x:\sigma\in\Gamma\}.
+\]
+substitution delta は $\mathsf{seq}$ で時系列順に prevailing substitution へ合成する．
+後段の capability action は前段の target range 内部にも作用するため，二 component を
+独立に合成しない．
+
+\subsection{判断の一覧}
+
+\begin{center}
+\small
+\begin{tabular}{>{$}l<{$} l}
+\toprule
+\DDSynth_{\Sighat}(q,S,\Gamma,e,\tau,q',S')
+  & expression synthesis \\
+\DDCheck_{\Sighat}(q,S,\Gamma,e,\rho,q',S')
+  & expression checking \\
+\DDSynths_{\Sighat},\;\DDChecks_{\Sighat}
+  & expression-list traversal \\
+\DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,p,
+  \eta,\Delta',q',S')
+  & user-pattern synthesis \\
+\DDPPat_{\Sighat}(q,S,pp,\tau,\overline\eta,
+  \Delta,q',S')
+  & primitive-pattern checking \\
+\DDDPat_{\Sighat}(q,S,dp,\tau,\Delta,q',S')
+  & data-pattern checking \\
+\DDClause_{\Sighat}(q,S,\Gamma,cl,\tau,
+  \overline\eta,q',S')
+  & matcher-clause inference \\
+\DDArms_{\Sighat},\;\DDClauses_{\Sighat}
+  & arm／clause-list traversal \\
+\bottomrule
+\end{tabular}
+\end{center}
+list judgment は空列で $q,S$ をそのまま返す．cons では head の出力を tail の入力にし，
+binding context も左から右へ延長する．lookup または規則中の部分関数が失敗した場合，
+その規則は適用できない．
+
+\subsection{具体化と一般化}
+
+$\Inst_q$ と $\InstDual_q$ は supply-indexed に量化 binder を fresh variable へ置き換え，
+次 supply も返す．expression context と pattern-function signature の量化 capability binder は
+capability variable へだけ instantiate される．利用側の demand を根拠に producer capability を
+constructor や product へ変えることはできない．一方，data／pattern constructor と primitive の
+scheme は通常の binder-supported structural instance を許す．
+
+$\Gen$ は signature と context に自由な variable を除いて量化する．
+\[
+\Gen(\Sighat,\Gamma,\tau)=
+\forall(\fcv(\tau)\setminus(\fcv(\Sighat)\cup\fcv(\Gamma))).
+\forall(\ftv(\tau)\setminus(\ftv(\Sighat)\cup\ftv(\Gamma))).\tau.
+\]
+scheme binder は局所的であり，後段の substitution が導入した同番号の自由 variable を
+捕捉しない．$\mathtt{let}$ は value の synthesis 直後の $S\Gamma,S\tau$ を一般化する．

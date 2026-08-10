@@ -12,10 +12,9 @@ Lean の public import surface は [`TypePM.lean`](TypePM.lean) にある．
 
 ## 最上位目標
 
-完成目標は，Egison core の **demand-directed な注釈不要性**（annotation-freeness）の
-機械化である．その前提となる仕様を，推論器から独立した構文主導の状態付き judgment
-`DDTyping` として定義する方針に固定する．完成定理は `DDTyping` に対する公開推論器の
-受理完全性である：
+Egison core の唯一の source typing discipline は，demand-directed・構文主導・状態付きの
+judgment `DDTyping` である．完成目標は，この source typing に対する注釈不要性
+（annotation-freeness），すなわち公開推論器との受理対応である：
 
 ```text
 ∀ signature e τ,
@@ -23,7 +22,7 @@ Lean の public import surface は [`TypePM.lean`](TypePM.lean) にある．
   (infer signature [] e).isSome
 ```
 
-`DDTyping` は pattern 層 family を含む全構文層に対して
+`DDTyping` は推論器の成功を定義に含めない独立仕様であり，pattern 層 family を含む全構文層に対して
 [`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean) で定義済みである（受理完全性
 定理は未）．内部には fresh supply `q` と prevailing
 substitution `S` を入出力で thread する synthesis／checking の二判断を置く：
@@ -40,16 +39,18 @@ selection，左から右の構文走査を帰納規則として独立に記述�
 （[`TypePM/Term.lean`](TypePM/Term.lean)）自体には型注釈の形がないので，上の完成定理が
 「`DDTyping` を持つ closed program は注釈なしで受理される」の正確な主張である．
 
-これと区別して，広い `HasTy` を前提とする命題
+歴史的な帰納型名 `HasTy` は，Lean 内では `SemanticTyping` という役割名を与えた
+state-free な semantic/safety certificate として残す．これは closure／matcher value typing，
+preservation，公開推論成功の再構成が消費する内部判断であって，source program の受理可能性を
+定義する第二の typing discipline ではない．次の命題
 
 ```text
 ∀ signature e τ,  HasTy signature [] e τ → (infer signature [] e).isSome
 ```
 
-を `Coherent.WideAnnotationFree` と呼ぶ．これは完成目標でも open goal でもなく，境界を
-固定するために残した**恒久的に反証済みの命題**である（`wideAnnotationFree_refuted`）．
-宣言的 `HasTy` の無条件 coercion 規則は動的安全性の包絡としては維持するが，受理完全性の
-前提としては広すぎる．
+は内部 semantic envelope 全体を推論器が受理するという誤った強化であり，
+`Coherent.WideAnnotationFree` という**恒久的に反証済みの回帰命題**としてだけ残す
+（`wideAnnotationFree_refuted`）．source typing や完成目標として扱わない．
 
 ## 設計原理: slot-demand coercion
 
@@ -128,8 +129,8 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
 
 > The soundness of executable type inference for the Egison core is mechanized in Lean 4.
 
-- **公開 inference の soundness** — `infer = some r` の成功等式だけから宣言的 `HasTy` を
-  返す（`infer_success_sound`）．`infer` は停止する raw W 走査 `inferRaw` と有限な
+- **公開 inference の semantic soundness** — `infer = some r` の成功等式だけから内部
+  `SemanticTyping`（実装名 `HasTy`）を返す（`infer_success_sound`）．`infer` は停止する raw W 走査 `inferRaw` と有限な
   fail-closed terminal validator の合成で，呼び出し側の整形性仮定や bridge 証明書を
   要求しない．
 - **動的安全性** — `core_safety` は唯一の global 条件 `FrozenSigWF`（実行可能 checker
@@ -142,16 +143,17 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
   W の全 solve への接続と export freeze event．
 - **DM 断片の宣言側** — 一 sort Damas–Milner 体系の二 sort 体系への埋め込み
   （`DM.HasTy.emb`）と全 coherence（`dm_coherent`）．
-- **principality の反例** — `(something, something)` の二重型付けにより無制限
-  principality は偽（`no_principal_type`）．受理完全性とは両立する（反例が否定するのは
-  推論結果からの代入による全型付けの回収であって，受理そのものではない）．
+- **semantic envelope の principality 反例** — `(something, something)` の二重型付けにより
+  `SemanticTyping` 全体の無制限 principality は偽（`no_principal_type`）．これは public
+  source typing `DDTyping` の型決定性を否定しない．
 
 `sorry`／`admit`／`axiom`／oracle premise はゼロである．いずれの詳細も
 [`docs/details.md`](docs/details.md)．
 
 ## 意図された境界
 
-- `WideAnnotationFree` — 恒久的に反証済み（上述）．
+- `WideAnnotationFree` — 内部 semantic envelope を source acceptance と取り違えた命題として
+  恒久的に反証済み（上述）．
 - `nestedCapProgram`（と swapped 版）— demand の無い位置の coercion に依存する例．
   拒否が意図された挙動であり，`nestedCapProgram` が `DDTyping` に導出を持たないことは
   inversion で固定済み（`nestedCapProgram_no_ddTyping`／swapped 版
@@ -161,11 +163,11 @@ source view を `S₁ τraw` ではなく raw `τraw` から認識する．定�
   （段階 3-0 で負の回帰として固定済み）．
 - capability freeze の忘却側境界 — 量化 matcher producer の instance capability を
   demand 判断は構造化できるが宣言的 value flow は variable-only であり，
-  `DDTyping` と `HasTy` が分離する（`capFreeze_forgetting_gap`）．同じ分離は
+  `DDTyping` と内部 `SemanticTyping` が分離する（`capFreeze_forgetting_gap`）．同じ分離は
   量化 seed なしでも `let` 一般化が capability meta を束縛する形で生じる
   （`letCapFreeze_forgetting_gap`）ため，忘却定理の freeze 側対応条件は文脈側の
   述語だけでは表せず，`let` 一般化 scheme も制約する形で述べる．
-- 非主張: 広い `HasTy` 前提の completeness，無制限 principality，一般 producer-flow
+- 非主張: 広い `SemanticTyping` 前提の completeness，無制限 principality，一般 producer-flow
   解析（alias／mutual recursion／高階 origin），raw declaration からの signature
   validator，一般の評価停止性，full Egison の warning mode／module persistence／標準
   ライブラリ，CAS の target-indexed pattern view，Egison コンパイラ全体の検証．
@@ -209,7 +211,7 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    matcher-expected 分岐を撤去し，受理回帰を反転した
    （`CertifiedInferenceRegression` の selector 検査は identity へ・application guard は
    拒否へ；`ApplicationCoercionRegression` の宣言導出は wide 包絡の意図された受理ギャップ
-   として維持）．`HasTy`・Safety・reconstruction certificate は不変
+   として維持）．`SemanticTyping`・Safety・reconstruction certificate は不変
    （`coerceProductMatcher` は slot-demand 二段の中間段として残る）．
    `nestedCapProgram` の拒否機構は「lift 後の rigid 比較」から「demand 不在による
    head 不一致」へ変わったが，拒否自体は不変である．原則そのものも selector の定理
@@ -254,7 +256,7 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    量化 seed なしでも生じる：単相 seed `m2 : Matcher (con "c" []) Int` の下の
    `let f = λx. Pack x in (f something, f m2)` は mid-derivation の generalize が
    capability meta を自ら束縛し，二利用が instance capability を発散して構造化して
-   `DDTyping` で閉じるが，どの λ domain 選択も宣言的に両利用を満たせない
+   `DDTyping` で閉じるが，どの λ domain 選択も内部 semantic typing で両利用を満たせない
    （`letCapFreeze_forgetting_gap`）．よって freeze 側条件は文脈側の述語だけでは
    表せず，`let` 一般化 scheme も制約する．**忘却の transport 前提として exactness に
    solved-form（冪等）条項を追加済み**：support／range を満たす制約内 involutive swap が
@@ -273,7 +275,8 @@ coherent surface typing（`Coherent.CoherentExpr` ほか）を公開し，surfac
    公開型・dual・binding・hole ledger のすべてが出力 supply で有界；matcher 規則は
    terminal hole capability の有界性を evidence 連鎖で通す）・closed wrapper の系
    （`DDTyping.published_boundedBy` = 公開型は initialSupply を拡張する終端 supply で
-   有界）．残: `HasTy` への忘却（freeze 側条件つき）・`CoherentExpr` への変換．
+   有界）．残: `SemanticTyping` への semantic erasure（freeze 側条件つき）・
+   `CoherentExpr` への変換．
 3. 未: 現行実装に対する最初の受理定理 —
    `DDTyping + RawSourceVisible + FreezeCompatible → infer 受理`．二条件は demand の
    由来を定義する条件ではなく，現行実装との対応条件である．

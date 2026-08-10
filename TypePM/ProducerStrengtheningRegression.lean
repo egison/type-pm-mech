@@ -64,9 +64,9 @@ theorem concreteProducer_result_type :
     concreteProducerResult.resolvedTarget = .int := by
   native_decide
 
-/-- Public success reconstructs the corresponding declarative source typing. -/
+/-- Public success reconstructs the corresponding semantic safety typing. -/
 theorem concreteProducer_typed :
-    HasTy protectionSignature
+    SemanticTyping protectionSignature
       (Inference.ResolvedContext concreteProducerResult.state.prevailing
         concreteContext)
       consumerExpression concreteProducerResult.resolvedTarget :=

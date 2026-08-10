@@ -2994,7 +2994,15 @@ inductive DPatTys (signature : FrozenSig) :
 
 end
 
-/-! ## Declarative source typing -/
+/-! ## State-free semantic typing
+
+`HasTy` is the internal semantic typing envelope used by value typing,
+preservation, and the certified-inference soundness bridge.  It is deliberately
+independent of fresh-supply and solver order, and may contain surface coercion
+derivations that the demand-directed source discipline rejects.  Public source
+typability is `DDTyping` in `TypePM.DemandTyping`; `HasTy` is not its competing
+acceptance specification.
+-/
 
 /-- Raw, generation-time certificate for matcher-to-slot coercion. -/
 structure MatcherToSlotRawCert
@@ -3591,6 +3599,11 @@ inductive ResolvedClausesTy (signature : FrozenSig) :
       ResolvedClausesTy signature context clauses capability target evidence
 
 end
+
+/-- Public name for the state-free typing certificate consumed by the dynamic
+metatheory.  The historical `HasTy` name remains the inductive implementation
+name so existing proofs and constructor names stay stable. -/
+abbrev SemanticTyping := HasTy
 
 /-! ## Identity-resolution introductions -/
 

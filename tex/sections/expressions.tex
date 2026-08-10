@@ -1,0 +1,120 @@
+\section{式の synthesis 規則}
+
+以下では $q;S;\Gamma\vdash e\Rightarrow\tau\dashv q';S'$ を
+$\DDSynth_{\Sighat}(q,S,\Gamma,e,\tau,q',S')$ の略記とする．
+$\alpha_{q_\tau}$ は supply $q$ が指す次の target variable である．
+
+\subsection{変数・関数・適用}
+
+変数 lookup は prevailing substitution を context に適用してから scheme を fresh instantiate
+する．lambda domain は任意に選ばず，必ず fresh metavariable とする．関数適用は function を
+先に function type へ align し，その後で argument を domain に対して check する．
+\begin{mathpar}
+\inferrule{
+  (S\Gamma)(x)=\sigma \\
+  \Inst_q(\sigma)=(\tau,q')
+}{
+  q;S;\Gamma\vdash x\Rightarrow\tau\dashv q';S
+}\rn{DD-VAR}
+
+\inferrule{
+  q+\langle0,1\rangle;S;\Gamma,x:\mono{\alpha_{q_\tau}}\vdash
+    e\Rightarrow\tau\dashv q';S'
+}{
+  q;S;\Gamma\vdash\lambda x.e\Rightarrow
+    \alpha_{q_\tau}\to\tau\dashv q';S'
+}\rn{DD-LAM}
+
+\inferrule{
+  q;S;\Gamma\vdash e_1\Rightarrow\tau_f\dashv q_1;S_1 \\
+  \DDAlignTypes(S_1,\tau_f,
+    \alpha_{(q_1)_\tau}\to\alpha_{(q_1)_\tau+1},S_2) \\
+  q_1+\langle0,2\rangle;S_2;\Gamma\vdash e_2\Leftarrow
+    \alpha_{(q_1)_\tau}\dashv q_2;S_3
+}{
+  q;S;\Gamma\vdash e_1\,e_2\Rightarrow
+    \alpha_{(q_1)_\tau+1}\dashv q_2;S_3
+}\rn{DD-APP}
+\end{mathpar}
+
+この順序により，function domain が slot に解決された場合，argument の構文に関係なく
+その一つの $\DDCheck$ cut で matcher-to-slot coercion を選べる．
+
+\subsection{リテラル・タプル・コンストラクタ}
+
+\begin{mathpar}
+\inferrule{ }{
+  q;S;\Gamma\vdash n\Rightarrow\mathsf{Int}\dashv q;S
+}\rn{DD-LIT}
+
+\inferrule{
+  \DDSynths_{\Sighat}(q,S,\Gamma,\overline e,
+    \overline\tau,q',S')
+}{
+  q;S;\Gamma\vdash(\overline e)\Rightarrow
+    (\overline\tau)\dashv q';S'
+}\rn{DD-TUPLE}
+
+\inferrule{
+  \Inst_q(\Sighat_D(C))=(\overline\rho\to\rho,q_0) \\
+  \DDChecks_{\Sighat}(q_0,S,\Gamma,\overline e,
+    \overline\rho,q',S')
+}{
+  q;S;\Gamma\vdash C\,\overline e\Rightarrow
+    \rho\dashv q';S'
+}\rn{DD-CON}
+
+\inferrule{
+  \Inst_q(\Sighat_{\mathit{prim}}(op))=
+    (\overline\rho\to\rho,q_0) \\
+  \DDChecks_{\Sighat}(q_0,S,\Gamma,\overline e,
+    \overline\rho,q',S')
+}{
+  q;S;\Gamma\vdash op(\overline e)\Rightarrow
+    \rho\dashv q';S'
+}\rn{DD-PRIM}
+\end{mathpar}
+$\DDSynths$ と $\DDChecks$ は head の出力 state を tail へ渡すため，constructor と primitive
+の引数も左から右へ処理される．
+
+\subsection{Let と再帰}
+
+\begin{mathpar}
+\inferrule{
+  q;S;\Gamma\vdash e_1\Rightarrow\tau_1\dashv q_1;S_1 \\
+  \sigma=\Gen(\Sighat,S_1\Gamma,S_1\tau_1) \\
+  q_1;S_1;\Gamma,x:\sigma\vdash e_2\Rightarrow
+    \tau_2\dashv q';S'
+}{
+  q;S;\Gamma\vdash
+  \mathtt{let}\ x=e_1\ \mathtt{in}\ e_2\Rightarrow
+    \tau_2\dashv q';S'
+}\rn{DD-LET}
+
+\inferrule{
+  f\ne x \\
+  \DirectSelf(f,e)\quad\mathsf{NonMatcherBody}(e) \\
+  q+\langle0,2\rangle;S;\Gamma,
+  f:\mono{(\alpha_{q_\tau}\to\alpha_{q_\tau+1})},
+  x:\mono{\alpha_{q_\tau}}\vdash e\Rightarrow\rho\dashv q_1;S_1 \\
+  \DDAlignTypes(S_1,\rho,\alpha_{q_\tau+1},S')
+}{
+  q;S;\Gamma\vdash\mathtt{fix}\ f\ x.e\Rightarrow
+    \alpha_{q_\tau}\to\alpha_{q_\tau+1}\dashv q_1;S'
+}\rn{DD-FIX}
+\end{mathpar}
+$\DirectSelf(f,e)$ は shadowing-aware な構文条件である．$f$ の自由出現を application spine の
+head に限り，bare value，引数位置，alias 経由，高階の受渡しを拒否する．matcher literal を
+body に持つ recursion は第5章の専用 placeholder 規則を使う．
+
+\subsection{標準 matcher producer}
+
+\begin{mathpar}
+\inferrule{ }{
+  q;S;\Gamma\vdash\mathtt{something}\Rightarrow
+    \Matcher{\Any}{\alpha_{q_\tau}}\dashv
+    q+\langle0,1\rangle;S
+}\rn{DD-SOMETHING}
+\end{mathpar}
+$\mathtt{something}$ 自身は matcher producer である．slot が必要かどうかはこの規則では
+決めず，外側の $\DDCheck$ cut が expected head を見て決める．

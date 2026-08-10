@@ -6,7 +6,7 @@ import TypePM.Source
 The theorems in this module expose facts that follow from the actual
 `ClauseTy`/`ClausesTy` derivations.  In particular, matcher coverage and
 dispatch are not supplied by a runtime interface: they are recovered from
-the source `HasTy` derivation for the literal itself.
+the internal `SemanticTyping`/`HasTy` derivation for the literal itself.
 -/
 
 namespace TypePM

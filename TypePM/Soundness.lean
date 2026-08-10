@@ -20,7 +20,7 @@ structure SafeResult
     (result : ExprResult) (SF : RuntimeSigF) : Prop where
   /-- The inferred term is typable at its fully resolved result. -/
   typing :
-    HasTy signature (ResolvedContext result.state.prevailing context)
+    SemanticTyping signature (ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget
   /-- The concrete operational judgments satisfy the public safety package. -/
   core : CoreSafety signature SF

@@ -5596,7 +5596,7 @@ theorem EvalRuntimeSigAgrees.preservation
     {context : Context} {target : Ty}
     (environmentPristine : EnvPristine environment)
     (environmentTyping : EnvTyped signature context environment)
-    (sourceTyping : HasTy signature context expression target) :
+    (sourceTyping : SemanticTyping signature context expression target) :
     ValueTy signature value target :=
   (EvalRuntimeSigAgrees.preserve_with signatureWF
     (fun typing => typing.generalizedValueFlow
@@ -5996,7 +5996,7 @@ structure CoreSafety (signature : FrozenSig) (SF : RuntimeSigF) : Prop where
       EvalRuntimeSigAgrees signature SF evaluation →
       EnvPristine environment →
       EnvTyped signature context environment →
-      HasTy signature context expression target →
+      SemanticTyping signature context expression target →
       ValueTy signature value target
   stepPreservation :
     ∀ {state states} {reduction : Step SF state states}

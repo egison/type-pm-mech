@@ -1,0 +1,95 @@
+\section{目的と読み方}
+
+\subsection{この仕様が定めるもの}
+
+本稿は，Egison core の source program が型付け可能であることを定める形式仕様である．
+公開する source typing は $\mathsf{DDTyping}$ 一つだけであり，その内部を
+型の合成（synthesis）と検査（checking）に分ける．
+\[
+\begin{array}{rcl}
+q;S;\Sighat;\Gamma\vdash e\Rightarrow\tau_{\mathrm{raw}}
+  \dashv q';S'
+& &\text{synthesis},\\
+q;S;\Sighat;\Gamma\vdash e\Leftarrow\rho
+  \dashv q';S'
+& &\text{checking}.
+\end{array}
+\]
+$q=(q_\kappa,q_\tau)$ は二つの独立な自然数 counter の組である．
+$q_\kappa$ は次に生成する capability metavariable の番号，$q_\tau$ は次に生成する
+target metavariable の番号を表す．例えば $q=(3,5)$ なら，次の capability variable は
+$\chi_3$，次の target variable は $\alpha_5$ である．一方だけを生成したときは，対応する
+counter だけを進める．$S$ はその位置までに得た capability／target の paired substitution
+である．どの規則も子を左から右へ調べ，出力 $q',S'$ を次の子へ渡す．
+
+閉じた wrapper は canonical initial supply $q_0$ と恒等置換から開始し，最後にだけ
+raw result を解決する．
+\[
+\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
+\Longleftrightarrow
+\exists\tau_{\mathrm{raw}},q',S'.\;
+\DDSynth_{\Sighat}(q_0,\mathsf{id},\Gamma,e,
+  \tau_{\mathrm{raw}},q',S')
+\land \tau=S'\tau_{\mathrm{raw}}.
+\]
+
+Lean 内の歴史的な帰納型名 $\mathsf{HasTy}$ には
+$\mathsf{SemanticTyping}$ という役割名を与える．これは runtime value typing と
+preservation が使う state-free な安全性 certificate であり，source acceptance を定める
+第二の型システムではない．本稿の推論規則はすべて $\mathsf{DDTyping}$ family で記述する．
+
+\subsection{中心となる考え：producer と slot demand}
+
+$\Matcher{\kappa}{\tau}$ は matcher を生成する producer type，
+$\MatcherSlot{\kappa}{\tau}$ は matcher を消費する位置の expected type である．
+checking は常に次の一手順を取る．
+\[
+\boxed{
+\text{synthesize }e
+\quad\longrightarrow\quad
+\text{その出力 cut で一度だけ expected type と align する}}
+\]
+非恒等 coercion を選べるのは，その cut で $S\rho$ の head が
+$\mathsf{MatcherSlot}$ と判明している場合だけである．したがって coercion の場所は
+$\mathtt{matchAll}$ など特定の構文に固定されない．例えば
+\[
+\mathit{use}:MatcherSlot{\kappa}{\tau}\to\rho,
+\qquad
+m:Matcher{\kappa}{\tau}
+\]
+の下で $\mathit{use}\;m$ を型付けすると，関数適用規則が domain を先に確定し，
+引数 $m$ の checking cut で producer と slot が対応付けられる．
+$\mathtt{matchAll}$ の matcher 引数，matcher clause の next-matcher，slot domain を持つ
+高階関数の引数は，すべて同じ $\DDCheck$ を使う．したがって「一度だけ」とは導出木全体で
+一度という意味ではなく，一つの checking cut ごとに一度という意味である．
+
+resolved source と expected の組は次の表で分類する．
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+resolved source & resolved expected & alignment \\
+\midrule
+$\Matcher{\kappa_p}{\tau_p}$
+  & $\MatcherSlot{\kappa_c}{\tau_c}$ & matcher-to-slot \\
+product of matchers
+  & $\MatcherSlot{\kappa_c}{\tau_c}$ & product lift; matcher-to-slot \\
+product of slots
+  & $\MatcherSlot{\kappa_c}{\tau_c}$ & slot-tuple lift \\
+$\MatcherSlot{\kappa_p}{\tau_p}$
+  & $\MatcherSlot{\kappa_c}{\tau_c}$ & slot-to-slot equality \\
+その他 & その他 & ordinary equality \\
+\bottomrule
+\end{tabular}
+\end{center}
+expected が型変数のままなら ordinary equality だけを行う．coercion のために
+未解決変数を slot へ推測しない．また ordinary equality の失敗を見てから coercion を
+試す rollback も行わない．resolved head が branch を先に決め，選んだ solve が失敗すれば
+その checking は失敗する．
+
+\subsection{章の案内}
+
+第2章は型・source form・judgment の記号を導入する．第3章は本方式の核である
+一回の checking cut と alignment を定義する．第4章は通常の式，第5章は pattern と
+matcher literal の規則である．第6章は機械化済みの性質と，まだ主張していない境界を
+分けてまとめる．各 Lean module と回帰試験の詳細は
+\texttt{../docs/details.md} に譲る．

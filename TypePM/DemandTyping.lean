@@ -2540,9 +2540,13 @@ inductive DDClauses (signature : FrozenSig) :
 
 end
 
-/-- The closed wrapper: start from the source-scope supply and the identity
-substitution, and publish the terminal substitution applied to the raw
-result. -/
+/-- The public source-typing judgment.  Start from the source-scope supply and
+the identity substitution, synthesize without an expected type, and publish
+the terminal substitution applied to the raw result.
+
+`SemanticTyping`/`HasTy` remains an internal state-free certificate for the
+dynamic metatheory; it is not a second definition of accepted source programs.
+-/
 def DDTyping (signature : FrozenSig) (context : Context)
     (expression : Expr) (target : Ty) : Prop :=
   ∃ raw q' S',

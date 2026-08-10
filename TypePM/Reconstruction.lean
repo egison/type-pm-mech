@@ -3,8 +3,8 @@ import TypePM.InferenceHistory
 /-!
 # Proof-relevant reconstruction after executable type inference
 
-This module keeps successful inference evidence separate from the declarative
-source judgments.  The mutually inductive family below mirrors every source
+This module keeps successful inference evidence separate from the state-free
+semantic judgments.  The mutually inductive family below mirrors every source
 form, but no constructor stores `HasTy`, `PatternTy`, `PPatTy`, `DPatTy`, or
 `ClauseTy`.  The final section is the only forgetful map into those judgments.
 
