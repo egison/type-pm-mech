@@ -1,4 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessState
+import TypePM.DemandTypingInferenceSoundness
 
 /-!
 # Mutual prevailing-state correspondence
@@ -111,6 +112,75 @@ theorem MutualStateCorrespondence.pairedCut_recordSolve
       rw [← competitorFactors]
     _ = Subst.seq reverseAfter (Subst.seq delta declarative) :=
       (PhasedPost.seq_assoc reverseAfter delta declarative).symm
+
+/-! ## Coercion-selector views -/
+
+/-- Mutual instances either both expose a product-of-matchers view or both
+fail to expose one.  The component duals may differ by the residual
+substitutions; branch selection depends only on success of the view. -/
+theorem productMatcherView_iff_of_mutualInstances
+    {declarative executable : Ty} {forward reverse : Subst}
+    (forwardEq : declarative = forward.apply executable)
+    (reverseEq : executable = reverse.apply declarative) :
+    (∃ duals, Inference.productMatcherDuals? declarative = some duals) ↔
+      ∃ duals, Inference.productMatcherDuals? executable = some duals := by
+  constructor
+  · rintro ⟨duals, view⟩
+    refine ⟨duals.map (Dual.applySubst reverse), ?_⟩
+    rw [reverseEq]
+    exact Inference.productMatcherDuals?_apply view
+  · rintro ⟨duals, view⟩
+    refine ⟨duals.map (Dual.applySubst forward), ?_⟩
+    rw [forwardEq]
+    exact Inference.productMatcherDuals?_apply view
+
+/-- Slot-product recognition has the same mutual-instance invariance. -/
+theorem productSlotView_iff_of_mutualInstances
+    {declarative executable : Ty} {forward reverse : Subst}
+    (forwardEq : declarative = forward.apply executable)
+    (reverseEq : executable = reverse.apply declarative) :
+    (∃ duals, Inference.productSlotDuals? declarative = some duals) ↔
+      ∃ duals, Inference.productSlotDuals? executable = some duals := by
+  constructor
+  · rintro ⟨duals, view⟩
+    refine ⟨duals.map (Dual.applySubst reverse), ?_⟩
+    rw [reverseEq]
+    exact Inference.productSlotDuals?_apply view
+  · rintro ⟨duals, view⟩
+    refine ⟨duals.map (Dual.applySubst forward), ?_⟩
+    rw [forwardEq]
+    exact Inference.productSlotDuals?_apply view
+
+/-- A slot head cannot be created in only one direction of a pair of mutual
+instances. -/
+theorem slotHead_iff_of_mutualInstances
+    {declarative executable : Ty} {forward reverse : Subst}
+    (forwardEq : declarative = forward.apply executable)
+    (reverseEq : executable = reverse.apply declarative) :
+    (∃ capability target, declarative = .slot capability target) ↔
+      ∃ capability target, executable = .slot capability target := by
+  constructor
+  · rintro ⟨capability, target, rfl⟩
+    refine ⟨capability.apply reverse.cap, reverse.apply target, ?_⟩
+    simpa only [Subst.apply_slot] using reverseEq
+  · rintro ⟨capability, target, rfl⟩
+    refine ⟨capability.apply forward.cap, forward.apply target, ?_⟩
+    simpa only [Subst.apply_slot] using forwardEq
+
+/-- A matcher head is likewise invariant under mutual instantiation. -/
+theorem matcherHead_iff_of_mutualInstances
+    {declarative executable : Ty} {forward reverse : Subst}
+    (forwardEq : declarative = forward.apply executable)
+    (reverseEq : executable = reverse.apply declarative) :
+    (∃ capability target, declarative = .matcher capability target) ↔
+      ∃ capability target, executable = .matcher capability target := by
+  constructor
+  · rintro ⟨capability, target, rfl⟩
+    refine ⟨capability.apply reverse.cap, reverse.apply target, ?_⟩
+    simpa only [Subst.apply_matcher] using reverseEq
+  · rintro ⟨capability, target, rfl⟩
+    refine ⟨capability.apply forward.cap, forward.apply target, ?_⟩
+    simpa only [Subst.apply_matcher] using forwardEq
 
 end DemandTypingInferenceCompletenessStateMutual
 end TypePM
