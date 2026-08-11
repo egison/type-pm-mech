@@ -1,4 +1,5 @@
 import TypePM.InferenceBase
+import TypePM.SchemeOpeningLists
 import TypePM.Recursion
 import TypePM.SourceSubstitution
 import TypePM.PairedUnification
@@ -43,7 +44,7 @@ def ResolvedMonoCtx (prevailing : Subst) (raw : MonoCtx) : MonoCtx :=
   raw.applySubst prevailing
 
 /-- Resolve an expression context capture-avoidably under scheme binders. -/
-def ResolvedContext (prevailing : Subst) (raw : NamedContext) : NamedContext :=
+def ResolvedContext (prevailing : Subst) (raw : Context) : Context :=
   raw.applySubst prevailing
 
 @[simp] theorem resolvedDual_id (raw : Dual) :
@@ -63,9 +64,9 @@ def ResolvedContext (prevailing : Subst) (raw : NamedContext) : NamedContext :=
     ResolvedMonoCtx Subst.id raw = raw :=
   MonoCtx.applySubst_id raw
 
-@[simp] theorem resolvedContext_id (raw : NamedContext) :
+@[simp] theorem resolvedContext_id (raw : Context) :
     ResolvedContext Subst.id raw = raw :=
-  NamedContext.applySubst_id raw
+  Context.applySubst_id raw
 
 /-! ## Constraint origins and certified local solving -/
 
@@ -518,16 +519,16 @@ inductive TraceEvent where
   | matcherFinalization : Nat -> List Clause ->
       Ty -> List (List Dual) -> Ty -> List (List Cap) ->
       List Shape.Evidence -> Cap -> TraceEvent
-  | letGeneralization : Nat -> String -> NamedContext -> Ty -> NamedContext -> Ty ->
-      NamedScheme -> TraceEvent
+  | letGeneralization : Nat -> String -> Context -> Ty -> Context -> Ty ->
+      Scheme -> TraceEvent
   | capabilityFlow : FlowTag -> Shape.Evidence -> TraceEvent
   | inferredExpr : Expr -> Ty -> SyntaxPath -> TraceEvent
   | inferredPattern : Pattern -> Dual -> MonoCtx -> SyntaxPath -> TraceEvent
-  | patternVarFresh : NamedContext -> PatternCtx -> MonoCtx -> CapVar ->
+  | patternVarFresh : Context -> PatternCtx -> MonoCtx -> CapVar ->
       TypePM.TyVar -> TraceEvent
-  | patternWildFresh : NamedContext -> PatternCtx -> MonoCtx -> CapVar ->
+  | patternWildFresh : Context -> PatternCtx -> MonoCtx -> CapVar ->
       TypePM.TyVar -> TraceEvent
-  | patternValueFresh : NamedContext -> PatternCtx -> MonoCtx -> CapVar -> Ty ->
+  | patternValueFresh : Context -> PatternCtx -> MonoCtx -> CapVar -> Ty ->
       TraceEvent
   /-- Raw constructor-child and result capabilities at the local solving cut.
   The pattern branch checks their locally zonked forms immediately; the
@@ -546,14 +547,14 @@ inductive TraceEvent where
   | typeAlignment : Nat -> Nat -> Ty -> Ty -> Ty -> Ty -> TraceEvent
   /-- Capability/target equality for the two components of a pattern dual. -/
   | dualAlignment : Nat -> Nat -> Dual -> Dual -> Dual -> Dual -> TraceEvent
-  | schemeInstantiation : Nat -> InferenceBase.FreshSupply -> NamedScheme ->
-      String -> NamedContext -> NamedContext ->
+  | schemeInstantiation : Nat -> InferenceBase.FreshSupply -> Scheme ->
+      String -> Context -> Context ->
       List CapVar -> List TypePM.TyVar -> List CapVar -> List TypePM.TyVar ->
       Ty -> List CapVar -> List TypePM.TyVar -> TraceEvent
   | ctorInstantiation : Nat -> InferenceBase.FreshSupply -> CtorScheme ->
       List Ty -> Ty -> List CapVar -> TraceEvent
   | dualInstantiation : Nat -> InferenceBase.FreshSupply -> DualScheme ->
-      NamedContext -> PatternCtx -> MonoCtx -> NamedContext -> PatternCtx -> MonoCtx ->
+      Context -> PatternCtx -> MonoCtx -> Context -> PatternCtx -> MonoCtx ->
       List CapVar -> List TypePM.TyVar -> List CapVar -> List TypePM.TyVar ->
       List Dual -> Dual -> List CapVar -> List TypePM.TyVar -> TraceEvent
   /-- Constructor/primitive-local capability binders are frozen only after
@@ -1725,7 +1726,7 @@ end
 /-! ## Executable Algorithm W -/
 
 /-- Fresh lower bounds above every variable already reserved by input data. -/
-def initialSupply (signature : FrozenSig) (context : NamedContext) :
+def initialSupply (signature : FrozenSig) (context : Context) :
     InferenceBase.FreshSupply :=
   { nextCap := InferenceBase.binderSpan
       ((signature.capVars ++ context.allCapVars).map CapVar.id)
@@ -1735,14 +1736,14 @@ def initialSupply (signature : FrozenSig) (context : NamedContext) :
 /-- The initial capability counter is automatically above the complete source
 scope; callers of the reconstruction bridge do not need to assume this. -/
 theorem initialSupply_capVarsBelow
-    (signature : FrozenSig) (context : NamedContext) :
+    (signature : FrozenSig) (context : Context) :
     InferenceBase.CapVarsBelow (initialSupply signature context)
       (SourceCapScope signature context) := by
   intro varId membership
   have allMembership :
       varId ∈ signature.capVars ++ context.allCapVars := by
     simp only [SourceCapScope, FrozenSig.fcv, FrozenSig.capVars,
-      NamedContext.fcv, NamedContext.allCapVars, List.mem_append,
+      Context.fcv, Context.allCapVars, List.mem_append,
       List.mem_flatMap] at membership ⊢
     rcases membership with signatureMembership | contextMembership
     · left
@@ -1766,8 +1767,7 @@ theorem initialSupply_capVarsBelow
           CtorScheme.mem_capVars_of_mem_fcv entry.2 variableMember⟩
     · right
       rcases contextMembership with ⟨entry, entryMember, variableMember⟩
-      exact ⟨entry, entryMember,
-        NamedScheme.mem_allCapVars_of_mem_fcv entry.2 variableMember⟩
+      exact ⟨entry, entryMember, variableMember⟩
   simpa only [initialSupply] using
     InferenceBase.mem_lt_binderSpan
       (List.mem_map.mpr ⟨varId, allMembership, rfl⟩)
@@ -1775,14 +1775,14 @@ theorem initialSupply_capVarsBelow
 /-- The initial target counter is automatically above the complete source
 scope; callers of the reconstruction bridge do not need to assume this. -/
 theorem initialSupply_tyVarsBelow
-    (signature : FrozenSig) (context : NamedContext) :
+    (signature : FrozenSig) (context : Context) :
     InferenceBase.TyVarsBelow (initialSupply signature context)
       (SourceTyScope signature context) := by
   intro varId membership
   have allMembership :
       varId ∈ signature.tyVars ++ context.allTyVars := by
     simp only [SourceTyScope, FrozenSig.ftv, FrozenSig.tyVars,
-      NamedContext.ftv, NamedContext.allTyVars, List.mem_append,
+      Context.ftv, Context.allTyVars, List.mem_append,
       List.mem_flatMap] at membership ⊢
     rcases membership with signatureMembership | contextMembership
     · left
@@ -1806,13 +1806,12 @@ theorem initialSupply_tyVarsBelow
           CtorScheme.mem_tyVars_of_mem_ftv entry.2 variableMember⟩
     · right
       rcases contextMembership with ⟨entry, entryMember, variableMember⟩
-      exact ⟨entry, entryMember,
-        NamedScheme.mem_allTyVars_of_mem_ftv entry.2 variableMember⟩
+      exact ⟨entry, entryMember, variableMember⟩
   simpa only [initialSupply] using
     InferenceBase.mem_lt_binderSpan allMembership
 
 /-- Initial W state for one frozen signature and source context. -/
-def initialState (signature : FrozenSig) (context : NamedContext) : InferState :=
+def initialState (signature : FrozenSig) (context : Context) : InferState :=
   InferState.empty (initialSupply signature context)
 
 structure ExprResult where
@@ -2112,78 +2111,6 @@ def freshTyImages
     (binders : List TypePM.TyVar) : List TypePM.TyVar :=
   binders.map fun binder => supply.nextTy + binder
 
-/-- The executable binder batch supplies the distinct, ambient-fresh images
-recorded by an expression-scheme `FreshInstAt` witness whenever the ambient
-variables precede the incoming supply. -/
-theorem instantiateScheme_freshInstAt
-    (supply : InferenceBase.FreshSupply) (scheme : NamedScheme)
-    (reservedCaps : List CapVar) (reservedTys : List TypePM.TyVar)
-    (capNodup : scheme.capBinders.Nodup)
-    (tyNodup : scheme.tyBinders.Nodup)
-    (capBelow : InferenceBase.CapVarsBelow supply reservedCaps)
-    (tyBelow : InferenceBase.TyVarsBelow supply reservedTys) :
-    scheme.FreshInstAt reservedCaps reservedTys
-      (InferenceBase.instantiateNamedScheme supply scheme).subst.cap
-      (InferenceBase.instantiateNamedScheme supply scheme).subst.target
-      (freshCapImages supply scheme.capBinders)
-      (freshTyImages supply scheme.tyBinders)
-      (InferenceBase.instantiateNamedScheme supply scheme).value := by
-  let assignment :=
-    InferenceBase.instantiateBinders supply scheme.capBinders scheme.tyBinders
-  have capFresh := InferenceBase.instantiateBinders_cap_fresh supply
-    scheme.capBinders scheme.tyBinders reservedCaps capNodup capBelow
-  have tyFresh := InferenceBase.instantiateBinders_ty_fresh supply
-    scheme.capBinders scheme.tyBinders reservedTys tyNodup tyBelow
-  refine ⟨InferenceBase.instantiateBinders_cap_support supply
-      scheme.capBinders scheme.tyBinders,
-    InferenceBase.instantiateBinders_ty_support supply
-      scheme.capBinders scheme.tyBinders, ?_, ?_, ?_, ?_, ?_, ?_,
-    InferenceBase.instantiateBinders_rangeFixed supply
-      scheme.capBinders scheme.tyBinders, rfl⟩
-  · simp only [freshCapImages, List.map_map]
-    apply List.map_congr_left
-    intro binder membership
-    simp [InferenceBase.instantiateNamedScheme,
-      InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
-      membership]
-  · simp only [freshTyImages, List.map_map]
-    apply List.map_congr_left
-    intro binder membership
-    simp [InferenceBase.instantiateNamedScheme,
-      InferenceBase.instantiateBinders, InferenceBase.freshTySubst,
-      membership]
-  · unfold freshCapImages
-    apply List.Pairwise.map _ ?_ capNodup
-    intro left right distinct equality
-    apply distinct
-    cases left with
-    | mk leftId =>
-        cases right with
-        | mk rightId =>
-            have sameId : leftId = rightId :=
-              Nat.add_left_cancel
-                (congrArg (fun varId : CapVar => varId.id) equality)
-            subst rightId
-            rfl
-  · unfold freshTyImages
-    apply List.Pairwise.map _ ?_ tyNodup
-    intro left right distinct equality
-    exact distinct (Nat.add_left_cancel equality)
-  · intro image imageMembership reservedMembership
-    simp only [freshCapImages] at imageMembership
-    rcases List.mem_map.mp imageMembership with ⟨binder, _, rfl⟩
-    apply (capFresh.2 binder (by assumption)
-      ⟨supply.nextCap + binder.id⟩ reservedMembership)
-    simp [InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
-      show binder ∈ scheme.capBinders by assumption]
-  · intro image imageMembership reservedMembership
-    simp only [freshTyImages] at imageMembership
-    rcases List.mem_map.mp imageMembership with ⟨binder, _, rfl⟩
-    apply (tyFresh.2 binder (by assumption)
-      (supply.nextTy + binder) reservedMembership)
-    simp [InferenceBase.instantiateBinders, InferenceBase.freshTySubst,
-      show binder ∈ scheme.tyBinders by assumption]
-
 /-- The same executable binder batch supplies the algorithmic `FreshInstAt`
 allocation witness for a pattern-function scheme. -/
 theorem instantiateDualScheme_freshInstAt
@@ -2259,12 +2186,12 @@ Instantiate a context scheme, protect its fresh capability images against
 later structural strengthening, and retain the instance in the trace.
 -/
 def instantiateSchemeInState
-    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
-    (name : String) (state : InferState) (scheme : NamedScheme) : Ty × InferState :=
+    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (name : String) (state : InferState) (scheme : Scheme) : Ty × InferState :=
   let incomingSupply := state.supply
-  let instantiation := InferenceBase.instantiateNamedScheme incomingSupply scheme
-  let protectedIds := freshCapImages incomingSupply scheme.capBinders
-  let targetImages := freshTyImages incomingSupply scheme.tyBinders
+  let instantiation := InferenceBase.instantiateScheme incomingSupply scheme
+  let protectedIds := Scheme.canonicalCapImages incomingSupply scheme
+  let targetImages := Scheme.canonicalTyImages incomingSupply scheme
   let fixedCaps := SourceFixedCapScope signature normalizedContext
   let fixedTys := SourceFixedTyScope signature normalizedContext
   let reservedCaps := SourceCapScope signature normalizedContext
@@ -2374,8 +2301,8 @@ theorem InferState.historyPrefix_freezeCapabilityExport
 /-- Instantiate a dual scheme and advance both counters. -/
 def instantiateDualInState
     (signature : FrozenSig)
-    (rawContext : NamedContext) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : NamedContext)
+    (rawContext : Context) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : Context)
     (parameters : PatternCtx) (bindings : MonoCtx)
     (state : InferState) (scheme : DualScheme) :
     (List Dual × Dual) × InferState :=
@@ -2761,7 +2688,7 @@ mutual
 
 /-- Fuelled executable W for expressions. -/
 def inferExprFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Expr ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Expr ->
       InferState -> Option ExprResult
   | 0, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, selfEnv, path, expression, state =>
@@ -2790,7 +2717,7 @@ def inferExprFuel :
           let (domain, state) :=
             state.freshTy (freshOrigin .expression path "lambda-domain")
           match inferExprFuel fuel signature
-              ((name, NamedScheme.mono domain) :: context)
+              ((name, Scheme.mono domain) :: context)
               (selfEnv.erase name) (0 :: path) body state with
           | none => none
           | some bodyResult =>
@@ -2809,8 +2736,8 @@ def inferExprFuel :
                 let shadowed := selfEnv.eraseMany [self, argument]
                 let insideSelf := (self, placeholder) :: shadowed
                 let insideContext :=
-                  (argument, NamedScheme.mono domain) ::
-                    (self, NamedScheme.mono placeholder) :: context
+                  (argument, Scheme.mono domain) ::
+                    (self, Scheme.mono placeholder) :: context
                 match inferExprFuel fuel signature insideContext insideSelf
                     (0 :: path) body state with
                 | none => none
@@ -2945,7 +2872,7 @@ def inferExprFuel :
 
 /-- Infer a list of expressions in source order. -/
 def inferExprsFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Nat -> List Expr ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Nat -> List Expr ->
       InferState -> Option ExprsResult
   | 0, _, _, _, _, _, _, _ => none
   | _ + 1, _, _, _, _, _, [], state => some ⟨[], state⟩
@@ -2962,7 +2889,7 @@ def inferExprsFuel :
 
 /-- Check an expression against an expected type, using slot alignment when needed. -/
 def checkExprFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Expr -> Ty ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Expr -> Ty ->
       InferState -> Option InferState
   | 0, _, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, selfEnv, path, expression, expected, state =>
@@ -2972,7 +2899,7 @@ def checkExprFuel :
 
 /-- Check equal-length expression/type lists. -/
 def checkExprsFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Nat ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Nat ->
       List Expr -> List Ty -> InferState -> Option InferState
   | 0, _, _, _, _, _, _, _, _ => none
   | _ + 1, _, _, _, _, _, [], [], state => some state
@@ -2988,7 +2915,7 @@ def checkExprsFuel :
 
 /-- Infer one user pattern with left-to-right monomorphic bindings. -/
 def inferPatternFuel :
-    Nat -> FrozenSig -> NamedContext -> PatternCtx -> MonoCtx -> SelfEnv ->
+    Nat -> FrozenSig -> Context -> PatternCtx -> MonoCtx -> SelfEnv ->
       SyntaxPath -> Pattern -> InferState -> Option PatternResult
   | 0, _, _, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, parameters, bindings, selfEnv,
@@ -3186,7 +3113,7 @@ def alignBindings :
 
 /-- Infer a pattern list while threading its monomorphic binding context. -/
 def inferPatternsFuel :
-    Nat -> FrozenSig -> NamedContext -> PatternCtx -> MonoCtx -> SelfEnv ->
+    Nat -> FrozenSig -> Context -> PatternCtx -> MonoCtx -> SelfEnv ->
       SyntaxPath -> Nat -> List Pattern -> InferState -> Option PatternsResult
   | 0, _, _, _, _, _, _, _, _, _ => none
   | _ + 1, _, _, _, bindings, _, _, _, [], state =>
@@ -3420,7 +3347,7 @@ def inferDPatsFuel :
 
 /-- Check every arm of one clause against its decomposition-result type. -/
 def checkArmsFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> MonoCtx -> SyntaxPath -> Nat ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> MonoCtx -> SyntaxPath -> Nat ->
       List Arm -> Ty -> Ty -> InferState -> Option InferState
   | 0, _, _, _, _, _, _, _, _, _, _ => none
   | _ + 1, _, _, _, _, _, _, [], _, _, state => some state
@@ -3445,7 +3372,7 @@ def checkArmsFuel :
 
 /-- Infer one matcher clause under the shared target and cumulative state. -/
 def inferClauseFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Clause -> Ty ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Clause -> Ty ->
       InferState -> Option ClauseResult
   | 0, _, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, selfEnv, path,
@@ -3474,7 +3401,7 @@ def inferClauseFuel :
 
 /-- Infer all matcher clauses under one shared target and substitution trace. -/
 def inferClausesFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> Nat ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> Nat ->
       List Clause -> Ty -> InferState -> Option ClausesResult
   | 0, _, _, _, _, _, _, _, _ => none
   | _ + 1, _, _, _, _, _, [], target, state => some ⟨target, [], state⟩
@@ -3492,7 +3419,7 @@ def inferClausesFuel :
 
 /-- Infer and finalize an actual matcher literal with mandatory coverage. -/
 def inferMatcherFuel :
-    Nat -> FrozenSig -> NamedContext -> SelfEnv -> SyntaxPath -> List Clause ->
+    Nat -> FrozenSig -> Context -> SelfEnv -> SyntaxPath -> List Clause ->
       InferState -> Option ExprResult
   | 0, _, _, _, _, _, _ => none
   | fuel + 1, signature, context, selfEnv, path, clauses, state =>
@@ -3533,7 +3460,7 @@ end
 /-- A successful lookup of an active recursive binder records both the
 reference event and its provenance source in the actual W result. -/
 theorem inferExprFuel_activeSelf_records
-    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
     {state : InferState} {result : ExprResult} {placeholder : Ty}
     (active : selfEnv.find? name = some placeholder)
@@ -3566,7 +3493,7 @@ def enforceProtectedResult (result : ExprResult) : Option ExprResult :=
 /-- Raw Algorithm W traversal with producer protection, before the
 terminal reconstruction audit used by the public entry point. -/
 def inferRaw
-    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
     Option ExprResult :=
   (inferExprFuel (inferenceFuel expression) signature context [] [] expression
     (initialState signature context)).bind enforceProtectedResult
@@ -3586,7 +3513,7 @@ theorem enforceProtectedResult_sound
 
 /-- Every successful complete inference trace preserves protected producers. -/
 theorem inferRaw_protected
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     ProtectedProducerTrace result.state := by
@@ -3601,19 +3528,19 @@ theorem inferRaw_protected
 
 /-- Raw result type after replaying the one prevailing substitution. -/
 def inferRawType
-    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
     Option Ty := do
   let result <- inferRaw signature context expression
   pure result.resolvedTarget
 
 /-- Executable success/failure of W. -/
 def rawInferenceSucceeds
-    (signature : FrozenSig) (context : NamedContext) (expression : Expr) : Bool :=
+    (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
   (inferRaw signature context expression).isSome
 
 /-- Decidability of the raw protected traversal. -/
 theorem rawInference_decides
-    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
+    (signature : FrozenSig) (context : Context) (expression : Expr) :
     rawInferenceSucceeds signature context expression = true ∨
       rawInferenceSucceeds signature context expression = false := by
   cases rawInferenceSucceeds signature context expression <;> simp
@@ -3735,8 +3662,8 @@ theorem finishExpr_historyPrefix
   exact state.historyPrefix_recordEvent _
 
 theorem instantiateSchemeInState_historyPrefix
-    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
-    (name : String) (state : InferState) (scheme : NamedScheme) :
+    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (name : String) (state : InferState) (scheme : Scheme) :
     state.HistoryPrefix
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 := by
@@ -3755,8 +3682,8 @@ theorem instantiateCtorInState_historyPrefix
 
 theorem instantiateDualInState_historyPrefix
     (signature : FrozenSig)
-    (rawContext : NamedContext) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : NamedContext) (parameters : PatternCtx)
+    (rawContext : Context) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : Context) (parameters : PatternCtx)
     (bindings : MonoCtx) (state : InferState) (scheme : DualScheme) :
     state.HistoryPrefix
       (instantiateDualInState signature rawContext rawParameters rawBindings
@@ -3767,8 +3694,8 @@ theorem instantiateDualInState_historyPrefix
   apply InferState.historyPrefix_recordEvent
 
 theorem instantiateSchemeInState_historyPrefix_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
-    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
+    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) : state.HistoryPrefix final := by
   exact InferState.HistoryPrefix.snd_of_eq
@@ -3784,8 +3711,8 @@ theorem instantiateCtorInState_historyPrefix_of_eq
     (instantiateCtorInState_historyPrefix state scheme) success
 
 theorem instantiateDualInState_historyPrefix_of_eq
-    {signature : FrozenSig} {rawContext : NamedContext}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
+    {signature : FrozenSig} {rawContext : Context}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}
@@ -3819,8 +3746,8 @@ theorem instantiateCtorInState_event_mem_of_eq
 /-- The expression-scheme instantiation helper retains its complete ambient
 scope event in the returned state. -/
 theorem instantiateSchemeInState_event_mem_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
-    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
+    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     ∃ solveCount supply fixedCaps fixedTys reservedCaps reservedTys capImages
@@ -3837,16 +3764,16 @@ theorem instantiateSchemeInState_event_mem_of_eq
     SourceFixedTyScope signature normalizedContext,
     SourceCapScope signature normalizedContext,
     SourceTyScope signature normalizedContext,
-    freshCapImages state.supply scheme.capBinders,
-    freshTyImages state.supply scheme.tyBinders, ?_⟩
+    Scheme.canonicalCapImages state.supply scheme,
+    Scheme.canonicalTyImages state.supply scheme, ?_⟩
   rw [targetEq]
   simp [InferState.recordEvent]
 
 /-- The dual-scheme instantiation helper retains its raw and normalized
 pattern environments in the returned state. -/
 theorem instantiateDualInState_event_mem_of_eq
-    {signature : FrozenSig} {rawContext : NamedContext}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
+    {signature : FrozenSig} {rawContext : Context}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}
@@ -4518,7 +4445,7 @@ theorem inferExprFuel_historyPrefix
 /-- Regression: the empty suffix of a pattern list preserves a nonempty
 left-to-right binding context instead of resetting it. -/
 theorem inferPatternsFuel_empty_preserves_nonempty_bindings
-    (signature : FrozenSig) (context : NamedContext) (parameters : PatternCtx)
+    (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
     (bindings : MonoCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
     (index fuel : Nat) (state : InferState) (_nonempty : bindings ≠ []) :
     ∃ result,
@@ -4548,8 +4475,8 @@ private def protectionSignature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
-private def polymorphicProducer : NamedScheme :=
-  ⟨[⟨0⟩], [], .matcher (.var ⟨0⟩) .int⟩
+private def polymorphicProducer : Scheme :=
+  Scheme.close [⟨0⟩] [] (.matcher (.var ⟨0⟩) .int)
 
 /--
 An instantiated producer capability cannot be strengthened from a fresh leaf

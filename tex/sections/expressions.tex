@@ -44,6 +44,11 @@ type との ordinary alignment，argument checking の順で進む．
 function domain が slot に解決された場合，argument の構文に関係なく，最後の checking cut で
 matcher-to-slot coercion を選べる．
 
+変数規則のinstanceはcanonical schemeのfinite openingから計算される．state erasureでは，rootの
+終端substitutionが冪等であることとopening transportを使い，このinstanceが終端contextのlookupと
+一致することを代数的に導く．variable node自体に追加のterminal audit fieldはない．binder名の
+maskingやcapture条件も必要ない．
+
 \subsection{リテラル・タプル・コンストラクタ}
 
 \begin{mathpar}
@@ -112,6 +117,11 @@ $\mathsf{freezeExport}$ は exported result に残る structural leaf だけを 
     \alpha_{q_\tau}\to\alpha_{q_\tau+1}\dashv q_1;S';\Omega_1
 }\rn{DD-FIX}
 \end{mathpar}
+$\mathtt{let}$ の局所安定性だけでは，外側の後続solveを越えた公開終端での一般化一致は表せない．
+そこでterminal auditは，rootの終端contextと終端value typeから$\Gen$を再計算し，bodyで使った
+schemeへの終端作用と一致する事実を保持する．相互erasureはこの事実を使ってvalue-flow instanceを
+再構成する．
+
 $\DirectSelf(f,e)$ は shadowing-aware な構文条件であり，$f$ の自由出現を application spine の
 head に限る．matcher literal を body に持つ recursion は次章の専用 placeholder 規則を使う．
 

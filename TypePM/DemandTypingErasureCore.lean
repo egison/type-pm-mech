@@ -610,7 +610,7 @@ namespace DDCheckOrigin
 /-- State evolution exposed by an origin-aware checking derivation. -/
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected : Ty}
+    {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -624,7 +624,7 @@ namespace DDChecksOrigin
 /-- State evolution exposed by an origin-aware checking list. -/
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
+    {context : Context} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -638,7 +638,7 @@ namespace DDSynthOrigin
 /-- State evolution exposed by an origin-aware synthesis derivation. -/
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {target : Ty}
+    {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -648,20 +648,20 @@ def StateFactorization
 /-- Variable lookup performs only the scheme-instantiation allocation. -/
 theorem stateFactorization_var
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (name : String) (scheme : NamedScheme)
+    (context : Context) (name : String) (scheme : Scheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme) :
     StateFactorization
       (DDSynthOrigin.var (signature := signature) (q := q)
         (ledger := ledger) lookup) := by
   exact DDErasure.StateFactorization.ofTransition
-    (SupplyExtends.instantiateNamedScheme q scheme)
+    (SupplyExtends.instantiateScheme q scheme)
     (DDLedger.RefinesBelow.markSchemeInstance q ledger scheme)
 
 /-- Literal synthesis is a state identity. -/
 theorem stateFactorization_lit
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (value : Int) (ledger : CapabilityOriginLedger) :
+    (context : Context) (value : Int) (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDSynthOrigin.lit (signature := signature) (q := q) (S := S)
         (context := context) (value := value) (ledger := ledger)) := by
@@ -670,7 +670,7 @@ theorem stateFactorization_lit
 /-- `something` only reserves one fresh target variable. -/
 theorem stateFactorization_something
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDSynthOrigin.something (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -680,11 +680,11 @@ theorem stateFactorization_something
 /-- A lambda prepends its target-variable allocation to the body suffix. -/
 theorem stateFactorization_lam_of_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {body : Expr} {bodyTarget : Ty}
+    {context : Context} {name : String} {body : Expr} {bodyTarget : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyFactorization : StateFactorization bodyOrigin) :
     StateFactorization (DDSynthOrigin.lam bodyOrigin) := by
@@ -696,14 +696,14 @@ theorem stateFactorization_lam_of_body
 equality alignment. -/
 theorem stateFactorization_fix_of_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {body : Expr}
+    {context : Context} {self argument : String} {body : Expr}
     {bodyTarget : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
       body bodyTarget q₁ S₁}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁)
@@ -726,7 +726,7 @@ theorem stateFactorization_fix_of_body
 allocation, equality alignment, and argument checking. -/
 theorem stateFactorization_app_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {function argument : Expr} {functionTarget : Ty}
+    {context : Context} {function argument : Expr} {functionTarget : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
     {q₂ : InferenceBase.FreshSupply} {S₃ : Subst}
     {ledger ledger₁ ledger₃ : CapabilityOriginLedger}
@@ -761,7 +761,7 @@ theorem stateFactorization_app_of_children
 /-- Let synthesis is the chronological composition of value and body. -/
 theorem stateFactorization_let_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {value body : Expr}
+    {context : Context} {name : String} {value body : Expr}
     {valueTarget : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₁ ledger' : CapabilityOriginLedger}
@@ -773,7 +773,7 @@ theorem stateFactorization_let_of_children
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger')
     (stable :
       (signature.generalize (context.applySubst S₁)
-        (S₁.apply valueTarget)).applySubst S' =
+          (S₁.apply valueTarget)).applyMeta S' =
       signature.generalize (context.applySubst S')
         (S'.apply valueTarget))
     (valueFactorization : StateFactorization valueOrigin)
@@ -810,7 +810,7 @@ private theorem stateFactorization_ctorLike
 freezes precisely the exported capability leaves. -/
 theorem stateFactorization_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {expressions : List Expr}
+    {context : Context} {name : String} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
@@ -828,7 +828,7 @@ theorem stateFactorization_ctor_of_children
 as a data constructor. -/
 theorem stateFactorization_prim_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {op : PrimOp} {expressions : List Expr}
+    {context : Context} {op : PrimOp} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     (lookup : signature.findPrimitive op = some scheme)
@@ -847,7 +847,7 @@ freezes the inferred producer capability.  The clause suffix is kept as an
 explicit premise until the clause-family factorization joins this module. -/
 theorem stateFactorization_matcher_of_clauses
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clauses : List Clause}
+    {context : Context} {clauses : List Clause}
     {rawHoleLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst} {evidence : List Shape.Evidence} {capability : Cap}
     {ledger ledger₁ : CapabilityOriginLedger}
@@ -884,7 +884,7 @@ theorem stateFactorization_matcher_of_clauses
 suffix remains explicit until the pattern-family theorem is available. -/
 theorem stateFactorization_matchAll_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {target matcher : Expr} {pattern : Pattern}
+    {context : Context} {target matcher : Expr} {pattern : Pattern}
     {body : Expr} {targetTarget : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {dual : Dual} {bindings : MonoCtx}
@@ -926,7 +926,7 @@ theorem stateFactorization_matchAll_of_children
 synthesizes the matcher body, and performs the final equality alignment. -/
 theorem stateFactorization_fixMatcher_of_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {clauses : List Clause}
+    {context : Context} {self argument : String} {clauses : List Clause}
     {domain codomain : Ty} {q₀ : InferenceBase.FreshSupply}
     {bodyTarget : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
@@ -935,8 +935,8 @@ theorem stateFactorization_fixMatcher_of_body
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q₀))
     {bodyRaw : DDSynth signature q₀ S
-      ((argument, NamedScheme.mono domain) ::
-        (self, NamedScheme.mono (.fn domain codomain)) :: context)
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q₁ S₁}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q₀) ledger₁)
@@ -959,7 +959,7 @@ theorem stateFactorization_fixMatcher_of_body
 derivation at its own terminal cut. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {target : Ty}
+    {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -969,7 +969,7 @@ def RuntimeErasure
 /-- Integer synthesis erases directly: it allocates and solves nothing. -/
 theorem runtimeErasure_lit
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (value : Int) (ledger : CapabilityOriginLedger) :
+    (context : Context) (value : Int) (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDSynthOrigin.lit (signature := signature) (q := q) (S := S)
         (context := context) (value := value) (ledger := ledger)) := by
@@ -980,7 +980,7 @@ theorem runtimeErasure_lit
 runtime target after the terminal substitution is applied. -/
 theorem runtimeErasure_something
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDSynthOrigin.something (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -991,16 +991,16 @@ theorem runtimeErasure_something
 lambda constructor itself is a purely structural erasure step. -/
 theorem runtimeErasure_lam_of_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {body : Expr} {bodyTarget : Ty}
+    {context : Context} {name : String} {body : Expr} {bodyTarget : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyErasure : RuntimeErasure bodyOrigin) :
     RuntimeErasure (DDSynthOrigin.lam bodyOrigin) := by
-  simp only [RuntimeErasure, NamedContext.applySubst, List.map_cons,
-    NamedScheme.applySubst, NamedScheme.mono, Subst.apply_fn] at bodyErasure ⊢
+  simp only [RuntimeErasure, Context.applySubst, List.map_cons,
+    Scheme.applyMeta_mono, Subst.apply_fn] at bodyErasure ⊢
   exact RuntimeTyping.lam bodyErasure
 
 end DDSynthOrigin
@@ -1010,7 +1010,7 @@ namespace DDSynthsOrigin
 /-- State evolution exposed by an origin-aware synthesis list. -/
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -1019,7 +1019,7 @@ def StateFactorization
 
 theorem stateFactorization_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDSynthsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -1027,7 +1027,7 @@ theorem stateFactorization_nil
 
 theorem stateFactorization_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {target : Ty} {targets : List Ty}
     {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ ledger' : CapabilityOriginLedger}
@@ -1043,7 +1043,7 @@ theorem stateFactorization_cons
 /-- Terminal state-free conclusion for an origin-aware synthesis list. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -1054,7 +1054,7 @@ def RuntimeErasure
 /-- Empty synthesis-list erasure. -/
 theorem runtimeErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDSynthsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -1065,7 +1065,7 @@ terminal substitution.  Producing `headAtTerminal` from the head origin is
 the residual-post transport obligation of the full mutual proof. -/
 theorem runtimeErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {target : Ty} {targets : List Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -1088,7 +1088,7 @@ namespace DDSynthOrigin
 /-- Tuple synthesis has exactly the state suffix of its child traversal. -/
 theorem stateFactorization_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {children : DDSynths signature q S context expressions targets q' S'}
@@ -1102,7 +1102,7 @@ theorem stateFactorization_tuple_of_children
 at the tuple's terminal cut. -/
 theorem runtimeErasure_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {children : DDSynths signature q S context expressions targets q' S'}
@@ -1119,7 +1119,7 @@ namespace DDCheckOrigin
 /-- Checking composes the synthesis suffix with its terminal alignment. -/
 theorem stateFactorization_mk
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected raw : Ty}
+    {context : Context} {expression : Expr} {expected raw : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     {synthesized : DDSynth signature q S context expression raw q₁ S₁}
@@ -1137,7 +1137,7 @@ theorem stateFactorization_mk
 discharge the terminal alignment bounds automatically. -/
 theorem stateFactorization_mk_bounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected raw : Ty}
+    {context : Context} {expression : Expr} {expected raw : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     {synthesized : DDSynth signature q S context expression raw q₁ S₁}
@@ -1145,7 +1145,7 @@ theorem stateFactorization_mk_bounded
     (aligned : DDAlignWithLedger ledger₁ S₁ raw expected S')
     (synthFactorization : DDSynthOrigin.StateFactorization synthOrigin)
     (closed : signature.SchemesClosed) (SBounded : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context)
+    (contextBounded : Context.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) :
     StateFactorization (DDCheckOrigin.mk synthOrigin aligned) := by
   obtain ⟨S₁Bounded, rawBounded⟩ :=
@@ -1160,7 +1160,7 @@ namespace DDChecksOrigin
 
 theorem stateFactorization_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDChecksOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -1168,7 +1168,7 @@ theorem stateFactorization_nil
 
 theorem stateFactorization_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {expected : Ty} {expecteds : List Ty}
     {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
     {ledger ledger₁ ledger' : CapabilityOriginLedger}
@@ -1191,7 +1191,7 @@ theorem transportRuntime
     {signature : FrozenSig} {ledger : CapabilityOriginLedger}
     {S : Subst} {left right : Ty} {S' : Subst}
     (aligned : DDAlignTypesWithLedger ledger S left right S')
-    {context : NamedContext} {expression : Expr}
+    {context : Context} {expression : Expr}
     (typing : RuntimeTyping signature (context.applySubst S') expression
       (S'.apply left)) :
     RuntimeTyping signature (context.applySubst S') expression
@@ -1200,37 +1200,5 @@ theorem transportRuntime
   exact typing
 
 end DDAlignTypesWithLedger
-
-namespace DDTyping
-
-/-- End-to-end public erasure for the literal leaf.  This is the smallest
-closed instance of the eventual `DDTyping → RuntimeTyping` theorem. -/
-theorem lit_toRuntimeTyping
-    {signature : FrozenSig} {context : NamedContext} {value : Int} {target : Ty}
-    (typing : DDTyping signature context (.lit value) target) :
-    RuntimeTyping signature context (.lit value) target := by
-  rcases typing with
-    ⟨rawTarget, q', S', raw, ledger', origin, published⟩
-  cases origin with
-  | lit =>
-      simpa only [Subst.apply_id, published] using
-        (RuntimeTyping.lit (signature := signature) (context := context)
-          (value := value))
-
-/-- End-to-end public erasure for the standard matcher producer leaf. -/
-theorem something_toRuntimeTyping
-    {signature : FrozenSig} {context : NamedContext} {target : Ty}
-    (typing : DDTyping signature context .something target) :
-    RuntimeTyping signature context .something target := by
-  rcases typing with
-    ⟨rawTarget, q', S', raw, ledger', origin, published⟩
-  cases origin with
-  | something =>
-      simpa only [Subst.apply_id, published] using
-        (RuntimeTyping.something (signature := signature)
-          (context := context) (target := Ty.var
-            (Inference.initialSupply signature context).nextTy))
-
-end DDTyping
 
 end TypePM

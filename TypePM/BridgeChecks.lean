@@ -1,4 +1,6 @@
 import TypePM.Reconstruction
+import TypePM.SchemeEquality
+import TypePM.SchemeOpeningLists
 
 /-!
 # Executable audits for reconstruction bridge conditions
@@ -80,6 +82,25 @@ private theorem capBinderImagesVariableCheck_sound
   | var image => exact ⟨image, rfl⟩
   | _ => simp [equation] at accepted
 
+/-- Terminal variable selected for one canonical capability-binder position.
+The surrounding executable check guarantees that the default branch is never
+used by a successful certificate. -/
+private def terminalSchemeCapImage
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    {scheme : Scheme} (index : Fin scheme.capArity) : CapVar :=
+  match state.prevailing.cap
+      ((Scheme.canonicalFreshOpening supply scheme).capImage index) with
+  | .var image => image
+  | _ => (Scheme.canonicalFreshOpening supply scheme).capImage index
+
+/-- Canonical expression-scheme opening transported to the terminal cut. -/
+private def terminalSchemeOpening
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (scheme : Scheme) : scheme.ValueOpening where
+  capImage := terminalSchemeCapImage state supply
+  tyImage := fun index => state.prevailing.apply (.var
+    ((Scheme.canonicalFreshOpening supply scheme).tyImage index))
+
 private def instanceSuffixEventCheck
     (state : InferState) : TraceEvent -> Bool
   | .schemeInstantiation solveCount supply _scheme name rawContext _context
@@ -89,10 +110,11 @@ private def instanceSuffixEventCheck
       match (rawContext.applySubst state.prevailing).find? name with
       | none => false
       | some terminalScheme =>
-          let C := terminalCapCandidate state supply terminalScheme.capBinders
-          let T := terminalTyCandidate state supply terminalScheme.tyBinders
-          capBinderImagesVariableCheck terminalScheme.capBinders C &&
-          decide ((Subst.mk C T).apply terminalScheme.body =
+          capBinderImagesVariableCheck
+            (Scheme.canonicalCapImages supply terminalScheme)
+            state.prevailing.cap &&
+          decide (terminalScheme.openValue
+              (terminalSchemeOpening state supply terminalScheme) =
             state.prevailing.apply fresh)
   | .ctorInstantiation solveCount supply scheme args result _capImages =>
       let C := terminalCapCandidate state supply scheme.capBinders
@@ -133,15 +155,9 @@ theorem traceInstanceSuffixCheck_sound
       | none => simp [lookup] at terminalChecked
       | some terminalScheme =>
           simp only [lookup, Bool.and_eq_true, decide_eq_true_eq] at terminalChecked
-          let C := terminalCapCandidate state supply terminalScheme.capBinders
-          let T := terminalTyCandidate state supply terminalScheme.tyBinders
-          refine ⟨solveBound, terminalScheme, lookup, C, T, ?_⟩
-          exact
-            { capSupport := terminalCapCandidate_support state supply _
-              tySupport := terminalTyCandidate_support state supply _
-              capBinderVariable :=
-                capBinderImagesVariableCheck_sound terminalChecked.1
-              result := terminalChecked.2 }
+          refine ⟨solveBound, terminalScheme, lookup,
+            terminalSchemeOpening state supply terminalScheme, ?_⟩
+          exact terminalChecked.2
   | ctorInstantiation solveCount supply scheme args result capImages =>
       simp only [instanceSuffixEventCheck, Bool.and_eq_true,
         decide_eq_true_eq] at eventChecked
@@ -453,7 +469,7 @@ private def generalizationEventCheck
       decide (target =
         (replay (state.trace.solves.take solveCount)).apply rawTarget) &&
       decide (scheme = signature.generalize context target) &&
-      decide (scheme.applySubst state.prevailing =
+      decide (scheme.applyMeta state.prevailing =
         signature.generalize (rawContext.applySubst state.prevailing)
           (state.prevailing.apply rawTarget))
   | _ => true

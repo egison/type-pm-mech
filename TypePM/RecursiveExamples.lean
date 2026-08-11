@@ -231,7 +231,7 @@ theorem listMatcher_reconstructed :
   have derivation := Inference.infer_success_reconstruct
     listMatcherInferenceResult_success
   rw [listMatcherInferenceResult_target] at derivation
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using derivation
+  simpa [Inference.ResolvedContext, Context.applySubst] using derivation
 
 theorem paperCompleteMultisetMatcher_reconstructed :
     Inference.Reconstruction.ExprDeriv multisetSignature []
@@ -239,7 +239,7 @@ theorem paperCompleteMultisetMatcher_reconstructed :
   have derivation := Inference.infer_success_reconstruct
     paperCompleteMultisetInferenceResult_success
   rw [paperCompleteMultisetInferenceResult_target] at derivation
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using derivation
+  simpa [Inference.ResolvedContext, Context.applySubst] using derivation
 
 theorem listMatcher_typed :
     RuntimeTyping listSignature [] listMatcher matcherTy :=
@@ -292,7 +292,7 @@ theorem listMatcherMatchAll_typed :
   have typing := Inference.infer_success_runtimeTyping
     listMatcherMatchAllInferenceResult_success
   rw [listMatcherMatchAllInferenceResult_target] at typing
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
 
 /-- The same flagship success lands in the mutual coherent judgment, so the
 coherent fragment is non-vacuous on a recursive-matcher program. -/
@@ -302,7 +302,7 @@ theorem listMatcherMatchAll_coherent :
   have typing := Coherent.infer_success_coherent
     listMatcherMatchAllInferenceResult_success
   rw [listMatcherMatchAllInferenceResult_target] at typing
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
 
 /-! ## Deliberately incomplete multiset regression -/
 

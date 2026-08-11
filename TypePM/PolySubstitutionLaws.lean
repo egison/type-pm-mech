@@ -282,6 +282,75 @@ theorem PolyTy.map_applyMeta_comp {capArity tyArity : Nat}
 
 end
 
+/-! ## Unconditional sequential paired composition -/
+
+mutual
+
+/-- Cross-sort-aware `Subst.seq` composes ambient actions on polymorphic
+payloads without a capture or cross-range premise. -/
+theorem PolyTy.applyMeta_seq {capArity tyArity : Nat}
+    (later earlier : Subst) :
+    ∀ target : PolyTy capArity tyArity,
+      target.applyMeta (Subst.seq later earlier) =
+        (target.applyMeta earlier).applyMeta later
+  | .mvar varId => by
+      simp only [PolyTy.applyMeta]
+      rw [PolyTy.applyMeta_lift later (earlier.target varId)]
+      exact congrArg PolyTy.lift
+        (Subst.seq_apply later earlier (.var varId))
+  | .bound _ => by simp [PolyTy.applyMeta]
+  | .skolem _ => by simp [PolyTy.applyMeta]
+  | .unit => by simp [PolyTy.applyMeta]
+  | .int => by simp [PolyTy.applyMeta]
+  | .bool => by simp [PolyTy.applyMeta]
+  | .data name children => by
+      simp only [PolyTy.applyMeta]
+      congr 1
+      exact PolyTy.map_applyMeta_seq later earlier children
+  | .prod components => by
+      simp only [PolyTy.applyMeta]
+      congr 1
+      exact PolyTy.map_applyMeta_seq later earlier components
+  | .fn domain codomain => by
+      simp only [PolyTy.applyMeta]
+      rw [PolyTy.applyMeta_seq later earlier domain,
+        PolyTy.applyMeta_seq later earlier codomain]
+  | .matcher capability target => by
+      simp only [PolyTy.applyMeta]
+      change PolyTy.matcher
+          (capability.applyMeta (CapSubst.comp later.cap earlier.cap))
+          (target.applyMeta (Subst.seq later earlier)) =
+        PolyTy.matcher
+          ((capability.applyMeta earlier.cap).applyMeta later.cap)
+          ((target.applyMeta earlier).applyMeta later)
+      rw [PolyCap.applyMeta_comp later.cap earlier.cap capability,
+        PolyTy.applyMeta_seq later earlier target]
+  | .slot capability target => by
+      simp only [PolyTy.applyMeta]
+      change PolyTy.slot
+          (capability.applyMeta (CapSubst.comp later.cap earlier.cap))
+          (target.applyMeta (Subst.seq later earlier)) =
+        PolyTy.slot
+          ((capability.applyMeta earlier.cap).applyMeta later.cap)
+          ((target.applyMeta earlier).applyMeta later)
+      rw [PolyCap.applyMeta_comp later.cap earlier.cap capability,
+        PolyTy.applyMeta_seq later earlier target]
+
+/-- List form of `PolyTy.applyMeta_seq`. -/
+theorem PolyTy.map_applyMeta_seq {capArity tyArity : Nat}
+    (later earlier : Subst) :
+    ∀ targets : List (PolyTy capArity tyArity),
+      targets.map (PolyTy.applyMeta (Subst.seq later earlier)) =
+        (targets.map (PolyTy.applyMeta earlier)).map
+          (PolyTy.applyMeta later)
+  | [] => rfl
+  | target :: targets => by
+      simp only [List.map_cons]
+      rw [PolyTy.applyMeta_seq later earlier target,
+        PolyTy.map_applyMeta_seq later earlier targets]
+
+end
+
 
 namespace Scheme
 
@@ -306,6 +375,17 @@ theorem applyMeta_comp (S₂ S₁ : Subst)
       simp only [Scheme.applyMeta]
       congr 1
       exact PolyTy.applyMeta_comp S₂ S₁ crossFixed body
+
+/-- Canonical schemes inherit unconditional cross-sort sequential
+composition because bound indices are unaffected by ambient actions. -/
+theorem applyMeta_seq (later earlier : Subst) (scheme : Scheme) :
+    scheme.applyMeta (Subst.seq later earlier) =
+      (scheme.applyMeta earlier).applyMeta later := by
+  cases scheme with
+  | mk capArity tyArity body =>
+      simp only [Scheme.applyMeta]
+      congr 1
+      exact PolyTy.applyMeta_seq later earlier body
 
 end Scheme
 end TypePM

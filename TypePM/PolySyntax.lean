@@ -155,9 +155,8 @@ end PolyTy
 
 /-! ## Structural boundary checks -/
 
-/- `instantiate_lift` laws are added with the first `Scheme` migration,
-where they are proved by the same explicit list recursion used by the
-existing `Cap`/`Ty` metatheory. -/
+/- The following regression distinguishes a bound index from a solver
+metavariable even when their underlying natural-number payloads coincide. -/
 
 namespace PolySyntaxRegression
 

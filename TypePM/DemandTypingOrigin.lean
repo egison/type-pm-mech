@@ -330,28 +330,28 @@ mutual
 
 /-- Origin provenance for an existing expression-synthesis derivation. -/
 inductive DDSynthOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expression : Expr} -> {target : Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDSynth signature q S context expression target q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | var
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
-      {name : String} {scheme : NamedScheme} {ledger : CapabilityOriginLedger}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
+      {name : String} {scheme : Scheme} {ledger : CapabilityOriginLedger}
       (lookup : (context.applySubst S).find? name = some scheme) :
       DDSynthOrigin signature (.var (q := q) lookup) ledger
         (DDLedger.markSchemeInstance ledger q scheme)
   | lam
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {name : String} {body : Expr} {bodyTarget : Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger' : CapabilityOriginLedger}
       {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-        ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+        ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger') :
       DDSynthOrigin signature (.lam bodyRaw) ledger ledger'
   | fix
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {self argument : String} {body : Expr} {bodyTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
       {ledger ledger₁ : CapabilityOriginLedger}
@@ -359,8 +359,8 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (direct : DirectSelf.Holds self body)
       (nonMatcher : NonMatcherBody body)
       {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-        ((argument, NamedScheme.mono (.var q.nextTy)) ::
-          (self, NamedScheme.mono
+        ((argument, Scheme.mono (.var q.nextTy)) ::
+          (self, Scheme.mono
             (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
         body bodyTarget q₁ S₁}
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁)
@@ -369,7 +369,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       DDSynthOrigin signature
         (.fix distinct direct nonMatcher bodyRaw aligned.erase) ledger ledger₁
   | app
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {function argument : Expr} {functionTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
       {q₂ : InferenceBase.FreshSupply} {S₃ : Subst}
@@ -385,12 +385,12 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       DDSynthOrigin signature
         (.app functionRaw aligned.erase argumentRaw) ledger ledger₃
   | lit
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {value : Int} {ledger : CapabilityOriginLedger} :
       DDSynthOrigin signature (.lit (q := q) (S := S) (value := value)
         (Γ := context)) ledger ledger
   | tuple
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {expressions : List Expr} {targets : List Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger' : CapabilityOriginLedger}
@@ -398,7 +398,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (childrenOrigin : DDSynthsOrigin signature children ledger ledger') :
       DDSynthOrigin signature (.tuple children) ledger ledger'
   | ctor
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {name : String} {expressions : List Expr} {scheme : CtorScheme}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger₁ : CapabilityOriginLedger}
@@ -413,7 +413,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
           (Inference.freshCapImages q scheme.capBinders)
           (InferenceBase.instantiateCtorScheme q scheme).value.2)
   | prim
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {op : PrimOp} {expressions : List Expr} {scheme : CtorScheme}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger₁ : CapabilityOriginLedger}
@@ -428,7 +428,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
           (Inference.freshCapImages q scheme.capBinders)
           (InferenceBase.instantiateCtorScheme q scheme).value.2)
   | letE
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {name : String} {value body : Expr} {valueTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {bodyTarget : Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -441,17 +441,17 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger')
       (stable :
         (signature.generalize (context.applySubst S₁)
-          (S₁.apply valueTarget)).applySubst S' =
+          (S₁.apply valueTarget)).applyMeta S' =
         signature.generalize (context.applySubst S')
           (S'.apply valueTarget)) :
       DDSynthOrigin signature (.letE valueRaw bodyRaw) ledger ledger'
   | something
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ledger : CapabilityOriginLedger} :
       DDSynthOrigin signature (.something (q := q) (S := S)
         (Γ := context)) ledger ledger
   | matcher
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {clauses : List Clause} {rawHoleLists : List (List Dual)}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {evidence : List Shape.Evidence} {capability : Cap}
@@ -477,7 +477,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
           arms coverage) ledger
         (DDLedger.freezeMatcherProducer ledger₁ capability)
   | matchAll
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {target matcher : Expr} {pattern : Pattern} {body : Expr}
       {targetTarget : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {dual : Dual} {bindings : MonoCtx} {q₂ : InferenceBase.FreshSupply}
@@ -501,7 +501,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
         (.matchAll targetRaw patternRaw targetAligned.erase matcherRaw bodyRaw)
         ledger ledger'
   | fixMatcher
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {self argument : String} {clauses : List Clause} {domain codomain : Ty}
       {q₀ : InferenceBase.FreshSupply} {bodyTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -511,8 +511,8 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (placeholder : fixMatcherPlaceholderSupply signature clauses q =
         some (domain, codomain, q₀))
       {bodyRaw : DDSynth signature q₀ S
-        ((argument, NamedScheme.mono domain) ::
-          (self, NamedScheme.mono (.fn domain codomain)) :: context)
+        ((argument, Scheme.mono domain) ::
+          (self, Scheme.mono (.fn domain codomain)) :: context)
         (.matcher clauses) bodyTarget q₁ S₁}
       (bodyOrigin : DDSynthOrigin signature bodyRaw
         (DDLedger.markCapRange ledger q q₀) ledger₁)
@@ -523,18 +523,18 @@ inductive DDSynthOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for an existing expression-synthesis list. -/
 inductive DDSynthsOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expressions : List Expr} -> {targets : List Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDSynths signature q S context expressions targets q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | nil
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ledger : CapabilityOriginLedger} :
       DDSynthsOrigin signature (.nil (q := q) (S := S) (Γ := context))
         ledger ledger
   | cons
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {expression : Expr} {expressions : List Expr} {target : Ty}
       {targets : List Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -547,13 +547,13 @@ inductive DDSynthsOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for an existing expression-checking derivation. -/
 inductive DDCheckOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expression : Expr} -> {expected : Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDCheck signature q S context expression expected q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | mk
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {expression : Expr} {expected raw : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
       {ledger ledger₁ : CapabilityOriginLedger}
@@ -564,18 +564,18 @@ inductive DDCheckOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for an existing expression-checking list. -/
 inductive DDChecksOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expressions : List Expr} -> {expecteds : List Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDChecks signature q S context expressions expecteds q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | nil
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ledger : CapabilityOriginLedger} :
       DDChecksOrigin signature (.nil (q := q) (S := S) (Γ := context))
         ledger ledger
   | cons
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {expression : Expr} {expressions : List Expr} {expected : Ty}
       {expecteds : List Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -588,7 +588,7 @@ inductive DDChecksOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for an existing user-pattern derivation. -/
 inductive DDPatternOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {parameters : PatternCtx} -> {bindingsIn : MonoCtx} ->
     {pattern : Pattern} -> {dual : Dual} -> {bindingsOut : MonoCtx} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
@@ -596,21 +596,22 @@ inductive DDPatternOrigin (signature : FrozenSig) :
       bindingsOut q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | pvar
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {name : String}
       {ledger : CapabilityOriginLedger}
       (freshName : name ∉ bindings.names) :
-      DDPatternOrigin signature (.pvar (q := q) freshName) ledger
+      DDPatternOrigin signature (.pvar (q := q) (S := S) (Γ := context)
+        (Φ := parameters) (Δ := bindings) freshName) ledger
         (DDLedger.markFreshCap ledger q)
   | wild
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx}
       {ledger : CapabilityOriginLedger} :
       DDPatternOrigin signature (.wild (q := q) (S := S) (Γ := context)
         (Φ := parameters) (Δ := bindings)) ledger
         (DDLedger.markFreshCap ledger q)
   | pval
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {expression : Expr}
       {target : Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {ledger ledger₁ : CapabilityOriginLedger}
@@ -620,13 +621,13 @@ inductive DDPatternOrigin (signature : FrozenSig) :
       DDPatternOrigin signature (.pval expressionRaw) ledger
         (DDLedger.markFreshCap ledger₁ q₁)
   | embed
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {name : String}
       {dual : Dual} {ledger : CapabilityOriginLedger}
       (lookup : parameters.find? name = some dual) :
       DDPatternOrigin signature (.embed lookup) ledger ledger
   | ptuple
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx}
       {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -636,7 +637,7 @@ inductive DDPatternOrigin (signature : FrozenSig) :
       (childrenOrigin : DDPatternsOrigin signature children ledger ledger') :
       DDPatternOrigin signature (.ptuple children) ledger ledger'
   | pctor
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {name : String}
       {patterns : List Pattern}
       {entry : PatternCtorScheme signature.observability}
@@ -667,7 +668,7 @@ inductive DDPatternOrigin (signature : FrozenSig) :
             ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
               bindings'.map fun binding => binding.2)))
   | pand
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {left right : Pattern}
       {leftDual : Dual} {leftBindings : MonoCtx}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -684,7 +685,7 @@ inductive DDPatternOrigin (signature : FrozenSig) :
       DDPatternOrigin signature (.pand leftRaw rightRaw aligned.erase)
         ledger ledger₂
   | por
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {left right : Pattern}
       {leftDual : Dual} {leftBindings : MonoCtx}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -705,7 +706,7 @@ inductive DDPatternOrigin (signature : FrozenSig) :
         (.por leftRaw rightRaw dualsAligned.erase bindingsAligned.erase)
         ledger ledger₂
   | papp
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {name : String}
       {patterns : List Pattern} {scheme : DualScheme} {duals : List Dual}
       {bindings' : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -723,7 +724,7 @@ inductive DDPatternOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for an existing user-pattern list derivation. -/
 inductive DDPatternsOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {parameters : PatternCtx} -> {bindingsIn : MonoCtx} ->
     {patterns : List Pattern} -> {duals : List Dual} ->
     {bindingsOut : MonoCtx} -> {q' : InferenceBase.FreshSupply} ->
@@ -732,13 +733,13 @@ inductive DDPatternsOrigin (signature : FrozenSig) :
       bindingsOut q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | nil
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx}
       {ledger : CapabilityOriginLedger} :
       DDPatternsOrigin signature (.nil (q := q) (S := S) (Γ := context)
         (Φ := parameters) (Δ := bindings)) ledger ledger
   | cons
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {parameters : PatternCtx} {bindings : MonoCtx} {pattern : Pattern}
       {patterns : List Pattern} {dual : Dual} {duals : List Dual}
       {bindings₁ : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -754,20 +755,20 @@ inductive DDPatternsOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for one matcher-clause arm list. -/
 inductive DDArmsOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {ppBindings : MonoCtx} -> {arms : List Arm} -> {clauseTarget : Ty} ->
     {bodyTarget : Ty} -> {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDArms signature q S context ppBindings arms clauseTarget bodyTarget q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | nil
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ppBindings : MonoCtx} {clauseTarget bodyTarget : Ty}
       {ledger : CapabilityOriginLedger} :
       DDArmsOrigin signature (.nil (q := q) (S := S) (Γ := context)
         (ppBindings := ppBindings) (clauseTarget := clauseTarget)
         (bodyTarget := bodyTarget)) ledger ledger
   | cons
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ppBindings : MonoCtx} {dataPattern : DPat} {body : Expr}
       {arms : List Arm} {clauseTarget bodyTarget : Ty}
       {armBindings : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -790,13 +791,13 @@ inductive DDArmsOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for one matcher clause. -/
 inductive DDClauseOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {clause : Clause} -> {sharedTarget : Ty} -> {holes : List Dual} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
     DDClause signature q S context clause sharedTarget holes q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | mk
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {pp : PPat} {next : Expr} {arms : List Arm} {sharedTarget : Ty}
       {holes : List Dual} {ppBindings : MonoCtx} {nextMatchers : List Expr}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -817,19 +818,19 @@ inductive DDClauseOrigin (signature : FrozenSig) :
 
 /-- Origin provenance for a matcher-clause list. -/
 inductive DDClausesOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : NamedContext} ->
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {clauses : List Clause} -> {sharedTarget : Ty} ->
     {holeLists : List (List Dual)} -> {q' : InferenceBase.FreshSupply} ->
     {S' : Subst} ->
     DDClauses signature q S context clauses sharedTarget holeLists q' S' ->
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | nil
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {sharedTarget : Ty} {ledger : CapabilityOriginLedger} :
       DDClausesOrigin signature (.nil (q := q) (S := S) (Γ := context)
         (sharedTarget := sharedTarget)) ledger ledger
   | cons
-      {q : InferenceBase.FreshSupply} {S : Subst} {context : NamedContext}
+      {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {clause : Clause} {clauses : List Clause} {sharedTarget : Ty}
       {holes : List Dual} {holeLists : List (List Dual)}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -848,7 +849,7 @@ end
 
 def DDSynthOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {target : Ty}
+    {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -858,7 +859,7 @@ def DDSynthOrigin.erase
 
 def DDSynthsOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -868,7 +869,7 @@ def DDSynthsOrigin.erase
 
 def DDCheckOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected : Ty}
+    {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -878,7 +879,7 @@ def DDCheckOrigin.erase
 
 def DDChecksOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
+    {context : Context} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -888,7 +889,7 @@ def DDChecksOrigin.erase
 
 def DDPatternOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPattern signature q S context parameters bindingsIn pattern dual
@@ -901,7 +902,7 @@ def DDPatternOrigin.erase
 
 def DDPatternsOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPatterns signature q S context parameters bindingsIn patterns
@@ -914,7 +915,7 @@ def DDPatternsOrigin.erase
 
 def DDArmsOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {ppBindings : MonoCtx} {arms : List Arm}
+    {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDArms signature q S context ppBindings arms clauseTarget bodyTarget
@@ -926,7 +927,7 @@ def DDArmsOrigin.erase
 
 def DDClauseOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clause : Clause} {sharedTarget : Ty}
+    {context : Context} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDClause signature q S context clause sharedTarget holes q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -936,7 +937,7 @@ def DDClauseOrigin.erase
 
 def DDClausesOrigin.erase
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clauses : List Clause} {sharedTarget : Ty}
+    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDClauses signature q S context clauses sharedTarget holeLists q' S'}
@@ -944,30 +945,5 @@ def DDClausesOrigin.erase
     (_ : DDClausesOrigin signature raw ledger ledger') :
     DDClauses signature q S context clauses sharedTarget holeLists q' S' :=
   raw
-
-/-! ## Public origin-aware source typing -/
-
-/-- Public source acceptance: raw demand-directed synthesis from the canonical
-initial state, accompanied by its complete capability-origin provenance. -/
-def DDTyping (signature : FrozenSig) (context : NamedContext)
-    (expression : Expr) (target : Ty) : Prop :=
-  ∃ raw q' S',
-    ∃ derived : DDSynth signature (Inference.initialSupply signature context)
-        Subst.id context expression raw q' S',
-      ∃ ledger', DDSynthOrigin signature derived [] ledger' ∧
-      target = S'.apply raw
-
-/-- Every origin-aware published type is bounded by the terminal supply. -/
-theorem DDTyping.published_boundedBy {signature : FrozenSig}
-    {context : NamedContext} {expression : Expr} {target : Ty}
-    (typed : DDTyping signature context expression target)
-    (closed : signature.SchemesClosed) :
-    ∃ q', SupplyExtends (Inference.initialSupply signature context) q' ∧
-      Ty.BoundedBy q' target := by
-  obtain ⟨raw, q', S', derived, _ledger', _origin, published⟩ := typed
-  obtain ⟨S'b, rawB⟩ := derived.boundedBy closed
-    (Subst.boundedBy_id _)
-    (initialSupply_context_boundedBy signature context)
-  exact ⟨q', derived.supplyExtends, published ▸ S'b.apply rawB⟩
 
 end TypePM

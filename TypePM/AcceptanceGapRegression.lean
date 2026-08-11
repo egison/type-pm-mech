@@ -111,7 +111,7 @@ theorem orProgram_typed :
     RuntimeTyping emptySignature [] orProgram (Ty.listT .int) :=
   RuntimeTyping.matchAll (prevailing := orPrevailing)
     RuntimeTyping.lit orPattern_resolved something_slot_typed
-    (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _))
+    (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _))
 
 /-! ## Nested matcher capability: DD rejection boundary -/
 
@@ -137,8 +137,8 @@ def nestedCapSwappedProgram : Expr :=
 def sharedSlot : Ty := .slot .any (.prod [.int, .int])
 
 /-- The context binding the consumer at its monomorphic slot type. -/
-def consumerContext : NamedContext :=
-  [("f", NamedScheme.mono (.fn sharedSlot sharedSlot))]
+def consumerContext : Context :=
+  [("f", Scheme.mono (.fn sharedSlot sharedSlot))]
 
 /-- `something` fills the wildcard slot at the product target. -/
 private theorem something_sharedSlot_typed :
@@ -165,7 +165,7 @@ private theorem tuple_sharedSlot_typed :
 private theorem consumer_var_typed :
     RuntimeTyping emptySignature consumerContext (.var "f")
       (.fn sharedSlot sharedSlot) :=
-  RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)
+  RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)
 
 /-- Declaratively the program is typed: both producers coerce into the same
 wildcard slot domain. -/
@@ -178,7 +178,7 @@ theorem nestedCapProgram_typed :
         (ExprsTy.cons
           (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- The swapped order is typed by the same pieces. -/
 theorem nestedCapSwappedProgram_typed :
@@ -190,7 +190,7 @@ theorem nestedCapSwappedProgram_typed :
         (ExprsTy.cons
           (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- Consuming the same producer twice is accepted: the shared domain
 resolves to one raw matcher type and the second use aligns rigidly. -/
@@ -369,7 +369,7 @@ theorem packProgram_result_type :
 theorem packProgram_coherent :
     Coherent.CoherentExpr packSignature [] packProgram
       packResult.resolvedTarget := by
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using
+  simpa [Inference.ResolvedContext, Context.applySubst] using
     Coherent.infer_success_coherent packProgram_result
 
 /-- Public inference independently reconstructs the advertised runtime
@@ -378,7 +378,7 @@ theorem packProgram_typed_by_inference :
     RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
   have typing := Inference.infer_success_runtimeTyping packProgram_result
   rw [packProgram_result_type] at typing
-  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
+  simpa [Inference.ResolvedContext, Context.applySubst] using typing
 
 /-- The local `κ = Any` solve observes `κ` as structurally flexible at that
 exact chronological cut. -/

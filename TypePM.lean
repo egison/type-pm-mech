@@ -48,6 +48,7 @@ import TypePM.Reachability
 import TypePM.Safety
 import TypePM.RuntimeAgreementBridge
 import TypePM.InferenceBase
+import TypePM.Bounds
 import TypePM.Inference
 import TypePM.InferenceLedgerAdmissibility
 import TypePM.InferenceLocalFactorization
@@ -81,13 +82,16 @@ import TypePM.Soundness
 import TypePM.RecursiveExamples
 import TypePM.PatternCtorCapabilityRegression
 import TypePM.DemandTyping
+import TypePM.DemandTypingIdempotence
 import TypePM.SchemeBoundedness
 import TypePM.DemandTypingLedgerMetatheory
 import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
 import TypePM.DemandTypingInferenceSoundness
 import TypePM.DemandTypingErasure
+import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
+import TypePM.DemandTypingTerminalAuditErasureRegression
 
 /-!
 # Egison core with two-index matcher types
@@ -96,7 +100,7 @@ This is the public import surface of the current formalization.  `DDTyping` is
 the only source-language typing judgment.  `RuntimeTyping` is an internal,
 state-free certificate used after inference state has been erased; it supports
 value typing and the dynamic metatheory but does not define source acceptance.
-`DemandTypingErasure` is the facade for scoped state factorization, the
-premise-free 14-family closure, and canonical-instance transport toward that
-internal judgment.
+`DemandTypingErasure` is the facade for scoped state factorization,
+idempotence preservation, the terminal-audit tree, full fixed-terminal
+erasure, and the closed-program bridge to that internal judgment.
 -/

@@ -16,7 +16,7 @@ suffix following that child, then applies the state-free runtime constructor
 at the common final cut. -/
 theorem runtimeErasureUnder_matchAll
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {target matcher : Expr} {pattern : Pattern}
+    {context : Context} {target matcher : Expr} {pattern : Pattern}
     {body : Expr} {targetTarget : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 : Subst}
     {dual : Dual} {bindings : MonoCtx} {q2 : InferenceBase.FreshSupply}
@@ -41,7 +41,7 @@ theorem runtimeErasureUnder_matchAll
     (matcherUnder : DDCheckOrigin.RuntimeErasureUnder matcherOrigin)
     (bodyUnder : RuntimeErasureUnder bodyOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context) :
+    (contextBounded : Context.BoundedBy q context) :
     RuntimeErasureUnder
       (DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
         matcherOrigin bodyOrigin) := by
@@ -70,7 +70,7 @@ theorem runtimeErasureUnder_matchAll
   have matcherFactor := DDCheckOrigin.factorize matcherOrigin closed S3b
     (contextBounded.mono (ext1.trans ext2)) matcherExpectedB
   have bodyFactor := DDSynthOrigin.factorize bodyOrigin closed S4b
-    (NamedContext.BoundedBy.append ((bindingsB.mono ext3).toContext)
+    (Context.BoundedBy.append ((bindingsB.mono ext3).toContext)
       (contextBounded.mono ((ext1.trans ext2).trans ext3)))
   have afterAlignmentFactor := matcherFactor.trans bodyFactor
   have afterPatternFactor :=
@@ -118,7 +118,7 @@ theorem runtimeErasureUnder_matchAll
       ((bindings.applySubst finalSubst).toContext ++
         context.applySubst finalSubst)
       body (finalSubst.apply bodyTarget) := by
-    simpa only [NamedContext.applySubst_append,
+    simpa only [Context.applySubst_append,
       MonoCtx.toContext_applySubst] using bodyAtFinal
   simpa only [Subst.apply_listT] using
     RuntimeTyping.matchAll targetAtFinal (.ofTerminal patternAtFinal)

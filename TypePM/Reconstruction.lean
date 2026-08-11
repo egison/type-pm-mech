@@ -21,13 +21,13 @@ namespace Reconstruction
 mutual
 
 /-- Reconstructed expression typing. -/
-inductive ExprDeriv (signature : FrozenSig) : NamedContext -> Expr -> Ty -> Prop where
+inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop where
   | var {context name scheme target} :
       context.find? name = some scheme ->
       scheme.ValueFlowInst target ->
       ExprDeriv signature context (.var name) target
   | lam {context name body domain codomain} :
-      ExprDeriv signature ((name, NamedScheme.mono domain) :: context) body codomain ->
+      ExprDeriv signature ((name, Scheme.mono domain) :: context) body codomain ->
       ExprDeriv signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
       ExprDeriv signature context function (.fn domain codomain) ->
@@ -42,8 +42,8 @@ inductive ExprDeriv (signature : FrozenSig) : NamedContext -> Expr -> Ty -> Prop
       self ≠ argument ->
       DirectSelf.Holds self body ->
       ExprDeriv signature
-        ((argument, NamedScheme.mono domain) ::
-          (self, NamedScheme.mono (.fn domain codomain)) :: context)
+        ((argument, Scheme.mono domain) ::
+          (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain ->
       ExprDeriv signature context (.fix self argument body) (.fn domain codomain)
   | lit {context value} :
@@ -130,7 +130,7 @@ inductive ExprDeriv (signature : FrozenSig) : NamedContext -> Expr -> Ty -> Prop
 
 /-- Reconstructed expression-list typing. -/
 inductive ExprsDeriv (signature : FrozenSig) :
-    NamedContext -> List Expr -> List Ty -> Prop where
+    Context -> List Expr -> List Ty -> Prop where
   | nil {context} : ExprsDeriv signature context [] []
   | cons {context expression target expressions targets} :
       ExprDeriv signature context expression target ->
@@ -140,7 +140,7 @@ inductive ExprsDeriv (signature : FrozenSig) :
 
 /-- Reconstructed user-pattern typing. -/
 inductive PatternDeriv (signature : FrozenSig) :
-    NamedContext -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty -> MonoCtx -> Prop where
+    Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty -> MonoCtx -> Prop where
   | pvar {context parameters bindings name capVar tyVar} :
       name ∉ bindings.names ->
       FreshCap signature context parameters bindings capVar ->
@@ -200,7 +200,7 @@ inductive PatternDeriv (signature : FrozenSig) :
 
 /-- Reconstructed left-to-right user-pattern list. -/
 inductive PatternsDeriv (signature : FrozenSig) :
-    NamedContext -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
+    Context -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
       MonoCtx -> Prop where
   | nil {context parameters bindings} :
       PatternsDeriv signature context parameters bindings [] [] bindings
@@ -323,7 +323,7 @@ pattern-parameter context.  The raw monomorphic context is threaded
 left-to-right; capabilities, targets, and compound certificates live at their
 terminal indices.  Value-pattern leaves retain recursive `ExprDeriv` evidence. -/
 inductive PatternResolutionDeriv (signature : FrozenSig) :
-    Subst -> NamedContext -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
+    Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
   | pvar {context parameters bindings name capVar tyVar} :
       name ∉ bindings.names ->
@@ -354,7 +354,7 @@ inductive PatternResolutionDeriv (signature : FrozenSig) :
         ((Cap.var capVar).apply prevailing.cap)
         (prevailing.apply rawTarget)
         bindings
-  | embed {context : NamedContext} {parameters : PatternCtx}
+  | embed {context : Context} {parameters : PatternCtx}
       {bindings : MonoCtx} {name : String} {rawDual : Dual} :
       parameters.find? name = some rawDual ->
       (parameters.applySubst prevailing).find? name =
@@ -408,7 +408,7 @@ inductive PatternResolutionDeriv (signature : FrozenSig) :
 
 /-- Left-to-right raw-context-threaded user-pattern list reconstruction. -/
 inductive PatternResolutionsDeriv (signature : FrozenSig) :
-    Subst -> NamedContext -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
+    Subst -> Context -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
       MonoCtx -> Prop where
   | nil {context parameters bindings} :
       PatternResolutionsDeriv signature prevailing context parameters bindings
@@ -425,7 +425,7 @@ inductive PatternResolutionsDeriv (signature : FrozenSig) :
 
 /-- Reconstructed user pattern under one occurrence-wide substitution. -/
 inductive ResolvedPatternDeriv (signature : FrozenSig) :
-    Subst -> NamedContext -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
+    Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
   | ofThreaded
       {rawContext rawParameters rawBindings pattern capability target
@@ -440,7 +440,7 @@ inductive ResolvedPatternDeriv (signature : FrozenSig) :
 
 /-- Reconstructed matcher arm. -/
 inductive ArmDeriv (signature : FrozenSig) :
-    NamedContext -> Ty -> MonoCtx -> Ty -> Arm -> Prop where
+    Context -> Ty -> MonoCtx -> Ty -> Arm -> Prop where
   | mk {context target ppBindings result pattern body armBindings} :
       DPatDeriv signature pattern target armBindings ->
       ExprDeriv signature
@@ -450,7 +450,7 @@ inductive ArmDeriv (signature : FrozenSig) :
 
 /-- Reconstructed matcher arm list. -/
 inductive ArmsDeriv (signature : FrozenSig) :
-    NamedContext -> Ty -> MonoCtx -> Ty -> List Arm -> Prop where
+    Context -> Ty -> MonoCtx -> Ty -> List Arm -> Prop where
   | nil {context target ppBindings result} :
       ArmsDeriv signature context target ppBindings result []
   | cons {context target ppBindings result arm arms} :
@@ -464,7 +464,7 @@ successful `clauseEvidence` below already implies it, but retaining the premise
 makes the declarative rule display the core boundary directly and keeps it
 aligned with the paper rule. -/
 inductive ClauseDeriv (signature : FrozenSig) :
-    Subst -> NamedContext -> Clause -> Cap -> Ty -> Shape.Evidence -> Prop where
+    Subst -> Context -> Clause -> Cap -> Ty -> Shape.Evidence -> Prop where
   | mk {context capability target pp next arms holes ppBindings nextMatchers
         evidence} :
       PPatCoreOrder pp ->
@@ -482,7 +482,7 @@ inductive ClauseDeriv (signature : FrozenSig) :
 
 /-- Reconstructed clause list with one shared prevailing substitution. -/
 inductive ClausesDeriv (signature : FrozenSig) :
-    Subst -> NamedContext -> List Clause -> Cap -> Ty -> List Shape.Evidence -> Prop where
+    Subst -> Context -> List Clause -> Cap -> Ty -> List Shape.Evidence -> Prop where
   | nil {context target} :
       ClausesDeriv signature prevailing context [] capability target []
   | cons {context clause clauses target evidence evidences} :
@@ -494,7 +494,7 @@ inductive ClausesDeriv (signature : FrozenSig) :
 
 /-- Existential package of the reconstructed shared clause substitution. -/
 inductive ResolvedClausesDeriv (signature : FrozenSig) :
-    NamedContext -> List Clause -> Cap -> Ty -> List Shape.Evidence -> Prop where
+    Context -> List Clause -> Cap -> Ty -> List Shape.Evidence -> Prop where
   | ofShared {prevailing context clauses capability target evidence} :
       ClausesDeriv signature prevailing context clauses capability target
         evidence ->
@@ -579,7 +579,7 @@ inclusions, which prevents raw freshness premises from being invented. -/
 syntax "finish_reconstruction" : tactic
 
 private theorem runtimeMatcherToSlot_ofRaw
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
     {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
     {post : Subst}
@@ -596,7 +596,7 @@ private theorem runtimeMatcherToSlot_ofRaw
     (raw.postCapabilityDemand post)
 
 private theorem runtimeSlotToSlot_ofRaw
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {sourceCap requestedCap : Cap} {sourceTarget requestedTarget : Ty}
     {C : CapSubst} {T : TySubst} {post : Subst}
     (typing : RuntimeTyping signature context expression
@@ -984,7 +984,7 @@ def tracePatternLeafCheck
 theorem tracePatternLeafCheck_var
     {signature : FrozenSig} {trace : InferTrace}
     (checked : tracePatternLeafCheck signature trace = true)
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {capVar : CapVar} {tyVar : TypePM.TyVar}
     (membership : .patternVarFresh context parameters bindings capVar tyVar ∈
       trace.events) :
@@ -1005,7 +1005,7 @@ theorem tracePatternLeafCheck_var
 theorem tracePatternLeafCheck_wild
     {signature : FrozenSig} {trace : InferTrace}
     (checked : tracePatternLeafCheck signature trace = true)
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {capVar : CapVar} {tyVar : TypePM.TyVar}
     (membership : .patternWildFresh context parameters bindings capVar tyVar ∈
       trace.events) :
@@ -1026,7 +1026,7 @@ theorem tracePatternLeafCheck_wild
 theorem tracePatternLeafCheck_value
     {signature : FrozenSig} {trace : InferTrace}
     (checked : tracePatternLeafCheck signature trace = true)
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {capVar : CapVar} {target : Ty}
     (membership : .patternValueFresh context parameters bindings capVar target ∈
       trace.events) :
@@ -1182,7 +1182,7 @@ theorem TraceInstanceSuffixConditions.scheme_final
     {signature : FrozenSig} {state : InferState}
     (conditions : TraceInstanceSuffixConditions signature state)
     {solveCount : Nat} {supply : InferenceBase.FreshSupply}
-    {scheme : NamedScheme} {name : String} {rawContext context : NamedContext}
+    {scheme : Scheme} {name : String} {rawContext context : Context}
     {fixedCaps : List CapVar} {fixedTys : List TypePM.TyVar}
     {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
     {fresh : Ty} {capImages : List CapVar} {tyImages : List TypePM.TyVar}
@@ -1201,9 +1201,9 @@ theorem TraceInstanceSuffixConditions.dual_final
     {signature : FrozenSig} {state : InferState}
     (conditions : TraceInstanceSuffixConditions signature state)
     {solveCount : Nat} {supply : InferenceBase.FreshSupply}
-    {scheme : DualScheme} {rawContext : NamedContext}
+    {scheme : DualScheme} {rawContext : Context}
     {rawParameters : PatternCtx} {rawBindings : MonoCtx}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {fixedCaps : List CapVar} {fixedTys : List TypePM.TyVar}
     {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
     {arguments : List Dual} {result : Dual} {capImages : List CapVar}
@@ -1337,7 +1337,7 @@ def TraceGeneralizationConditions
           (replay (state.trace.solves.take solveCount)) ∧
         target = (replay (state.trace.solves.take solveCount)).apply rawTarget ∧
         scheme = signature.generalize context target ∧
-        scheme.applySubst state.prevailing =
+        scheme.applyMeta state.prevailing =
           signature.generalize (rawContext.applySubst state.prevailing)
             (state.prevailing.apply rawTarget)
     | _ => True
@@ -1390,7 +1390,7 @@ Consequently no normalized component is substituted a second time at the
 terminal cut.
 -/
 theorem expectedCoercionSource_deriv
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {state : InferState} {inferred expected : Ty} {terminalSubst : Subst}
     (derivation :
       ExprDeriv signature context expression (terminalSubst.apply inferred)) :
@@ -1460,7 +1460,7 @@ boundary, so product lifts and their terminal slot certificates are replayed
 uniformly.
 -/
 theorem alignExprResultAtExpected_deriv
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
     {aligned terminal : InferState}
     (bridge : WBridgeWF signature terminal)
@@ -2089,8 +2089,13 @@ theorem inferExprFuel_reconstructAt
       (finishExpr_historyPrefix (.lam name body) path'
         (.fn domain bodyResult.target) bodyResult.state).trans terminalHistory
     have bodyDeriv := bodyIH bodyResult rfl terminal bridge' bodyHistory
-    simpa [finishExpr, Subst.apply_fn, NamedContext.applySubst,
-      NamedScheme.applySubst, NamedScheme.mono] using ExprDeriv.lam bodyDeriv
+    have bodyDeriv' : ExprDeriv signature'
+        ((name, Scheme.mono (terminal.prevailing.apply domain)) ::
+          context'.applySubst terminal.prevailing)
+        body (terminal.prevailing.apply bodyResult.target) := by
+      simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono]
+        using bodyDeriv
+    simpa [finishExpr, Subst.apply_fn] using ExprDeriv.lam bodyDeriv'
   case case9 =>
     rename_i fuel' signature' context' selfEnv' path' initial self argument body
       direct domain codomain builtState placeholder recordedState shadowed
@@ -2108,13 +2113,13 @@ theorem inferExprFuel_reconstructAt
     have finalAlignment := alignedHistory.event_mem localAlignment
     have aligned := bridge'.typeAlignments.final_eq finalAlignment
     have bodyDeriv' : ExprDeriv signature'
-        (((argument, NamedScheme.mono (terminal.prevailing.apply domain)) ::
-          (self, NamedScheme.mono
+        (((argument, Scheme.mono (terminal.prevailing.apply domain)) ::
+          (self, Scheme.mono
             (.fn (terminal.prevailing.apply domain)
               (terminal.prevailing.apply codomain))) ::
           context'.applySubst terminal.prevailing))
         body (terminal.prevailing.apply codomain) := by
-      simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+      simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
         Subst.apply_fn, aligned] using bodyDeriv
     have directParts :
         self ≠ argument ∧ DirectSelf.Holds self body := by
@@ -2232,12 +2237,12 @@ theorem inferExprFuel_reconstructAt
       ⟨solveBound, normalizedContextEq, normalizedValueEq, schemeEq,
         schemeAtTerminal⟩
     have bodyContextEq :
-        NamedContext.applySubst terminal.prevailing ((name, scheme) :: context') =
+        Context.applySubst terminal.prevailing ((name, scheme) :: context') =
           (name, signature'.generalize
             (context'.applySubst terminal.prevailing)
             (terminal.prevailing.apply valueResult.target)) ::
             context'.applySubst terminal.prevailing := by
-      change (name, scheme.applySubst terminal.prevailing) ::
+      change (name, scheme.applyMeta terminal.prevailing) ::
           context'.applySubst terminal.prevailing =
         (name, signature'.generalize
           (context'.applySubst terminal.prevailing)
@@ -2309,7 +2314,7 @@ theorem inferExprFuel_reconstructAt
         ((patternResult.bindings.applySubst terminal.prevailing).toContext ++
           context'.applySubst terminal.prevailing)
         body (terminal.prevailing.apply bodyResult.target) := by
-      simpa only [NamedContext.applySubst_append,
+      simpa only [Context.applySubst_append,
         MonoCtx.toContext_applySubst] using bodyDeriv
     simpa [finishExpr, Subst.apply_listT] using
       (ExprDeriv.matchAll targetDeriv
@@ -2403,7 +2408,7 @@ theorem inferExprFuel_reconstructAt
         ((bindings.applySubst terminal.prevailing).toContext ++
           context'.applySubst terminal.prevailing)
         expression (terminal.prevailing.apply bodyResult.target) := by
-      simpa only [NamedContext.applySubst_append,
+      simpa only [Context.applySubst_append,
         MonoCtx.toContext_applySubst] using bodyDeriv
     simpa [capabilityEq, Dual.applySubst, Dual.apply] using
       (PatternResolutionDeriv.pval (prevailing := terminal.prevailing)
@@ -2694,7 +2699,7 @@ theorem inferExprFuel_reconstructAt
         (ppBindings.applySubst terminal.prevailing)
         (terminal.prevailing.apply bodyTarget) (.mk pattern body) := by
       apply ArmDeriv.mk dpatDeriv
-      simpa only [NamedContext.applySubst_append,
+      simpa only [Context.applySubst_append,
         MonoCtx.toContext_applySubst] using bodyDeriv
     exact ArmsDeriv.cons armDeriv
       (tailIH result resultEq terminal bridge' terminalHistory)

@@ -1,4 +1,5 @@
 import TypePM.Relation
+import TypePM.PolyScheme
 
 /-!
 # Rigid annotation checking
@@ -28,6 +29,76 @@ def capSkolemIds : Cap → List Nat
 def capSkolemIdsList : List Cap → List Nat
   | []          => []
   | cap :: caps => capSkolemIds cap ++ capSkolemIdsList caps
+
+end
+
+mutual
+
+/-- Capability-skolem identifiers occurring in a polymorphic capability. -/
+def polyCapSkolemIds {capArity : Nat} : PolyCap capArity → List Nat
+  | .any          => []
+  | .mvar _       => []
+  | .bound _      => []
+  | .skolem id    => [id]
+  | .con _ caps   => polyCapSkolemIdsList caps
+  | .prod caps    => polyCapSkolemIdsList caps
+
+/-- List form of `polyCapSkolemIds`. -/
+def polyCapSkolemIdsList {capArity : Nat} :
+    List (PolyCap capArity) → List Nat
+  | []          => []
+  | cap :: caps => polyCapSkolemIds cap ++ polyCapSkolemIdsList caps
+
+end
+
+mutual
+
+/-- Capability-skolem identifiers occurring in a polymorphic type. -/
+def polyTypeCapSkolemIds {capArity tyArity : Nat} :
+    PolyTy capArity tyArity → List Nat
+  | .mvar _         => []
+  | .bound _        => []
+  | .skolem _       => []
+  | .unit            => []
+  | .int             => []
+  | .bool            => []
+  | .data _ tys      => polyTypeCapSkolemIdsList tys
+  | .prod tys        => polyTypeCapSkolemIdsList tys
+  | .fn dom cod      => polyTypeCapSkolemIds dom ++ polyTypeCapSkolemIds cod
+  | .matcher cap τ   => polyCapSkolemIds cap ++ polyTypeCapSkolemIds τ
+  | .slot cap τ      => polyCapSkolemIds cap ++ polyTypeCapSkolemIds τ
+
+/-- List form of `polyTypeCapSkolemIds`. -/
+def polyTypeCapSkolemIdsList {capArity tyArity : Nat} :
+    List (PolyTy capArity tyArity) → List Nat
+  | []        => []
+  | τ :: tys  => polyTypeCapSkolemIds τ ++ polyTypeCapSkolemIdsList tys
+
+end
+
+
+mutual
+
+/-- Target-skolem identifiers occurring in a polymorphic type. -/
+def polyTargetSkolemIds {capArity tyArity : Nat} :
+    PolyTy capArity tyArity → List Nat
+  | .mvar _        => []
+  | .bound _       => []
+  | .skolem id     => [id]
+  | .unit           => []
+  | .int            => []
+  | .bool           => []
+  | .data _ tys     => polyTargetSkolemIdsList tys
+  | .prod tys       => polyTargetSkolemIdsList tys
+  | .fn dom cod     => polyTargetSkolemIds dom ++ polyTargetSkolemIds cod
+  | .matcher _ τ    => polyTargetSkolemIds τ
+  | .slot _ τ       => polyTargetSkolemIds τ
+
+/-- List form of `polyTargetSkolemIds`. -/
+def polyTargetSkolemIdsList {capArity tyArity : Nat} :
+    List (PolyTy capArity tyArity) → List Nat
+  | []        => []
+  | τ :: tys  => polyTargetSkolemIds τ ++ polyTargetSkolemIdsList tys
 
 end
 
@@ -104,21 +175,6 @@ def ListsDisjoint {α : Type} [DecidableEq α]
     (left right : List α) : Prop :=
   ∀ value, value ∈ left → value ∉ right
 
-/-- Replace exactly the listed capability binders by rigid skolems. -/
-def capSkolemSubst (binders : List CapVar) (base : Nat) : CapSubst :=
-  fun candidate =>
-    match List.idxOf? candidate binders with
-    | some index => .skolem (base + index)
-    | none => .var candidate
-
-/-- Replace exactly the listed ordinary type binders by rigid skolems. -/
-def targetSkolemSubst
-    (binders : List TypePM.TyVar) (base : Nat) : TySubst :=
-  fun candidate =>
-    match List.idxOf? candidate binders with
-    | some index => .skolem (base + index)
-    | none => .var candidate
-
 /--
 Skolemize both binder sorts in an explicit scheme.
 
@@ -127,10 +183,10 @@ inference problem is a side condition of the caller, exactly as in the usual
 declarative presentation of skolemization.
 -/
 def skolemizeScheme
-    (scheme : NamedScheme) (capBase targetBase : Nat) : Ty :=
-  (Subst.mk
-      (capSkolemSubst scheme.capBinders capBase)
-      (targetSkolemSubst scheme.tyBinders targetBase)).apply scheme.body
+    (scheme : Scheme) (capBase targetBase : Nat) : Ty :=
+  scheme.instantiate
+    (fun index => .skolem (capBase + index.val))
+    (fun index => .skolem (targetBase + index.val))
 
 /--
 An inferred monotype can check a rigid body only by instantiating flexible
@@ -164,15 +220,15 @@ rules out accidental acceptance caused by reusing an outer skolem ID.
 -/
 def FreshSkolemsFor
     (scope : CheckScope) (inferred : Ty)
-    (scheme : NamedScheme) (capBase targetBase : Nat) : Prop :=
+    (scheme : Scheme) (capBase targetBase : Nat) : Prop :=
   ListsDisjoint
-      (generatedSkolemIds capBase scheme.capBinders.length)
+      (generatedSkolemIds capBase scheme.capArity)
       (scope.capabilitySkolems ++ typeCapSkolemIds inferred ++
-        typeCapSkolemIds scheme.body) ∧
+        polyTypeCapSkolemIds scheme.body) ∧
     ListsDisjoint
-      (generatedSkolemIds targetBase scheme.tyBinders.length)
+      (generatedSkolemIds targetBase scheme.tyArity)
       (scope.targetSkolems ++ targetSkolemIds inferred ++
-        targetSkolemIds scheme.body)
+        polyTargetSkolemIds scheme.body)
 
 /--
 High-level explicit-scheme check with locality and freshness made formal.
@@ -186,7 +242,7 @@ def ChecksScheme
     (scope : CheckScope)
     (localCaps : List CapVar)
     (localTargets : List TypePM.TyVar)
-    (inferred : Ty) (scheme : NamedScheme)
+    (inferred : Ty) (scheme : Scheme)
     (capBase targetBase : Nat) : Prop :=
   ListsDisjoint localCaps scope.environmentCaps ∧
     ListsDisjoint localTargets scope.environmentTargets ∧
@@ -199,7 +255,7 @@ theorem ChecksScheme.rigid
     {scope : CheckScope}
     {localCaps : List CapVar}
     {localTargets : List TypePM.TyVar}
-    {inferred : Ty} {scheme : NamedScheme}
+    {inferred : Ty} {scheme : Scheme}
     {capBase targetBase : Nat}
     (h :
       ChecksScheme scope localCaps localTargets inferred scheme
@@ -213,7 +269,7 @@ theorem ChecksScheme.fresh
     {scope : CheckScope}
     {localCaps : List CapVar}
     {localTargets : List TypePM.TyVar}
-    {inferred : Ty} {scheme : NamedScheme}
+    {inferred : Ty} {scheme : Scheme}
     {capBase targetBase : Nat}
     (h :
       ChecksScheme scope localCaps localTargets inferred scheme
@@ -314,13 +370,16 @@ theorem environment_capability_meta_rejects_skolem
   cases impossible
 
 /-- The annotation rejected by the two-sorted core: `forall p a. Matcher p a`. -/
-def badCapabilityScheme : NamedScheme :=
-  ⟨[0], [0], .matcher (.var 0) (.var 0)⟩
+def badCapabilityScheme : Scheme :=
+  { capArity := 1
+    tyArity := 1
+    body := .matcher (.bound 0) (.bound 0) }
 
 @[simp] theorem badCapabilityScheme_skolemize :
     skolemizeScheme badCapabilityScheme 0 0 =
       Ty.matcher (.skolem 0) (.skolem 0) := by
-  rfl
+  simp [skolemizeScheme, badCapabilityScheme, Scheme.instantiate,
+    PolyTy.instantiate, PolyCap.instantiate]
 
 /--
 The principal `something` monotype cannot check the explicitly polymorphic
@@ -352,11 +411,13 @@ def producerIdentityTy : Ty :=
     (.matcher (.var 0) (.var 0))
 
 /-- Its explicit two-sort annotation. -/
-def producerIdentityScheme : NamedScheme :=
-  ⟨[0], [0],
-    .fn
-      (.matcher (.var 0) (.var 0))
-      (.matcher (.var 0) (.var 0))⟩
+def producerIdentityScheme : Scheme :=
+  { capArity := 1
+    tyArity := 1
+    body :=
+      .fn
+        (.matcher (.bound 0) (.bound 0))
+        (.matcher (.bound 0) (.bound 0)) }
 
 /--
 Genuine parametric sharing checks: the same flexible capability and target
@@ -382,8 +443,8 @@ theorem producerIdentity_checks_rigid_annotation :
     by_cases heq : candidate = 0 <;>
       simp [C, T, heq, Ty.applyCapability]
   · simp [producerIdentityTy, producerIdentityScheme, skolemizeScheme,
-      capSkolemSubst, targetSkolemSubst, Subst.apply, C, T,
-      Ty.applyTarget, Ty.applyCapability, Cap.apply]
+      Scheme.instantiate, PolyTy.instantiate, PolyCap.instantiate,
+      Subst.apply, C, T, Ty.applyTarget, Ty.applyCapability, Cap.apply]
 
 /--
 The positive parametric identity also passes the high-level scope and
@@ -397,18 +458,22 @@ theorem producerIdentity_checks_annotation :
   · simp [CheckScope.empty, ListsDisjoint]
   · simp [FreshSkolemsFor, CheckScope.empty, generatedSkolemIds,
       ListsDisjoint, producerIdentityTy, producerIdentityScheme,
-      typeCapSkolemIds, capSkolemIds, targetSkolemIds]
+      typeCapSkolemIds, capSkolemIds, targetSkolemIds,
+      polyTypeCapSkolemIds, polyCapSkolemIds, polyTargetSkolemIds]
 
 /-! ## Freshness-collision regression -/
 
 /-- An explicit capability-polymorphic annotation used to expose ID collision. -/
-def collidingCapabilityScheme : NamedScheme :=
-  ⟨[0], [], .matcher (.var 0) .int⟩
+def collidingCapabilityScheme : Scheme :=
+  { capArity := 1
+    tyArity := 0
+    body := .matcher (.bound 0) .int }
 
 @[simp] theorem collidingCapabilityScheme_skolemize :
     skolemizeScheme collidingCapabilityScheme 0 0 =
       .matcher (.skolem 0) .int := by
-  rfl
+  simp [skolemizeScheme, collidingCapabilityScheme, Scheme.instantiate,
+    PolyTy.instantiate, PolyCap.instantiate]
 
 /--
 The low-level compatibility kernel alone cannot distinguish a pre-existing
@@ -436,6 +501,25 @@ theorem colliding_skolem_rejected_by_freshness :
   have fresh := checks.fresh
   exact fresh.1 0 (by simp [generatedSkolemIds, collidingCapabilityScheme])
     (by simp [CheckScope.empty, typeCapSkolemIds, capSkolemIds])
+
+/-! ## Bound-index capture regression -/
+
+/-- A bound capability and an ambient metavariable may share the same numeric
+payload because they inhabit different constructors in canonical syntax. -/
+def boundAndFreeCapabilityScheme : Scheme :=
+  { capArity := 1
+    tyArity := 0
+    body := .prod
+      [.matcher (.bound 0) .int, .matcher (.mvar 0) .int] }
+
+/-- Skolemization opens only the finite bound index.  The ambient
+metavariable with numeric identifier zero remains flexible, so binder-name
+capture is structurally impossible. -/
+@[simp] theorem bound_index_skolemization_cannot_capture_free_meta :
+    skolemizeScheme boundAndFreeCapabilityScheme 7 0 =
+      .prod [.matcher (.skolem 7) .int, .matcher (.var 0) .int] := by
+  simp [skolemizeScheme, boundAndFreeCapabilityScheme, Scheme.instantiate,
+    PolyTy.instantiate, PolyCap.instantiate]
 
 end Annotation
 end TypePM

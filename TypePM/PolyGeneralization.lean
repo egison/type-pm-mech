@@ -63,4 +63,20 @@ theorem mem_generalizedTyVars_not_env {envTys : List TypePM.TyVar}
   exact of_decide_eq_true
     (List.mem_filter.mp (mem_uniqueVars.mp membership)).2
 
+/-- Every free capability metavariable outside the environment is selected. -/
+theorem mem_generalizedCapVars {envCaps : List CapVar}
+    {target : Ty} {varId : CapVar}
+    (free : varId ∈ target.fcv) (outside : varId ∉ envCaps) :
+    varId ∈ generalizedCapVars envCaps target := by
+  exact mem_uniqueVars.mpr
+    (List.mem_filter.mpr ⟨free, by simp [outside]⟩)
+
+/-- Every free target metavariable outside the environment is selected. -/
+theorem mem_generalizedTyVars {envTys : List TypePM.TyVar}
+    {target : Ty} {varId : TypePM.TyVar}
+    (free : varId ∈ target.ftv) (outside : varId ∉ envTys) :
+    varId ∈ generalizedTyVars envTys target := by
+  exact mem_uniqueVars.mpr
+    (List.mem_filter.mpr ⟨free, by simp [outside]⟩)
+
 end TypePM

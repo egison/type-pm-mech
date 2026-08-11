@@ -38,13 +38,13 @@ abbrev CoreTyping := Inference.Reconstruction.ExprDeriv
 /-- One non-coercion root rule whose recursive premises all remain inside the
 reconstruction certificate. -/
 inductive CoreSynthHead (signature : FrozenSig) :
-    NamedContext -> Expr -> Ty -> Prop where
+    Context -> Expr -> Ty -> Prop where
   | var {context name scheme target} :
       context.find? name = some scheme ->
       scheme.ValueFlowInst target ->
       CoreSynthHead signature context (.var name) target
   | lam {context name body domain codomain} :
-      CoreTyping signature ((name, NamedScheme.mono domain) :: context) body codomain ->
+      CoreTyping signature ((name, Scheme.mono domain) :: context) body codomain ->
       CoreSynthHead signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
       CoreTyping signature context function (.fn domain codomain) ->
@@ -59,8 +59,8 @@ inductive CoreSynthHead (signature : FrozenSig) :
       self ≠ argument ->
       DirectSelf.Holds self body ->
       CoreTyping signature
-        ((argument, NamedScheme.mono domain) ::
-          (self, NamedScheme.mono (.fn domain codomain)) :: context)
+        ((argument, Scheme.mono domain) ::
+          (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain ->
       CoreSynthHead signature context (.fix self argument body)
         (.fn domain codomain)
@@ -104,7 +104,7 @@ inductive CoreSynthHead (signature : FrozenSig) :
 
 /-- A recursively reconstructed non-coercion head followed by one explicit
 outer surface coercion plan. -/
-inductive CoreCheck (signature : FrozenSig) (context : NamedContext)
+inductive CoreCheck (signature : FrozenSig) (context : Context)
     (expression : Expr) : Ty -> Prop where
   | intro {source target} :
       CoreSynthHead signature context expression source ->
@@ -114,7 +114,7 @@ inductive CoreCheck (signature : FrozenSig) (context : NamedContext)
 /-- Reassemble a non-coercion core head into the existing reconstruction
 certificate. -/
 theorem CoreSynthHead.toCoreTyping
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreSynthHead signature context expression target) :
     CoreTyping signature context expression target := by
@@ -141,7 +141,7 @@ theorem CoreSynthHead.toCoreTyping
 
 /-- Replay an explicit outer coercion plan on reconstruction evidence. -/
 theorem CoercionPlan.toCoreTyping
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (plan : CoercionPlan signature context expression source target)
     (typing : CoreTyping signature context expression source) :
@@ -158,7 +158,7 @@ theorem CoercionPlan.toCoreTyping
 
 /-- Reassemble a checked core head. -/
 theorem CoreCheck.toCoreTyping
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CoreCheck signature context expression target) :
     CoreTyping signature context expression target := by
@@ -168,7 +168,7 @@ theorem CoreCheck.toCoreTyping
 
 /-- Erase explicit elaboration evidence back to `RuntimeTyping`. -/
 theorem CoreTyping.erase
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreTyping signature context expression target) :
     RuntimeTyping signature context expression target :=
@@ -176,7 +176,7 @@ theorem CoreTyping.erase
 
 /-- Erase a checked core-head factorization directly to `RuntimeTyping`. -/
 theorem CoreCheck.erase
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CoreCheck signature context expression target) :
     RuntimeTyping signature context expression target :=
@@ -185,7 +185,7 @@ theorem CoreCheck.erase
 /-- Forget recursive reconstruction premises while retaining the same
 non-coercion surface head. -/
 theorem CoreSynthHead.toSynthHead
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreSynthHead signature context expression target) :
     SynthHead signature context expression target := by
@@ -214,7 +214,7 @@ theorem CoreSynthHead.toSynthHead
 
 /-- Forget recursive core premises from a checked head. -/
 theorem CoreCheck.toCheckHead
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CoreCheck signature context expression target) :
     CheckHead signature context expression target := by
@@ -225,7 +225,7 @@ theorem CoreCheck.toCheckHead
 /-- Every reconstruction certificate factors into a recursively reconstructed
 non-coercion head followed by an explicit outer coercion plan. -/
 theorem CoreTyping.toCoreCheck
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreTyping signature context expression target) :
     CoreCheck signature context expression target := by
@@ -267,7 +267,7 @@ theorem CoreTyping.toCoreCheck
 /-- The checked-head view is extensionally the existing recursive core
 certificate. -/
 theorem coreCheck_iff_coreTyping
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty} :
     CoreCheck signature context expression target ↔
       CoreTyping signature context expression target :=
@@ -277,7 +277,7 @@ theorem coreCheck_iff_coreTyping
 outer plan.  The `Nonempty` wrapper records logical existence only; executable
 plan data must still be produced directly by inference. -/
 theorem CoreTyping.factorNormalHead
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreTyping signature context expression target) :
     ∃ source,
@@ -290,7 +290,7 @@ theorem CoreTyping.factorNormalHead
 
 /-- Soundness of a logically existing normal core-head factorization. -/
 theorem normalHeadFactor_toCoreTyping
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (synthesis : CoreSynthHead signature context expression source)
     (normal : CanonicalCoercion.NormalPlan signature context expression
@@ -301,7 +301,7 @@ theorem normalHeadFactor_toCoreTyping
 /-- Logical normal-head factorization exactly characterizes the recursive core
 certificate. -/
 theorem coreTyping_iff_normalHeadFactor
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty} :
     CoreTyping signature context expression target ↔
       ∃ source,
@@ -316,7 +316,7 @@ theorem coreTyping_iff_normalHeadFactor
 /-- Successful public inference constructs an explicit core typing, before
 the final forgetful map used by surface soundness. -/
 theorem infer_success_core
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     CoreTyping signature
@@ -327,7 +327,7 @@ theorem infer_success_core
 /-- Successful public inference also exposes the recursively reconstructed
 head and its explicit outer coercion spine. -/
 theorem infer_success_core_check
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     CoreCheck signature
@@ -337,7 +337,7 @@ theorem infer_success_core_check
 
 /-- Successful inference has a logically normalizable outer coercion factor. -/
 theorem infer_success_normal_core_factor
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     ∃ source,
@@ -351,7 +351,7 @@ theorem infer_success_normal_core_factor
 
 /-- Surface soundness factors through the explicit core evidence. -/
 theorem infer_success_runtimeTyping_via_core
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     RuntimeTyping signature

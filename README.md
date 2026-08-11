@@ -12,7 +12,7 @@ source program
      │
      ▼
  DDTyping                 唯一の source typing
-     │ state erasure      一部実装：全14 familyのstate factorization
+     │ state erasure      実装済み：終端audit付きの全family相互消去
      ▼
  RuntimeTyping            内部の state-free certificate
      │ preservation / progress
@@ -38,8 +38,9 @@ q; S; Ω; Γ ⊢ e ⇐ τexpected ⊣ q'; S'; Ω'    checking
 supply，`S` はその cut までに得た paired substitution，`Ω` は capability variable の生成由来を
 記録する origin ledger である．各規則は子を左から右へ調べ，出力 `q'; S'; Ω'` を次の子へ
 渡す．公開 wrapper は canonical initial supply，恒等置換，空 ledger から始め，最後に
-`S' τraw` を公開する．Leanでは rawな synthesis derivationと，それに構造を一致させた intrinsic
-Origin certificateを分けて表現するが，両者を合わせた上の判断が公開 source typingである．
+`S' τraw` を公開する．Leanでは rawな synthesis derivation，それに構造を一致させた intrinsic
+Origin certificate，公開される終端 substitution での audit certificateを分けて
+表現する．これらを合わせた判断が公開 source typingである．
 
 `Ω(χ)` は次の三値を取る．未登録の変数は `rigid` として扱う．
 
@@ -59,6 +60,7 @@ placeholderのowned leafも含まれる．ordinary equalityとone-way matcher-to
 DDTyping Σ Γ e τ  iff
   ∃ τraw q' S' Ω',
     initialSupply Σ Γ; id; ∅; Γ ⊢ e ⇒ τraw ⊣ q'; S'; Ω' ∧
+    TerminalAudit S' ∧
     τ = S' τraw
 ```
 
@@ -115,34 +117,25 @@ infer Σ Γ e = some r
 progress，到達可能 state の保存，成功 branch の substitution typing を証明済みである．
 一般の program termination は主張しない．
 
-## 未完成の接続
+## 残る接続
 
-現在の主な未完成部分は三つである．
+`DDTyping → RuntimeTyping` の state erasure は完成している．public `DDTyping` は
+canonical initial supply，恒等置換，空 ledger から始まる raw derivation，構造が対応する
+Origin certificate，終端 substitution での audit certificateを保持する．全 raw DD
+family で出力 substitution の idempotence を保存することと，各子の出力から根の終端までの
+chronological factorization を使い，全14 family の相互 erasure から closed-program の
+`RuntimeTyping` を得る．`RuntimeTyping` 自体の存在を `DDTyping` の premise に置く循環はない．
 
-1. `DDTyping → RuntimeTyping` の state erasure
-2. `infer → DDTyping` の executable soundness
-3. `DDTyping → infer` の受理完全性
+現在残る主な受理接続は次の二つである．
 
-一つ目に必要な capability-origin ledger は DD family 全体へ統合済みである．raw derivation と
-同じ形の intrinsic Origin certificate が，fresh allocation，scheme／dual instance，constructor
-instance，producer export，matcher finalization，solve cut を追跡する．public `DDTyping` は
-canonical initial supply，恒等置換，空 ledger から始まる raw derivationとその certificateの
-組だけを受理する．
+1. `infer → DDTyping` の executable soundness
+2. `DDTyping → infer` の受理完全性
 
-残っているのは，この Origin derivation を全14 familyのconstructorに沿って
-`RuntimeTyping` へ射影する相互state-erasure定理である．supply-scopedな残余substitutionの
-admissibility，全14 familyの無前提state factorization，canonical scheme instanceの局所transport，
-variable／literal／`something`／lambda／tupleの初期erasure補題までは構成済みである．
-`capFreezeProgram` と `letCapFreezeProgram` については，originを追跡しない局所solveが
-capabilityを不正に強化できる一方，public `DDTyping` ではプログラム全体が導出不能であることを
-end-to-end回帰で固定している．既存正例のOrigin certificateもpublic wrapperまで構成済みで
-ある．`RuntimeTyping` の存在を `DDTyping` の premise に埋め込む循環的な定義は採らない．
-
-二つ目については，successful executable traversalを同じcut列を持つDD derivationへ直接写す
+一つ目については，successful executable traversalを同じcut列を持つDD derivationへ直接写す
 証明を開始している．この接続は`RuntimeTyping`を経由せず，raw target，supply，prevailing
 substitution，origin ledgerを保持する内部の帰納パッケージを用いる．
 
-三つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
+二つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
 raw type を使う箇所を cut-resolved view と一致させる必要がある．最終目標は追加 premise の
 ない次の定理である．
 
@@ -169,7 +162,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
               │
         ┌─────┴──────────┐
         ▼                ▼
-[~] 2. DD state erasure   [~] 3. infer success → DDTyping
+[x] 2. DD state erasure   [~] 3. infer success → DDTyping
         │                │
         ▼                ▼
 [ ] 4. DD の公開安全性    [ ] 5. DDTyping → infer success
@@ -182,22 +175,21 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 
 ### 進捗サマリ
 
-全7 milestoneのうち，完了2，一部完了2，未着手3である．
+全7 milestoneのうち，完了3，一部完了1，未着手3である．
 
 | milestone | 状態 | 完了した中心部分 | 残る中心部分 |
 |---|---|---|---|
 | 0. 基盤 | 完了 | DD判断，exact solve，runtime certificate，既存動的安全性 | なし |
 | 1. freeze provenance | 完了 | Origin ledger，public正例／負例回帰 | なし |
-| 2. DD state erasure | 一部完了 | 全14 familyのfactorization，多くのconstructor-wise erasure，capture-free poly syntax基盤 | expression `Scheme`のpoly payload移行，variable／`let` transport，matcher／clause終端再構成，pattern-constructorの終端compatibility |
+| 2. DD state erasure | 完了 | canonical `Scheme`，全14 familyのfactorizationとidempotence，terminal audit，固定終端への相互erasure，closed-program公開定理 | なし |
 | 3. infer success → DDTyping | 一部完了 | exact solver bridge，checking alignment全分岐，通常expression constructorの大半 | `fixMatcher`，`letE`，`matcher`，`matchAll`，pattern／arm／clause相互再構成，public中心定理 |
-| 4. DDの公開安全性 | 未着手 | 利用するpreservation／progressは既存 | milestone 2のclosed-program erasure後に公開定理を合成 |
+| 4. DDの公開安全性 | 未着手 | closed-program erasureと利用するpreservation／progressは既存 | 動的定理を公開`DDTyping`の前提で合成 |
 | 5. DDTyping → infer success | 未着手 | 完全性に必要なexact solver基盤は既存 | traversal完全性，terminal validator完全性 |
 | 6. 受理同値 | 未着手 | なし | milestone 3と5の合成 |
 
-現在のcritical pathは次の二本である．
-
-1. milestone 3のmatcher／pattern／clause相互再構成を閉じ，`infer success → DDTyping`を完成する．
-2. milestone 2のcapture-free `Scheme`移行とmatcher終端再構成を閉じ，その後milestone 4を合成する．
+現在のcritical pathは，milestone 3のmatcher／pattern／clause相互再構成を閉じ，
+`infer success → DDTyping`を完成することである．milestone 4は完了した closed-program
+erasureと既存の動的安全性を合成する独立作業になった．
 
 milestone 5は1と2に依存しないが，現在はsource soundnessと公開安全性の完成を
 優先するため未着手とする．
@@ -240,115 +232,60 @@ negative regressionとして固定されている．
 - [x] `nestedCapProgram`，matcher-expected product application など既存の負例は導出不能なままである．
 - [x] public `DDTyping` は canonical initial ledger から開始し，外部の freeze premise を要求しない．
 
-### [~] 2. DD state erasure を証明する
+### [x] 2. DD state erasure を証明する
 
-ledger-aware な DD derivation から，supply，prevailing substitution，origin ledger を消去して
-`RuntimeTyping` certificate を構成する．expression だけを個別に処理せず，expression list，
-user pattern，primitive pattern，data pattern，arm，clause の相互 family 全体について射影を
-証明する．`let` では一般化 scheme の binder-local value-flow instance，matcher literalでは
-共有 target と terminal hole capability の一致を回収する．
+ledger-aware な DD derivation から supply，prevailing substitution，origin ledger を消去し，
+`RuntimeTyping` certificate を構成する相互証明は完了している．expression だけでなく，
+expression list，checking，user／primitive／data pattern，arm，clause を含む全 family を
+同じ根の終端 substitution へ射影する．
 
-進捗：
+完了した構成は次のとおりである．
 
-- [x] 全14 DD familyの無前提`StateFactorization`を構成する．
-- [x] checking alignment全5分岐を終端`RuntimeAlignment`へ射影する．
-- [x] expressionの主要構造規則と，data／primitive patternの構造的erasureを構成する．
-- [x] scheme substitutionのno-capture条件とbinder-local instance compositionを定式化する．
-- [x] solver metavariableとscheme bound variableを型レベルで分離する，scheme専用の
-  `PolyCap`／`PolyTy`，canonical `PolyScheme`，close／open境界と旧collisionの
-  capture不能回帰を構成する．
-- [x] expression schemeのvalue-flow／fresh具体化を通常`Subst`から分離し，
-  capability像のvariable-only性とfresh assignmentのinjectivityを型で表すopening APIを構成する．
-- [x] binder名ではなく有限なbinder位置からfresh metaを割り当てるcanonical allocatorと，
-  supply bounds／ambient freshnessを構成する．
-- [x] environmentに現れないsolver metavariableを選択し，named binderを保存せず直ちに
-  `PolyScheme`へcloseするgeneralizationを構成する．
-- [x] poly payloadのfree solver metavariableをbound indexと構造的に区別し，binder listの
-  subtractionを使わないscheme free-variable traversalを構成する．
-- [x] named metavariableをcloseし，同じbinder listの像でopenすると元の通常型へ戻る
-  close／open左逆則を構成する．
-- [x] 実際のcapability opening像が後続作用でもvariableに留まるという局所条件だけで，
-  openingとambient substitutionのtransportを構成する．
-- [x] binder capture条件なしでpoly scheme substitutionのidentity／composition則を構成する．
-  compositionに残る仮定は二sort substitution固有のcross-range固定だけである．
-- [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
-- [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
-- [ ] matcher／clauseを終端cutで相互に再構成する．
-- [ ] pattern constructorの`CapCompatible`を早期freezeせず，終端consumerの証拠から回収する．
-- [ ] `DDTyping signature [] e τ → RuntimeTyping signature [] e τ`を公開定理として閉じる．
+- [x] 全14 DD familyの無前提 `StateFactorization` を構成する．
+- [x] checking alignment全5分岐を終端 `RuntimeAlignment` へ射影する．
+- [x] solver metavariableとscheme bound variableを別datatypeにしたcanonical `Scheme`へ移行し，
+  binder名，mask，`NoCapture` 条件を source scheme から除去する．
+- [x] finiteなbound indexのopening，fresh allocation，generalization，substitution合成，
+  variable value-flow transportを構成する．
+- [x] exact solveがidempotentな入力 substitutionからidempotentな出力を作ることを，
+  alignment familyとraw DD全14 familyで証明する．
+- [x] derivationと同じ形のterminal-audit treeを構成し，`let` generalization，
+  matcher finalization，pattern-constructor compatibilityを根の終端 substitutionで固定する．
+- [x] chronological factorizationとidempotenceを各子へ渡す固定終端の相互erasureを構成する．
+- [x] closed signatureについて
+  `DDTyping.runtimeTyping`，すなわち
+  `DDTyping signature [] e τ → RuntimeTyping signature [] e τ` を公開定理として閉じる．
 
 <details>
-<summary>state erasureの実装状況，反例，設計判断の詳細</summary>
+<summary>state erasureの設計</summary>
 
-現在は，入力cutより前のorigin policyだけを制約するsupply-scopedな
-`AdmissiblePostBetween` と，終端substitutionを安全なpostへ分解する`StateFactorization`を定義し，
-合成，boundedness，ledger refinement，alignmentの各分岐について基本補題を証明済みである．
-式のsynthesis／checkingとそれらのlistに加え，user pattern，primitive pattern，data pattern，arm，
-clauseを含む全14 familyのfactorizationを，`SchemesClosed`と入力boundednessだけから得る無前提の
-相互定理として構成済みである．canonical scheme／dual-scheme instanceのbinder imageをrename-only
-ledgerから局所的にtransportする補題と，variable／literal／`something`／lambda／tupleから
-`RuntimeTyping`を得る初期erasure補題もある．さらに，全expression／pattern／arm／clause familyの
-終端state-free命題とconstructor-wise合成補題を分離し，checking alignmentの全5分岐を終端の
-意味的な`RuntimeAlignment`へ射影した．後続cutを量化する`RuntimeErasureUnder`はliteral，
-`something`，lambda，tuple，fix，application，`fixMatcher`，constructor／primitive，synthesis／checking
-listの構造規則に加え，expression leafを持たないdata／primitive patternの4 familyについて無前提の
-相互closureまで閉じている．user patternもvariable／wildcard／embed／tuple／listまで，matcher armも
-pattern・body・tailの再帰合成まで拡張済みであり，value patternもchild expressionのlater-cut
-erasureから構造的に合成できる．and／or，pattern-function application，pattern constructorにも
-child invariantからの構造補題があり，`matchAll`もtarget，pattern，matcher，bodyの4 child invariantと
-各factorizationだけから最終cutへ合成できる．pattern constructorだけは，後続cutでの
-`CapCompatible`安定性が明示的な残余条件である．この整理に合わせ，
-`RuntimeTyping`と`ValueTy`から実装solverの
-raw certificateとglobal `VariablePost`を除き，matcher-to-slotは終端`CapabilityDemand`，
-slot-to-slotは終端型等式だけへ消去した．variable leafでは，fresh instanceのcapability binderが
-後続cutでもvariableであることはledgerから回収できる一方，`Scheme.applySubst`のbinder maskingを
-またぐcontext schemeの合成は無条件には成り立たないことを分離した．さらに，contextとscheme，
-前後のsubstitutionがboundedかつsolvedで，actual marked ledgerに対するpostがadmissibleでも，
-substitution rangeがscheme binderへ入ると合成則が壊れる具体的なLean反例を固定した．したがって，
-残るvariable／`let`にはno-captureなbinder provenance（または真のalpha-renaming）が必要である．
-必要なrange hygieneをcap→cap，type→cap，type→typeの3経路に分けた`Scheme.NoCapture`と，そこから
-scheme substitutionの逐次合成を得る定理を実装済みである．一方，lookup時点がno-captureでも，
-後続のadmissible suffixが新たにbinder captureを起こしてvalue-flow instanceを失わせる第二反例も
-固定している．したがって，過去のleaf-local premiseでは足りず，context中の各scheme／free variable
-ごとのavoidanceを後続solve全体で保存する必要がある．
-この状態不変量を追加する代わりに，scheme payloadをsolverの`Cap`／`Ty`から分離する移行を開始した．
-`PolyCap n`／`PolyTy n m`ではbound occurrenceを`Fin`，free occurrenceを既存metavariableで表し，
-ambient substitutionのrangeからbound occurrenceを構築できない．`Fin`はcanonicalなde Bruijn index
-なので全payloadがalpha-normal formであり，substitutionごとのfresh nominal renameと
-alpha-equivalenceを導入せずに構造的等式を維持できる．現時点では基盤とcollision回帰までで，既存
-`Scheme`のpayload移行後にこの段落の`NoCapture`残課題を削除する．
-この境界は`Context.NoCapture`，context substitutionの逐次合成，binder-local instance composition，
-canonical value-flow transportとして補題化済みであり，variable leafの従来のscheme equality／
-`InstCompositionAt`／binder equation premiseは，lookup前後の2つの`NoCapture`条件へ簡約できている．
-clause側ではfinal matcher capabilityとshape evidenceをmatcher finalizationから渡す必要があり，
-matcher本体ではscoped rename-only postをshape／clause transportが使うtotal renamingへ持ち上げる補題が
-必要である．supply cut未満でvariable-onlyなpostをcut以上identityのtotal postへ拡張し，boundedな
-capability／type／scheme／context上で元のpostと一致する補題は実装済みである．ただしproducerに
-現れないstructural leafまでfreezeされるわけではないため，matcher全体へ適用するには有限な関連leaf
-だけを追跡するか，clauseを最終cutで直接再構成する必要がある．これらを解決して残るuser pattern，
-clause，matcherを相互に閉じることが次のcutである．pattern constructorのchild／result
-capabilityを局所cutで一律にexport freezeする案は採れない．`DynamicDispatchRegression`の正例では
-`Pair κ`として合成されたpattern resultが，外側のmatcher-to-slot demandで`κ ↦ Any`と正当に
-具体化されるためである．実行可能推論のterminal validatorは既にraw operandへ最終substitutionを
-再適用して`CapCompatible`を再検査し，`Reconstruction`もその証拠を使用している．したがってDD
-state erasureでも，pattern constructor単体を早期freezeするのではなく，最終consumer cutの
-compatibility evidenceを直接渡す，またはpattern consumer全体の完了まで検査を遅延する必要がある．
+schemeのbound variableは有限なbound index，推論器のmetavariableは `CapVar`／`TyVar` であり，
+構文レベルで異なる．ambient substitutionはbound occurrenceを生成できないため，旧来の
+binder-name衝突，mask，`NoCapture` 保存条件は不要になった．generalizationは選んだmetavariableを
+直ちにcanonical schemeへcloseし，instance生成はcaller-suppliedなfinite openingで行う．
+
+消去証明は「任意の将来 suffix に対して各nodeが安定する」とは仮定しない．その主張は
+`let` のgeneralized setが後続solveで変わり得るため強すぎる．代わりに公開 `DDTyping` は，
+raw derivationとOrigin certificateに加え，同じ木構造を持つterminal auditを公開終端
+substitutionに対して保持する．auditは局所suffixで一般には保存されない三種類の事実を記録する：
+
+- `let` が終端contextと終端value typeから同じschemeをgeneralizeすること．
+- matcherの終端capabilityに対してshape，clause capability，exhaustiveness，coverageが成立すること．
+- pattern constructorの引数capabilityと結果capabilityが終端でcompatibleであること．
+
+各raw DD familyはexact solveのidempotenceを保存する．また，各子の出力状態から根の終端状態への
+`StateFactorization` がchronological substitutionを与える．相互erasureはこのfactorizationと
+idempotenceを再帰的に渡し，variable opening，checking alignment，`let`，matcher／clause，
+pattern constructorを含む各constructorを終端の `RuntimeTyping` familyへ射影する．terminal
+auditは `RuntimeTyping` の存在を保持するoracleではなく，solverを含まない有限な代数的・
+検査可能事実だけを保持する．
 
 </details>
 
-一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
-contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
-
-```text
-q; S; Ω; context ⊢ e ⇒ raw ⊣ q'; S'; Ω' →
-  RuntimeTyping signature (context.applySubst S') e (S'.apply raw)
-
-DDTyping signature [] e τ →
-  RuntimeTyping signature [] e τ
-```
-
-完了条件は，型付け derivation を premise に持つ oracle や任意の capability transport を
-追加せず，freeze 回帰を含む全例についてこの定理を適用できることである．
+一般の内部定理は入力contextへ根の終端 substitutionを適用した `RuntimeTyping` を構成する．
+canonical initial stateと空contextに特殊化すると，公開した型をそのまま持つclosed-program
+corollaryが得られる．これによりMilestone 2は，型付けderivationをpremiseに持つoracleや
+blanketなcapability transportを追加せず完了した．
 
 ### [~] 3. 実行可能推論の DD soundness を証明する
 
@@ -520,10 +457,12 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 - `DDCheck` の非恒等 branch は slot-headed expected type に限られる．
 - matcher-headed expected type では ordinary equality しか起こらない．
 - DD family の supply は単調に進み，substitution は chronological delta replay に分解できる．
+- exact solveと全14 raw DD familyは substitution のidempotenceを保存する．
 - DD が公開する型，pattern dual，bindings，hole ledger は終端 supply で有界である．
 - exact MGU は constraint 外の metavariable を推測しない．
 - matcher literal は shape，catch-all order，data-arm exhaustiveness，binder 線形性，coverage
   evidence をすべて要求する．
+- closed signature上で `DDTyping signature [] e τ` から `RuntimeTyping signature [] e τ` を導く．
 - `infer` の成功から reconstruction certificate と `RuntimeTyping` を再構成できる．
 - `FrozenSigWF` の下で concrete evaluation と matching machine の安全性が成り立つ．
 - `sorry`，`admit`，project-defined `axiom` はない．
@@ -533,7 +472,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | 層 | 主な module | 役割 |
 |---|---|---|
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingInferenceSoundness`, `DemandTypingErasure`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，推論からDDへの再構成，state-erasure facade，public source typingと回帰 |
+| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingInferenceSoundness`, `DemandTypingErasure`, `DemandTypingTerminalAuditBuilder`, `DemandTypingRegression`, `DemandTypingTerminalAuditErasureRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，推論からDDへの再構成，state-erasure facade，terminal audit構築，public source typingと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |

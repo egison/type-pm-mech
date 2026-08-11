@@ -224,6 +224,22 @@ theorem ValueFlowInst.transportApplyMeta {scheme : Scheme} {target : Ty}
   refine ⟨post.toOpening, ?_⟩
   rw [openValue_applyMeta substitution opening post, result]
 
+/-- A globally variable-valued capability action transports every
+declarative opening. -/
+theorem ValueFlowInst.transportVariable {scheme : Scheme} {target : Ty}
+    (substitution : Subst) (instantiation : scheme.ValueFlowInst target)
+    (capVariable : ∀ varId, ∃ image, substitution.cap varId = .var image) :
+    (scheme.applyMeta substitution).ValueFlowInst
+      (substitution.apply target) := by
+  classical
+  apply instantiation.transportApplyMeta substitution
+  intro opening _result
+  refine ⟨
+    { capImage := fun index =>
+        Classical.choose (capVariable (opening.capImage index))
+      capEquation := fun index =>
+        Classical.choose_spec (capVariable (opening.capImage index)) }⟩
+
 /-- Pointed form of value-flow transport when the caller already retains the
 opening and its result equation. -/
 theorem ValueOpening.transportApplyMeta {scheme : Scheme} {target : Ty}

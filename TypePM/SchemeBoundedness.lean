@@ -1,5 +1,6 @@
-import TypePM.DemandTyping
+import TypePM.Bounds
 import TypePM.PolyFreeVars
+import TypePM.PolyGeneralization
 
 /-!
 # Boundedness of canonical expression schemes
@@ -505,6 +506,34 @@ theorem BoundedBy.ofMono {supply : InferenceBase.FreshSupply} {target : Ty}
   · intro varId mem
     exact bounded.targets varId (by
       simpa [Scheme.ftv, Scheme.mono] using mem)
+
+/-- Closing selected ordinary metavariables into finite indices preserves
+boundedness of every remaining free metavariable. -/
+theorem BoundedBy.close {supply : InferenceBase.FreshSupply} {target : Ty}
+    (bounded : target.BoundedBy supply) (capBinders : List CapVar)
+    (tyBinders : List TypePM.TyVar) :
+    (Scheme.close capBinders tyBinders target).BoundedBy supply := by
+  let closeCap := fun varId => capBinders.finIdxOf? varId
+  let closeTy := fun varId => tyBinders.finIdxOf? varId
+  have subset := PolyTy.abstract_free_subset closeCap closeTy target
+  constructor
+  · intro varId membership
+    apply bounded.caps varId
+    exact subset.1 varId (by
+      simpa [Scheme.close, Scheme.fcv, closeCap, closeTy] using membership)
+  · intro varId membership
+    apply bounded.targets varId
+    exact subset.2 varId (by
+      simpa [Scheme.close, Scheme.ftv, closeCap, closeTy] using membership)
+
+/-- Generalization is closing, so it cannot introduce free solver
+metavariables beyond those of the generalized type. -/
+theorem BoundedBy.generalize {supply : InferenceBase.FreshSupply}
+    {target : Ty} (bounded : target.BoundedBy supply)
+    (envCaps : List CapVar) (envTys : List TypePM.TyVar) :
+    (Scheme.generalize envCaps envTys target).BoundedBy supply := by
+  exact Scheme.BoundedBy.close bounded (generalizedCapVars envCaps target)
+    (generalizedTyVars envTys target)
 
 /-- Applying a bounded ambient substitution to free scheme metavariables
 preserves scheme boundedness. -/

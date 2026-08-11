@@ -27,6 +27,13 @@ def FreshOpening.tyImages {scheme : Scheme}
     opening.capImages.length = scheme.capArity := by
   simp [FreshOpening.capImages]
 
+/-- An opening of a scheme without capability binders has no images. -/
+@[simp] theorem FreshOpening.capImages_eq_nil_of_capArity_zero
+    {scheme : Scheme} (opening : scheme.FreshOpening)
+    (empty : scheme.capArity = 0) : opening.capImages = [] := by
+  apply List.eq_nil_of_length_eq_zero
+  rw [opening.capImages_length, empty]
+
 @[simp] theorem FreshOpening.tyImages_length {scheme : Scheme}
     (opening : scheme.FreshOpening) :
     opening.tyImages.length = scheme.tyArity := by
@@ -73,6 +80,14 @@ def canonicalTyImages (supply : InferenceBase.FreshSupply)
     (supply : InferenceBase.FreshSupply) (scheme : Scheme) :
     (canonicalCapImages supply scheme).length = scheme.capArity := by
   simp [canonicalCapImages]
+
+/-- A scheme with no capability binders allocates no capability images. -/
+@[simp] theorem canonicalCapImages_eq_nil_of_capArity_zero
+    (supply : InferenceBase.FreshSupply) (scheme : Scheme)
+    (empty : scheme.capArity = 0) :
+    canonicalCapImages supply scheme = [] := by
+  apply List.eq_nil_of_length_eq_zero
+  rw [canonicalCapImages_length, empty]
 
 @[simp] theorem canonicalTyImages_length
     (supply : InferenceBase.FreshSupply) (scheme : Scheme) :

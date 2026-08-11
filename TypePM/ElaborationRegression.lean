@@ -55,20 +55,30 @@ tuple-literal-only rule could not express this elaboration. -/
 theorem let_bound_pair_checks_as_product_matcher {signature : FrozenSig} :
     RuntimeTyping signature [] letPairProgram pairMatcherType := by
   have pairScheme :
-      signature.generalize [] pairProductType = NamedScheme.mono pairProductType := by
+      signature.generalize [] pairProductType = Scheme.mono pairProductType := by
     have capClosed : pairProductType.fcv = [] := by rfl
     have targetClosed : pairProductType.ftv = [] := by rfl
-    simp [FrozenSig.generalize, TypePM.generalize, capClosed, targetClosed,
-      uniqueVars, NamedScheme.mono]
+    unfold FrozenSig.generalize Scheme.generalize
+    have capBinders :
+        generalizedCapVars (signature.fcv ++ Context.fcv [])
+          pairProductType = [] := by
+      simp [generalizedCapVars, capClosed, uniqueVars]
+    have tyBinders :
+        generalizedTyVars (signature.ftv ++ Context.ftv [])
+          pairProductType = [] := by
+      simp [generalizedTyVars, targetClosed, uniqueVars]
+    rw [capBinders, tyBinders]
+    simp [Scheme.close, Scheme.mono, pairProductType, PolyTy.abstract,
+      PolyTy.lift, PolyCap.abstract, PolyCap.lift]
   have variableTyping :
       RuntimeTyping signature
         [("pairMatcher", signature.generalize [] pairProductType)]
         (.var "pairMatcher") pairProductType := by
     apply RuntimeTyping.var
       (scheme := signature.generalize [] pairProductType)
-    · simp [NamedContext.find?, pairScheme]
+    · simp [Context.find?, pairScheme]
     · rw [pairScheme]
-      exact NamedScheme.mono_valueFlowInst pairProductType
+      exact Scheme.mono_valueFlowInst pairProductType
   simpa [letPairProgram, pairProductType, pairMatcherType] using
     RuntimeTyping.letE (pair_prod_typing (signature := signature))
       (RuntimeTyping.coerceProductMatcher

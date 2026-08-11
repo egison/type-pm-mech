@@ -27,7 +27,7 @@ structure InferState.RawRunInvariants
 /-- Successful `inferRaw` simultaneously preserves resource/history
 extension and produces ledger-admissible, locally factorizing solve steps. -/
 theorem inferRaw_runInvariants
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     InferState.RawRunInvariants

@@ -32,6 +32,16 @@ def fcv (context : Context) : List CapVar :=
 def ftv (context : Context) : List TypePM.TyVar :=
   context.flatMap fun entry => entry.2.ftv
 
+/-- Every capability metavariable represented by a canonical context is free.
+Bound scheme positions are `Fin` indices and therefore reserve no solver
+identifier. -/
+def allCapVars (context : Context) : List CapVar :=
+  context.fcv
+
+/-- Every target metavariable represented by a canonical context is free. -/
+def allTyVars (context : Context) : List TypePM.TyVar :=
+  context.ftv
+
 @[simp] theorem applySubst_id (context : Context) :
     context.applySubst Subst.id = context := by
   induction context with
@@ -53,6 +63,19 @@ theorem applySubst_comp (S₂ S₁ : Subst)
           simp only [Context.applySubst, List.map_cons]
           rw [Scheme.applyMeta_comp S₂ S₁ crossFixed scheme]
           congr 1
+
+/-- Cross-sort-aware sequential substitution composes on canonical contexts
+without a binder-capture premise. -/
+theorem applySubst_seq (later earlier : Subst) (context : Context) :
+    context.applySubst (Subst.seq later earlier) =
+      (context.applySubst earlier).applySubst later := by
+  induction context with
+  | nil => rfl
+  | cons entry context induction =>
+      cases entry with
+      | mk name scheme =>
+          simp only [Context.applySubst, List.map_cons] at induction ⊢
+          rw [Scheme.applyMeta_seq later earlier scheme, induction]
 
 theorem find?_applySubst (substitution : Subst)
     (context : Context) (name : String) :

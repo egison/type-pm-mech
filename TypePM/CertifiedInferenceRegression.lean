@@ -83,7 +83,7 @@ theorem emptyProduct_prefers_productMatcher
 /-- Check both the terminal type and the exact expected-type alignment
 observed in a successful public run. -/
 def inferenceHasAlignment
-    (context : NamedContext) (expression : Expr)
+    (context : Context) (expression : Expr)
     (inferred requested resultTarget : Ty) : Bool :=
   match Inference.infer emptySignature context expression with
   | none => false
@@ -95,8 +95,8 @@ def inferenceHasAlignment
                 decide (result.state.prevailing.apply actualRequested = requested)
           | _ => false
 
-def productMatcherConsumerContext : NamedContext :=
-  [("consume", NamedScheme.mono (.fn concretePairMatcherType .int))]
+def productMatcherConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairMatcherType .int))]
 
 def productMatcherArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
@@ -110,8 +110,8 @@ def productMatcherArgumentApplicationSucceeds : Bool :=
 
 #guard !productMatcherArgumentApplicationSucceeds
 
-def productSlotConsumerContext : NamedContext :=
-  [("consume", NamedScheme.mono (.fn concretePairSlotType .int))]
+def productSlotConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairSlotType .int))]
 
 def productSlotArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
@@ -128,10 +128,10 @@ def productSlotArgumentApplicationSucceeds : Bool :=
   productSlotArgumentApplication concretePairMatcherType
   concretePairSlotType .int
 
-def slotTupleConsumerContext : NamedContext :=
-  [("consume", NamedScheme.mono (.fn concretePairSlotType .int)),
-   ("left", NamedScheme.mono (.slot .any .int)),
-   ("right", NamedScheme.mono (.slot .any .int))]
+def slotTupleConsumerContext : Context :=
+  [("consume", Scheme.mono (.fn concretePairSlotType .int)),
+   ("left", Scheme.mono (.slot .any .int)),
+   ("right", Scheme.mono (.slot .any .int))]
 
 def slotTupleArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.var "left", .var "right"])
@@ -150,8 +150,8 @@ def slotTupleArgumentApplicationSucceeds : Bool :=
 /-! A product expectation does not trigger componentwise matcher-to-slot
 coercions.  Only the explicit whole-product routes above are accepted. -/
 
-def componentSlotConsumerContext : NamedContext :=
-  [("consume", NamedScheme.mono
+def componentSlotConsumerContext : Context :=
+  [("consume", Scheme.mono
     (.fn (.prod [.slot .any .int, .slot .any .int]) .int))]
 
 def componentSlotArgumentApplication : Expr :=
@@ -186,12 +186,10 @@ theorem terminalLet_typed :
 
 /-! ## Expression-scheme instantiation in both variable sorts -/
 
-def quantifiedProducerScheme : NamedScheme where
-  capBinders := [0]
-  tyBinders := [0]
-  body := .matcher (.var 0) (.var 0)
+def quantifiedProducerScheme : Scheme :=
+  Scheme.close [0] [0] (.matcher (.var 0) (.var 0))
 
-def quantifiedContext : NamedContext :=
+def quantifiedContext : Context :=
   [("producer", quantifiedProducerScheme)]
 
 def quantifiedExpression : Expr :=
@@ -255,8 +253,8 @@ theorem quantifiedPApp_typed :
 
 /-! ## Slot-to-slot expected-type alignment -/
 
-def slotContext : NamedContext :=
-  [("slot", NamedScheme.mono (.slot .any .int))]
+def slotContext : Context :=
+  [("slot", Scheme.mono (.slot .any .int))]
 
 def slotToSlotExpression : Expr :=
   .matchAll (.lit 0) (.var "slot") .wild (.lit 1)

@@ -11,10 +11,10 @@ instantiation maps every quantified binder to a flexible meta at or above the
 corresponding incoming counter, advances the counter past every allocated
 identifier, and leaves all variables outside the binder lists unchanged.
 
-The executable functions return their substitutions explicitly.  Their
-soundness theorems connect the results to `NamedScheme.InstAt`,
-`DualScheme.Inst`, and `CtorScheme.Inst`, including support and the paper's
-range-fixed side condition.
+Capture-free expression schemes return a finite opening directly.  The
+remaining named-binder payloads return explicit substitutions, and their
+soundness theorems connect the results to `DualScheme.Inst` and
+`CtorScheme.Inst`.
 -/
 
 namespace TypePM
@@ -389,15 +389,6 @@ structure InstanceResult (Payload : Type) where
   value : Payload
   supply : FreshSupply
 
-/-- Instantiate every binder of an expression scheme simultaneously. -/
-def instantiateNamedScheme
-    (supply : FreshSupply) (scheme : NamedScheme) : InstanceResult Ty :=
-  let assignment :=
-    instantiateBinders supply scheme.capBinders scheme.tyBinders
-  { subst := assignment.subst
-    value := assignment.subst.apply scheme.body
-    supply := assignment.supply }
-
 /-- Instantiate every binder of a pattern-function dual scheme. -/
 def instantiateDualScheme
     (supply : FreshSupply) (scheme : DualScheme) :
@@ -422,21 +413,6 @@ def instantiateCtorScheme
       (scheme.args.map assignment.subst.apply,
         assignment.subst.apply scheme.result)
     supply := assignment.supply }
-
-/-- Executable expression-scheme instantiation satisfies `NamedScheme.InstAt`. -/
-theorem instantiateNamedScheme_sound
-    (supply : FreshSupply) (scheme : NamedScheme) :
-    scheme.InstAt
-      (instantiateNamedScheme supply scheme).subst.cap
-      (instantiateNamedScheme supply scheme).subst.target
-      (instantiateNamedScheme supply scheme).value := by
-  refine ⟨?_, ?_, ?_, rfl⟩
-  · exact instantiateBinders_cap_support supply
-      scheme.capBinders scheme.tyBinders
-  · exact instantiateBinders_ty_support supply
-      scheme.capBinders scheme.tyBinders
-  · exact instantiateBinders_rangeFixed supply
-      scheme.capBinders scheme.tyBinders
 
 /-- Executable dual-scheme instantiation satisfies `DualScheme.Inst`. -/
 theorem instantiateDualScheme_sound
@@ -465,30 +441,6 @@ theorem instantiateCtorScheme_sound
       scheme.capBinders scheme.tyBinders
   · exact instantiateBinders_ty_support supply
       scheme.capBinders scheme.tyBinders
-
-/-! ## Monomorphic lookup regression -/
-
-/-- Looking up a monomorphic scheme allocates no substitutions. -/
-@[simp] theorem instantiateNamedScheme_mono_subst
-    (supply : FreshSupply) (target : Ty) :
-    (instantiateNamedScheme supply (NamedScheme.mono target)).subst = Subst.id := by
-  rfl
-
-/-- Looking up a monomorphic scheme does not advance either fresh counter. -/
-@[simp] theorem instantiateNamedScheme_mono_supply
-    (supply : FreshSupply) (target : Ty) :
-    (instantiateNamedScheme supply (NamedScheme.mono target)).supply = supply := by
-  cases supply
-  rfl
-
-/-- Looking up a monomorphic scheme returns the identical body. -/
-@[simp] theorem instantiateNamedScheme_mono_value
-    (supply : FreshSupply) (target : Ty) :
-    (instantiateNamedScheme supply (NamedScheme.mono target)).value = target := by
-  change
-    (instantiateNamedScheme supply (NamedScheme.mono target)).subst.apply target = target
-  rw [instantiateNamedScheme_mono_subst]
-  exact Subst.apply_id target
 
 end InferenceBase
 end TypePM

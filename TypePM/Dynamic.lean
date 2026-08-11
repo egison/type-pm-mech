@@ -66,33 +66,33 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
       ValueTys signature values targets →
       ValueTy signature (.tuple values) (.prod targets)
   | closure {self environment parameter body domain codomain}
-      (context : NamedContext) :
+      (context : Context) :
       (∀ name value,
         Env.find? environment name = some value →
-          ∃ scheme, NamedContext.find? context name = some scheme) →
+          ∃ scheme, Context.find? context name = some scheme) →
       (∀ name value scheme target,
         Env.find? environment name = some value →
-        NamedContext.find? context name = some scheme →
+        Context.find? context name = some scheme →
         scheme.ValueFlowInst target →
         ValueTy signature value target) →
       (self = none →
         RuntimeTyping signature
-          ((parameter, NamedScheme.mono domain) :: context) body codomain) →
+          ((parameter, Scheme.mono domain) :: context) body codomain) →
       (∀ name, self = some name →
         RuntimeTyping signature
-          ((parameter, NamedScheme.mono domain) ::
-            (name, NamedScheme.mono (.fn domain codomain)) :: context)
+          ((parameter, Scheme.mono domain) ::
+            (name, Scheme.mono (.fn domain codomain)) :: context)
           body codomain) →
       ValueTy signature (.closure self environment parameter body)
         (.fn domain codomain)
   | matcherLiteral {environment currentClauses originalClauses capability target}
-      (context : NamedContext) :
+      (context : Context) :
       (∀ name value,
         Env.find? environment name = some value →
-          ∃ scheme, NamedContext.find? context name = some scheme) →
+          ∃ scheme, Context.find? context name = some scheme) →
       (∀ name value scheme instanceTarget,
         Env.find? environment name = some value →
-        NamedContext.find? context name = some scheme →
+        Context.find? context name = some scheme →
         scheme.ValueFlowInst instanceTarget →
         ValueTy signature value instanceTarget) →
       RuntimeTyping signature context (.matcher originalClauses)
@@ -186,10 +186,10 @@ exactly the relation consumed by source T-VAR; runtime lookup cannot select a
 structurally stronger capability instance.
 -/
 def EnvTyped
-    (signature : FrozenSig) (context : NamedContext) (environment : Env) : Prop :=
+    (signature : FrozenSig) (context : Context) (environment : Env) : Prop :=
   ∀ name value, Env.find? environment name = some value →
     ∃ scheme,
-      NamedContext.find? context name = some scheme ∧
+      Context.find? context name = some scheme ∧
       ∀ target,
         scheme.ValueFlowInst target →
         ValueTy signature value target
@@ -227,13 +227,13 @@ theorem ValueTys.length
 
 /-- Repackage the two environment premises stored by a closure or matcher. -/
 theorem envTyped_of_parts
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
+    {signature : FrozenSig} {context : Context} {environment : Env}
     (domain : ∀ name value,
       Env.find? environment name = some value →
-        ∃ scheme, NamedContext.find? context name = some scheme)
+        ∃ scheme, Context.find? context name = some scheme)
     (instances : ∀ name value scheme target,
       Env.find? environment name = some value →
-      NamedContext.find? context name = some scheme →
+      Context.find? context name = some scheme →
       scheme.ValueFlowInst target →
       ValueTy signature value target) :
     EnvTyped signature context environment := by
@@ -245,21 +245,21 @@ theorem envTyped_of_parts
 
 /-- The domain half of a typed runtime environment. -/
 theorem EnvTyped.domain
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
+    {signature : FrozenSig} {context : Context} {environment : Env}
     (typing : EnvTyped signature context environment)
     {name : String} {value : Value}
     (hfind : Env.find? environment name = some value) :
-    ∃ scheme, NamedContext.find? context name = some scheme := by
+    ∃ scheme, Context.find? context name = some scheme := by
   obtain ⟨scheme, hscheme, _⟩ := typing name value hfind
   exact ⟨scheme, hscheme⟩
 
 /-- Lookup at a particular source-scheme instance. -/
 theorem EnvTyped.lookup
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
+    {signature : FrozenSig} {context : Context} {environment : Env}
     (typing : EnvTyped signature context environment)
-    {name : String} {value : Value} {scheme : NamedScheme} {target : Ty}
+    {name : String} {value : Value} {scheme : Scheme} {target : Ty}
     (hvalue : Env.find? environment name = some value)
-    (hscheme : NamedContext.find? context name = some scheme)
+    (hscheme : Context.find? context name = some scheme)
     (hinstance :
       scheme.ValueFlowInst target) :
     ValueTy signature value target := by
@@ -271,8 +271,8 @@ theorem EnvTyped.lookup
 
 /-- Extend a typed environment by a source scheme and all its safe instances. -/
 theorem EnvTyped.consScheme
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
-    {name : String} {value : Value} {scheme : NamedScheme}
+    {signature : FrozenSig} {context : Context} {environment : Env}
+    {name : String} {value : Value} {scheme : Scheme}
     (valueInstances :
       ∀ target,
         scheme.ValueFlowInst target →
@@ -288,7 +288,7 @@ theorem EnvTyped.consScheme
       simp only [Option.map] at hfind
       obtain rfl := Option.some.inj hfind
       refine ⟨scheme, ?_, valueInstances⟩
-      simp only [NamedContext.find?, List.find?]
+      simp only [Context.find?, List.find?]
       rw [hnames]
       rfl
   | false =>
@@ -296,7 +296,7 @@ theorem EnvTyped.consScheme
       obtain ⟨foundScheme, hscheme, hinstances⟩ :=
         typing sought found hfind
       refine ⟨foundScheme, ?_, ?_⟩
-      simp only [NamedContext.find?, List.find?] at hscheme ⊢
+      simp only [Context.find?, List.find?] at hscheme ⊢
       rw [hnames]
       · exact hscheme
       · intro target hinstance
@@ -305,11 +305,11 @@ theorem EnvTyped.consScheme
 
 /-- Extend a typed environment by one monomorphic value. -/
 theorem EnvTyped.cons
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
+    {signature : FrozenSig} {context : Context} {environment : Env}
     {name : String} {value : Value} {target : Ty}
     (valueTyping : ValueTy signature value target)
     (typing : EnvTyped signature context environment) :
-    EnvTyped signature ((name, NamedScheme.mono target) :: context)
+    EnvTyped signature ((name, Scheme.mono target) :: context)
       ((name, value) :: environment) :=
   typing.consScheme (fun actual hinstance => by
     rw [hinstance.mono_eq]
@@ -319,12 +319,12 @@ theorem EnvTyped.cons
 
 /-- A concrete recursive self closure preserves its source body derivation. -/
 theorem selfClosure_typed
-    {signature : FrozenSig} {context : NamedContext} {environment : Env}
+    {signature : FrozenSig} {context : Context} {environment : Env}
     {name parameter : String} {body : Expr} {domain codomain : Ty}
     (environmentTyping : EnvTyped signature context environment)
     (bodyTyping : RuntimeTyping signature
-      ((parameter, NamedScheme.mono domain) ::
-        (name, NamedScheme.mono (.fn domain codomain)) :: context)
+      ((parameter, Scheme.mono domain) ::
+        (name, Scheme.mono (.fn domain codomain)) :: context)
       body codomain) :
     ValueTy signature (selfClosure name environment parameter body)
       (.fn domain codomain) := by
@@ -363,7 +363,7 @@ theorem pushArg_typed
         envTyped_of_parts domainPart instancePart
       cases self with
       | none =>
-          refine ⟨(parameter, NamedScheme.mono domain) :: context,
+          refine ⟨(parameter, Scheme.mono domain) :: context,
             environmentTyping.cons argumentTyping, ?_⟩
           exact noneBody rfl
       | some name =>
@@ -374,8 +374,8 @@ theorem pushArg_typed
                 (.fn domain codomain) :=
             selfClosure_typed environmentTyping bodyTyping
           refine
-            ⟨(parameter, NamedScheme.mono domain) ::
-                (name, NamedScheme.mono (.fn domain codomain)) :: context,
+            ⟨(parameter, Scheme.mono domain) ::
+                (name, Scheme.mono (.fn domain codomain)) :: context,
               (environmentTyping.cons selfTyping).cons argumentTyping,
               bodyTyping⟩
 
@@ -543,7 +543,7 @@ One matching atom consumes a source binding context left to right under the
 prevailing substitution retained by that atom.
 -/
 inductive AtomTy (signature : FrozenSig)
-    (context : NamedContext) (parameters : PatternCtx) :
+    (context : Context) (parameters : PatternCtx) :
     MonoCtx → Atom → MonoCtx → Prop where
   | mk {prevailing : Subst}
       {input output pattern matcher value capability target} :
@@ -629,7 +629,7 @@ end
 
 /-- Remaining actual arguments paired with their source-threaded duals. -/
 inductive PiEnvTyped (signature : FrozenSig)
-    (context : NamedContext) (parameters : PatternCtx) :
+    (context : Context) (parameters : PatternCtx) :
     MonoCtx → PiEnv → List Dual → MonoCtx → Prop where
   | nil {bindings} :
       PiEnvTyped signature context parameters bindings [] [] bindings
@@ -657,7 +657,7 @@ mutual
 
 /-- Well-typed matching trees, including isolated pattern-function nodes. -/
 inductive TreeTy (signature : FrozenSig) :
-    NamedContext → PatternCtx → MonoCtx → Tree → MonoCtx → Prop where
+    Context → PatternCtx → MonoCtx → Tree → MonoCtx → Prop where
   | atom {context parameters input atom output} :
       AtomTy signature context parameters input atom output →
       TreeTy signature context parameters input (.atom atom) output
@@ -680,7 +680,7 @@ inductive TreeTy (signature : FrozenSig) :
 
 /-- A well-typed matching stack threads bindings through every tree. -/
 inductive StackTy (signature : FrozenSig) :
-    NamedContext → PatternCtx → MonoCtx → List Tree → MonoCtx → Prop where
+    Context → PatternCtx → MonoCtx → List Tree → MonoCtx → Prop where
   | nil {context parameters bindings} :
       StackTy signature context parameters bindings [] bindings
   | cons {context parameters input middle output tree trees} :
@@ -723,7 +723,7 @@ def MStatePristine (state : MState) : Prop :=
 
 /-- A well-typed matching state under an explicit pattern-parameter context. -/
 def MStateTyAt
-    (signature : FrozenSig) (context : NamedContext) (parameters : PatternCtx)
+    (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
     (state : MState) (goal : MonoCtx) : Prop :=
   MStatePristine state ∧
   stackNoEmbedInOr state.S = true ∧
@@ -734,13 +734,13 @@ def MStateTyAt
 
 /-- Top-level matching-state typing has no embedded pattern parameters. -/
 abbrev MStateTy
-    (signature : FrozenSig) (context : NamedContext)
+    (signature : FrozenSig) (context : Context)
     (state : MState) (goal : MonoCtx) : Prop :=
   MStateTyAt signature context [] state goal
 
 /-- The empty stack leaves its binding context unchanged. -/
 theorem StackTy.nil_inversion
-    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
     {input output : MonoCtx}
     (typing :
       StackTy signature context parameters input [] output) :
@@ -750,7 +750,7 @@ theorem StackTy.nil_inversion
 
 /-- A terminal typed state carries a substitution typed at its goal context. -/
 theorem MStateTyAt.terminal_substitution
-    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
     {environment : Env} {substitution : MatchSubst} {goal : MonoCtx}
     (typing : MStateTyAt signature context parameters
       ⟨[], environment, substitution⟩ goal) :

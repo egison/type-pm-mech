@@ -22,7 +22,7 @@ def applyBoth (C : CapSubst) (T : TySubst) (τ : Ty) : Ty :=
 mutual
 
 /--
-NamedContext-relative correspondence between a matcher capability and its target.
+Context-relative correspondence between a matcher capability and its target.
 
 The assumption rule is what makes open combinators such as
 `MatcherSlot p a -> Matcher (List p) (List a)` possible without adding a

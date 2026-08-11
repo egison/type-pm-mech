@@ -21,28 +21,28 @@ private theorem productMatcherConsumer_typed :
     RuntimeTyping emptySignature productMatcherConsumerContext (.var "consume")
       (.fn concretePairMatcherType .int) := by
   apply RuntimeTyping.var
-      (scheme := NamedScheme.mono (.fn concretePairMatcherType .int))
-  · simp [productMatcherConsumerContext, NamedContext.find?]
-  · exact NamedScheme.mono_valueFlowInst _
+      (scheme := Scheme.mono (.fn concretePairMatcherType .int))
+  · simp [productMatcherConsumerContext, Context.find?]
+  · exact Scheme.mono_valueFlowInst _
 
 private theorem productSlotConsumer_typed :
     RuntimeTyping emptySignature productSlotConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
   apply RuntimeTyping.var
-      (scheme := NamedScheme.mono (.fn concretePairSlotType .int))
-  · simp [productSlotConsumerContext, NamedContext.find?]
-  · exact NamedScheme.mono_valueFlowInst _
+      (scheme := Scheme.mono (.fn concretePairSlotType .int))
+  · simp [productSlotConsumerContext, Context.find?]
+  · exact Scheme.mono_valueFlowInst _
 
 private theorem slotTupleConsumer_typed :
     RuntimeTyping emptySignature slotTupleConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
   apply RuntimeTyping.var
-      (scheme := NamedScheme.mono (.fn concretePairSlotType .int))
-  · simp [slotTupleConsumerContext, NamedContext.find?]
-  · exact NamedScheme.mono_valueFlowInst _
+      (scheme := Scheme.mono (.fn concretePairSlotType .int))
+  · simp [slotTupleConsumerContext, Context.find?]
+  · exact Scheme.mono_valueFlowInst _
 
 private theorem pairOfMatchers_product_typed
-    (context : NamedContext) :
+    (context : Context) :
     RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairProductType := by
   simpa [concretePairProductType] using
@@ -53,7 +53,7 @@ private theorem pairOfMatchers_product_typed
         (.prod [.matcher .any .int, .matcher .any .int]))
 
 private theorem pairOfMatchers_matcher_typed
-    (context : NamedContext) :
+    (context : Context) :
     RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairMatcherType := by
   simpa [concretePairProductType, concretePairMatcherType] using
@@ -89,7 +89,7 @@ private theorem concretePairMatcher_toSlot_raw :
 /-- Observable canonical evidence chooses the whole-product lift before the
 single direct matcher-to-slot alignment. -/
 def pairProductToSlotNormalPlan
-    (context : NamedContext) :
+    (context : Context) :
     CanonicalCoercion.NormalPlan emptySignature context
       (.tuple [.something, .something]) concretePairProductType
       concretePairSlotType := by
@@ -103,7 +103,7 @@ def pairProductToSlotNormalPlan
       concretePairMatcher_toSlot_raw VariablePost.id)
 
 @[simp] theorem pairProductToSlotNormalPlan_kinds
-    (context : NamedContext) :
+    (context : Context) :
     (pairProductToSlotNormalPlan context).kinds =
       [.productMatcher, .matcherToSlot] := by
   unfold pairProductToSlotNormalPlan CanonicalCoercion.NormalPlan.kinds
@@ -112,20 +112,20 @@ def pairProductToSlotNormalPlan
 /-- The empty product overlap is resolved by the same matcher-first policy as
 the executable selector; an empty `slotTuple` step is not available. -/
 def emptyProductToSlotNormalPlan
-    (context : NamedContext) :
+    (context : Context) :
     CanonicalCoercion.NormalPlan emptySignature context (.tuple [])
       (.prod []) (.slot (.prod []) (.prod [])) := by
   exact CanonicalCoercion.NormalPlan.emptySlotTuple
 
 @[simp] theorem emptyProductToSlotNormalPlan_kinds
-    (context : NamedContext) :
+    (context : Context) :
     (emptyProductToSlotNormalPlan context).kinds =
       [.productMatcher, .matcherToSlot] := by
   unfold emptyProductToSlotNormalPlan CanonicalCoercion.NormalPlan.kinds
   apply CanonicalCoercion.Spine.productMatcherToSlot_kinds
 
 private theorem pairOfMatchers_slot_typed
-    (context : NamedContext) :
+    (context : Context) :
     RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairSlotType := by
   exact (pairProductToSlotNormalPlan context).toRuntimeTyping
@@ -142,18 +142,18 @@ theorem productSlotArgumentApplication_runtimeCertified :
 private theorem slotVariable_typed
     (name : String)
     (lookup : slotTupleConsumerContext.find? name =
-      some (NamedScheme.mono (.slot .any .int))) :
+      some (Scheme.mono (.slot .any .int))) :
     RuntimeTyping emptySignature slotTupleConsumerContext (.var name)
       (.slot .any .int) :=
-  RuntimeTyping.var lookup (NamedScheme.mono_valueFlowInst _)
+  RuntimeTyping.var lookup (Scheme.mono_valueFlowInst _)
 
 private theorem pairOfSlots_product_typed :
     RuntimeTyping emptySignature slotTupleConsumerContext
       (.tuple [.var "left", .var "right"]) concretePairOfSlotsType := by
   have leftTyping := slotVariable_typed "left" (by
-    simp [slotTupleConsumerContext, NamedContext.find?])
+    simp [slotTupleConsumerContext, Context.find?])
   have rightTyping := slotVariable_typed "right" (by
-    simp [slotTupleConsumerContext, NamedContext.find?])
+    simp [slotTupleConsumerContext, Context.find?])
   simpa [concretePairOfSlotsType] using
     (RuntimeTyping.tuple (ExprsTy.cons leftTyping
       (ExprsTy.cons rightTyping ExprsTy.nil)))

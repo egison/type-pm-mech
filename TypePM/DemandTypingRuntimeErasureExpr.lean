@@ -19,6 +19,64 @@ by the full mutual erasure theorem.
 
 namespace TypePM
 
+private theorem Subst.seq_self_eq_of_idempotent {S : Subst}
+    (idem : S.Idempotent) : Subst.seq S S = S := by
+  apply PhasedPost.subst_ext
+  · funext varId
+    have fixed := idem (.matcher (.var varId) .unit)
+    have capFixed : (S.cap varId).apply S.cap = S.cap varId :=
+      (Ty.matcher.inj fixed).1
+    simpa only [Subst.seq, CapSubst.comp] using capFixed
+  · funext varId
+    change S.apply (S.target varId) = S.target varId
+    simpa only [Subst.apply, Ty.applyCapability, Ty.applyTarget] using
+      idem (.var varId)
+
+/-- A canonical fresh instance of a scheme already normalized by the
+prevailing substitution is fixed at that cut. -/
+private theorem Scheme.freshInstance_fixed
+    {q : InferenceBase.FreshSupply} {S : Subst} {scheme : Scheme}
+    (Sb : S.BoundedBy q) (schemeFixed : scheme.applyMeta S = scheme) :
+    S.apply (InferenceBase.instantiateScheme q scheme).value =
+      (InferenceBase.instantiateScheme q scheme).value := by
+  cases scheme with
+  | mk capArity tyArity body =>
+  change Scheme.mk capArity tyArity (body.applyMeta S) =
+    Scheme.mk capArity tyArity body at schemeFixed
+  have bodyFixed : body.applyMeta S = body := by
+    injection schemeFixed
+  rw [InferenceBase.instantiateScheme_value]
+  let scheme : Scheme :=
+    { capArity := capArity, tyArity := tyArity, body := body }
+  let opening := Scheme.canonicalFreshOpening q scheme
+  have transported := PolyTy.instantiate_applyMeta S opening.capImage
+    opening.capImage (fun index => .var (opening.tyImage index)) (by
+      intro index
+      exact Sb.capFixedAbove _
+        (Scheme.canonicalFreshOpening_cap_lower q scheme index)) scheme.body
+  rw [bodyFixed] at transported
+  have tyImagesFixed :
+      (fun index => S.apply (.var (opening.tyImage index))) =
+        (fun index => .var (opening.tyImage index)) := by
+    funext index
+    change S.target (opening.tyImage index) = .var (opening.tyImage index)
+    exact Sb.targetFixedAbove _
+      (Scheme.canonicalFreshOpening_ty_lower q scheme index)
+  rw [tyImagesFixed] at transported
+  exact transported.symm
+
+private theorem Context.lookup_scheme_fixed
+    {S : Subst} {context : Context} {name : String} {scheme : Scheme}
+    (idem : S.Idempotent)
+    (lookup : (context.applySubst S).find? name = some scheme) :
+    scheme.applyMeta S = scheme := by
+  have contextFixed :
+      (context.applySubst S).applySubst S = context.applySubst S := by
+    rw [← Context.applySubst_seq, Subst.seq_self_eq_of_idempotent idem]
+  have lookupFixed := congrArg (fun actual => actual.find? name) contextFixed
+  rw [Context.find?_applySubst, lookup] at lookupFixed
+  exact Option.some.inj lookupFixed
+
 /-! ## Checking alignment at the runtime boundary -/
 
 /--
@@ -46,7 +104,7 @@ inductive RuntimeAlignment : Ty -> Ty -> Prop where
 
 /-- A normalized alignment acts on a runtime derivation structurally. -/
 theorem RuntimeAlignment.transport
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {raw expected : Ty} (alignment : RuntimeAlignment raw expected)
     (typing : RuntimeTyping signature context expression raw) :
     RuntimeTyping signature context expression expected := by
@@ -222,7 +280,7 @@ namespace DDCheckOrigin
 /-- Terminal state-free conclusion for one origin-aware check. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected : Ty}
+    {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -234,7 +292,7 @@ def RuntimeErasure
 checking cut's terminal substitution. -/
 theorem runtimeErasure_mk_of_terminal_synthesis
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected raw : Ty}
+    {context : Context} {expression : Expr} {expected raw : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     {synthesized : DDSynth signature q S context expression raw q1 S1}
@@ -249,7 +307,7 @@ theorem runtimeErasure_mk_of_terminal_synthesis
 /-- The DD alignment itself supplies the algebraic runtime action. -/
 theorem runtimeErasure_mk
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected raw : Ty}
+    {context : Context} {expression : Expr} {expected raw : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     {synthesized : DDSynth signature q S context expression raw q1 S1}
@@ -268,7 +326,7 @@ namespace DDChecksOrigin
 /-- Terminal state-free conclusion for an origin-aware checking list. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
+    {context : Context} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -278,7 +336,7 @@ def RuntimeErasure
 
 theorem runtimeErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDChecksOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) :=
@@ -287,7 +345,7 @@ theorem runtimeErasure_nil
 /-- Checking-list composition once its earlier head has reached the final cut. -/
 theorem runtimeErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {expected : Ty} {expecteds : List Ty}
     {q1 q' : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 ledger' : CapabilityOriginLedger}
@@ -319,7 +377,7 @@ instance from the `markSchemeInstance` policy carried by that exact suffix.
 -/
 def RuntimeErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {target : Ty}
+    {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -331,10 +389,42 @@ def RuntimeErasureUnder
     RuntimeTyping signature (context.applySubst finalSubst) expression
       (finalSubst.apply target)
 
+/-- A variable instance is transported through the actual later suffix.
+The origin ledger guarantees that the canonical capability images chosen by
+the lookup remain variable-valued; target images may specialize freely. -/
+theorem runtimeErasureUnder_var
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {name : String} {scheme : Scheme}
+    {ledger : CapabilityOriginLedger}
+    (lookup : (context.applySubst S).find? name = some scheme)
+    (Sid : S.Idempotent) (Sb : S.BoundedBy q) :
+    RuntimeErasureUnder
+      (DDSynthOrigin.var (signature := signature) (q := q)
+        (ledger := ledger) lookup) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have finalLookup : (context.applySubst finalSubst).find? name =
+      some (scheme.applyMeta post) := by
+    rw [terminalEquation, Context.applySubst_seq,
+      Context.find?_applySubst, lookup]
+    rfl
+  apply RuntimeTyping.var finalLookup
+  rw [terminalEquation, Subst.seq_apply,
+    Scheme.freshInstance_fixed Sb (Context.lookup_scheme_fixed Sid lookup),
+    InferenceBase.instantiateScheme_value]
+  apply Scheme.ValueOpening.transportApplyMeta post
+    (Scheme.canonicalFreshOpening q scheme).toValueOpening rfl
+  refine
+    { capImage := fun index => Classical.choose
+        (admissible.schemeInstanceImageVariable index)
+      capEquation := ?_ }
+  intro index
+  exact Classical.choose_spec
+    (admissible.schemeInstanceImageVariable index)
+
 /-- Literals are stable under every later suffix. -/
 theorem runtimeErasureUnder_lit
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (value : Int) (ledger : CapabilityOriginLedger) :
+    (context : Context) (value : Int) (ledger : CapabilityOriginLedger) :
     RuntimeErasureUnder
       (DDSynthOrigin.lit (signature := signature) (q := q) (S := S)
         (context := context) (value := value) (ledger := ledger)) := by
@@ -345,7 +435,7 @@ theorem runtimeErasureUnder_lit
 /-- The polymorphic `something` leaf is stable under every later suffix. -/
 theorem runtimeErasureUnder_something
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasureUnder
       (DDSynthOrigin.something (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -357,17 +447,17 @@ theorem runtimeErasureUnder_something
 body; the monomorphic parameter is normalized with the final substitution. -/
 theorem runtimeErasureUnder_lam
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {body : Expr} {bodyTarget : Ty}
+    {context : Context} {name : String} {body : Expr} {bodyTarget : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyUnder : RuntimeErasureUnder bodyOrigin) :
     RuntimeErasureUnder (DDSynthOrigin.lam bodyOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have bodyTyping := bodyUnder terminalEquation admissible
-  simp only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+  simp only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
     Subst.apply_fn] at bodyTyping ⊢
   exact RuntimeTyping.lam bodyTyping
 
@@ -378,7 +468,7 @@ namespace DDSynthsOrigin
 /-- Later-post-stable erasure for a synthesis traversal. -/
 def RuntimeErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -392,7 +482,7 @@ def RuntimeErasureUnder
 
 theorem runtimeErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasureUnder
       (DDSynthsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -403,7 +493,7 @@ theorem runtimeErasureUnder_nil
 transport the earlier head directly to the common final cut. -/
 theorem runtimeErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {target : Ty} {targets : List Ty}
     {q1 q' : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 ledger' : CapabilityOriginLedger}
@@ -414,7 +504,7 @@ theorem runtimeErasureUnder_cons
     (headUnder : DDSynthOrigin.RuntimeErasureUnder headOrigin)
     (tailUnder : RuntimeErasureUnder tailOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context) :
+    (contextBounded : Context.BoundedBy q context) :
     RuntimeErasureUnder (DDSynthsOrigin.cons headOrigin tailOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   obtain ⟨S1b, _headBounded⟩ :=
@@ -439,7 +529,7 @@ namespace DDSynthOrigin
 child traversal. -/
 theorem runtimeErasureUnder_tuple
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {children : DDSynths signature q S context expressions targets q' S'}
@@ -455,14 +545,14 @@ theorem runtimeErasureUnder_tuple
 parent suffix; no terminal body typing premise is needed. -/
 theorem runtimeErasureUnder_fix
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {body : Expr}
+    {context : Context} {self argument : String} {body : Expr}
     {bodyTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
       body bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger1)
@@ -470,7 +560,7 @@ theorem runtimeErasureUnder_fix
       (.var (q.nextTy + 1)) S')
     (bodyUnder : RuntimeErasureUnder bodyOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context) :
+    (contextBounded : Context.BoundedBy q context) :
     RuntimeErasureUnder
       (DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -481,14 +571,14 @@ theorem runtimeErasureUnder_fix
   have codomainB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
       (.var (q.nextTy + 1)) := Ty.BoundedBy.varOf
     (show q.nextTy + 1 < q.nextTy + 2 by omega)
-  have bodyContextB : NamedContext.BoundedBy
+  have bodyContextB : Context.BoundedBy
       { q with nextTy := q.nextTy + 2 }
-      ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context) :=
-    NamedContext.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
-      (NamedContext.BoundedBy.cons
-        (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
         (contextBounded.mono extension))
   obtain ⟨S1b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
     (Sb.mono extension) bodyContextB
@@ -506,21 +596,21 @@ theorem runtimeErasureUnder_fix
     rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
     exact congrArg post.apply aligned.output_equal
   have bodyExpected : RuntimeTyping signature
-      (NamedContext.applySubst finalSubst
-        ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono
+      (Context.applySubst finalSubst
+        ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context))
       body (finalSubst.apply (.var (q.nextTy + 1))) := by
     rw [← finalResultEquality]
     exact bodyTyping
   have bodyExpected' : RuntimeTyping signature
-      ((argument, NamedScheme.mono (finalSubst.apply (.var q.nextTy))) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (finalSubst.apply (.var q.nextTy))) ::
+        (self, Scheme.mono
           (.fn (finalSubst.apply (.var q.nextTy))
             (finalSubst.apply (.var (q.nextTy + 1))))) ::
         context.applySubst finalSubst)
       body (finalSubst.apply (.var (q.nextTy + 1))) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyExpected
   exact RuntimeTyping.fixE distinct direct bodyExpected'
 
@@ -531,7 +621,7 @@ namespace DDCheckOrigin
 /-- Later-post-stable erasure for one checking derivation. -/
 def RuntimeErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected : Ty}
+    {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -547,7 +637,7 @@ def RuntimeErasureUnder
 the normalized runtime action at the final cut. -/
 theorem runtimeErasureUnder_mk
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expected raw : Ty}
+    {context : Context} {expression : Expr} {expected raw : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     {synthesized : DDSynth signature q S context expression raw q1 S1}
@@ -555,7 +645,7 @@ theorem runtimeErasureUnder_mk
     (aligned : DDAlignWithLedger ledger1 S1 raw expected S')
     (synthUnder : DDSynthOrigin.RuntimeErasureUnder synthOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context)
+    (contextBounded : Context.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) :
     RuntimeErasureUnder (DDCheckOrigin.mk synthOrigin aligned) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -583,7 +673,7 @@ namespace DDChecksOrigin
 /-- Later-post-stable erasure for an ordered checking traversal. -/
 def RuntimeErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
+    {context : Context} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -597,7 +687,7 @@ def RuntimeErasureUnder
 
 theorem runtimeErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ledger : CapabilityOriginLedger) :
+    (context : Context) (ledger : CapabilityOriginLedger) :
     RuntimeErasureUnder
       (DDChecksOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
@@ -608,7 +698,7 @@ theorem runtimeErasureUnder_nil
 factorization before applying the common external suffix. -/
 theorem runtimeErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {expression : Expr} {expressions : List Expr}
+    {context : Context} {expression : Expr} {expressions : List Expr}
     {expected : Ty} {expecteds : List Ty}
     {q1 q' : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 ledger' : CapabilityOriginLedger}
@@ -619,7 +709,7 @@ theorem runtimeErasureUnder_cons
     (headUnder : DDCheckOrigin.RuntimeErasureUnder headOrigin)
     (tailUnder : RuntimeErasureUnder tailOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context)
+    (contextBounded : Context.BoundedBy q context)
     (expectedsBounded : ∀ item ∈ expected :: expecteds,
       item.BoundedBy q) :
     RuntimeErasureUnder (DDChecksOrigin.cons headOrigin tailOrigin) := by
@@ -652,7 +742,7 @@ starts after the function-shape alignment, so it uses only the external
 suffix. -/
 theorem runtimeErasureUnder_app
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {function argument : Expr} {functionTarget : Ty}
+    {context : Context} {function argument : Expr} {functionTarget : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 S2 : Subst}
     {q2 : InferenceBase.FreshSupply} {S3 : Subst}
     {ledger ledger1 ledger3 : CapabilityOriginLedger}
@@ -667,7 +757,7 @@ theorem runtimeErasureUnder_app
     (functionUnder : RuntimeErasureUnder functionOrigin)
     (argumentUnder : DDCheckOrigin.RuntimeErasureUnder argumentOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context) :
+    (contextBounded : Context.BoundedBy q context) :
     RuntimeErasureUnder
       (DDSynthOrigin.app functionOrigin aligned argumentOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -730,7 +820,7 @@ export-freezing transition.  Closed declarations make the canonical fresh
 constructor instance compositional under the final substitution. -/
 theorem runtimeErasureUnder_ctor
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {expressions : List Expr}
+    {context : Context} {name : String} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
@@ -772,7 +862,7 @@ theorem runtimeErasureUnder_ctor
 as constructor synthesis. -/
 theorem runtimeErasureUnder_prim
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {op : PrimOp} {expressions : List Expr}
+    {context : Context} {op : PrimOp} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findPrimitive op = some scheme)
@@ -815,7 +905,7 @@ ordinary alignment and the external suffix.  Placeholder construction
 supplies the domain/codomain bounds needed at the body cut. -/
 theorem runtimeErasureUnder_fixMatcher
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {clauses : List Clause}
+    {context : Context} {self argument : String} {clauses : List Clause}
     {domain codomain : Ty} {q0 : InferenceBase.FreshSupply}
     {bodyTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
@@ -824,15 +914,15 @@ theorem runtimeErasureUnder_fixMatcher
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q0))
     {bodyRaw : DDSynth signature q0 S
-      ((argument, NamedScheme.mono domain) ::
-        (self, NamedScheme.mono (.fn domain codomain)) :: context)
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q0) ledger1)
     (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget codomain S')
     (bodyUnder : RuntimeErasureUnder bodyOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : NamedContext.BoundedBy q context) :
+    (contextBounded : Context.BoundedBy q context) :
     RuntimeErasureUnder
       (DDSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin
         aligned) := by
@@ -840,12 +930,12 @@ theorem runtimeErasureUnder_fixMatcher
   obtain ⟨domainB, codomainB⟩ :=
     fixMatcherPlaceholderSupply_boundedBy placeholder
   have extension := SupplyExtends.fixMatcherPlaceholder placeholder
-  have bodyContextB : NamedContext.BoundedBy q0
-      ((argument, NamedScheme.mono domain) ::
-        (self, NamedScheme.mono (.fn domain codomain)) :: context) :=
-    NamedContext.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
-      (NamedContext.BoundedBy.cons
-        (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+  have bodyContextB : Context.BoundedBy q0
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: context) :=
+    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
         (contextBounded.mono extension))
   obtain ⟨S1b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
     (Sb.mono extension) bodyContextB
@@ -863,39 +953,39 @@ theorem runtimeErasureUnder_fixMatcher
     rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
     exact congrArg post.apply aligned.output_equal
   have bodyExpected : RuntimeTyping signature
-      (NamedContext.applySubst finalSubst
-        ((argument, NamedScheme.mono domain) ::
-          (self, NamedScheme.mono (.fn domain codomain)) :: context))
+      (Context.applySubst finalSubst
+        ((argument, Scheme.mono domain) ::
+          (self, Scheme.mono (.fn domain codomain)) :: context))
       (.matcher clauses) (finalSubst.apply codomain) := by
     rw [← finalResultEquality]
     exact bodyTyping
   have bodyExpected' : RuntimeTyping signature
-      ((argument, NamedScheme.mono (finalSubst.apply domain)) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (finalSubst.apply domain)) ::
+        (self, Scheme.mono
           (.fn (finalSubst.apply domain) (finalSubst.apply codomain))) ::
         context.applySubst finalSubst)
       (.matcher clauses) (finalSubst.apply codomain) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyExpected
   exact RuntimeTyping.fixE distinct direct bodyExpected'
 
 theorem runtimeErasure_fix_of_terminal_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {body : Expr}
+    {context : Context} {self argument : String} {body : Expr}
     {bodyTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
         context) body bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger1)
     (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget
       (.var (q.nextTy + 1)) S')
     (bodyAtTerminal : RuntimeTyping signature
-      ((argument, NamedScheme.mono (S'.apply (.var q.nextTy))) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (S'.apply (.var q.nextTy))) ::
+        (self, Scheme.mono
           (.fn (S'.apply (.var q.nextTy))
             (S'.apply (.var (q.nextTy + 1))))) ::
         context.applySubst S') body (S'.apply bodyTarget)) :
@@ -904,31 +994,31 @@ theorem runtimeErasure_fix_of_terminal_body
   unfold RuntimeErasure
   simp only [Subst.apply_fn]
   have bodyAtRawContext : RuntimeTyping signature
-      (NamedContext.applySubst S' ((argument, NamedScheme.mono (.var q.nextTy)) ::
-        (self, NamedScheme.mono
+      (Context.applySubst S' ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context))
       body (S'.apply bodyTarget) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyAtTerminal
   have bodyExpectedRaw := aligned.transportRuntime
     (signature := signature)
-    (context := (argument, NamedScheme.mono (.var q.nextTy)) ::
-      (self, NamedScheme.mono
+    (context := (argument, Scheme.mono (.var q.nextTy)) ::
+      (self, Scheme.mono
         (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
     (expression := body) bodyAtRawContext
   have bodyExpected : RuntimeTyping signature
-      ((argument, NamedScheme.mono (S'.apply (.var q.nextTy))) ::
-        (self, NamedScheme.mono
+      ((argument, Scheme.mono (S'.apply (.var q.nextTy))) ::
+        (self, Scheme.mono
           (.fn (S'.apply (.var q.nextTy))
             (S'.apply (.var (q.nextTy + 1))))) ::
         context.applySubst S') body (S'.apply (.var (q.nextTy + 1))) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyExpectedRaw
   exact RuntimeTyping.fixE distinct direct bodyExpected
 
 theorem runtimeErasure_app_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {function argument : Expr} {functionTarget : Ty}
+    {context : Context} {function argument : Expr} {functionTarget : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 S2 : Subst}
     {q2 : InferenceBase.FreshSupply} {S3 : Subst}
     {ledger ledger1 ledger3 : CapabilityOriginLedger}
@@ -953,7 +1043,7 @@ theorem runtimeErasure_app_of_terminal_children
 
 theorem runtimeErasure_ctor_of_children_and_instance
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {expressions : List Expr}
+    {context : Context} {name : String} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
@@ -976,7 +1066,7 @@ theorem runtimeErasure_ctor_of_children_and_instance
 /-- Closed frozen declarations discharge ordinary constructor composition. -/
 theorem runtimeErasure_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {expressions : List Expr}
+    {context : Context} {name : String} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
@@ -1002,7 +1092,7 @@ theorem runtimeErasure_ctor_of_children
 
 theorem runtimeErasure_prim_of_children_and_instance
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {op : PrimOp} {expressions : List Expr}
+    {context : Context} {op : PrimOp} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findPrimitive op = some scheme)
@@ -1025,7 +1115,7 @@ theorem runtimeErasure_prim_of_children_and_instance
 /-- Closed frozen declarations discharge primitive-instance composition. -/
 theorem runtimeErasure_prim_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {op : PrimOp} {expressions : List Expr}
+    {context : Context} {op : PrimOp} {expressions : List Expr}
     {scheme : CtorScheme} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
     (lookup : signature.findPrimitive op = some scheme)
@@ -1051,7 +1141,7 @@ theorem runtimeErasure_prim_of_children
 
 theorem runtimeErasure_let_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {name : String} {value body : Expr}
+    {context : Context} {name : String} {value body : Expr}
     {valueTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 : Subst}
     {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 ledger' : CapabilityOriginLedger}
@@ -1063,7 +1153,7 @@ theorem runtimeErasure_let_of_terminal_children
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger1 ledger')
     (stable :
       (signature.generalize (context.applySubst S1)
-        (S1.apply valueTarget)).applySubst S' =
+        (S1.apply valueTarget)).applyMeta S' =
       signature.generalize (context.applySubst S') (S'.apply valueTarget))
     (valueAtTerminal : RuntimeTyping signature (context.applySubst S')
       value (S'.apply valueTarget))
@@ -1072,7 +1162,7 @@ theorem runtimeErasure_let_of_terminal_children
   unfold RuntimeErasure at bodyErasure |- 
   change RuntimeTyping signature
     ((name, (signature.generalize (context.applySubst S1)
-      (S1.apply valueTarget)).applySubst S') :: context.applySubst S')
+      (S1.apply valueTarget)).applyMeta S') :: context.applySubst S')
     body (S'.apply bodyTarget) at bodyErasure
   rw [stable] at bodyErasure
   exact RuntimeTyping.letE valueAtTerminal bodyErasure
@@ -1085,7 +1175,7 @@ longer change at this terminal cut.
 -/
 theorem runtimeErasure_matcher_of_clauses
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clauses : List Clause}
+    {context : Context} {clauses : List Clause}
     {rawHoleLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst} {evidence : List Shape.Evidence} {capability : Cap}
     {ledger ledger1 : CapabilityOriginLedger}
@@ -1121,7 +1211,7 @@ theorem runtimeErasure_matcher_of_clauses
 
 theorem runtimeErasure_matchAll_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {target matcher : Expr} {pattern : Pattern}
+    {context : Context} {target matcher : Expr} {pattern : Pattern}
     {body : Expr} {targetTarget : Ty}
     {q1 : InferenceBase.FreshSupply} {S1 : Subst}
     {dual : Dual} {bindings : MonoCtx} {q2 : InferenceBase.FreshSupply}
@@ -1154,7 +1244,7 @@ theorem runtimeErasure_matchAll_of_terminal_children
       (DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
         matcherOrigin bodyOrigin) := by
   unfold RuntimeErasure at bodyErasure |- 
-  rw [NamedContext.applySubst_append, ← MonoCtx.toContext_applySubst]
+  rw [Context.applySubst_append, ← MonoCtx.toContext_applySubst]
     at bodyErasure
   simpa only [Subst.apply_listT] using
     RuntimeTyping.matchAll targetAtTerminal patternAtTerminal matcherAtTerminal
@@ -1162,7 +1252,7 @@ theorem runtimeErasure_matchAll_of_terminal_children
 
 theorem runtimeErasure_fixMatcher_of_terminal_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {self argument : String} {clauses : List Clause}
+    {context : Context} {self argument : String} {clauses : List Clause}
     {domain codomain : Ty} {q0 : InferenceBase.FreshSupply}
     {bodyTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
     {ledger ledger1 : CapabilityOriginLedger}
@@ -1171,15 +1261,15 @@ theorem runtimeErasure_fixMatcher_of_terminal_body
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q0))
     {bodyRaw : DDSynth signature q0 S
-      ((argument, NamedScheme.mono domain) ::
-        (self, NamedScheme.mono (.fn domain codomain)) :: context)
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q0) ledger1)
     (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget codomain S')
     (bodyAtTerminal : RuntimeTyping signature
-      ((argument, NamedScheme.mono (S'.apply domain)) ::
-        (self, NamedScheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
+      ((argument, Scheme.mono (S'.apply domain)) ::
+        (self, Scheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
         context.applySubst S') (.matcher clauses) (S'.apply bodyTarget)) :
     RuntimeErasure
       (DDSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin
@@ -1187,21 +1277,21 @@ theorem runtimeErasure_fixMatcher_of_terminal_body
   unfold RuntimeErasure
   simp only [Subst.apply_fn]
   have bodyAtRawContext : RuntimeTyping signature
-      (NamedContext.applySubst S' ((argument, NamedScheme.mono domain) ::
-        (self, NamedScheme.mono (.fn domain codomain)) :: context))
+      (Context.applySubst S' ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: context))
       (.matcher clauses) (S'.apply bodyTarget) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyAtTerminal
   have bodyExpectedRaw := aligned.transportRuntime
     (signature := signature)
-    (context := (argument, NamedScheme.mono domain) ::
-      (self, NamedScheme.mono (.fn domain codomain)) :: context)
+    (context := (argument, Scheme.mono domain) ::
+      (self, Scheme.mono (.fn domain codomain)) :: context)
     (expression := .matcher clauses) bodyAtRawContext
   have bodyExpected : RuntimeTyping signature
-      ((argument, NamedScheme.mono (S'.apply domain)) ::
-        (self, NamedScheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
+      ((argument, Scheme.mono (S'.apply domain)) ::
+        (self, Scheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
         context.applySubst S') (.matcher clauses) (S'.apply codomain) := by
-    simpa only [NamedContext.applySubst, List.map_cons, NamedScheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
       Subst.apply_fn] using bodyExpectedRaw
   exact RuntimeTyping.fixE distinct direct bodyExpected
 

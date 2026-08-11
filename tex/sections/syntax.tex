@@ -31,6 +31,14 @@ $\Any$ は one-way capability matching の consumer 側でだけ wildcard とし
 対称 unification では通常の rigid constructor である．$\mono\tau$ は量化 binder を持たない
 scheme を表す．
 
+上の $\forall\overline\chi.\forall\overline\alpha$ は紙面上の表記である．Lean の canonical
+$\mathsf{Scheme}$ は binder 数と $\mathsf{PolyCap}/\mathsf{PolyTy}$ payload を持ち，bound occurrenceを
+$\mathsf{Fin}$ index，自由な solver metavariableを $\mathsf{CapVar}/\mathsf{TyVar}$ として別datatypeで
+表す．通常型 $\kappa,\tau$ とunifierにはbound constructorを追加しない．従ってmetavariable
+substitutionはschemeの自由occurrenceだけを書き換え，bound indexを捕捉できない．generalizationは
+選んだmetavariableを直ちにfinite indexへcloseし，instanceは有限openingを通してのみ通常型へ戻す．
+payloadは構成時からalpha-normal formである．
+
 \subsection{ソース構文}
 
 \[

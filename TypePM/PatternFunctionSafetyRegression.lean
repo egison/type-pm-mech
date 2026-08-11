@@ -45,7 +45,7 @@ def signature : FrozenSig :=
   rfl
 
 /-- The nullary definition is checked independently of the ambient context. -/
-theorem unit_definition_typed (context : NamedContext) :
+theorem unit_definition_typed (context : Context) :
     PatternDefTy signature context unitDefinition unitScheme := by
   refine @PatternDefTy.mk signature context unitDefinition [] unitResult []
     unitScheme Subst.id find_unit ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
@@ -69,7 +69,7 @@ def runtimeSignature : RuntimeSigF :=
 
 /-- The runtime table contains exactly the erasure of the checked source
 definition, and source lookup returns that same runtime entry. -/
-theorem runtime_agrees (context : NamedContext) :
+theorem runtime_agrees (context : Context) :
     RuntimeSigAgrees signature context runtimeSignature where
   runtimeTyped := by
     intro entry member
@@ -172,11 +172,11 @@ private def unarySignature : FrozenSig where
   armExhaustive := fun _ _ => false
 
 /-- A capability name above every identifier free in the signature or context. -/
-private def definitionFreshCap (context : NamedContext) : CapVar :=
+private def definitionFreshCap (context : Context) : CapVar :=
   ⟨InferenceBase.binderSpan
     ((unarySignature.fcv ++ context.fcv).map CapVar.id)⟩
 
-private theorem definitionFreshCap_not_reserved (context : NamedContext) :
+private theorem definitionFreshCap_not_reserved (context : Context) :
     definitionFreshCap context ∉ unarySignature.fcv ++ context.fcv := by
   intro member
   have mapped :
@@ -190,7 +190,7 @@ private theorem definitionFreshCap_not_reserved (context : NamedContext) :
       ((unarySignature.fcv ++ context.fcv).map CapVar.id) at bounded
   exact (Nat.lt_irrefl _ bounded)
 
-private theorem definitionFreshCap_fresh (context : NamedContext) :
+private theorem definitionFreshCap_fresh (context : Context) :
     FreshCap unarySignature context [] [] (definitionFreshCap context) := by
   refine ⟨?_, ?_, by simp [PatternCtx.fcv], by simp [MonoCtx.fcv]⟩
   · intro member
@@ -205,7 +205,7 @@ private theorem definitionFreshCap_fresh (context : NamedContext) :
   rfl
 
 /-- Value-flow equivalence permits a fresh binder in every context. -/
-private theorem unary_definition_typed (context : NamedContext) :
+private theorem unary_definition_typed (context : Context) :
     PatternDefTy unarySignature context unaryDefinition unaryScheme := by
   let fresh := definitionFreshCap context
   let result := unaryDual fresh
@@ -248,7 +248,7 @@ private theorem unary_definition_typed (context : NamedContext) :
 private def unaryRuntimeSignature : RuntimeSigF :=
   [("pass", unaryDefinition.runtime)]
 
-private theorem unary_runtime_agrees (context : NamedContext) :
+private theorem unary_runtime_agrees (context : Context) :
     RuntimeSigAgrees unarySignature context unaryRuntimeSignature where
   runtimeTyped := by
     intro entry member
@@ -361,13 +361,13 @@ private theorem singletonPrevailing_nonidentity :
 private theorem singletonCap_fresh :
     FreshCap singletonSignature [] [] [] singletonCap := by
   simp [FreshCap, singletonSignature, FrozenSig.fcv, DualScheme.fcv,
-    singletonScheme, NamedContext.fcv, PatternCtx.fcv, MonoCtx.fcv, Dual.fcv,
+    singletonScheme, Context.fcv, PatternCtx.fcv, MonoCtx.fcv, Dual.fcv,
     Cap.fcv, Ty.fcv]
 
 private theorem singletonTy_fresh :
     FreshTy singletonSignature [] [] [] singletonTy := by
   simp [FreshTy, singletonSignature, FrozenSig.ftv, DualScheme.ftv,
-    singletonScheme, NamedContext.ftv, PatternCtx.ftv, MonoCtx.ftv, Dual.ftv,
+    singletonScheme, Context.ftv, PatternCtx.ftv, MonoCtx.ftv, Dual.ftv,
     Ty.ftv]
 
 /-- A raw `PAT-WILD` leaf reaches the normalized `Any` core index through the
@@ -381,7 +381,7 @@ private theorem singleton_body_resolved :
     (TerminalPatternResolution.wild
       (signature := singletonSignature)
       (prevailing := singletonPrevailing)
-      (actualContext := ([] : NamedContext))
+      (actualContext := ([] : Context))
       singletonCap_fresh singletonTy_fresh)
 
 /-- Singleton defaulting is part of the checked definition core, not a later
@@ -419,8 +419,8 @@ def program : Expr :=
 def tupleMatcherType : Ty :=
   .slot (.prod []) (.prod [])
 
-def programContext : NamedContext :=
-  [("tupleMatcher", NamedScheme.mono tupleMatcherType)]
+def programContext : Context :=
+  [("tupleMatcher", Scheme.mono tupleMatcherType)]
 
 def programEnvironment : Env :=
   [("tupleMatcher", .tuple [])]

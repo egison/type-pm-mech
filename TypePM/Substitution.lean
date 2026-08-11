@@ -664,4 +664,27 @@ theorem Ty.applyCapabilityList_eq_map (S : CapSubst) :
       simp only [Ty.applyCapabilityList, List.map_cons]
       rw [Ty.applyCapabilityList_eq_map S types]
 
+/-! ## Cross-sort-aware sequential composition -/
+
+/-- Sequential paired substitution applies `earlier` first and `later`
+second, including the later capability action inside the earlier target
+range. -/
+def Subst.seq (later earlier : Subst) : Subst :=
+  { cap := CapSubst.comp later.cap earlier.cap
+    target := fun varId => later.apply (earlier.target varId) }
+
+/-- Sequential paired composition acts exactly from left to right. -/
+theorem Subst.seq_apply (later earlier : Subst) (target : Ty) :
+    (Subst.seq later earlier).apply target =
+      later.apply (earlier.apply target) := by
+  change
+    (target.applyCapability (CapSubst.comp later.cap earlier.cap)).applyTarget
+        (TySubst.comp later.target
+          (fun varId => (earlier.target varId).applyCapability later.cap)) =
+      ((target.applyCapability earlier.cap).applyTarget earlier.target
+        |>.applyCapability later.cap).applyTarget later.target
+  rw [Ty.applyCapability_comp, Ty.applyTarget_comp]
+  rw [← Ty.applyCapability_applyTarget later.cap earlier.target
+    (target.applyCapability earlier.cap)]
+
 end TypePM

@@ -92,10 +92,11 @@ commit／push はその都度の明示指示がある場合に限るという規
 - `RuntimeTyping` certificate の substitution-only principality は
   `no_principal_type` により否定されるが，これは `DDTyping` の principality 主張ではない．
   `DDTyping` の principal-type theorem は独立に定式化してから議論する．
-- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みである．受理完全性と
-  `RuntimeTyping` への state erasure は未証明なので，成立済みとは主張しない．
-  後者に必要な capability freeze 情報を typing derivation 自体へ統合するまでは，
-  `RuntimeTyping` の存在を premise に埋め込む循環的な `DDTyping` 定義で穴を隠さない．
+- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みである．
+  capability freeze は intrinsic Origin certificate，終端での非安定な事実は terminal audit
+  として derivation 側に統合され，closed programの `DDTyping` から `RuntimeTyping`
+  への state erasure は証明済みである．`RuntimeTyping` の存在を premise に
+  埋め込む循環的な `DDTyping` 定義に戻さない．受理完全性は別の未証明課題である．
   `DDAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
   分岐を判断側へ持ち込まない（raw visibility は executable inference との対応境界である）．
   pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の

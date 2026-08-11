@@ -232,26 +232,26 @@ theorem RefinesBelow.markCapRange
   rcases membership with ⟨offset, _, rfl⟩
   exact Nat.le_add_right _ _
 
-/-! ## NamedScheme-instance batches -/
+/-! ## Expression-scheme instance batches -/
 
 theorem LedgerBelow.markSchemeInstance
     {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}
-    (scheme : NamedScheme) (below : LedgerBelow q ledger) :
-    LedgerBelow (InferenceBase.instantiateNamedScheme q scheme).supply
+    (scheme : Scheme) (below : LedgerBelow q ledger) :
+    LedgerBelow (InferenceBase.instantiateScheme q scheme).supply
       (markSchemeInstance ledger q scheme) := by
   apply LedgerBelow.setOrigins below
-  · exact instantiateBinders_cap_monotone q scheme.capBinders scheme.tyBinders
+  · exact (Scheme.freshInstantiate_supplyExtends q scheme).1
   · intro varId membership
-    simpa [InferenceBase.instantiateNamedScheme] using
-      freshCapImages_lt q scheme.capBinders varId membership
+    exact (Scheme.mem_canonicalCapImages_bounds membership).2
 
 theorem RefinesBelow.markSchemeInstance
     (q : InferenceBase.FreshSupply) (ledger : CapabilityOriginLedger)
-    (scheme : NamedScheme) :
+    (scheme : Scheme) :
     RefinesBelow q ledger (markSchemeInstance ledger q scheme) := by
   exact refinesBelow_setFreshOrigins ledger
-    (Inference.freshCapImages q scheme.capBinders) .renameOnly
-    (freshCapImages_ge q scheme.capBinders)
+    (Scheme.canonicalCapImages q scheme) .renameOnly
+    (fun _ membership =>
+      (Scheme.mem_canonicalCapImages_bounds membership).1)
 
 theorem LedgerBelow.markDualInstance
     {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}

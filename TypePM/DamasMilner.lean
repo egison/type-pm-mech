@@ -185,12 +185,13 @@ end
 
 /-! ## Embedding into the two-sort system -/
 
-/-- Embed a one-sorted scheme with an empty capability binder list. -/
-def SScheme.emb (scheme : SScheme) : NamedScheme :=
-  ⟨[], scheme.binders, scheme.body.emb⟩
+/-- Embed a one-sorted scheme by closing its target binders into canonical
+finite indices.  The capability binder space is empty. -/
+def SScheme.emb (scheme : SScheme) : Scheme :=
+  Scheme.close [] scheme.binders scheme.body.emb
 
 /-- Embed a one-sorted context. -/
-def SCtx.emb (context : SCtx) : NamedContext :=
+def SCtx.emb (context : SCtx) : Context :=
   context.map fun entry => (entry.1, entry.2.emb)
 
 /-- Embed a one-sorted substitution as a target substitution. -/
@@ -222,6 +223,65 @@ end
 
 mutual
 
+/-- Opening the canonical closure of an embedded simple type with an
+embedded one-sorted substitution agrees with one-sorted substitution. -/
+theorem STy.instantiate_abstract_emb
+    (binders : List TypePM.TyVar) (S : SSubst)
+    (support : S.SupportWithin binders) :
+    ∀ τ : STy,
+      PolyTy.instantiate
+          (fun index : Fin 0 => Cap.var (Fin.elim0 index))
+          (fun index => (S (binders.get index)).emb)
+          (PolyTy.abstract
+            (fun varId => ([] : List CapVar).finIdxOf? varId)
+            (fun varId => binders.finIdxOf? varId) τ.emb) =
+        (τ.applySubst S).emb
+  | .var name => by
+      simp only [STy.emb, PolyTy.abstract]
+      split <;> rename_i found
+      · simp only [PolyTy.instantiate, STy.applySubst]
+        exact congrArg (fun varId => (S varId).emb)
+          (List.finIdxOf?_eq_some_iff.mp found).1
+      · have outside : name ∉ binders :=
+          List.finIdxOf?_eq_none_iff.mp found
+        simp [PolyTy.instantiate, STy.applySubst, support name outside,
+          STy.emb]
+  | .int => by
+      simp [STy.emb, STy.applySubst, PolyTy.abstract, PolyTy.instantiate]
+  | .fn domain codomain => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.instantiate,
+        STy.applySubst]
+      rw [STy.instantiate_abstract_emb binders S support domain,
+        STy.instantiate_abstract_emb binders S support codomain]
+  | .prod components => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.instantiate,
+        STy.applySubst]
+      congr 1
+      exact STy.instantiate_abstract_embList binders S support components
+
+/-- List form of `STy.instantiate_abstract_emb`. -/
+theorem STy.instantiate_abstract_embList
+    (binders : List TypePM.TyVar) (S : SSubst)
+    (support : S.SupportWithin binders) :
+    ∀ components : List STy,
+      ((STy.embList components).map
+        (PolyTy.abstract
+          (fun varId => ([] : List CapVar).finIdxOf? varId)
+          (fun varId => binders.finIdxOf? varId))).map
+        (PolyTy.instantiate
+          (fun index : Fin 0 => Cap.var (Fin.elim0 index))
+          (fun index => (S (binders.get index)).emb)) =
+        STy.embList (STy.applySubstList S components)
+  | [] => rfl
+  | component :: components => by
+      simp only [STy.embList, List.map_cons, STy.applySubstList]
+      rw [STy.instantiate_abstract_emb binders S support component,
+        STy.instantiate_abstract_embList binders S support components]
+
+end
+
+mutual
+
 /-- Embedding preserves the free-variable list. -/
 theorem STy.emb_ftv : ∀ τ : STy, τ.emb.ftv = τ.ftv
   | .var _ => rfl
@@ -242,6 +302,138 @@ theorem STy.embList_ftv :
         STy.embList_ftv components, STy.ftvList]
 
 end
+
+mutual
+
+/-- Closing target binders in an embedded simple type introduces no free
+capability metavariables. -/
+theorem STy.abstract_emb_fcv (binders : List TypePM.TyVar) :
+    ∀ τ : STy,
+      (PolyTy.abstract
+        (fun varId => ([] : List CapVar).finIdxOf? varId)
+        (fun varId => binders.finIdxOf? varId) τ.emb).fcv = []
+  | .var _ => by
+      simp only [STy.emb, PolyTy.abstract]
+      split <;> simp [PolyTy.fcv]
+  | .int => by simp [STy.emb, PolyTy.abstract, PolyTy.fcv]
+  | .fn domain codomain => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.fcv,
+        STy.abstract_emb_fcv binders domain,
+        STy.abstract_emb_fcv binders codomain, List.nil_append]
+  | .prod components => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.fcv]
+      exact STy.abstract_embList_fcv binders components
+
+/-- List form of `STy.abstract_emb_fcv`. -/
+theorem STy.abstract_embList_fcv (binders : List TypePM.TyVar) :
+    ∀ components : List STy,
+      PolyTy.fcvList
+        ((STy.embList components).map
+          (PolyTy.abstract
+            (fun varId => ([] : List CapVar).finIdxOf? varId)
+            (fun varId => binders.finIdxOf? varId))) = []
+  | [] => rfl
+  | component :: components => by
+      simp only [STy.embList, List.map_cons, PolyTy.fcvList,
+        STy.abstract_emb_fcv binders component,
+        STy.abstract_embList_fcv binders components, List.nil_append]
+
+end
+
+mutual
+
+/-- Closing target binders removes exactly those names from the free target
+variables of an embedded simple type. -/
+theorem STy.abstract_emb_ftv (binders : List TypePM.TyVar) :
+    ∀ τ : STy,
+      (PolyTy.abstract
+        (fun varId => ([] : List CapVar).finIdxOf? varId)
+        (fun varId => binders.finIdxOf? varId) τ.emb).ftv =
+        τ.ftv.filter (fun varId => varId ∉ binders)
+  | .var name => by
+      simp only [STy.emb, PolyTy.abstract]
+      split <;> rename_i found
+      · have member : name ∈ binders := by
+          have getEq := (List.finIdxOf?_eq_some_iff.mp found).1
+          exact getEq ▸ binders.get_mem _
+        simp [PolyTy.ftv, STy.ftv, member]
+      · have outside : name ∉ binders :=
+          List.finIdxOf?_eq_none_iff.mp found
+        simp [PolyTy.ftv, STy.ftv, outside]
+  | .int => by simp [STy.emb, PolyTy.abstract, PolyTy.ftv, STy.ftv]
+  | .fn domain codomain => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.ftv, STy.ftv,
+        STy.abstract_emb_ftv binders domain,
+        STy.abstract_emb_ftv binders codomain, List.filter_append]
+  | .prod components => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.ftv, STy.ftv]
+      exact STy.abstract_embList_ftv binders components
+
+/-- List form of `STy.abstract_emb_ftv`. -/
+theorem STy.abstract_embList_ftv (binders : List TypePM.TyVar) :
+    ∀ components : List STy,
+      PolyTy.ftvList
+        ((STy.embList components).map
+          (PolyTy.abstract
+            (fun varId => ([] : List CapVar).finIdxOf? varId)
+            (fun varId => binders.finIdxOf? varId))) =
+        (STy.ftvList components).filter (fun varId => varId ∉ binders)
+  | [] => rfl
+  | component :: components => by
+      simp only [STy.embList, List.map_cons, PolyTy.ftvList, STy.ftvList,
+        STy.abstract_emb_ftv binders component,
+        STy.abstract_embList_ftv binders components, List.filter_append]
+
+end
+
+/-- The embedded scheme has no free capability metavariables. -/
+theorem SScheme.emb_fcv (scheme : SScheme) : scheme.emb.fcv = [] := by
+  exact STy.abstract_emb_fcv scheme.binders scheme.body
+
+/-- Embedding preserves scheme free target metavariables. -/
+theorem SScheme.emb_ftv (scheme : SScheme) :
+    scheme.emb.ftv = scheme.ftv := by
+  exact STy.abstract_emb_ftv scheme.binders scheme.body
+
+mutual
+
+/-- Binder-free closing agrees with lifting on embedded simple types. -/
+theorem STy.abstract_emb_nil : ∀ τ : STy,
+    PolyTy.abstract
+        (fun varId => ([] : List CapVar).finIdxOf? varId)
+        (fun varId => ([] : List TypePM.TyVar).finIdxOf? varId) τ.emb =
+      PolyTy.lift τ.emb
+  | .var _ => by simp [STy.emb, PolyTy.abstract, PolyTy.lift]
+  | .int => by simp [STy.emb, PolyTy.abstract, PolyTy.lift]
+  | .fn domain codomain => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.lift]
+      rw [STy.abstract_emb_nil domain, STy.abstract_emb_nil codomain]
+  | .prod components => by
+      simp only [STy.emb, PolyTy.abstract, PolyTy.lift]
+      congr 1
+      exact STy.abstract_embList_nil components
+
+/-- List form of `STy.abstract_emb_nil`. -/
+theorem STy.abstract_embList_nil : ∀ components : List STy,
+    (STy.embList components).map
+        (PolyTy.abstract
+          (fun varId => ([] : List CapVar).finIdxOf? varId)
+          (fun varId => ([] : List TypePM.TyVar).finIdxOf? varId)) =
+      (STy.embList components).map PolyTy.lift
+  | [] => rfl
+  | component :: components => by
+      simp only [STy.embList, List.map_cons]
+      rw [STy.abstract_emb_nil component,
+        STy.abstract_embList_nil components]
+
+end
+
+/-- Monomorphic one-sorted schemes embed as canonical monomorphic schemes. -/
+@[simp] theorem SScheme.emb_mono (target : STy) :
+    (SScheme.mono target).emb = Scheme.mono target.emb := by
+  unfold SScheme.mono SScheme.emb Scheme.close Scheme.mono
+  congr 1
+  exact STy.abstract_emb_nil target
 
 mutual
 
@@ -303,28 +495,29 @@ theorem SScheme.emb_valueFlowInst {scheme : SScheme} {target : STy}
     (instantiation : scheme.Inst target) :
     scheme.emb.ValueFlowInst target.emb := by
   obtain ⟨S, support, result⟩ := instantiation
-  refine ⟨CapSubst.id, SSubst.emb S,
-    { capSupport := fun name _ => rfl
-      tySupport := fun name outside => by
-        show (S name).emb = .var name
-        rw [support name outside]
-        rfl
-      capBinderVariable := fun varId membership => by
-        simp [SScheme.emb] at membership
-      result := ?_ }⟩
-  show (scheme.body.emb.applyCapability CapSubst.id).applyTarget
-      (SSubst.emb S) = target.emb
-  rw [STy.emb_applyCapability, STy.emb_applyTarget, result]
+  let opening : scheme.emb.ValueOpening :=
+    { capImage := fun index => Fin.elim0 index
+      tyImage := fun index => (S (scheme.binders.get index)).emb }
+  refine ⟨opening, ?_⟩
+  change PolyTy.instantiate
+      (fun index : Fin 0 => Cap.var (Fin.elim0 index))
+      (fun index => (S (scheme.binders.get index)).emb)
+      (PolyTy.abstract
+        (fun varId => ([] : List CapVar).finIdxOf? varId)
+        (fun varId => scheme.binders.finIdxOf? varId) scheme.body.emb) =
+    target.emb
+  rw [STy.instantiate_abstract_emb scheme.binders S support scheme.body,
+    result]
 
-/-- NamedContext lookup commutes with the embedding. -/
+/-- Context lookup commutes with the embedding. -/
 theorem SCtx.find?_emb {context : SCtx} {name : String} {scheme : SScheme}
     (found : SCtx.find? context name = some scheme) :
-    NamedContext.find? (SCtx.emb context) name = some scheme.emb := by
+    Context.find? (SCtx.emb context) name = some scheme.emb := by
   induction context with
   | nil => cases found
   | cons entry rest induction =>
       unfold SCtx.find? at found
-      unfold NamedContext.find? SCtx.emb
+      unfold Context.find? SCtx.emb
       simp only [List.map_cons, List.find?_cons] at found ⊢
       cases nameEq : (entry.1 == name) with
       | true =>
@@ -336,33 +529,26 @@ theorem SCtx.find?_emb {context : SCtx} {name : String} {scheme : SScheme}
           exact induction found
 
 /-- Embedded contexts have no free capability variables. -/
-theorem SCtx.emb_fcv (context : SCtx) : NamedContext.fcv (SCtx.emb context) = [] := by
+theorem SCtx.emb_fcv (context : SCtx) : Context.fcv (SCtx.emb context) = [] := by
   induction context with
   | nil => rfl
   | cons entry rest induction =>
-      unfold SCtx.emb NamedContext.fcv at induction ⊢
+      unfold SCtx.emb Context.fcv at induction ⊢
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
-      have schemeFcv : entry.2.emb.fcv = [] := by
-        unfold NamedScheme.fcv SScheme.emb
-        rw [STy.emb_fcv]
-        rfl
-      rw [schemeFcv]
+      rw [SScheme.emb_fcv]
       rfl
 
 /-- Embedding preserves context free variables. -/
 theorem SCtx.emb_ftv (context : SCtx) :
-    NamedContext.ftv (SCtx.emb context) = SCtx.ftv context := by
+    Context.ftv (SCtx.emb context) = SCtx.ftv context := by
   induction context with
   | nil => rfl
   | cons entry rest induction =>
-      unfold SCtx.emb NamedContext.ftv SCtx.ftv at induction ⊢
+      unfold SCtx.emb Context.ftv SCtx.ftv at induction ⊢
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
-      have schemeFtv : entry.2.emb.ftv = entry.2.ftv := by
-        unfold NamedScheme.ftv SScheme.emb SScheme.ftv
-        rw [STy.emb_ftv]
-      rw [schemeFtv]
+      rw [SScheme.emb_ftv]
 
 /--
 Over a closed signature, two-sort generalization of an embedded type is the
@@ -373,12 +559,17 @@ theorem generalize_emb {signature : FrozenSig}
     (context : SCtx) (τ : STy) :
     signature.generalize (SCtx.emb context) (STy.emb τ) =
       (SCtx.generalize context τ).emb := by
-  unfold FrozenSig.generalize TypePM.generalize SCtx.generalize SScheme.emb
-  congr 1
-  · rw [STy.emb_fcv]
-    rfl
-  · rw [STy.emb_ftv, sigFtv, SCtx.emb_ftv]
-    rfl
+  unfold FrozenSig.generalize Scheme.generalize SCtx.generalize SScheme.emb
+  have capBinders :
+      generalizedCapVars (signature.fcv ++ (SCtx.emb context).fcv)
+          (STy.emb τ) = [] := by
+    simp [generalizedCapVars, STy.emb_fcv, uniqueVars]
+  have tyBinders :
+      generalizedTyVars (signature.ftv ++ (SCtx.emb context).ftv)
+          (STy.emb τ) =
+        uniqueVars (τ.ftv.filter fun name => name ∉ SCtx.ftv context) := by
+    simp [generalizedTyVars, STy.emb_ftv, sigFtv, SCtx.emb_ftv]
+  rw [capBinders, tyBinders]
 
 mutual
 
@@ -395,7 +586,8 @@ theorem Typing.emb {signature : FrozenSig}
       TypePM.RuntimeTyping.var (SCtx.find?_emb found)
         (SScheme.emb_valueFlowInst instantiation)
   | _, _, _, .lam bodyTyping =>
-      TypePM.RuntimeTyping.lam (Typing.emb sigFtv bodyTyping)
+      TypePM.RuntimeTyping.lam (by
+        simpa [SCtx.emb] using Typing.emb sigFtv bodyTyping)
   | _, _, _, .app functionTyping argumentTyping =>
       TypePM.RuntimeTyping.app (Typing.emb sigFtv functionTyping)
         (Typing.emb sigFtv argumentTyping)
@@ -404,7 +596,8 @@ theorem Typing.emb {signature : FrozenSig}
       rw [generalize_emb sigFtv]
       exact Typing.emb sigFtv bodyTyping
   | _, _, _, .fixE distinct direct bodyTyping =>
-      TypePM.RuntimeTyping.fixE distinct direct (Typing.emb sigFtv bodyTyping)
+      TypePM.RuntimeTyping.fixE distinct direct (by
+        simpa [SCtx.emb, STy.emb] using Typing.emb sigFtv bodyTyping)
   | _, _, _, .lit =>
       TypePM.RuntimeTyping.lit
   | _, _, _, .tuple componentTypings =>

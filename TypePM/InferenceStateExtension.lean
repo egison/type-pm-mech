@@ -148,19 +148,19 @@ theorem InferState.stateExtension_freezeCapabilityExport
 /-! ## Batch instantiation -/
 
 theorem instantiateSchemeInState_stateExtension
-    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
-    (name : String) (state : InferState) (scheme : NamedScheme) :
+    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (name : String) (state : InferState) (scheme : Scheme) :
     state.StateExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 where
   history := instantiateSchemeInState_historyPrefix signature rawContext
     normalizedContext name state scheme
   supplyCap := by
-    simp [instantiateSchemeInState, InferenceBase.instantiateNamedScheme,
-      InferenceBase.instantiateBinders, InferState.recordEvent]
+    simp [instantiateSchemeInState, InferenceBase.instantiateScheme,
+      Scheme.freshInstantiate, Scheme.advanceSupply, InferState.recordEvent]
   supplyTy := by
-    simp [instantiateSchemeInState, InferenceBase.instantiateNamedScheme,
-      InferenceBase.instantiateBinders, InferState.recordEvent]
+    simp [instantiateSchemeInState, InferenceBase.instantiateScheme,
+      Scheme.freshInstantiate, Scheme.advanceSupply, InferState.recordEvent]
   protectedCaps := by
     intro varId membership
     simp only [instantiateSchemeInState, InferState.recordEvent]
@@ -182,8 +182,8 @@ theorem instantiateCtorInState_stateExtension
 
 theorem instantiateDualInState_stateExtension
     (signature : FrozenSig)
-    (rawContext : NamedContext) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : NamedContext) (parameters : PatternCtx)
+    (rawContext : Context) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : Context) (parameters : PatternCtx)
     (bindings : MonoCtx) (state : InferState) (scheme : DualScheme) :
     state.StateExtension
       (instantiateDualInState signature rawContext rawParameters rawBindings
@@ -202,8 +202,8 @@ theorem instantiateDualInState_stateExtension
     exact List.mem_append_left _ membership
 
 theorem instantiateSchemeInState_stateExtension_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
-    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
+    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     state.StateExtension final := by
@@ -221,8 +221,8 @@ theorem instantiateCtorInState_stateExtension_of_eq
     (instantiateCtorInState_stateExtension state scheme) success
 
 theorem instantiateDualInState_stateExtension_of_eq
-    {signature : FrozenSig} {rawContext : NamedContext}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
+    {signature : FrozenSig} {rawContext : Context}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}

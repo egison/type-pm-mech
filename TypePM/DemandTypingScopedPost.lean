@@ -64,44 +64,34 @@ theorem totalize_apply_of_bounded
   · intro varId membership
     rfl
 
-/-- Binder-masking scheme application also agrees on an input-bounded scheme.
-Bound variables are masked by both sides; free variables lie below the cut. -/
+/-- Ambient scheme application agrees on an input-bounded canonical scheme.
+Bound positions are finite indices, so only free capability metavariables
+need the below-cut agreement. -/
 theorem totalize_applyScheme_of_bounded
-    {input : InferenceBase.FreshSupply} {post : Subst} {scheme : NamedScheme}
+    {input : InferenceBase.FreshSupply} {post : Subst} {scheme : Scheme}
     (bounded : scheme.BoundedBy input) :
-    scheme.applySubst (totalize input post) = scheme.applySubst post := by
-  cases scheme with
-  | mk capBinders tyBinders body =>
-      simp only [NamedScheme.applySubst]
-      congr 1
-      apply Subst.apply_eq_of_free_agree
-      · intro varId membership
-        by_cases binder : varId ∈ capBinders
-        · simp [CapSubst.mask, binder]
-        · have free : varId ∈
-              (NamedScheme.mk capBinders tyBinders body).fcv :=
-            List.mem_filter.mpr ⟨membership, by simpa using binder⟩
-          simp [CapSubst.mask, binder, totalize_cap_of_below input post varId
-            (bounded.caps varId free)]
-      · intro varId membership
-        by_cases binder : varId ∈ tyBinders
-        · simp [TySubst.mask, binder]
-        · simp [TySubst.mask, binder, totalize]
+    scheme.applyMeta (totalize input post) = scheme.applyMeta post := by
+  apply Scheme.applyMeta_eq_of_free_agree
+  · intro varId membership
+    exact totalize_cap_of_below input post varId
+      (bounded.caps varId membership)
+  · intro _ _
+    rfl
 
 /-- Pointwise context application agrees on an input-bounded context. -/
 theorem totalize_applyContext_of_bounded
-    {input : InferenceBase.FreshSupply} {post : Subst} {context : NamedContext}
-    (bounded : NamedContext.BoundedBy input context) :
+    {input : InferenceBase.FreshSupply} {post : Subst} {context : Context}
+    (bounded : Context.BoundedBy input context) :
     context.applySubst (totalize input post) = context.applySubst post := by
   induction context with
   | nil => rfl
   | cons entry context induction =>
       rcases entry with ⟨name, scheme⟩
       have headBounded := bounded (name, scheme) (by simp)
-      have tailBounded : NamedContext.BoundedBy input context := by
+      have tailBounded : Context.BoundedBy input context := by
         intro entry membership
         exact bounded entry (by simp [membership])
-      simp only [NamedContext.applySubst, List.map_cons]
+      simp only [Context.applySubst, List.map_cons]
       congr 1
       · exact congrArg (fun item => (name, item))
           (totalize_applyScheme_of_bounded headBounded)

@@ -78,7 +78,7 @@ theorem CoherentExpr.toRuntimeTyping
 
 /-- Successful public inference lands in the coherent judgment. -/
 theorem infer_success_coherent
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     CoherentExpr signature
@@ -96,7 +96,10 @@ theorem dm_coherent {signature : FrozenSig} (sigFtv : signature.ftv = []) :
   | _, _, _, .var found instantiation =>
       .var (DM.SCtx.find?_emb found)
         (DM.SScheme.emb_valueFlowInst instantiation)
-  | _, _, _, .lam bodyTyping => .lam (dm_coherent sigFtv bodyTyping)
+  | _, _, _, .lam bodyTyping => by
+      have body := dm_coherent sigFtv bodyTyping
+      simp only [DM.SCtx.emb, List.map_cons, DM.SScheme.emb_mono] at body
+      exact ExprDeriv.lam body
   | _, _, _, .app functionTyping argumentTyping =>
       .app (dm_coherent sigFtv functionTyping)
         (dm_coherent sigFtv argumentTyping)
@@ -105,7 +108,11 @@ theorem dm_coherent {signature : FrozenSig} (sigFtv : signature.ftv = []) :
       rw [DM.generalize_emb sigFtv]
       exact dm_coherent sigFtv bodyTyping
   | _, _, _, .fixE distinct direct bodyTyping =>
-      .fixE distinct direct (dm_coherent sigFtv bodyTyping)
+      by
+        have body := dm_coherent sigFtv bodyTyping
+        simp only [DM.SCtx.emb, List.map_cons, DM.SScheme.emb_mono,
+          DM.STy.emb] at body
+        exact ExprDeriv.fixE distinct direct body
   | _, _, _, .lit => .lit
   | _, _, _, .tuple componentTypings =>
       .tuple (dm_coherents sigFtv componentTypings)

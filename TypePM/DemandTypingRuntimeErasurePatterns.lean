@@ -358,7 +358,7 @@ namespace DDPatternOrigin
 /-- Terminal actual-indexed resolution for one user pattern. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPattern signature q S context parameters bindingsIn pattern dual
@@ -376,7 +376,7 @@ namespace DDPatternsOrigin
 /-- Terminal actual-indexed resolution for a user-pattern list. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPatterns signature q S context parameters bindingsIn patterns
@@ -388,7 +388,7 @@ def RuntimeErasure
 
 theorem runtimeErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (parameters : PatternCtx) (bindings : MonoCtx)
+    (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
     (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDPatternsOrigin.nil (signature := signature) (q := q) (S := S)
@@ -402,14 +402,14 @@ namespace DDPatternOrigin
 
 theorem runtimeErasure_pvar
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {ledger : CapabilityOriginLedger}
     (missing : name ∉ bindings.names)
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
     RuntimeErasure
-      (@DDPatternOrigin.pvar signature S context parameters q S context
-        parameters bindings name ledger missing) := by
+      (@DDPatternOrigin.pvar signature q S context parameters bindings name
+        ledger missing) := by
   change TerminalPatternResolution signature S (context.applySubst S)
     (parameters.applySubst S) (bindings.applySubst S) (.pvar name)
     ((Cap.var ⟨q.nextCap⟩).apply S.cap) (S.apply (Ty.var q.nextTy))
@@ -420,7 +420,7 @@ theorem runtimeErasure_pvar
 
 theorem runtimeErasure_wild
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {ledger : CapabilityOriginLedger}
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
@@ -438,7 +438,7 @@ theorem runtimeErasure_wild
 
 theorem runtimeErasure_pval_of_expression
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {expression : Expr} {target : Ty} {q₁ : InferenceBase.FreshSupply}
     {S₁ : Subst} {ledger ledger₁ : CapabilityOriginLedger}
     {expressionRaw : DDSynth signature q S
@@ -465,7 +465,7 @@ theorem runtimeErasure_pval_of_expression
 
 theorem runtimeErasure_embed
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {dual : Dual} {ledger : CapabilityOriginLedger}
     (lookup : parameters.find? name = some dual) :
     RuntimeErasure
@@ -483,7 +483,7 @@ theorem runtimeErasure_embed
 
 theorem runtimeErasure_ptuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
@@ -506,7 +506,7 @@ target alignment, and capability projection have all been observed at the
 same terminal cut. -/
 theorem runtimeErasure_pctor_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern}
     {entry : PatternCtorScheme signature.observability}
     {duals : List Dual} {bindings' : MonoCtx}
@@ -558,7 +558,7 @@ value-flow instance and all argument patterns are available at the terminal
 cut. -/
 theorem runtimeErasure_papp_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern} {scheme : DualScheme}
     {duals : List Dual} {bindings' : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -591,7 +591,7 @@ theorem runtimeErasure_papp_of_terminal_children
 
 theorem runtimeErasure_pand_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {rightDual : Dual}
     {bindings' : MonoCtx} {q₂ : InferenceBase.FreshSupply} {S₂ S' : Subst}
@@ -616,7 +616,7 @@ theorem runtimeErasure_pand_of_children
 
 theorem runtimeErasure_por_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {rightDual : Dual}
     {rightBindings : MonoCtx} {q₂ : InferenceBase.FreshSupply}
@@ -650,7 +650,7 @@ namespace DDPatternsOrigin
 
 theorem runtimeErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {dual : Dual}
     {duals : List Dual} {bindings₁ : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
@@ -682,7 +682,7 @@ namespace DDArmsOrigin
 /-- Terminal state-free conclusion for a matcher-clause arm list. -/
 def RuntimeErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {ppBindings : MonoCtx} {arms : List Arm}
+    {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDArms signature q S context ppBindings arms clauseTarget
@@ -693,7 +693,7 @@ def RuntimeErasure
 
 theorem runtimeErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (ppBindings : MonoCtx) (clauseTarget bodyTarget : Ty)
+    (context : Context) (ppBindings : MonoCtx) (clauseTarget bodyTarget : Ty)
     (ledger : CapabilityOriginLedger) :
     RuntimeErasure
       (DDArmsOrigin.nil (signature := signature) (q := q) (S := S)
@@ -704,7 +704,7 @@ theorem runtimeErasure_nil
 
 theorem runtimeErasure_cons_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {ppBindings : MonoCtx} {dataPattern : DPat}
+    {context : Context} {ppBindings : MonoCtx} {dataPattern : DPat}
     {body : Expr} {arms : List Arm} {clauseTarget bodyTarget : Ty}
     {armBindings : MonoCtx} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {q₂ : InferenceBase.FreshSupply} {S₂ : Subst}
@@ -740,7 +740,7 @@ namespace DDClauseOrigin
 two indices are chosen by matcher finalization, not by `DDClause` itself. -/
 def RuntimeErasureAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clause : Clause} {sharedTarget : Ty}
+    {context : Context} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDClause signature q S context clause sharedTarget holes q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -751,7 +751,7 @@ def RuntimeErasureAt
 
 theorem runtimeErasure_mk_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {pp : PPat} {next : Expr} {arms : List Arm}
+    {context : Context} {pp : PPat} {next : Expr} {arms : List Arm}
     {sharedTarget : Ty} {holes : List Dual} {ppBindings : MonoCtx}
     {nextMatchers : List Expr} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {q₂ : InferenceBase.FreshSupply} {S₂ : Subst}
@@ -798,7 +798,7 @@ namespace DDClausesOrigin
 matcher finalization. -/
 def RuntimeErasureAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clauses : List Clause} {sharedTarget : Ty}
+    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDClauses signature q S context clauses sharedTarget holeLists q'
@@ -810,7 +810,7 @@ def RuntimeErasureAt
 
 theorem runtimeErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : NamedContext) (sharedTarget : Ty) (ledger : CapabilityOriginLedger)
+    (context : Context) (sharedTarget : Ty) (ledger : CapabilityOriginLedger)
     (capability : Cap) :
     RuntimeErasureAt
       (DDClausesOrigin.nil (signature := signature) (q := q) (S := S)
@@ -820,7 +820,7 @@ theorem runtimeErasure_nil
 
 theorem runtimeErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : NamedContext} {clause : Clause} {clauses : List Clause}
+    {context : Context} {clause : Clause} {clauses : List Clause}
     {sharedTarget : Ty} {holes : List Dual} {holeLists : List (List Dual)}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {q' : InferenceBase.FreshSupply} {S' : Subst}

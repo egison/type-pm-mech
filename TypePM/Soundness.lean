@@ -17,7 +17,7 @@ namespace Inference
 
 /-- The two concrete conclusions exposed by one certified inference run. -/
 structure SafeResult
-    (signature : FrozenSig) (context : NamedContext) (expression : Expr)
+    (signature : FrozenSig) (context : Context) (expression : Expr)
     (result : ExprResult) (SF : RuntimeSigF) : Prop where
   /-- State-free certificate for the inferred term and resolved result. -/
   runtimeTyping :
@@ -31,7 +31,7 @@ A successful certified W run and the concrete static runtime conditions
 jointly yield a state-free runtime certificate and the dynamic safety interface.
 -/
 theorem infer_safe
-    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
+    {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult} {SF : RuntimeSigF}
     (success : infer signature context expression = some result)
     (signatureWF : FrozenSigWF signature) :

@@ -26,24 +26,27 @@ raw result を解決する．
 \[
 \mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
 \Longleftrightarrow
-\exists\tau_{\mathrm{raw}},q',S',\Omega'.\;
+\exists\tau_{\mathrm{raw}},q',S',\Omega',\mathcal O.\;
 q_0;\mathsf{id};\varnothing;\Gamma\vdash
 e\Rightarrow\tau_{\mathrm{raw}}\dashv q';S';\Omega'
+\land \mathsf{TerminalAudit}(S',\mathcal O)
 \land \tau=S'\tau_{\mathrm{raw}}.
 \]
 Lean では raw derivation と，それに構造を一致させた intrinsic Origin certificate を別 family
-として持つ．上の記法は両者を一つに合わせた公開判断を表す．
+として持つ．$\mathcal O$はそのOrigin proofであり，terminal auditは同じproofを再帰的に辿る．
+上の記法は三者を一つに合わせた公開判断を表す．追加factsを持つnodeは$\mathtt{let}$，matcher，
+pattern constructorの三種である．
 
 動的安全性の証明では，これら三つの推論状態を消去した内部 certificate
 $\mathsf{RuntimeTyping}$ を使う．これは source acceptance を定める第二の型システムではなく，
 runtime value typing と preservation の帰納法を状態履歴から切り離すための補助判断である．
-目指す依存方向は
+依存方向は
 \[
 \mathsf{DDTyping}\Longrightarrow\mathsf{RuntimeTyping}
 \Longrightarrow\mathsf{RuntimeSafety}
 \]
-である．Origin derivation は実装済みであり，最初の矢印に残る仕事はその
-$\mathsf{RuntimeTyping}$ への射影である．
+である．最初の矢印は，Origin derivation，終端 substitution に固定した相互 state erasure，
+terminal audit の合成として機械化済みである．
 
 \subsection{Origin ledger が表すもの}
 
@@ -109,5 +112,5 @@ slot へ推測せず，ordinary equality の失敗後に別 branch を試す rol
 
 第2章は型・source form・三状態と judgment の記号を導入する．第3章は一回の checking cut と
 ledger-aware alignment，第4章は通常の式，第5章は pattern と matcher literal の規則である．
-第6章は機械化済みの性質と未完成の射影を分けてまとめる．Lean module と回帰の詳細は
+第6章は solved-form 保存，terminal audit，state erasure，安全性への接続をまとめる．Lean module と回帰の詳細は
 \texttt{../docs/details.md} に譲る．

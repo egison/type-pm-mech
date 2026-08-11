@@ -68,6 +68,9 @@ field target alignmentとcapability projectionの後，resultに残るstructural
 }\rn{DD-PAT-CON}
 \end{mathpar}
 ここで $\vdash_c$ はsignature entryが定めるconstructor capability projectionである．
+規則中の$\capcompat$はこの局所cutでの検査である．公開終端まで後続solveが続く場合に備え，
+terminal auditは終端substitutionをdual列とresult capabilityへ適用した後の$\capcompat$を再検査する．
+state erasureはこの終端事実を使うため，局所capabilityが以後不変であることを仮定しない．
 
 $p_1\mathbin\&p_2$ は左のbindingsを右へ渡す．$p_1\mathbin|p_2$ は同じ入力 $\Delta$ から
 両alternativeを調べ，dualとbinder名・型を最後にalignする．
@@ -247,6 +250,12 @@ evidenceを再計算し，shape，catch-all order，binder線形性，arm exhaus
     \Matcher{\kappa}{\alpha_{q_\tau}}\dashv q';S';\Omega'
 }\rn{DD-MATCHER}
 \end{mathpar}
+
+上のevidenceはmatcher自身の局所終端$S'$で計算される．matcherが外側の式の子である場合，root終端
+までのrename-only suffixでcapability名が変わり得る．terminal auditはroot終端でhole capabilityを
+解決し直し，evidence収集，shape，clause capability，arm exhaustiveness，coverageを再検査する．
+matcherの相互erasureはこの正規化済み事実から$\mathsf{RuntimeTyping}$ constructorを作り，局所の
+solver traceやMGUをruntime certificateへ残さない．
 
 matcher literalをbodyに持つrecursionは，clause skeletonからplaceholderを作る専用規則を使う．
 placeholder rangeのcapability keyはmatcher開始前にstructural-flexibleとしてledgerへ追加される．

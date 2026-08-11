@@ -588,82 +588,6 @@ theorem PatternCtx.applySubst_comp
           rw [Dual.applySubst_comp S₂ S₁ hlaterFixesEarlier dual]
           congr 1
 
-/-! ## NamedScheme masking and context lookup -/
-
-/-- Masking at an empty capability-binder list is the identity. -/
-@[simp] theorem CapSubst.mask_nil (C : CapSubst) : C.mask [] = C := by
-  funext varId
-  simp [CapSubst.mask]
-
-/-- Masking at an empty target-binder list is the identity. -/
-@[simp] theorem TySubst.mask_nil (T : TySubst) : T.mask [] = T := by
-  funext varId
-  simp [TySubst.mask]
-
-/-- Fixing a scheme's free variables fixes its capture-avoiding body. -/
-theorem NamedScheme.applySubst_eq_self_of_free_fixed
-    (post : Subst) (scheme : NamedScheme)
-    (capFixed : ∀ varId, varId ∈ scheme.fcv →
-      post.cap varId = .var varId)
-    (tyFixed : ∀ varId, varId ∈ scheme.ftv →
-      post.target varId = .var varId) :
-    scheme.applySubst post = scheme := by
-  cases scheme with
-  | mk capBinders tyBinders body =>
-      change
-        NamedScheme.mk capBinders tyBinders
-            ((Subst.mk (post.cap.mask capBinders)
-              (post.target.mask tyBinders)).apply body) =
-          NamedScheme.mk capBinders tyBinders body
-      congr 1
-      apply Subst.apply_eq_self_of_free_fixed
-      · intro varId membership
-        by_cases bound : varId ∈ capBinders
-        · simp [CapSubst.mask, bound]
-        · simp only [CapSubst.mask, bound, if_false]
-          apply capFixed varId
-          exact List.mem_filter.mpr ⟨membership, by simp [bound]⟩
-      · intro varId membership
-        by_cases bound : varId ∈ tyBinders
-        · simp [TySubst.mask, bound]
-        · simp only [TySubst.mask, bound, if_false]
-          apply tyFixed varId
-          exact List.mem_filter.mpr ⟨membership, by simp [bound]⟩
-
-/-- Fixing all free variables of a context fixes the entire context. -/
-theorem NamedContext.applySubst_eq_self_of_free_fixed
-    (post : Subst) (context : NamedContext)
-    (capFixed : ∀ varId, varId ∈ context.fcv →
-      post.cap varId = .var varId)
-    (tyFixed : ∀ varId, varId ∈ context.ftv →
-      post.target varId = .var varId) :
-    context.applySubst post = context := by
-  induction context with
-  | nil => rfl
-  | cons entry context induction =>
-      cases entry with
-      | mk name scheme =>
-          simp only [NamedContext.applySubst, List.map_cons]
-          rw [NamedScheme.applySubst_eq_self_of_free_fixed post scheme]
-          · congr 1
-            apply induction
-            · intro varId membership
-              apply capFixed varId
-              simp only [NamedContext.fcv, List.flatMap_cons,
-                List.mem_append]
-              exact Or.inr membership
-            · intro varId membership
-              apply tyFixed varId
-              simp only [NamedContext.ftv, List.flatMap_cons,
-                List.mem_append]
-              exact Or.inr membership
-          · intro varId membership
-            exact capFixed varId (by
-              simp [NamedContext.fcv, membership])
-          · intro varId membership
-            exact tyFixed varId (by
-              simp [NamedContext.ftv, membership])
-
 /-! ## Signature-aware generalized value instances -/
 
 /-- A constructor scheme's free capability names occur among all its names. -/
@@ -722,24 +646,6 @@ theorem DualScheme.mem_tyVars_of_mem_ftv
   rcases rawMembership with argumentMembership | resultMembership
   · exact Or.inl (Or.inr argumentMembership)
   · exact Or.inr resultMembership
-
-/-- An expression scheme's free capability names occur among all its names. -/
-theorem NamedScheme.mem_allCapVars_of_mem_fcv
-    (scheme : NamedScheme) {varId : CapVar}
-    (membership : varId ∈ scheme.fcv) :
-    varId ∈ scheme.allCapVars := by
-  unfold NamedScheme.fcv at membership
-  unfold NamedScheme.allCapVars
-  exact List.mem_append.mpr (Or.inr (List.mem_filter.mp membership).1)
-
-/-- An expression scheme's free ordinary names occur among all its names. -/
-theorem NamedScheme.mem_allTyVars_of_mem_ftv
-    (scheme : NamedScheme) {varId : TypePM.TyVar}
-    (membership : varId ∈ scheme.ftv) :
-    varId ∈ scheme.allTyVars := by
-  unfold NamedScheme.ftv at membership
-  unfold NamedScheme.allTyVars
-  exact List.mem_append.mpr (Or.inr (List.mem_filter.mp membership).1)
 
 /-! Lookup membership in the frozen signature's free-variable scopes. -/
 
@@ -880,201 +786,6 @@ theorem FrozenSig.primitive_ftv_mem
       subst scheme
       simp only [FrozenSig.ftv, List.mem_append, List.mem_flatMap]
       exact Or.inr ⟨entry, entryMember, membership⟩
-
-/-- Lookup after context substitution returns the substituted lookup result. -/
-theorem NamedContext.find?_applySubst
-    (S : Subst) (context : NamedContext) (name : String) :
-    (context.applySubst S).find? name =
-      (context.find? name).map (NamedScheme.applySubst S) := by
-  simp [NamedContext.applySubst, NamedContext.find?, Function.comp_def,
-    Option.map_map]
-
-/-! ## Algebraic composition of instantiation witnesses -/
-
-/--
-Concrete, non-circular witness for transporting one scheme instantiation.
-The final equation is substitution algebra; it does not assume an `Inst` or
-source-typing conclusion for the transported term.
--/
-structure NamedScheme.InstCompositionAt
-    (external : Subst) (scheme : NamedScheme)
-    (originalCap : CapSubst) (originalTarget : TySubst) where
-  composedCap : CapSubst
-  composedTarget : TySubst
-  capSupport : composedCap.SupportWithin scheme.capBinders
-  targetSupport : composedTarget.SupportWithin scheme.tyBinders
-  rangeFixed : (Subst.mk composedCap composedTarget).RangeFixed
-  bodyEquation :
-    (Subst.mk composedCap composedTarget).apply
-        (scheme.applySubst external).body =
-      external.apply
-        ((Subst.mk originalCap originalTarget).apply scheme.body)
-
-/-- An algebraic composition witness transports an explicit instantiation. -/
-theorem NamedScheme.InstAt.transport
-    {external : Subst} {scheme : NamedScheme} {target : Ty}
-    {C : CapSubst} {T : TySubst}
-    (typing : scheme.InstAt C T target)
-    (composition : scheme.InstCompositionAt external C T) :
-    (scheme.applySubst external).Inst (external.apply target) := by
-  refine ⟨composition.composedCap, composition.composedTarget,
-    composition.capSupport, composition.targetSupport,
-    composition.rangeFixed, ?_⟩
-  calc
-    (Subst.mk composition.composedCap composition.composedTarget).apply
-        (scheme.applySubst external).body =
-        external.apply ((Subst.mk C T).apply scheme.body) :=
-      composition.bodyEquation
-    _ = external.apply target := by rw [typing.2.2.2]
-
-/-- Closed/fixed schemes and results transport with the original witness. -/
-theorem NamedScheme.InstAt.transport_of_fixed
-    {external : Subst} {scheme : NamedScheme} {target : Ty}
-    {C : CapSubst} {T : TySubst}
-    (typing : scheme.InstAt C T target)
-    (schemeFixed : scheme.applySubst external = scheme)
-    (targetFixed : external.apply target = target) :
-    (scheme.applySubst external).Inst (external.apply target) := by
-  refine ⟨C, T, typing.1, typing.2.1, typing.2.2.1, ?_⟩
-  rw [schemeFixed, typing.2.2.2, targetFixed]
-
-/-- Identity external substitution supplies an explicit composition witness. -/
-def NamedScheme.InstAt.identityComposition
-    {scheme : NamedScheme} {target : Ty} {C : CapSubst} {T : TySubst}
-    (typing : scheme.InstAt C T target) :
-    scheme.InstCompositionAt Subst.id C T where
-  composedCap := C
-  composedTarget := T
-  capSupport := typing.1
-  targetSupport := typing.2.1
-  rangeFixed := typing.2.2.1
-  bodyEquation := by
-    rw [NamedScheme.applySubst_id, Subst.apply_id]
-
-/-- Every fresh instantiation witness can be algebraically composed. -/
-def NamedScheme.InstCompositionAdm
-    (external : Subst) (scheme : NamedScheme) : Prop :=
-  ∀ C T,
-    C.SupportWithin scheme.capBinders →
-    T.SupportWithin scheme.tyBinders →
-    (Subst.mk C T).RangeFixed →
-    Nonempty (scheme.InstCompositionAt external C T)
-
-/-- NamedScheme instantiation is covariant under an algebraic composition proof. -/
-theorem NamedScheme.Inst.transport
-    {external : Subst} {scheme : NamedScheme} {target : Ty}
-    (typing : scheme.Inst target)
-    (admissible : scheme.InstCompositionAdm external) :
-    (scheme.applySubst external).Inst (external.apply target) := by
-  rcases typing with ⟨C, T, hcap, htarget, hrange, hbody⟩
-  obtain ⟨composition⟩ := admissible C T hcap htarget hrange
-  exact NamedScheme.InstAt.transport
-    ⟨hcap, htarget, hrange, hbody⟩ composition
-
-/-- Identity substitution composes with every scheme instantiation witness. -/
-theorem NamedScheme.instCompositionAdm_id (scheme : NamedScheme) :
-    scheme.InstCompositionAdm Subst.id := by
-  intro C T hcap htarget hrange
-  have explicit : scheme.InstAt C T ((Subst.mk C T).apply scheme.body) :=
-    ⟨hcap, htarget, hrange, rfl⟩
-  exact ⟨explicit.identityComposition⟩
-
-/-! ### Declarative capability-variable/structural-target value flow -/
-
-/-- Compose an external capability action only at local scheme binders. -/
-def NamedScheme.postCap
-    (external : Subst) (scheme : NamedScheme) (original : CapSubst) : CapSubst :=
-  fun varId =>
-    if varId ∈ scheme.capBinders then
-      (original varId).apply external.cap
-    else
-      .var varId
-
-/-- Compose the ordered external action only at local target binders. -/
-def NamedScheme.postTarget
-    (external : Subst) (scheme : NamedScheme) (original : TySubst) : TySubst :=
-  fun varId =>
-    if varId ∈ scheme.tyBinders then
-      external.apply (original varId)
-    else
-      .var varId
-
-theorem NamedScheme.postCap_support
-    (external : Subst) (scheme : NamedScheme) (original : CapSubst) :
-    (scheme.postCap external original).SupportWithin scheme.capBinders := by
-  intro varId outside
-  simp [NamedScheme.postCap, outside]
-
-theorem NamedScheme.postTarget_support
-    (external : Subst) (scheme : NamedScheme) (original : TySubst) :
-    (scheme.postTarget external original).SupportWithin scheme.tyBinders := by
-  intro varId outside
-  simp [NamedScheme.postTarget, outside]
-
-/--
-Binder-local composition agrees with sequential application on a scheme body
-when the external substitution fixes the scheme's genuinely free variables.
--/
-theorem NamedScheme.post_apply
-    {external : Subst} {scheme : NamedScheme}
-    {originalCap : CapSubst} {originalTarget : TySubst}
-    (originalCapSupport : originalCap.SupportWithin scheme.capBinders)
-    (originalTargetSupport : originalTarget.SupportWithin scheme.tyBinders)
-    (externalCapFixed : ∀ varId, varId ∈ scheme.fcv →
-      external.cap varId = .var varId)
-    (externalTargetFixed : ∀ varId, varId ∈ scheme.ftv →
-      external.target varId = .var varId) :
-    (Subst.mk (scheme.postCap external originalCap)
-        (scheme.postTarget external originalTarget)).apply scheme.body =
-      external.apply
-        ((Subst.mk originalCap originalTarget).apply scheme.body) := by
-  rw [← Subst.seq_apply]
-  apply Subst.apply_eq_of_free_agree
-  · intro varId membership
-    by_cases bound : varId ∈ scheme.capBinders
-    · simp [NamedScheme.postCap, Subst.seq, CapSubst.comp, bound]
-    · have free : varId ∈ scheme.fcv :=
-        List.mem_filter.mpr ⟨membership, by simpa⟩
-      simp only [NamedScheme.postCap, bound, if_false, Subst.seq,
-        CapSubst.comp, originalCapSupport varId bound, Cap.apply]
-      exact (externalCapFixed varId free).symm
-  · intro varId membership
-    by_cases bound : varId ∈ scheme.tyBinders
-    · simp [NamedScheme.postTarget, Subst.seq, bound]
-    · have free : varId ∈ scheme.ftv :=
-        List.mem_filter.mpr ⟨membership, by simpa⟩
-      simp only [NamedScheme.postTarget, bound, if_false, Subst.seq,
-        originalTargetSupport varId bound, Subst.apply,
-        Ty.applyCapability, Ty.applyTarget]
-      exact (externalTargetFixed varId free).symm
-
-/-- Declarative value flow is closed under an ordered external action. -/
-theorem NamedScheme.ValueFlowInst.transport
-    {external : Subst} {scheme : NamedScheme} {target : Ty}
-    (typing : scheme.ValueFlowInst target)
-    (externalCapFixed : ∀ varId, varId ∈ scheme.fcv →
-      external.cap varId = .var varId)
-    (externalTargetFixed : ∀ varId, varId ∈ scheme.ftv →
-      external.target varId = .var varId)
-    (externalCapVariable : ∀ varId, ∃ image,
-      external.cap varId = .var image) :
-    scheme.ValueFlowInst (external.apply target) := by
-  rcases typing with ⟨C, T, instanceTyping⟩
-  refine ⟨scheme.postCap external C, scheme.postTarget external T, ?_⟩
-  refine
-    { capSupport := scheme.postCap_support external C
-      tySupport := scheme.postTarget_support external T
-      capBinderVariable := ?_
-      result := ?_ }
-  · intro varId membership
-    rcases instanceTyping.capBinderVariable varId membership with
-      ⟨middle, middleEquation⟩
-    rcases externalCapVariable middle with ⟨image, imageEquation⟩
-    exact ⟨image, by
-      simp [NamedScheme.postCap, membership, middleEquation, Cap.apply,
-        imageEquation]⟩
-  · rw [NamedScheme.post_apply instanceTyping.capSupport instanceTyping.tySupport
-      externalCapFixed externalTargetFixed, instanceTyping.result]
 
 /-! ### Frozen constructor and dual-scheme instances -/
 
@@ -2043,11 +1754,11 @@ theorem PatternCtx.find?_applySubst
     Option.map_map]
 
 /-- Pointwise source-context substitution distributes over concatenation. -/
-theorem NamedContext.applySubst_append
-    (S : Subst) (left right : NamedContext) :
+theorem Context.applySubst_append
+    (S : Subst) (left right : Context) :
     (left ++ right).applySubst S =
       left.applySubst S ++ right.applySubst S := by
-  simp [NamedContext.applySubst, List.map_append]
+  simp [Context.applySubst, List.map_append]
 
 /-- Monomorphic bindings commute with their embedding as mono schemes. -/
 theorem MonoCtx.toContext_applySubst
@@ -2060,7 +1771,7 @@ theorem MonoCtx.toContext_applySubst
       cases entry with
       | mk name target =>
           simp [MonoCtx.applySubst, MonoCtx.toContext,
-            NamedContext.applySubst, NamedScheme.mono, NamedScheme.applySubst]
+            Context.applySubst, Scheme.applyMeta_mono]
 
 /-- Slot targets built from duals commute with paired substitution. -/
 theorem Dual.map_slot_applySubst
@@ -2110,13 +1821,9 @@ theorem Subst.apply_prodTy (S : Subst) :
 @[simp] theorem Subst.apply_listT (S : Subst) (target : Ty) :
     S.apply target.listT = (S.apply target).listT := rfl
 
-@[simp] theorem NamedScheme.applySubst_mono (S : Subst) (target : Ty) :
-    (NamedScheme.mono target).applySubst S = NamedScheme.mono (S.apply target) := by
-  rfl
-
 /-- Resolution packaging exposes the one shared substitution, not one per clause. -/
 theorem ResolvedClausesTy.exists_shared
-    {signature : FrozenSig} {context : NamedContext} {clauses : List Clause}
+    {signature : FrozenSig} {context : Context} {clauses : List Clause}
     {capability : Cap} {target : Ty} {evidence : List Shape.Evidence}
     (typing :
       ResolvedClausesTy signature context clauses capability target evidence) :

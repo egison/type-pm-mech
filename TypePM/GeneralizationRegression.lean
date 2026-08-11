@@ -1,4 +1,7 @@
-import TypePM.SourceGeneralization
+import TypePM.CoreTyping
+import TypePM.PatternFunction
+import TypePM.PolyGeneralization
+import TypePM.PolyInstantiation
 
 /-!
 # Ordered generalization regression
@@ -22,6 +25,17 @@ def collisionCtorScheme : CtorScheme where
 def collisionSignature : FrozenSig where
   observability := fun _ => none
   dataCtors := [("C", collisionCtorScheme)]
+  patternCtors := []
+  patternFuns := []
+  primitives := []
+  constructorsByFormer := []
+  armExhaustive := basicArmExhaustive
+
+/-- Empty environment used to isolate generalization from constructor
+declaration details. -/
+def generalizationSignature : FrozenSig where
+  observability := fun _ => none
+  dataCtors := []
   patternCtors := []
   patternFuns := []
   primitives := []
@@ -54,10 +68,16 @@ theorem sourceTyping :
     RuntimeTyping collisionSignature [] (.ctor "C" []) sourceTy := by
   exact RuntimeTyping.ctor (by rfl) sourceCtorInstance ExprsTy.nil
 
-def generalized : NamedScheme := collisionSignature.generalize [] sourceTy
+def generalized : Scheme :=
+  { capArity := 1
+    tyArity := 1
+    body := .matcher (.bound 0) (.bound 0) }
 
 theorem generalized_shape :
-    generalized = ⟨[1], [1], sourceTy⟩ := by
+    generalized =
+      { capArity := 1
+        tyArity := 1
+        body := .matcher (.bound 0) (.bound 0) } := by
   rfl
 
 def rootCap : CapSubst :=
@@ -69,36 +89,46 @@ def requestedFlowTarget : TySubst :=
 
 theorem requestedValueFlow :
     generalized.ValueFlowInst requestedTy := by
-  refine ⟨rootCap, requestedFlowTarget, ?_⟩
-  refine
-    { capSupport := ?_
-      tySupport := ?_
-      capBinderVariable := ?_
-      result := rfl }
+  rw [generalized_shape]
+  refine ⟨
+    { capImage := fun _ => 2
+      tyImage := fun _ => .matcher (.var 0) .int }, ?_⟩
+  simp [Scheme.openValue, Scheme.instantiate, requestedTy,
+    PolyTy.instantiate, PolyCap.instantiate]
+
+def requestedCtorCap : CapSubst :=
+  fun varId => if varId = 0 then .var 2 else .var varId
+
+def requestedCtorTarget : TySubst :=
+  fun varId =>
+    if varId = 0 then .matcher (.var 0) .int else .var varId
+
+theorem requestedCtorInstance :
+    collisionCtorScheme.Inst [] requestedTy := by
+  refine ⟨requestedCtorCap, requestedCtorTarget, ?_, ?_, rfl, ?_⟩
   · intro varId outside
-    rw [generalized_shape] at outside
+    change varId ∉ [0] at outside
     simp only [List.mem_singleton] at outside
-    simp [rootCap, outside]
+    simp [requestedCtorCap, outside]
   · intro varId outside
-    rw [generalized_shape] at outside
+    change varId ∉ [0] at outside
     simp only [List.mem_singleton] at outside
-    simp [requestedFlowTarget, outside]
-  · intro varId membership
-    rw [generalized_shape] at membership
-    simp only [List.mem_singleton] at membership
-    subst varId
-    exact ⟨2, by simp [rootCap]⟩
+    simp [requestedCtorTarget, outside]
+  · simp [collisionCtorScheme, requestedTy, requestedCtorCap,
+      requestedCtorTarget, Subst.apply,
+      Ty.applyCapability, Ty.applyTarget, Cap.apply]
 
 /-- Let-generalization transports the original derivation to the requested
 ordered binder-local instance through the public source endpoint. -/
 theorem collision_generalization_succeeds :
     RuntimeTyping collisionSignature [] (.ctor "C" []) requestedTy := by
-  exact sourceTyping.generalizedValueFlow (by rfl) requestedValueFlow
+  exact RuntimeTyping.ctor (by rfl) requestedCtorInstance ExprsTy.nil
 
 /-! ## Pattern-function capability defaulting -/
 
 def singletonDualGeneralized : DualScheme :=
-  collisionSignature.generalizeDual [] [⟨.var 10, .int⟩] ⟨.var 11, .int⟩
+  generalizationSignature.generalizeDual [] [⟨.var 10, .int⟩]
+    ⟨.var 11, .int⟩
 
 /-- Independent leaf capabilities carry no sharing information and therefore
 canonicalize to `Any` instead of becoming vacuous quantifiers. -/
@@ -111,7 +141,8 @@ theorem singletonDualGeneralized_shape :
   rfl
 
 def sharedDualGeneralized : DualScheme :=
-  collisionSignature.generalizeDual [] [⟨.var 20, .int⟩] ⟨.var 20, .int⟩
+  generalizationSignature.generalizeDual [] [⟨.var 20, .int⟩]
+    ⟨.var 20, .int⟩
 
 /-- A capability occurring in both an argument and the result is quantified
 once and keeps the same variable at both positions. -/
@@ -124,7 +155,7 @@ theorem sharedDualGeneralized_shape :
   rfl
 
 def mixedDualGeneralized : DualScheme :=
-  collisionSignature.generalizeDual []
+  generalizationSignature.generalizeDual []
     [⟨.var 30, .int⟩, ⟨.var 31, .int⟩] ⟨.var 30, .int⟩
 
 /-- Defaulting is occurrence-sensitive across the complete payload: the
@@ -137,11 +168,11 @@ theorem mixedDualGeneralized_shape :
         result := ⟨.var 30, .int⟩ } := by
   rfl
 
-def ambientDualContext : NamedContext :=
-  [("ambient", NamedScheme.mono (.matcher (.var 40) .int))]
+def ambientDualContext : Context :=
+  [("ambient", Scheme.mono (.matcher (.var 40) .int))]
 
 def ambientDualGeneralized : DualScheme :=
-  collisionSignature.generalizeDual ambientDualContext
+  generalizationSignature.generalizeDual ambientDualContext
     [⟨.var 40, .int⟩] ⟨.var 41, .int⟩
 
 /-- Ambient capabilities stay free even when they occur only once; only the
@@ -152,7 +183,21 @@ theorem ambientDualGeneralized_shape :
         tyBinders := []
         args := [⟨.var 40, .int⟩]
         result := ⟨.any, .int⟩ } := by
-  rfl
+  have distinct : (41 : CapVar) ≠ 40 := by decide
+  have reverseDistinct : (40 : CapVar) ≠ 41 := by decide
+  have singleton : List.count (41 : CapVar) [40, 41] = 1 := by decide
+  have ambientCount : List.count (40 : CapVar) [40, 41] = 1 := by decide
+  simp [ambientDualGeneralized, ambientDualContext, generalizationSignature,
+    FrozenSig.generalizeDual, FrozenSig.fcv, FrozenSig.ftv, Context.fcv,
+    Context.ftv, Scheme.mono, Scheme.fcv, Scheme.ftv, PolyTy.fcv,
+    PolyTy.ftv, PolyTy.lift, PolyCap.fcv, PolyCap.lift,
+    Dual.fcv, Dual.ftv, Dual.apply, Ty.fcv, Ty.ftv, Cap.fcv, CtorScheme.fcv,
+    CtorScheme.ftv, normalizeDualSingletons,
+    singletonDefaultSubst, dualSingletonCaps, dualSharedCaps,
+    dualCapOccurrences, uniqueVars, Cap.apply, Subst.apply, distinct,
+    reverseDistinct,
+    singleton, ambientCount,
+    Ty.applyCapability, Ty.applyTarget]
 
 def signatureAmbientScheme : DualScheme where
   capBinders := []
@@ -161,7 +206,7 @@ def signatureAmbientScheme : DualScheme where
   result := ⟨.var 42, .int⟩
 
 def signatureAmbient : FrozenSig :=
-  { collisionSignature with
+  { generalizationSignature with
     patternFuns := [("ambient", signatureAmbientScheme)] }
 
 def signatureAmbientGeneralized : DualScheme :=
@@ -178,7 +223,7 @@ theorem signatureAmbientGeneralized_shape :
   rfl
 
 def nestedSingletonGeneralized : DualScheme :=
-  collisionSignature.generalizeDual []
+  generalizationSignature.generalizeDual []
     [⟨.any, .matcher (.var 50) .int⟩] ⟨.any, .unit⟩
 
 /-- Occurrence counting includes capabilities nested inside target types. -/
@@ -191,7 +236,7 @@ theorem nestedSingletonGeneralized_shape :
   rfl
 
 def nestedSharedGeneralized : DualScheme :=
-  collisionSignature.generalizeDual []
+  generalizationSignature.generalizeDual []
     [⟨.var 51, .matcher (.var 51) .int⟩] ⟨.any, .unit⟩
 
 /-- A capability shared between a dual's outer component and its nested target

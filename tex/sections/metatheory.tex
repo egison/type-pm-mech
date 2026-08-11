@@ -1,4 +1,4 @@
-\section{機械化された性質と未完成の接続}
+\section{機械化された性質と接続}
 
 本節では，前節までの規則から得られる性質と，実行可能推論・動的安全性への接続をまとめる．
 solver の個別補題，trace invariant，回帰一覧は \texttt{../docs/details.md} に分離する．
@@ -24,6 +24,17 @@ solve delta の chronological replay に因子化できる．対応する Origin
 と同じ構造を持ち，ledger transition が入力 ledger を保ち，fresh supply の範囲内だけを追加・
 freeze することを保証する．公開型，pattern dual，bindings，hole ledger に現れる flexible
 variable は終端 supply で有界である．
+
+\subsubsection*{Solved form}
+capability-only，target-only，paired，二段階 matcher／slot solve，one-way matchingの各局所操作は，
+入力substitutionの冪等性を保存する．これをtraversal順に合成し，alignment familyと，expression，
+expression list，checking，user／primitive／data pattern，pattern list，arm，clause，
+pattern-constructor capabilityを含む全14 raw DD familyについて
+\[
+S.\mathsf{Idempotent}\Longrightarrow S'.\mathsf{Idempotent}
+\]
+を証明済みである．公開判断は恒等substitutionから始まるため，rootの終端substitutionは無条件に
+solved formである．
 
 \subsubsection*{No guess と freeze}
 exact MGU は constraint 外で恒等，constraint range 内，solved form である．さらに Origin
@@ -73,30 +84,42 @@ machine について，typed state の一段保存，局所 progress，到達可
 の substitution typing を証明済みである．空 successor 列は正当な match failure であり stuck
 ではない．一般の program termination は主張しない．
 
-\subsection{DDTyping から安全性へ残る接続}
+\subsection{DDTyping から安全性への接続}
 
-最終的に公開したい安全性定理の構造は次である．
+公開安全性定理の構造は次である．
 \[
+\Sighat.\mathsf{SchemesClosed}
+\Longrightarrow
 \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
 \Longrightarrow
 \mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)
 \Longrightarrow
 \mathsf{RuntimeSafe}(\Sighat,e,\tau).
 \]
-第二の矢印は機械化済みである．第一の矢印に必要な ledger と intrinsic Origin derivation も
-DD family 全体へ統合済みである．state erasure の基盤として，入力 cut より前の origin policy を
-保存する supply-scoped な残余 substitution と，終端 substitution の state factorization を定義し，
-合成，boundedness，ledger refinement，alignment の各分岐を証明済みである．expression，user
-pattern，primitive pattern，data pattern，arm，clause を含む全14 Origin family について，
-signature closure と入力 boundedness だけから factorization を得る無前提の相互定理がある．canonical
-scheme／dual-scheme instance には binder image だけを ledger から回収する局所 transport 補題がある．
-variable，literal，\texttt{something}，lambda，tuple には初期 erasure 補題がある．
+両方の矢印を機械化済みである．第一の矢印では，入力cutより前のorigin policyを保存する
+supply-scopedな残余substitutionと，各局所出力を一つのroot終端substitutionへ結ぶ
+$\mathsf{StateFactorization}$を使う．全14 Origin familyのfactorizationとconstructor-wise erasureを
+一つの終端cutへ固定した相互帰納にまとめ，supply，prevailing substitution，ledgerを消去する．
 
-未完成なのは，Origin derivation の全 constructor から $\mathsf{RuntimeTyping}$ constructor へ情報を
-写す相互帰納的な state erasure である．この射影は supply，prevailing substitution，ledger
-を消去しつつ，scheme instance の variable-only 条件，matcher final capability，terminal hole
-capability，let generalization を回収しなければならない．certificate の存在を DD rule の premise に
-置く循環的な定義は採らない．
+局所cutではなく公開終端で再確認すべき追加情報はterminal auditに分離する．そのfactsは三種であり，
+$\mathtt{let}$は終端context／value typeから再計算したgeneralizationの一致，matcherはterminal hole
+capabilityから再計算したevidence，shape，clause capability，arm exhaustiveness，coverage，pattern
+constructorは終端dual／capabilityの$\mathsf{CapCompatible}$を記録する．variable nodeは追加factsを
+持たず，canonical $\mathsf{Scheme}$のfinite opening transportから終端lookupとの一致を直接導く．
+相互erasureはこれらを使って
+$\mathsf{RuntimeTyping}$，pattern，arm，clause certificateを再構成する．matcher-to-slotは終端
+$\mathsf{CapabilityDemand}$，slot-to-slotは終端型等式へ消去される．
+
+従ってclosed signature上のclosed-programについて
+\[
+\Sighat.\mathsf{SchemesClosed}
+\Longrightarrow
+\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+\Longrightarrow
+\mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)
+\]
+が成立する．certificateの存在をDD ruleのpremiseに置く循環的な定義は用いず，DD derivation自身の
+solved-form保存，Origin history，terminal auditから射影する．
 
 \subsection{受理完全性}
 
@@ -114,8 +137,9 @@ Origin transition を executable trace および terminal validator に対応付
 \subsection{機械化の範囲}
 
 全 expression／pattern／arm／clause の raw DD family，それらに対応する intrinsic Origin family，
-ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，公開 inference
-から $\mathsf{RuntimeTyping}$ への reconstruction，concrete dynamic safety は Lean~4 に機械化済みで
-ある．public freeze 回帰は閉じており，全14 Origin family の state factorization は実装済みである．
-全14 family の runtime erasure と DD／infer の受理接続は未完成である．
+ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，全14 raw familyの
+solved-form保存，terminal audit，terminal-fixedな相互runtime erasure，closed-programの
+$\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{RuntimeTyping}$への
+reconstruction，concrete dynamic safetyはLean~4に機械化済みである．public freeze回帰も閉じている．
+DD／inferの受理完全性は別の未完成接続である．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．
