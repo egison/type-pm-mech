@@ -2712,7 +2712,7 @@ variable outright.  These certificates drive the well-founded recursion of
 solvability completeness. -/
 
 /-- Every image variable is the preimage itself or drawn from `allowed`. -/
-private def CapRange (S : CapSubst) (allowed : List CapVar) : Prop :=
+def CapRange (S : CapSubst) (allowed : List CapVar) : Prop :=
   ∀ x y, y ∈ (S x).fcv → y = x ∨ y ∈ allowed
 
 /-- No image of the substitution mentions `v`. -/
@@ -3081,8 +3081,13 @@ private theorem solveCapPair_varCert :
 
 /-- Every image target variable is the preimage itself or drawn from
 `allowed`. -/
-private def TyRange (S : TySubst) (allowed : List TypePM.TyVar) : Prop :=
+def TyRange (S : TySubst) (allowed : List TypePM.TyVar) : Prop :=
   ∀ x y, y ∈ (S x).ftv → y = x ∨ y ∈ allowed
+
+/-- Capability variables in target-substitution images are drawn from
+`allowed`. -/
+def TyCapRange (S : TySubst) (allowed : List CapVar) : Prop :=
+  ∀ x y, y ∈ (S x).fcv → y ∈ allowed
 
 /-- No image of the target substitution mentions `v`. -/
 private def TyElim (S : TySubst) (v : TypePM.TyVar) : Prop :=

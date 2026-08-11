@@ -1150,10 +1150,18 @@ structure PairedResult
   /-- Finite support of the capability component. -/
   capSupportVars : List CapVar
   capSupport : subst.cap.SupportWithin capSupportVars
+  capSupportInput : ∀ varId, varId ∈ capSupportVars →
+    varId ∈ left.fcv ++ right.fcv
   /-- Finite support of the target component.  W retains this ledger for the
   same terminal range audits used by the symmetric target solver. -/
   targetSupportVars : List TypePM.TyVar
   targetSupport : subst.target.SupportWithin targetSupportVars
+  targetSupportInput : ∀ varId, varId ∈ targetSupportVars →
+    varId ∈ left.ftv ++ right.ftv
+  capRange : Unification.CapRange subst.cap (left.fcv ++ right.fcv)
+  targetRange : Unification.TyRange subst.target (left.ftv ++ right.ftv)
+  targetCapRange : Unification.TyCapRange subst.target
+    (left.fcv ++ right.fcv)
   sound : subst.apply left = subst.apply right
   /-- Every paired competitor, independently of the origin ledger, factors
   through the returned substitution. -/
@@ -1171,8 +1179,18 @@ structure PairedListResult
   subst : Subst
   capSupportVars : List CapVar
   capSupport : subst.cap.SupportWithin capSupportVars
+  capSupportInput : ∀ varId, varId ∈ capSupportVars →
+    varId ∈ Ty.fcvList left ++ Ty.fcvList right
   targetSupportVars : List TypePM.TyVar
   targetSupport : subst.target.SupportWithin targetSupportVars
+  targetSupportInput : ∀ varId, varId ∈ targetSupportVars →
+    varId ∈ Ty.ftvList left ++ Ty.ftvList right
+  capRange : Unification.CapRange subst.cap
+    (Ty.fcvList left ++ Ty.fcvList right)
+  targetRange : Unification.TyRange subst.target
+    (Ty.ftvList left ++ Ty.ftvList right)
+  targetCapRange : Unification.TyCapRange subst.target
+    (Ty.fcvList left ++ Ty.fcvList right)
   sound : left.map subst.apply = right.map subst.apply
   globalUniversal : ∀ U : Subst,
     left.map U.apply = right.map U.apply →
@@ -1180,6 +1198,382 @@ structure PairedListResult
   admissible : AdmissiblePost ledger subst
   universal : ∀ U : Subst, AdmissiblePost ledger U →
     left.map U.apply = right.map U.apply → U = Subst.seq U subst
+
+/-! ## Paired variable-range accounting -/
+
+private theorem pairedCapRange_id (allowed : List CapVar) :
+    Unification.CapRange CapSubst.id allowed := by
+  intro x y membership
+  exact Or.inl (by simpa [CapSubst.id, Cap.fcv] using membership)
+
+private theorem pairedCapRange_mono
+    {S : CapSubst} {smaller larger : List CapVar}
+    (range : Unification.CapRange S smaller)
+    (included : ∀ varId, varId ∈ smaller → varId ∈ larger) :
+    Unification.CapRange S larger := by
+  intro source image membership
+  rcases range source image membership with rfl | inputMem
+  · exact Or.inl rfl
+  · exact Or.inr (included image inputMem)
+
+private theorem pairedCapRange_comp
+    {later earlier : CapSubst} {outer inner : List CapVar}
+    (earlierRange : Unification.CapRange earlier inner)
+    (laterRange : Unification.CapRange later outer)
+    (outerWithin : ∀ varId, varId ∈ outer → varId ∈ inner) :
+    Unification.CapRange (CapSubst.comp later earlier) inner := by
+  intro source image membership
+  rw [show CapSubst.comp later earlier source =
+      (earlier source).apply later from rfl,
+    Unification.Cap.fcv_apply] at membership
+  obtain ⟨middle, middleMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases laterRange middle image imageMem with rfl | outerMem
+  · exact earlierRange source image middleMem
+  · exact Or.inr (outerWithin image outerMem)
+
+private theorem pairedTyRange_id (allowed : List TypePM.TyVar) :
+    Unification.TyRange TySubst.id allowed := by
+  intro x y membership
+  exact Or.inl (by simpa [TySubst.id, Ty.ftv] using membership)
+
+private theorem pairedTyRange_single
+    (bound : TypePM.TyVar) (replacement : Ty)
+    (allowed : List TypePM.TyVar)
+    (replacementWithin : ∀ varId, varId ∈ replacement.ftv →
+      varId ∈ allowed) :
+    Unification.TyRange (Unification.TySubst.single bound replacement)
+      allowed := by
+  intro source image membership
+  by_cases same : bound = source
+  · subst source
+    exact Or.inr (replacementWithin image (by
+      simpa [Unification.TySubst.single] using membership))
+  · exact Or.inl (by
+      simpa [Unification.TySubst.single, same, Ty.ftv] using membership)
+
+private theorem pairedTyRange_mono
+    {S : TySubst} {smaller larger : List TypePM.TyVar}
+    (range : Unification.TyRange S smaller)
+    (included : ∀ varId, varId ∈ smaller → varId ∈ larger) :
+    Unification.TyRange S larger := by
+  intro source image membership
+  rcases range source image membership with rfl | inputMem
+  · exact Or.inl rfl
+  · exact Or.inr (included image inputMem)
+
+private theorem pairedTyCapRange_id (allowed : List CapVar) :
+    Unification.TyCapRange TySubst.id allowed := by
+  intro source image membership
+  simp [TySubst.id, Ty.fcv] at membership
+
+private theorem pairedTyCapRange_single
+    (bound : TypePM.TyVar) (replacement : Ty) (allowed : List CapVar)
+    (replacementWithin : ∀ varId, varId ∈ replacement.fcv →
+      varId ∈ allowed) :
+    Unification.TyCapRange
+      (Unification.TySubst.single bound replacement) allowed := by
+  intro source image membership
+  by_cases same : bound = source
+  · subst source
+    exact replacementWithin image (by
+      simpa [Unification.TySubst.single] using membership)
+  · simp [Unification.TySubst.single, same, Ty.fcv] at membership
+
+private theorem pairedTyCapRange_mono
+    {S : TySubst} {smaller larger : List CapVar}
+    (range : Unification.TyCapRange S smaller)
+    (included : ∀ varId, varId ∈ smaller → varId ∈ larger) :
+    Unification.TyCapRange S larger := by
+  intro source image membership
+  exact included image (range source image membership)
+
+/-- Target variables in a paired-substituted type come either from its target
+skeleton or from the target range of the substitution. -/
+private theorem pairedTyRange_apply_mem
+    {S : Subst} {allowed : List TypePM.TyVar}
+    (range : Unification.TyRange S.target allowed)
+    {target : Ty} {varId : TypePM.TyVar}
+    (membership : varId ∈ (S.apply target).ftv) :
+    varId ∈ target.ftv ∨ varId ∈ allowed := by
+  rw [Subst.apply, Unification.Ty.ftv_applyTarget,
+    Unification.Ty.ftv_applyCapability] at membership
+  obtain ⟨source, sourceMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases range source varId imageMem with rfl | allowedMem
+  · exact Or.inl sourceMem
+  · exact Or.inr allowedMem
+
+private theorem pairedTyRange_map_apply_mem
+    {S : Subst} {allowed : List TypePM.TyVar}
+    (range : Unification.TyRange S.target allowed)
+    {targets : List Ty} {varId : TypePM.TyVar}
+    (membership : varId ∈ Ty.ftvList (targets.map S.apply)) :
+    varId ∈ Ty.ftvList targets ∨ varId ∈ allowed := by
+  induction targets with
+  | nil => simp [Ty.ftvList] at membership
+  | cons target targets induction =>
+      simp only [List.map_cons, Ty.ftvList, List.mem_append] at membership ⊢
+      rcases membership with headMem | tailMem
+      · rcases pairedTyRange_apply_mem range headMem with own | allowedMem
+        · exact Or.inl (Or.inl own)
+        · exact Or.inr allowedMem
+      · rcases induction tailMem with own | allowedMem
+        · exact Or.inl (Or.inr own)
+        · exact Or.inr allowedMem
+
+/-- Capability variables in a paired-substituted type come either from its
+capability skeleton or from one of the two capability ranges. -/
+private theorem pairedCapRange_apply_mem
+    {S : Subst} {allowed : List CapVar}
+    (capRange : Unification.CapRange S.cap allowed)
+    (targetCapRange : Unification.TyCapRange S.target allowed)
+    {target : Ty} {varId : CapVar}
+    (membership : varId ∈ (S.apply target).fcv) :
+    varId ∈ target.fcv ∨ varId ∈ allowed := by
+  rcases Unification.Ty.mem_fcv_applyTarget _ _ _ membership with own | image
+  · rw [Unification.Ty.fcv_applyCapability] at own
+    obtain ⟨source, sourceMem, imageMem⟩ := List.mem_flatMap.mp own
+    rcases capRange source varId imageMem with rfl | allowedMem
+    · exact Or.inl sourceMem
+    · exact Or.inr allowedMem
+  · obtain ⟨source, sourceMem, imageMem⟩ := image
+    rw [Unification.Ty.ftv_applyCapability] at sourceMem
+    exact Or.inr (targetCapRange source varId imageMem)
+
+private theorem pairedCapRange_map_apply_mem
+    {S : Subst} {allowed : List CapVar}
+    (capRange : Unification.CapRange S.cap allowed)
+    (targetCapRange : Unification.TyCapRange S.target allowed)
+    {targets : List Ty} {varId : CapVar}
+    (membership : varId ∈ Ty.fcvList (targets.map S.apply)) :
+    varId ∈ Ty.fcvList targets ∨ varId ∈ allowed := by
+  induction targets with
+  | nil => simp [Ty.fcvList] at membership
+  | cons target targets induction =>
+      simp only [List.map_cons, Ty.fcvList, List.mem_append] at membership ⊢
+      rcases membership with headMem | tailMem
+      · rcases pairedCapRange_apply_mem capRange targetCapRange headMem with
+          own | allowedMem
+        · exact Or.inl (Or.inl own)
+        · exact Or.inr allowedMem
+      · rcases induction tailMem with own | allowedMem
+        · exact Or.inl (Or.inr own)
+        · exact Or.inr allowedMem
+
+private theorem pairedTyRange_seq
+    {later earlier : Subst}
+    {outer inner : List TypePM.TyVar}
+    (earlierRange : Unification.TyRange earlier.target inner)
+    (laterRange : Unification.TyRange later.target outer)
+    (outerWithin : ∀ varId, varId ∈ outer → varId ∈ inner) :
+    Unification.TyRange (Subst.seq later earlier).target inner := by
+  intro source image membership
+  rcases pairedTyRange_apply_mem laterRange membership with own | outerMem
+  · exact earlierRange source image own
+  · exact Or.inr (outerWithin image outerMem)
+
+private theorem pairedTyCapRange_seq
+    {later earlier : Subst} {outer inner : List CapVar}
+    (earlierRange : Unification.TyCapRange earlier.target inner)
+    (laterCapRange : Unification.CapRange later.cap outer)
+    (laterTargetRange : Unification.TyCapRange later.target outer)
+    (outerWithin : ∀ varId, varId ∈ outer → varId ∈ inner) :
+    Unification.TyCapRange (Subst.seq later earlier).target inner := by
+  intro source image membership
+  rcases pairedCapRange_apply_mem laterCapRange laterTargetRange membership with
+    own | outerMem
+  · exact earlierRange source image own
+  · exact outerWithin image outerMem
+
+private theorem seq_supportInput
+    {earlierVars laterVars inner outer : List α}
+    (earlierInput : ∀ varId, varId ∈ earlierVars → varId ∈ inner)
+    (laterInput : ∀ varId, varId ∈ laterVars → varId ∈ outer)
+    (outerWithin : ∀ varId, varId ∈ outer → varId ∈ inner) :
+    ∀ varId, varId ∈ earlierVars ++ laterVars → varId ∈ inner := by
+  intro varId membership
+  rcases List.mem_append.mp membership with earlierMem | laterMem
+  · exact earlierInput varId earlierMem
+  · exact outerWithin varId (laterInput varId laterMem)
+
+private theorem fn_domainCapWithin
+    {leftDomain leftCodomain rightDomain rightCodomain : Ty} :
+    ∀ varId, varId ∈ leftDomain.fcv ++ rightDomain.fcv →
+      varId ∈ (Ty.fn leftDomain leftCodomain).fcv ++
+        (Ty.fn rightDomain rightCodomain).fcv := by
+  intro varId membership
+  simp only [Ty.fcv, List.mem_append] at membership ⊢
+  rcases membership with h | h
+  · exact Or.inl (Or.inl h)
+  · exact Or.inr (Or.inl h)
+
+private theorem fn_domainTargetWithin
+    {leftDomain leftCodomain rightDomain rightCodomain : Ty} :
+    ∀ varId, varId ∈ leftDomain.ftv ++ rightDomain.ftv →
+      varId ∈ (Ty.fn leftDomain leftCodomain).ftv ++
+        (Ty.fn rightDomain rightCodomain).ftv := by
+  intro varId membership
+  simp only [Ty.ftv, List.mem_append] at membership ⊢
+  rcases membership with h | h
+  · exact Or.inl (Or.inl h)
+  · exact Or.inr (Or.inl h)
+
+private theorem fn_codomainCapWithin
+    {ledger : CapabilityOriginLedger}
+    {leftDomain leftCodomain rightDomain rightCodomain : Ty}
+    (domainResult : PairedResult ledger leftDomain rightDomain) :
+    ∀ varId,
+      varId ∈ (domainResult.subst.apply leftCodomain).fcv ++
+        (domainResult.subst.apply rightCodomain).fcv →
+      varId ∈ (Ty.fn leftDomain leftCodomain).fcv ++
+        (Ty.fn rightDomain rightCodomain).fcv := by
+  intro varId membership
+  rcases List.mem_append.mp membership with leftMem | rightMem
+  · rcases pairedCapRange_apply_mem domainResult.capRange
+      domainResult.targetCapRange leftMem with own | domainInput
+    · simp only [Ty.fcv, List.mem_append]
+      exact Or.inl (Or.inr own)
+    · exact fn_domainCapWithin varId domainInput
+  · rcases pairedCapRange_apply_mem domainResult.capRange
+      domainResult.targetCapRange rightMem with own | domainInput
+    · simp only [Ty.fcv, List.mem_append]
+      exact Or.inr (Or.inr own)
+    · exact fn_domainCapWithin varId domainInput
+
+private theorem fn_codomainTargetWithin
+    {ledger : CapabilityOriginLedger}
+    {leftDomain leftCodomain rightDomain rightCodomain : Ty}
+    (domainResult : PairedResult ledger leftDomain rightDomain) :
+    ∀ varId,
+      varId ∈ (domainResult.subst.apply leftCodomain).ftv ++
+        (domainResult.subst.apply rightCodomain).ftv →
+      varId ∈ (Ty.fn leftDomain leftCodomain).ftv ++
+        (Ty.fn rightDomain rightCodomain).ftv := by
+  intro varId membership
+  rcases List.mem_append.mp membership with leftMem | rightMem
+  · rcases pairedTyRange_apply_mem domainResult.targetRange leftMem with
+      own | domainInput
+    · simp only [Ty.ftv, List.mem_append]
+      exact Or.inl (Or.inr own)
+    · exact fn_domainTargetWithin varId domainInput
+  · rcases pairedTyRange_apply_mem domainResult.targetRange rightMem with
+      own | domainInput
+    · simp only [Ty.ftv, List.mem_append]
+      exact Or.inr (Or.inr own)
+    · exact fn_domainTargetWithin varId domainInput
+
+private theorem annotated_capWithin
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty} :
+    ∀ varId, varId ∈ leftCap.fcv ++ rightCap.fcv →
+      varId ∈ (leftCap.fcv ++ leftTarget.fcv) ++
+        (rightCap.fcv ++ rightTarget.fcv) := by
+  intro varId membership
+  simp only [List.mem_append] at membership ⊢
+  rcases membership with h | h
+  · exact Or.inl (Or.inl h)
+  · exact Or.inr (Or.inl h)
+
+private theorem annotated_targetWithin
+    {leftTarget rightTarget : Ty}
+    (C : CapSubst) :
+    ∀ varId,
+      varId ∈ (leftTarget.applyCapability C).ftv ++
+        (rightTarget.applyCapability C).ftv →
+      varId ∈ leftTarget.ftv ++ rightTarget.ftv := by
+  intro varId membership
+  simpa [Unification.Ty.ftv_applyCapability] using membership
+
+private theorem annotated_zonkedCapWithin
+    {ledger : CapabilityOriginLedger}
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
+    (capResult : OrientedCapResult ledger leftCap rightCap) :
+    ∀ varId,
+      varId ∈ (leftTarget.applyCapability capResult.subst).fcv ++
+        (rightTarget.applyCapability capResult.subst).fcv →
+      varId ∈ (leftCap.fcv ++ leftTarget.fcv) ++
+        (rightCap.fcv ++ rightTarget.fcv) := by
+  intro varId membership
+  simp only [List.mem_append] at membership
+  rcases membership with leftMem | rightMem
+  · rw [Unification.Ty.fcv_applyCapability] at leftMem
+    obtain ⟨source, sourceMem, imageMem⟩ := List.mem_flatMap.mp leftMem
+    rcases capResult.inputRange source varId imageMem with rfl | capInput
+    · exact List.mem_append.mpr
+        (Or.inl (List.mem_append.mpr (Or.inr sourceMem)))
+    · exact annotated_capWithin (leftTarget := leftTarget)
+        (rightTarget := rightTarget) varId capInput
+  · rw [Unification.Ty.fcv_applyCapability] at rightMem
+    obtain ⟨source, sourceMem, imageMem⟩ := List.mem_flatMap.mp rightMem
+    rcases capResult.inputRange source varId imageMem with rfl | capInput
+    · exact List.mem_append.mpr
+        (Or.inr (List.mem_append.mpr (Or.inr sourceMem)))
+    · exact annotated_capWithin (leftTarget := leftTarget)
+        (rightTarget := rightTarget) varId capInput
+
+private theorem list_headCapWithin
+    {leftHead rightHead : Ty} {leftTail rightTail : List Ty} :
+    ∀ varId, varId ∈ leftHead.fcv ++ rightHead.fcv →
+      varId ∈ Ty.fcvList (leftHead :: leftTail) ++
+        Ty.fcvList (rightHead :: rightTail) := by
+  intro varId membership
+  simp only [Ty.fcvList, List.mem_append] at membership ⊢
+  rcases membership with h | h
+  · exact Or.inl (Or.inl h)
+  · exact Or.inr (Or.inl h)
+
+private theorem list_headTargetWithin
+    {leftHead rightHead : Ty} {leftTail rightTail : List Ty} :
+    ∀ varId, varId ∈ leftHead.ftv ++ rightHead.ftv →
+      varId ∈ Ty.ftvList (leftHead :: leftTail) ++
+        Ty.ftvList (rightHead :: rightTail) := by
+  intro varId membership
+  simp only [Ty.ftvList, List.mem_append] at membership ⊢
+  rcases membership with h | h
+  · exact Or.inl (Or.inl h)
+  · exact Or.inr (Or.inl h)
+
+private theorem list_tailCapWithin
+    {ledger : CapabilityOriginLedger}
+    {leftHead rightHead : Ty} {leftTail rightTail : List Ty}
+    (headResult : PairedResult ledger leftHead rightHead) :
+    ∀ varId,
+      varId ∈ Ty.fcvList (leftTail.map headResult.subst.apply) ++
+        Ty.fcvList (rightTail.map headResult.subst.apply) →
+      varId ∈ Ty.fcvList (leftHead :: leftTail) ++
+        Ty.fcvList (rightHead :: rightTail) := by
+  intro varId membership
+  rcases List.mem_append.mp membership with leftMem | rightMem
+  · rcases pairedCapRange_map_apply_mem headResult.capRange
+      headResult.targetCapRange leftMem with own | headInput
+    · simp only [Ty.fcvList, List.mem_append]
+      exact Or.inl (Or.inr own)
+    · exact list_headCapWithin varId headInput
+  · rcases pairedCapRange_map_apply_mem headResult.capRange
+      headResult.targetCapRange rightMem with own | headInput
+    · simp only [Ty.fcvList, List.mem_append]
+      exact Or.inr (Or.inr own)
+    · exact list_headCapWithin varId headInput
+
+private theorem list_tailTargetWithin
+    {ledger : CapabilityOriginLedger}
+    {leftHead rightHead : Ty} {leftTail rightTail : List Ty}
+    (headResult : PairedResult ledger leftHead rightHead) :
+    ∀ varId,
+      varId ∈ Ty.ftvList (leftTail.map headResult.subst.apply) ++
+        Ty.ftvList (rightTail.map headResult.subst.apply) →
+      varId ∈ Ty.ftvList (leftHead :: leftTail) ++
+        Ty.ftvList (rightHead :: rightTail) := by
+  intro varId membership
+  rcases List.mem_append.mp membership with leftMem | rightMem
+  · rcases pairedTyRange_map_apply_mem headResult.targetRange leftMem with
+      own | headInput
+    · simp only [Ty.ftvList, List.mem_append]
+      exact Or.inl (Or.inr own)
+    · exact list_headTargetWithin varId headInput
+  · rcases pairedTyRange_map_apply_mem headResult.targetRange rightMem with
+      own | headInput
+    · simp only [Ty.ftvList, List.mem_append]
+      exact Or.inr (Or.inr own)
+    · exact list_headTargetWithin varId headInput
 
 /-- A capability-only pair is admissible when its capability part is. -/
 private theorem admissiblePost_capOnly
@@ -1313,8 +1707,13 @@ def solvePairedTy :
           subst := Subst.id
           capSupportVars := []
           capSupport := CapSubst.id_supportWithin []
+          capSupportInput := by simp
           targetSupportVars := []
           targetSupport := TySubst.id_supportWithin []
+          targetSupportInput := by simp
+          capRange := pairedCapRange_id _
+          targetRange := pairedTyRange_id _
+          targetCapRange := pairedTyCapRange_id _
           sound := by subst right; rfl
           globalUniversal := by
             intro U _
@@ -1344,9 +1743,18 @@ def solvePairedTy :
                   (Unification.TySubst.single varId right)
                 capSupportVars := []
                 capSupport := CapSubst.id_supportWithin []
+                capSupportInput := by simp
                 targetSupportVars := [varId]
                 targetSupport :=
                   Unification.TySubst.single_supportWithin varId right
+                targetSupportInput := by simp [Ty.ftv]
+                capRange := pairedCapRange_id _
+                targetRange := pairedTyRange_single varId right _ (by
+                  intro image imageMem
+                  exact List.mem_append.mpr (Or.inr imageMem))
+                targetCapRange := pairedTyCapRange_single varId right _ (by
+                  intro image imageMem
+                  exact List.mem_append.mpr (Or.inr imageMem))
                 sound := by
                   rw [targetOnly_apply, targetOnly_apply]
                   simp only [Ty.applyTarget, Unification.TySubst.single,
@@ -1393,9 +1801,18 @@ def solvePairedTy :
                   (Unification.TySubst.single varId left)
                 capSupportVars := []
                 capSupport := CapSubst.id_supportWithin []
+                capSupportInput := by simp
                 targetSupportVars := [varId]
                 targetSupport :=
                   Unification.TySubst.single_supportWithin varId left
+                targetSupportInput := by simp [Ty.ftv]
+                capRange := pairedCapRange_id _
+                targetRange := pairedTyRange_single varId left _ (by
+                  intro image imageMem
+                  exact List.mem_append.mpr (Or.inl imageMem))
+                targetCapRange := pairedTyCapRange_single varId left _ (by
+                  intro image imageMem
+                  exact List.mem_append.mpr (Or.inl imageMem))
                 sound := by
                   rw [targetOnly_apply, targetOnly_apply]
                   simp only [Ty.applyTarget, Unification.TySubst.single,
@@ -1442,8 +1859,16 @@ def solvePairedTy :
                     subst := result.subst
                     capSupportVars := result.capSupportVars
                     capSupport := result.capSupport
+                    capSupportInput := by
+                      simpa [Ty.fcv] using result.capSupportInput
                     targetSupportVars := result.targetSupportVars
                     targetSupport := result.targetSupport
+                    targetSupportInput := by
+                      simpa [Ty.ftv] using result.targetSupportInput
+                    capRange := by simpa [Ty.fcv] using result.capRange
+                    targetRange := by simpa [Ty.ftv] using result.targetRange
+                    targetCapRange := by
+                      simpa [Ty.fcv] using result.targetCapRange
                     sound := by
                       rw [subst_apply_data, subst_apply_data, hname,
                         result.sound]
@@ -1470,8 +1895,16 @@ def solvePairedTy :
                   subst := result.subst
                   capSupportVars := result.capSupportVars
                   capSupport := result.capSupport
+                  capSupportInput := by
+                    simpa [Ty.fcv] using result.capSupportInput
                   targetSupportVars := result.targetSupportVars
                   targetSupport := result.targetSupport
+                  targetSupportInput := by
+                    simpa [Ty.ftv] using result.targetSupportInput
+                  capRange := by simpa [Ty.fcv] using result.capRange
+                  targetRange := by simpa [Ty.ftv] using result.targetRange
+                  targetCapRange := by
+                    simpa [Ty.fcv] using result.targetCapRange
                   sound := by
                     rw [subst_apply_prod, subst_apply_prod, result.sound]
                   globalUniversal := by
@@ -1504,12 +1937,45 @@ def solvePairedTy :
                       capSupport :=
                         comp_capSupport domainResult.capSupport
                           codomainResult.capSupport
+                      capSupportInput :=
+                        seq_supportInput
+                          (fun varId membership => fn_domainCapWithin
+                            varId (domainResult.capSupportInput varId
+                              membership))
+                          codomainResult.capSupportInput
+                          (fn_codomainCapWithin domainResult)
                       targetSupportVars :=
                         domainResult.targetSupportVars ++
                           codomainResult.targetSupportVars
                       targetSupport :=
                         seq_targetSupport domainResult.targetSupport
                           codomainResult.targetSupport
+                      targetSupportInput :=
+                        seq_supportInput
+                          (fun varId membership => fn_domainTargetWithin
+                            varId (domainResult.targetSupportInput varId
+                              membership))
+                          codomainResult.targetSupportInput
+                          (fn_codomainTargetWithin domainResult)
+                      capRange :=
+                        pairedCapRange_comp
+                          (pairedCapRange_mono domainResult.capRange
+                            fn_domainCapWithin)
+                          codomainResult.capRange
+                          (fn_codomainCapWithin domainResult)
+                      targetRange :=
+                        pairedTyRange_seq
+                          (pairedTyRange_mono domainResult.targetRange
+                            fn_domainTargetWithin)
+                          codomainResult.targetRange
+                          (fn_codomainTargetWithin domainResult)
+                      targetCapRange :=
+                        pairedTyCapRange_seq
+                          (pairedTyCapRange_mono
+                            domainResult.targetCapRange fn_domainCapWithin)
+                          codomainResult.capRange
+                          codomainResult.targetCapRange
+                          (fn_codomainCapWithin domainResult)
                       sound := by
                         rw [subst_apply_fn, subst_apply_fn, Subst.seq_apply,
                           Subst.seq_apply, Subst.seq_apply, Subst.seq_apply,
@@ -1578,6 +2044,15 @@ def solvePairedTy :
                       capSupport :=
                         comp_capSupport capResult.capSupport
                           targetResult.capSupport
+                      capSupportInput := by
+                        intro varId membership
+                        rcases List.mem_append.mp membership with
+                          capMem | targetMem
+                        · simpa [Ty.fcv] using annotated_capWithin varId
+                            (capResult.supportInput varId capMem)
+                        · simpa [Ty.fcv] using
+                            annotated_zonkedCapWithin capResult varId
+                              (targetResult.capSupportInput varId targetMem)
                       targetSupportVars := targetResult.targetSupportVars
                       targetSupport := by
                         simpa using seq_targetSupport
@@ -1587,6 +2062,42 @@ def solvePairedTy :
                           (laterVars := targetResult.targetSupportVars)
                           (TySubst.id_supportWithin [])
                           targetResult.targetSupport
+                      targetSupportInput := by
+                        intro varId membership
+                        simpa [Ty.ftv] using annotated_targetWithin
+                          capResult.subst varId
+                            (targetResult.targetSupportInput varId membership)
+                      capRange := by
+                        change Unification.CapRange
+                          (CapSubst.comp targetResult.subst.cap
+                            capResult.subst) _
+                        simpa [Ty.fcv] using pairedCapRange_comp
+                          (pairedCapRange_mono capResult.inputRange
+                            (annotated_capWithin
+                              (leftTarget := leftTarget)
+                              (rightTarget := rightTarget)))
+                          targetResult.capRange
+                          (annotated_zonkedCapWithin capResult)
+                      targetRange := by
+                        simpa [Ty.ftv] using pairedTyRange_seq
+                          (later := targetResult.subst)
+                          (earlier :=
+                            Subst.mk capResult.subst TySubst.id)
+                          (pairedTyRange_id
+                            (leftTarget.ftv ++ rightTarget.ftv))
+                          targetResult.targetRange
+                          (annotated_targetWithin capResult.subst)
+                      targetCapRange := by
+                        simpa [Ty.fcv] using pairedTyCapRange_seq
+                          (later := targetResult.subst)
+                          (earlier :=
+                            Subst.mk capResult.subst TySubst.id)
+                          (pairedTyCapRange_id
+                            ((leftCap.fcv ++ leftTarget.fcv) ++
+                              (rightCap.fcv ++ rightTarget.fcv)))
+                          targetResult.capRange
+                          targetResult.targetCapRange
+                          (annotated_zonkedCapWithin capResult)
                       sound := by
                         rw [subst_apply_matcher, subst_apply_matcher]
                         have hcap :
@@ -1694,6 +2205,15 @@ def solvePairedTy :
                       capSupport :=
                         comp_capSupport capResult.capSupport
                           targetResult.capSupport
+                      capSupportInput := by
+                        intro varId membership
+                        rcases List.mem_append.mp membership with
+                          capMem | targetMem
+                        · simpa [Ty.fcv] using annotated_capWithin varId
+                            (capResult.supportInput varId capMem)
+                        · simpa [Ty.fcv] using
+                            annotated_zonkedCapWithin capResult varId
+                              (targetResult.capSupportInput varId targetMem)
                       targetSupportVars := targetResult.targetSupportVars
                       targetSupport := by
                         simpa using seq_targetSupport
@@ -1703,6 +2223,42 @@ def solvePairedTy :
                           (laterVars := targetResult.targetSupportVars)
                           (TySubst.id_supportWithin [])
                           targetResult.targetSupport
+                      targetSupportInput := by
+                        intro varId membership
+                        simpa [Ty.ftv] using annotated_targetWithin
+                          capResult.subst varId
+                            (targetResult.targetSupportInput varId membership)
+                      capRange := by
+                        change Unification.CapRange
+                          (CapSubst.comp targetResult.subst.cap
+                            capResult.subst) _
+                        simpa [Ty.fcv] using pairedCapRange_comp
+                          (pairedCapRange_mono capResult.inputRange
+                            (annotated_capWithin
+                              (leftTarget := leftTarget)
+                              (rightTarget := rightTarget)))
+                          targetResult.capRange
+                          (annotated_zonkedCapWithin capResult)
+                      targetRange := by
+                        simpa [Ty.ftv] using pairedTyRange_seq
+                          (later := targetResult.subst)
+                          (earlier :=
+                            Subst.mk capResult.subst TySubst.id)
+                          (pairedTyRange_id
+                            (leftTarget.ftv ++ rightTarget.ftv))
+                          targetResult.targetRange
+                          (annotated_targetWithin capResult.subst)
+                      targetCapRange := by
+                        simpa [Ty.fcv] using pairedTyCapRange_seq
+                          (later := targetResult.subst)
+                          (earlier :=
+                            Subst.mk capResult.subst TySubst.id)
+                          (pairedTyCapRange_id
+                            ((leftCap.fcv ++ leftTarget.fcv) ++
+                              (rightCap.fcv ++ rightTarget.fcv)))
+                          targetResult.capRange
+                          targetResult.targetCapRange
+                          (annotated_zonkedCapWithin capResult)
                       sound := by
                         rw [subst_apply_slot, subst_apply_slot]
                         have hcap :
@@ -1806,8 +2362,13 @@ def solvePairedTyList :
         subst := Subst.id
         capSupportVars := []
         capSupport := CapSubst.id_supportWithin []
+        capSupportInput := by simp
         targetSupportVars := []
         targetSupport := TySubst.id_supportWithin []
+        targetSupportInput := by simp
+        capRange := pairedCapRange_id _
+        targetRange := pairedTyRange_id _
+        targetCapRange := pairedTyCapRange_id _
         sound := rfl
         globalUniversal := by
           intro U _
@@ -1841,12 +2402,42 @@ def solvePairedTyList :
                   headResult.capSupportVars ++ tailResult.capSupportVars
                 capSupport :=
                   comp_capSupport headResult.capSupport tailResult.capSupport
+                capSupportInput :=
+                  seq_supportInput
+                    (fun varId membership => list_headCapWithin varId
+                      (headResult.capSupportInput varId membership))
+                    tailResult.capSupportInput
+                    (list_tailCapWithin headResult)
                 targetSupportVars :=
                   headResult.targetSupportVars ++
                     tailResult.targetSupportVars
                 targetSupport :=
                   seq_targetSupport headResult.targetSupport
                     tailResult.targetSupport
+                targetSupportInput :=
+                  seq_supportInput
+                    (fun varId membership => list_headTargetWithin varId
+                      (headResult.targetSupportInput varId membership))
+                    tailResult.targetSupportInput
+                    (list_tailTargetWithin headResult)
+                capRange :=
+                  pairedCapRange_comp
+                    (pairedCapRange_mono headResult.capRange
+                      list_headCapWithin)
+                    tailResult.capRange
+                    (list_tailCapWithin headResult)
+                targetRange :=
+                  pairedTyRange_seq
+                    (pairedTyRange_mono headResult.targetRange
+                      list_headTargetWithin)
+                    tailResult.targetRange
+                    (list_tailTargetWithin headResult)
+                targetCapRange :=
+                  pairedTyCapRange_seq
+                    (pairedTyCapRange_mono headResult.targetCapRange
+                      list_headCapWithin)
+                    tailResult.capRange tailResult.targetCapRange
+                    (list_tailCapWithin headResult)
                 sound := by
                   have hfun : (Subst.seq tailResult.subst
                         headResult.subst).apply =
@@ -2538,6 +3129,83 @@ theorem mguPairedTy_capSupport
         simpa [hsolve] using hsuccess
       subst S
       simpa [hsolve] using result.capSupport
+
+/-- Every variable in the executable capability-support ledger comes from
+the paired input constraint. -/
+theorem mguPairedTy_capSupportInput
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) :
+    ∀ varId, varId ∈ mguPairedTyCapSupport ledger left right →
+      varId ∈ left.fcv ++ right.fcv := by
+  unfold mguPairedTy at hsuccess
+  unfold mguPairedTyCapSupport
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      intro varId membership
+      simpa [hsolve] using result.capSupportInput varId membership
+
+/-- Every variable in the executable target-support ledger comes from the
+paired input constraint. -/
+theorem mguPairedTy_supportInput
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) :
+    ∀ varId, varId ∈ mguPairedTySupport ledger left right →
+      varId ∈ left.ftv ++ right.ftv := by
+  unfold mguPairedTy at hsuccess
+  unfold mguPairedTySupport
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      intro varId membership
+      simpa [hsolve] using result.targetSupportInput varId membership
+
+/-- Capability images returned by paired unification mention only their
+source variable or capability variables from the input constraint. -/
+theorem mguPairedTy_capRange
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) :
+    Unification.CapRange S.cap (left.fcv ++ right.fcv) := by
+  unfold mguPairedTy at hsuccess
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by simpa [hsolve] using hsuccess
+      subst S
+      exact result.capRange
+
+/-- Target variables in target images returned by paired unification are the
+source variable or target variables from the input constraint. -/
+theorem mguPairedTy_targetRange
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) :
+    Unification.TyRange S.target (left.ftv ++ right.ftv) := by
+  unfold mguPairedTy at hsuccess
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by simpa [hsolve] using hsuccess
+      subst S
+      exact result.targetRange
+
+/-- Capability variables in target images returned by paired unification
+come from the input constraint. -/
+theorem mguPairedTy_targetCapRange
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) :
+    Unification.TyCapRange S.target (left.fcv ++ right.fcv) := by
+  unfold mguPairedTy at hsuccess
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by simpa [hsolve] using hsuccess
+      subst S
+      exact result.targetCapRange
 
 /-! ## Executable regression checks
 
