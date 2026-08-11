@@ -370,6 +370,46 @@ theorem alignTypesCore_ddAlignTypesRun
     | exact alignTypesCore_ordinary_ddAlignTypesRun
         (by simp [alignPairClass, leftEq, rightEq]) success
 
+/-- Lift the complete type-alignment core through its event-only executable
+wrapper.  Recording the alignment event changes none of the DD state indices. -/
+theorem alignTypes_ddAlignTypesRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (success : alignTypes state origin left right = some final) :
+    DDAlignTypesRun left right state final := by
+  unfold alignTypes at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨aligned, coreSuccess, finished⟩
+  have finalEq : aligned.recordEvent (.typeAlignment
+      state.trace.solves.length aligned.trace.solves.length left right
+      (state.prevailing.apply left) (state.prevailing.apply right)) = final :=
+    Option.some.inj finished
+  subst final
+  simpa [DDAlignTypesRun] using
+    (alignTypesCore_ddAlignTypesRun coreSuccess)
+
+/-- Reconstruct the ordinary checking fallback.  The demand class excludes
+matcher-to-slot coercion, while the pair class excludes the homogeneous slot
+branch; the remaining executable path is the event-wrapped type alignment. -/
+theorem alignAtSlot_ordinary_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty}
+    (demand : demandClass (state.prevailing.apply raw)
+      (state.prevailing.apply expected) = .ordinary)
+    (pairClass : alignPairClass (state.prevailing.apply raw)
+      (state.prevailing.apply expected) = .ordinary)
+    (success : alignAtSlot state origin raw expected = some final) :
+    DDAlignRun raw expected state final := by
+  unfold alignAtSlot at success
+  simp only at success
+  split at success
+  · simp_all [demandClass, productMatcherDuals?, productSlotDuals?]
+  · simp_all [alignPairClass]
+  · rcases alignTypes_ddAlignTypesRun success with
+      ⟨supplyEq, ledgerEq, aligned⟩
+    exact ⟨supplyEq, ledgerEq,
+      DDAlignWithLedger.ordinary demand aligned⟩
+
 /-- The executable one-way solver returns exactly the origin-safe delta used
 by the DD matcher-to-slot rule. -/
 theorem solveResolvedWithLedger_originSafeOneWayDelta
