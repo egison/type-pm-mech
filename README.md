@@ -230,7 +230,8 @@ ledgerから局所的にtransportする補題と，variable／literal／`somethi
 `something`，lambda，tuple，fix，application，`fixMatcher`，constructor／primitive，synthesis／checking
 listの構造規則に加え，expression leafを持たないdata／primitive patternの4 familyについて無前提の
 相互closureまで閉じている．user patternもvariable／wildcard／embed／tuple／listまで，matcher armも
-pattern・body・tailの再帰合成まで拡張済みである．この整理に合わせ，
+pattern・body・tailの再帰合成まで拡張済みであり，value patternもchild expressionのlater-cut
+erasureから構造的に合成できる．この整理に合わせ，
 `RuntimeTyping`と`ValueTy`から実装solverの
 raw certificateとglobal `VariablePost`を除き，matcher-to-slotは終端`CapabilityDemand`，
 slot-to-slotは終端型等式だけへ消去した．variable leafでは，fresh instanceのcapability binderが
@@ -239,9 +240,18 @@ slot-to-slotは終端型等式だけへ消去した．variable leafでは，fres
 前後のsubstitutionがboundedかつsolvedで，actual marked ledgerに対するpostがadmissibleでも，
 substitution rangeがscheme binderへ入ると合成則が壊れる具体的なLean反例を固定した．したがって，
 残るvariable／`let`にはno-captureなbinder provenance（または真のalpha-renaming）が必要である．
+必要なrange hygieneをcap→cap，type→cap，type→typeの3経路に分けた`Scheme.NoCapture`と，そこから
+scheme substitutionの逐次合成を得る定理を実装済みである．一方，lookup時点がno-captureでも，
+後続のadmissible suffixが新たにbinder captureを起こしてvalue-flow instanceを失わせる第二反例も
+固定している．したがって，過去のleaf-local premiseでは足りず，context中の各scheme／free variable
+ごとのavoidanceを後続solve全体で保存する必要がある．
 clause側ではfinal matcher capabilityとshape evidenceをmatcher finalizationから渡す必要があり，
 matcher本体ではscoped rename-only postをshape／clause transportが使うtotal renamingへ持ち上げる補題が
-未完了である．これらを解決して残るuser pattern，clause，matcherを相互に閉じることが次のcutである．
+必要である．supply cut未満でvariable-onlyなpostをcut以上identityのtotal postへ拡張し，boundedな
+capability／type／scheme／context上で元のpostと一致する補題は実装済みである．ただしproducerに
+現れないstructural leafまでfreezeされるわけではないため，matcher全体へ適用するには有限な関連leaf
+だけを追跡するか，clauseを最終cutで直接再構成する必要がある．これらを解決して残るuser pattern，
+clause，matcherを相互に閉じることが次のcutである．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：

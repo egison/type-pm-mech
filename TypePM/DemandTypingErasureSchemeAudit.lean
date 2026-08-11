@@ -109,6 +109,29 @@ theorem prevailing_idempotent : prevailing.Idempotent := by
 theorem sourceScheme_bounded : sourceScheme.BoundedBy inputSupply :=
   rawScheme_bounded.applySubst prevailing_bounded
 
+/-- The prefix collision is itself permitted by the current chronological
+post invariant: both affected ambient identifiers are structural. -/
+theorem prevailing_admissible : DDErasure.AdmissiblePostBetween
+    inputSupply inputSupply beforeLedger beforeLedger prevailing := by
+  refine
+    { supplyExtends := SupplyExtends.refl inputSupply
+      bounded := prevailing_bounded
+      refines := DDLedger.RefinesBelow.refl inputSupply beforeLedger
+      cap := ?_ }
+  rintro ⟨varId⟩ below
+  change varId < 2 at below
+  have cases : varId = 0 ∨ varId = 1 := by omega
+  rcases cases with zero | one
+  · subst varId
+    simp [beforeLedger]
+  · subst varId
+    simp [beforeLedger]
+
+theorem collision_prefix_stateFactorization : DDErasure.StateFactorization
+    inputSupply Subst.id beforeLedger inputSupply prevailing beforeLedger := by
+  refine ⟨prevailing, ?_, prevailing_admissible⟩
+  rw [Subst.seq_id_right]
+
 theorem post_bounded : post.BoundedBy lookupSupply := by
   rw [lookupSupply_shape]
   refine ⟨?_, ?_, ?_, ?_⟩

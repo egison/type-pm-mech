@@ -6,6 +6,84 @@ import TypePM.DemandTypingRuntimeErasureExpr
 
 namespace TypePM
 
+theorem DDAlignDualWithLedger.output_equal
+    {ledger : CapabilityOriginLedger} {S S' : Subst}
+    {left right : Dual}
+    (aligned : DDAlignDualWithLedger ledger S left right S') :
+    left.applySubst S' = right.applySubst S' := by
+  cases aligned with
+  | mk capSafe targetsAligned =>
+      rename_i capDelta
+      have capAtMiddle :
+          (Subst.seq ⟨capDelta, TySubst.id⟩ S).apply
+              (.matcher left.cap .unit) =
+            (Subst.seq ⟨capDelta, TySubst.id⟩ S).apply
+              (.matcher right.cap .unit) := by
+        simp only [Subst.apply_matcher, Subst.apply_unit]
+        change Ty.matcher (left.cap.apply (CapSubst.comp capDelta S.cap))
+            .unit =
+          Ty.matcher (right.cap.apply (CapSubst.comp capDelta S.cap)) .unit
+        rw [Cap.apply_comp, Cap.apply_comp]
+        exact congrArg (fun capability => Ty.matcher capability .unit)
+          capSafe.exact.1.1
+      have capAtFinal := targetsAligned.erase.replayExtends.apply_eq capAtMiddle
+      have capEquality : left.cap.apply S'.cap = right.cap.apply S'.cap := by
+        exact (Ty.matcher.inj capAtFinal).1
+      have targetEquality := targetsAligned.output_equal
+      cases left
+      cases right
+      simp only [Dual.applySubst, Dual.apply] at capEquality targetEquality ⊢
+      rw [capEquality, targetEquality]
+
+theorem DDAlignBindingsWithLedger.output_equal
+    {ledger : CapabilityOriginLedger} {S S' : Subst}
+    {left right : MonoCtx}
+    (aligned : DDAlignBindingsWithLedger ledger S left right S') :
+    left.applySubst S' = right.applySubst S' := by
+  induction aligned with
+  | nil => rfl
+  | @cons S leftEntry rightEntry lefts rights S₁ S' names head tail ih =>
+      have headAtFinal := tail.erase.replayExtends.apply_eq head.output_equal
+      simp only [MonoCtx.applySubst, List.map_cons]
+      have entryEquality :
+          (leftEntry.1, S'.apply leftEntry.2) =
+            (rightEntry.1, S'.apply rightEntry.2) := by
+        exact Prod.ext names headAtFinal
+      rw [entryEquality]
+      congr 1
+
+private theorem liftDualEquality
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {left right : Dual}
+    (factorization : DDErasure.StateFactorization q S ledger q' S' ledger')
+    (equality : left.applySubst S = right.applySubst S) :
+    left.applySubst S' = right.applySubst S' := by
+  rcases factorization with ⟨post, rfl, _admissible⟩
+  simpa only [Dual.applySubst_seq] using
+    congrArg (Dual.applySubst post) equality
+
+private theorem liftBindingsEquality
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {left right : MonoCtx}
+    (factorization : DDErasure.StateFactorization q S ledger q' S' ledger')
+    (equality : left.applySubst S = right.applySubst S) :
+    left.applySubst S' = right.applySubst S' := by
+  rcases factorization with ⟨post, rfl, _admissible⟩
+  simpa only [MonoCtx.applySubst_seq] using
+    congrArg (MonoCtx.applySubst post) equality
+
+private theorem admissible_before_markFreshCap
+    {q final : InferenceBase.FreshSupply} {post : Subst}
+    {ledger finalLedger : CapabilityOriginLedger}
+    (admissible : DDErasure.AdmissiblePostBetween
+      { q with nextCap := q.nextCap + 1 } final
+      (DDLedger.markFreshCap ledger q) finalLedger post) :
+    DDErasure.AdmissiblePostBetween q final ledger finalLedger post := by
+  have allocation := DDErasure.AdmissiblePostBetween.ofTransition
+    (SupplyExtends.bumpCap q 1)
+    (DDLedger.RefinesBelow.markFreshCap q ledger)
+  simpa only [Subst.seq_id_right] using allocation.seq admissible
+
 namespace DDPatternOrigin
 
 def RuntimeErasureUnder
@@ -72,6 +150,37 @@ theorem runtimeErasureUnder_embed
     (prevailing := finalSubst) lookup
   rw [PatternCtx.find?_applySubst, lookup]
   rfl
+
+theorem runtimeErasureUnder_pval_of_expression
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {expression : Expr} {target : Ty} {q₁ : InferenceBase.FreshSupply}
+    {S₁ : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {expressionRaw : DDSynth signature q S
+      (bindings.toContext ++ context) expression target q₁ S₁}
+    (expressionOrigin : DDSynthOrigin signature expressionRaw ledger ledger₁)
+    (expressionUnder : DDSynthOrigin.RuntimeErasureUnder expressionOrigin)
+    (freshCap : FreshCap signature context parameters bindings
+      ⟨q₁.nextCap⟩)
+    (separate : ⟨q₁.nextCap⟩ ∉ target.fcv) :
+    RuntimeErasureUnder
+      (@DDPatternOrigin.pval signature parameters q S context parameters
+        bindings expression target q₁ S₁ ledger ledger₁ expressionRaw
+        expressionOrigin) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have expressionAdmissible := admissible_before_markFreshCap admissible
+  have expressionAtFinal := expressionUnder terminalEquation
+    expressionAdmissible
+  have expressionAtFinal' : RuntimeTyping signature
+      ((bindings.applySubst finalSubst).toContext ++
+        context.applySubst finalSubst)
+      expression (finalSubst.apply target) := by
+    simpa only [Context.applySubst_append,
+      MonoCtx.toContext_applySubst] using expressionAtFinal
+  simpa only [Dual.cap_applySubst, Dual.target_applySubst] using
+    (TerminalPatternResolution.pval (prevailing := finalSubst)
+      (actualContext := context.applySubst finalSubst) freshCap separate
+      expressionAtFinal')
 
 end DDPatternOrigin
 

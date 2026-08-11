@@ -236,7 +236,8 @@ state-freeな`RuntimeTyping`への初期erasure補題を構成済みである．
 literal，`something`，lambda，tuple，fix，application，`fixMatcher`，constructor／primitive，
 expression list，checking cut／listへ拡張済みであり，data／primitive patternの4 familyは無前提の
 相互closureまで完成している．user patternのexpression-independentなleaf／tuple／listとmatcher armの
-再帰合成も同じlater-cut invariantを持つ．
+再帰合成も同じlater-cut invariantを持ち，value patternはchild expressionのlater-cut erasureから
+構造的に合成できる．
 
 本質的な残課題は，完成したstate factorizationを使い，Origin derivationの各constructorから
 `RuntimeTyping` constructorへ情報を射影する相互帰納証明を完成することである．この射影では
@@ -247,10 +248,14 @@ variable-only性を回収できるが，capture-avoidingな`Scheme.applySubst`�
 `AdmissiblePostBetween`だけからは従わない．context／schemeと前後のsubstitutionのboundedness，
 solved form，actual marked ledgerへのadmissibilityをすべて満たしながら合成則が壊れるbinder-capture
 反例もLeanで固定した．そのため，局所的なscheme compositionを明示する健全なtransport補題までを
-切り出し，no-captureなbinder provenanceまたはalpha-renamingの設計判断を残している．clauseには
+切り出した．必要十分なrange hygieneの3経路を表す`Scheme.NoCapture`から逐次合成則を証明済みで
+あるが，lookup時点がno-captureでも後続のadmissible suffixがcaptureを起こしてvalue-flow instanceを
+失わせる第二反例がある．したがって，context中のschemeごとのavoidanceを後続solveで保存する状態が
+必要であり，過去のleaf-local premiseだけでは足りない．clauseには
 matcher finalizationが選ぶcapability／shape evidence，matcher producerにはscoped rename-only postを
-total renamingへ拡張する補題が必要である．`RuntimeTyping` derivationの存在をDDのpremiseにする定義は
-循環するため採らない．
+total renamingへ拡張する補題が必要である．cut以上をidentityでmaskするtotalizationとbounded object上の
+agreementは証明済みだが，producer外のstructural leafには適用できない．`RuntimeTyping` derivationの
+存在をDDのpremiseにする定義は循環するため採らない．
 
 ## 6. dynamics と安全性
 
