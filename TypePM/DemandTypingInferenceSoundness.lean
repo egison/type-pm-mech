@@ -550,6 +550,41 @@ theorem productMatcherDuals?_apply
   simpa [productMatcherDuals?, matcherDual?, Subst.apply_prod,
     List.map_map, Dual.applySubst, Dual.apply, Function.comp_def] using mapped
 
+/-- A raw product-slot view is preserved by the prevailing paired
+substitution, with that substitution applied pointwise to its duals. -/
+theorem productSlotDuals?_apply
+    {raw : Ty} {duals : List Dual} {S : Subst}
+    (rawView : productSlotDuals? raw = some duals) :
+    productSlotDuals? (S.apply raw) =
+      some (duals.map (Dual.applySubst S)) := by
+  have rawShape := productSlotDuals?_sound rawView
+  subst raw
+  clear rawView
+  have mapped : List.mapM (fun dual : Dual =>
+      some (Dual.applySubst S dual)) duals =
+      some (duals.map (Dual.applySubst S)) := by
+    induction duals with
+    | nil => rfl
+    | cons dual duals induction => simp [List.mapM_cons, induction]
+  simpa [productSlotDuals?, slotDual?, Subst.apply_prod,
+    List.map_map, Dual.applySubst, Dual.apply, Function.comp_def] using mapped
+
+/-- A nonempty raw product of slots cannot become a product of matchers under
+substitution.  The explicit raw matcher failure excludes the empty product,
+for which both product recognizers succeed vacuously. -/
+theorem productMatcherDuals?_apply_none_of_productSlot
+    {raw : Ty} {duals : List Dual} {S : Subst}
+    (matcherNone : productMatcherDuals? raw = none)
+    (slotView : productSlotDuals? raw = some duals) :
+    productMatcherDuals? (S.apply raw) = none := by
+  have rawShape := productSlotDuals?_sound slotView
+  subst raw
+  cases duals with
+  | nil => simp [productMatcherDuals?] at matcherNone
+  | cons dual duals =>
+      simp [productMatcherDuals?, matcherDual?, Subst.apply_prod,
+        Subst.apply_slot]
+
 /-- Reconstruct the product-matcher lift from the executable synthetic unary
 matcher source.  The DD rule remains indexed by the original product type. -/
 theorem alignAtSlot_productMatcherLift_ddAlignRun
@@ -591,6 +626,75 @@ theorem alignAtSlot_productMatcherLift_ddAlignRun
           expectedView
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
+
+/-- Reconstruct the slot-tuple lift from the executable synthetic unary slot.
+The DD rule remains indexed by the original raw product of slots. -/
+theorem alignAtSlot_slotTupleLift_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (rawView : productSlotDuals? raw = some duals)
+    (expectedView : state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (demand : demandClass (state.prevailing.apply raw)
+      (state.prevailing.apply expected) = .slotTupleLift)
+    (success : alignAtSlot state origin (slotTupleTarget duals) expected =
+      some final) :
+    DDAlignRun raw expected state final := by
+  let resolvedDuals := duals.map (Dual.applySubst state.prevailing)
+  have sourceView : state.prevailing.apply (slotTupleTarget duals) =
+      .slot (.prod (resolvedDuals.map Dual.cap))
+        (.prod (resolvedDuals.map Dual.target)) := by
+    simp [resolvedDuals, slotTupleTarget, Subst.apply_slot,
+      Cap.apply_prod, Subst.apply_prod, List.map_map, Dual.applySubst,
+      Dual.apply, Function.comp_def]
+  unfold alignAtSlot at success
+  simp only [sourceView, expectedView] at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨middle, capSuccess, targetBranchSuccess⟩
+  rcases runResolvedConstraint_capEq_exact capSuccess with
+    ⟨capStep, _, middleEq, capTargetId, exactCap⟩
+  subst middle
+  split at targetBranchSuccess <;> try contradiction
+  rename_i afterSource afterRequested ignoredSourceCap adjustedSourceTarget
+    ignoredRequestedCap adjustedRequestedTarget afterSourceView
+    afterRequestedView
+  rcases runResolvedConstraint_targetEq_exact targetBranchSuccess with
+    ⟨targetStep, _, finalEq, exactTarget⟩
+  subst final
+  have capDeltaEq : capStep.delta =
+      ⟨capStep.delta.cap, TySubst.id⟩ := by
+    rw [← capTargetId]
+  have adjustedSourceEq : adjustedSourceTarget =
+      (Ty.prod (resolvedDuals.map Dual.target)).applyCapability
+        capStep.delta.cap := by
+    have applied :
+        (state.recordSolve capStep).prevailing.apply
+            (slotTupleTarget duals) =
+          capStep.delta.apply
+            (state.prevailing.apply (slotTupleTarget duals)) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [sourceView, afterSourceView] at applied
+    simp only [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+    exact Ty.slot.inj applied |>.2
+  have adjustedRequestedEq : adjustedRequestedTarget =
+      consumerTarget.applyCapability capStep.delta.cap := by
+    have applied :
+        (state.recordSolve capStep).prevailing.apply expected =
+          capStep.delta.apply (state.prevailing.apply expected) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [expectedView, afterRequestedView] at applied
+    simp only [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+    exact Ty.slot.inj applied |>.2
+  refine ⟨rfl, rfl, ?_⟩
+  rw [InferState.prevailing_recordSolve,
+    InferState.prevailing_recordSolve, capDeltaEq]
+  exact DDAlignWithLedger.slotTupleLift demand
+    (by simpa [resolvedDuals] using productSlotDuals?_apply rawView)
+    expectedView exactCap
+    (adjustedSourceEq ▸ adjustedRequestedEq ▸ exactTarget)
 
 /-- A type whose cut-resolved view is a matcher cannot be one of the raw
 product coercion sources, so the executable selector leaves it unchanged. -/
@@ -657,6 +761,51 @@ theorem alignExprResultAtExpected_productMatcherLift_ddAlignRun
       simp only [sourceEq, alignmentEq, Option.some.injEq] at success
       subst final
       rcases alignAtSlot_productMatcherLift_ddAlignRun rawView expectedView
+          alignmentEq with
+        ⟨supplyEq, ledgerEq, alignedDD⟩
+      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+        by simpa using alignedDD⟩
+
+/-- Lift the raw product-slot branch through coercion-source selection and
+the event-only expected-alignment wrapper.  Raw matcher failure fixes the
+empty-product precedence in favor of this slot-tuple branch. -/
+theorem alignExprResultAtExpected_slotTupleLift_ddAlignRun
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final : InferState} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (matcherNone : productMatcherDuals? expressionResult.target = none)
+    (rawView : productSlotDuals? expressionResult.target = some duals)
+    (expectedView : expressionResult.state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final) :
+    DDAlignRun expressionResult.target expected expressionResult.state final := by
+  have sourceEq : expectedCoercionSource expressionResult.state
+      expressionResult.target expected = slotTupleTarget duals := by
+    simp [expectedCoercionSource, matcherNone, rawView, expectedView]
+  have resolvedMatcherNone : productMatcherDuals?
+      (expressionResult.state.prevailing.apply expressionResult.target) =
+        none :=
+    productMatcherDuals?_apply_none_of_productSlot matcherNone rawView
+  have resolvedSlotView : productSlotDuals?
+      (expressionResult.state.prevailing.apply expressionResult.target) =
+        some (duals.map
+          (Dual.applySubst expressionResult.state.prevailing)) :=
+    productSlotDuals?_apply rawView
+  have demand : demandClass
+      (expressionResult.state.prevailing.apply expressionResult.target)
+      (expressionResult.state.prevailing.apply expected) =
+        .slotTupleLift := by
+    simp [demandClass, resolvedMatcherNone, resolvedSlotView, expectedView]
+  unfold alignExprResultAtExpected at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type")
+      (slotTupleTarget duals) expected with
+  | none => simp [sourceEq, alignmentEq] at success
+  | some aligned =>
+      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
+      subst final
+      rcases alignAtSlot_slotTupleLift_ddAlignRun rawView expectedView demand
           alignmentEq with
         ⟨supplyEq, ledgerEq, alignedDD⟩
       exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
