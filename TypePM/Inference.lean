@@ -422,6 +422,17 @@ theorem rangeFixedOnCheck_sound
   · rw [support varId member]
     rfl
 
+/-- The finite range check accepts every genuinely range-fixed paired
+substitution, independently of the chosen certified support domain. -/
+theorem rangeFixedOnCheck_complete
+    {substitution : Subst} {domain : List TypePM.TyVar}
+    (fixed : substitution.RangeFixed) :
+    rangeFixedOnCheck substitution domain = true := by
+  unfold rangeFixedOnCheck
+  apply List.all_eq_true.mpr
+  intro varId _membership
+  exact decide_eq_true (fixed varId)
+
 /-- Sequential replay agrees with chronological application unconditionally. -/
 theorem replayFrom_apply
     (prevailing : Subst) (steps : List SolveStep) (target : Ty) :
@@ -1379,6 +1390,16 @@ theorem capCompatibleCheck_sound
       subst merged
       exact ⟨projected, projectedEq, mergedEq⟩
     · contradiction
+
+/-- Declarative constructor compatibility is also sufficient for the
+executable compatibility check. -/
+theorem capCompatibleCheck_complete
+    {observable : Shape.Observability}
+    {entry : PatternCtorScheme observable} {children : List Cap}
+    {outer : Cap} (compatible : entry.CapCompatible children outer) :
+    capCompatibleCheck entry children outer = true := by
+  rcases compatible with ⟨projected, projectedEq, mergedEq⟩
+  simp [capCompatibleCheck, projectedEq, mergedEq, evidenceEq_eq_true]
 
 mutual
 

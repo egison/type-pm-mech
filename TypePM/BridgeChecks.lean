@@ -17,10 +17,10 @@ namespace Reconstruction
 
 /-! ## A target-only declarative view of a solver suffix -/
 
-private def targetOnlyReplay (steps : List SolveStep) : Subst :=
+def targetOnlyReplay (steps : List SolveStep) : Subst :=
   Subst.mk CapSubst.id (replay steps).target
 
-private theorem targetOnlyReplay_variable (steps : List SolveStep) :
+theorem targetOnlyReplay_variable (steps : List SolveStep) :
     VariablePost (targetOnlyReplay steps) := by
   constructor
   intro varId
@@ -30,7 +30,7 @@ private theorem targetOnlyReplay_variable (steps : List SolveStep) :
 
 /-- Binder-local capability candidate obtained by replaying the fresh image
 allocated from an event's incoming supply. -/
-private def terminalCapCandidate
+def terminalCapCandidate
     (state : InferState) (supply : InferenceBase.FreshSupply)
     (binders : List CapVar) : CapSubst :=
   fun varId =>
@@ -41,7 +41,7 @@ private def terminalCapCandidate
 
 /-- Binder-local target candidate obtained from the corresponding fresh
 ordinary image. -/
-private def terminalTyCandidate
+def terminalTyCandidate
     (state : InferState) (supply : InferenceBase.FreshSupply)
     (binders : List TypePM.TyVar) : TySubst :=
   fun varId =>
@@ -50,28 +50,28 @@ private def terminalTyCandidate
     else
       .var varId
 
-private theorem terminalCapCandidate_support
+theorem terminalCapCandidate_support
     (state : InferState) (supply : InferenceBase.FreshSupply)
     (binders : List CapVar) :
     (terminalCapCandidate state supply binders).SupportWithin binders := by
   intro varId outside
   simp [terminalCapCandidate, outside]
 
-private theorem terminalTyCandidate_support
+theorem terminalTyCandidate_support
     (state : InferState) (supply : InferenceBase.FreshSupply)
     (binders : List TypePM.TyVar) :
     (terminalTyCandidate state supply binders).SupportWithin binders := by
   intro varId outside
   simp [terminalTyCandidate, outside]
 
-private def capBinderImagesVariableCheck
+def capBinderImagesVariableCheck
     (binders : List CapVar) (substitution : CapSubst) : Bool :=
   binders.all fun varId =>
     match substitution varId with
     | .var _ => true
     | _ => false
 
-private theorem capBinderImagesVariableCheck_sound
+theorem capBinderImagesVariableCheck_sound
     {binders : List CapVar} {substitution : CapSubst}
     (checked : capBinderImagesVariableCheck binders substitution = true) :
     ∀ varId, varId ∈ binders →
@@ -82,10 +82,21 @@ private theorem capBinderImagesVariableCheck_sound
   | var image => exact ⟨image, rfl⟩
   | _ => simp [equation] at accepted
 
+theorem capBinderImagesVariableCheck_complete
+    {binders : List CapVar} {substitution : CapSubst}
+    (variables : ∀ varId, varId ∈ binders ->
+      ∃ image, substitution varId = .var image) :
+    capBinderImagesVariableCheck binders substitution = true := by
+  unfold capBinderImagesVariableCheck
+  apply List.all_eq_true.mpr
+  intro varId membership
+  rcases variables varId membership with ⟨image, equation⟩
+  simp [equation]
+
 /-- Terminal variable selected for one canonical capability-binder position.
 The surrounding executable check guarantees that the default branch is never
 used by a successful certificate. -/
-private def terminalSchemeCapImage
+def terminalSchemeCapImage
     (state : InferState) (supply : InferenceBase.FreshSupply)
     {scheme : Scheme} (index : Fin scheme.capArity) : CapVar :=
   match state.prevailing.cap
@@ -94,7 +105,7 @@ private def terminalSchemeCapImage
   | _ => (Scheme.canonicalFreshOpening supply scheme).capImage index
 
 /-- Canonical expression-scheme opening transported to the terminal cut. -/
-private def terminalSchemeOpening
+def terminalSchemeOpening
     (state : InferState) (supply : InferenceBase.FreshSupply)
     (scheme : Scheme) : scheme.ValueOpening where
   capImage := terminalSchemeCapImage state supply
@@ -185,6 +196,85 @@ theorem traceInstanceSuffixCheck_sound
           argsResult := argsEq
           resultResult := resultEq }
   | _ => trivial
+
+/-- The canonical terminal witnesses selected by
+`traceInstanceSuffixCheck`.  This is intentionally stronger than
+`TraceInstanceSuffixConditions`: completeness must show that the recorded
+fresh opening itself, after terminal replay, is a valid witness. -/
+def CanonicalTraceInstanceSuffixConditions
+    (state : InferState) : Prop :=
+  ∀ event, event ∈ state.trace.events ->
+    match event with
+    | .schemeInstantiation solveCount supply _scheme name rawContext _context
+        _fixedCaps _fixedTys _reservedCaps _reservedTys fresh _capImages
+        _tyImages =>
+        solveCount ≤ state.trace.solves.length ∧
+        ∃ terminalScheme,
+          (rawContext.applySubst state.prevailing).find? name =
+              some terminalScheme ∧
+          (∀ varId,
+            varId ∈ Scheme.canonicalCapImages supply terminalScheme ->
+            ∃ image, state.prevailing.cap varId = .var image) ∧
+          terminalScheme.openValue
+              (terminalSchemeOpening state supply terminalScheme) =
+            state.prevailing.apply fresh
+    | .ctorInstantiation solveCount supply scheme args result _capImages =>
+        solveCount ≤ state.trace.solves.length ∧
+        let C := terminalCapCandidate state supply scheme.capBinders
+        let T := terminalTyCandidate state supply scheme.tyBinders
+        scheme.args.map (Subst.mk C T).apply =
+            args.map state.prevailing.apply ∧
+          (Subst.mk C T).apply scheme.result =
+            state.prevailing.apply result
+    | .dualInstantiation solveCount supply scheme _rawContext _rawParameters
+        _rawBindings _context _parameters _bindings _fixedCaps _fixedTys
+        _reservedCaps _reservedTys args result _capImages _tyImages =>
+        solveCount ≤ state.trace.solves.length ∧
+        let C := terminalCapCandidate state supply scheme.capBinders
+        let T := terminalTyCandidate state supply scheme.tyBinders
+        (∀ varId, varId ∈ scheme.capBinders ->
+          ∃ image, C varId = .var image) ∧
+        scheme.args.map (Dual.apply C T) =
+            args.map (Dual.applySubst state.prevailing) ∧
+          scheme.result.apply C T = result.applySubst state.prevailing
+    | _ => True
+
+theorem traceInstanceSuffixCheck_complete
+    {state : InferState}
+    (conditions : CanonicalTraceInstanceSuffixConditions state) :
+    traceInstanceSuffixCheck state = true := by
+  unfold traceInstanceSuffixCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event with
+  | schemeInstantiation solveCount supply scheme name rawContext context
+      fixedCaps fixedTys reservedCaps reservedTys fresh capImages tyImages =>
+      rcases accepted with
+        ⟨bound, terminalScheme, lookup, capVariables, terminalEq⟩
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      refine ⟨bound, ?_⟩
+      simp only [lookup, Bool.and_eq_true, decide_eq_true_eq]
+      exact ⟨capBinderImagesVariableCheck_complete capVariables,
+        terminalEq⟩
+  | ctorInstantiation solveCount supply scheme args result capImages =>
+      dsimp only at accepted
+      rcases accepted with ⟨bound, argsEq, resultEq⟩
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      exact ⟨⟨bound, argsEq⟩, resultEq⟩
+  | dualInstantiation solveCount supply scheme rawContext rawParameters
+      rawBindings context parameters bindings fixedCaps fixedTys reservedCaps
+      reservedTys args result capImages tyImages =>
+      dsimp only at accepted
+      rcases accepted with ⟨bound, capVariables, argsEq, resultEq⟩
+      simp only [instanceSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      exact ⟨⟨⟨bound,
+        capBinderImagesVariableCheck_complete capVariables⟩, argsEq⟩,
+        resultEq⟩
+  | _ => rfl
 
 /-! ## Ordinary and dual terminal equalities -/
 
@@ -310,6 +400,63 @@ private def slotAlignmentAtTerminalCheck
         | _ => false
     | _, _, _ => false
 
+/-- Exact terminal witness selected by the executable slot checker.  Unlike
+the reconstruction-facing `SlotAlignmentAtTerminal`, the coercion branch
+fixes its suffix witness to `targetOnlyReplay terminalSteps.tail`. -/
+inductive CanonicalSlotAlignmentAtTerminal
+    (localSteps terminalSteps : List SolveStep)
+    (inferred requested : Ty) : Prop where
+  | equal
+      (aligned : applyDeltas terminalSteps inferred =
+        applyDeltas terminalSteps requested) :
+      CanonicalSlotAlignmentAtTerminal localSteps terminalSteps inferred
+        requested
+  | matcherToSlot
+      {producerCap consumerCap : Cap}
+      {producerTarget consumerTarget : Ty} {step : SolveStep}
+      (inferredEq : inferred = .matcher producerCap producerTarget)
+      (requestedEq : requested = .slot consumerCap consumerTarget)
+      (localEq : localSteps = [step])
+      (constraintEq : step.constraint = .producerToSlot producerCap
+        producerTarget consumerCap consumerTarget)
+      (rangeFixed : step.delta.RangeFixed)
+      (producerResult :
+        applyDeltas terminalSteps (.matcher producerCap producerTarget) =
+          (targetOnlyReplay terminalSteps.tail).apply
+            (.matcher (producerCap.apply step.delta.cap)
+              (step.delta.apply producerTarget)))
+      (consumerResult :
+        applyDeltas terminalSteps (.slot consumerCap consumerTarget) =
+          (targetOnlyReplay terminalSteps.tail).apply
+            (.slot (consumerCap.apply step.delta.cap)
+              (step.delta.apply consumerTarget))) :
+      CanonicalSlotAlignmentAtTerminal localSteps terminalSteps inferred
+        requested
+
+theorem slotAlignmentAtTerminalCheck_complete
+    {localSteps terminalSteps : List SolveStep}
+    {inferred requested : Ty}
+    (conditions : CanonicalSlotAlignmentAtTerminal localSteps terminalSteps
+      inferred requested) :
+    slotAlignmentAtTerminalCheck localSteps terminalSteps inferred requested =
+      true := by
+  cases conditions with
+  | equal aligned =>
+      simp [slotAlignmentAtTerminalCheck, aligned]
+  | @matcherToSlot producerCap consumerCap producerTarget consumerTarget step
+      inferredEq requestedEq localEq constraintEq rangeFixed producerResult
+      consumerResult =>
+      subst inferred
+      subst requested
+      rw [localEq]
+      by_cases aligned :
+          applyDeltas terminalSteps (.matcher producerCap producerTarget) =
+            applyDeltas terminalSteps (.slot consumerCap consumerTarget)
+      · simp [slotAlignmentAtTerminalCheck, aligned]
+      · simp [slotAlignmentAtTerminalCheck, constraintEq,
+          rangeFixedOnCheck_complete rangeFixed, producerResult,
+          consumerResult]
+
 private theorem solveStep_producerToSlot_raw
     {step : SolveStep} {producerCap consumerCap : Cap}
     {producerTarget consumerTarget : Ty}
@@ -410,6 +557,36 @@ theorem traceSlotAlignmentCheck_sound
         (terminalSteps := solveSlice state.trace start state.trace.solves.length)
         (inferred := inferred) (requested := requested) finalChecked
   | _ => trivial
+
+/-- Every recorded expected-type cut has the canonical terminal witness used
+by the finite validator. -/
+def CanonicalTraceSlotAlignmentConditions (state : InferState) : Prop :=
+  ∀ event, event ∈ state.trace.events ->
+    match event with
+    | .slotAlignment start stop inferred requested =>
+        start ≤ stop ∧ stop ≤ state.trace.solves.length ∧
+        CanonicalSlotAlignmentAtTerminal
+          (solveSlice state.trace start stop)
+          (solveSlice state.trace start state.trace.solves.length)
+          inferred requested
+    | _ => True
+
+theorem traceSlotAlignmentCheck_complete
+    {state : InferState}
+    (conditions : CanonicalTraceSlotAlignmentConditions state) :
+    traceSlotAlignmentCheck state = true := by
+  unfold traceSlotAlignmentCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event with
+  | slotAlignment start stop inferred requested =>
+      rcases accepted with ⟨startStop, stopBound, terminal⟩
+      simp only [slotAlignmentEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      exact ⟨⟨startStop, stopBound⟩,
+        slotAlignmentAtTerminalCheck_complete terminal⟩
+  | _ => rfl
 
 /-! ## Matcher-finalization suffixes -/
 
