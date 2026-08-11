@@ -1570,10 +1570,9 @@ theorem DDClausesOrigin.factorize
 
 end
 
-mutual
-
-/-- Primitive-pattern origins factor recursively, including the capability
-allocation at each hole. -/
+/-- Public primitive-pattern closure.  The shared private core is declared
+before the expression/pattern mutual block so clause factorization can reuse
+it without duplicating the structural recursion. -/
 theorem DDPPatOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {expected : Ty} {holes : List Dual}
@@ -1584,34 +1583,7 @@ theorem DDPPatOrigin.factorize
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (expectedBounded : expected.BoundedBy q) :
     DDPPatOrigin.StateFactorization origin :=
-  match origin with
-  | .hole => DDPPatOrigin.stateFactorization_hole _ _ _ _ _
-  | .wild => DDErasure.StateFactorization.refl _ _ _
-  | .pval => DDErasure.StateFactorization.refl _ _ _
-  | @DDPPatOrigin.ctor _ q S _ _ expected entry _ _ _ _ _ ledger _ lookup
-      aligned _ childrenOrigin => by
-      have instBounded := instantiateCtorScheme_boundedBy (q := q)
-        ((closed.patternCtors lookup).boundedBy)
-      have extension := SupplyExtends.instantiateCtorScheme q entry.scheme
-      have S₁b := aligned.erase.boundedBy (Sb.mono extension)
-        instBounded.2 (expectedBounded.mono extension)
-      have alignmentFactorization := aligned.factorPost (Sb.mono extension)
-        instBounded.2 (expectedBounded.mono extension)
-      exact DDPPatOrigin.stateFactorization_ctor_of_children lookup aligned
-        childrenOrigin alignmentFactorization
-        (DDPPatsOrigin.factorize childrenOrigin closed S₁b instBounded.1)
-  | @DDPPatOrigin.tuple _ q S patterns expected _ _ _ _ _ ledger _ aligned _
-      childrenOrigin => by
-      have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
-      have extension := SupplyExtends.freshTargets patterns.length q
-      have productBounded := Ty.BoundedBy.prodOfForall targetsBounded
-      have S₁b := aligned.erase.boundedBy (Sb.mono extension)
-        productBounded (expectedBounded.mono extension)
-      have alignmentFactorization := aligned.factorPost (Sb.mono extension)
-        productBounded (expectedBounded.mono extension)
-      exact DDPPatOrigin.stateFactorization_tuple_of_children aligned
-        childrenOrigin alignmentFactorization
-        (DDPPatsOrigin.factorize childrenOrigin closed S₁b targetsBounded)
+  DDPPatOrigin.factorizeCore origin closed Sb expectedBounded
 
 /-- Primitive-pattern lists factor by recursively composing head and tail. -/
 theorem DDPPatsOrigin.factorize
@@ -1624,20 +1596,6 @@ theorem DDPPatsOrigin.factorize
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (targetsBounded : ∀ target ∈ targets, target.BoundedBy q) :
     DDPPatsOrigin.StateFactorization origin :=
-  match origin with
-  | .nil => DDErasure.StateFactorization.refl _ _ _
-  | .cons headOrigin tailOrigin disjoint => by
-      have headFactor := DDPPatOrigin.factorize headOrigin closed Sb
-        (targetsBounded _ (by simp))
-      obtain ⟨S₁b, _, _⟩ := headOrigin.erase.boundedBy closed Sb
-        (targetsBounded _ (by simp))
-      have tailFactor := DDPPatsOrigin.factorize tailOrigin closed S₁b
-        (fun target mem =>
-          (targetsBounded target (by simp [mem])).mono
-            headOrigin.erase.supplyExtends)
-      exact DDPPatsOrigin.stateFactorization_cons headOrigin tailOrigin
-        disjoint headFactor tailFactor
-
-end
+  DDPPatsOrigin.factorizeCore origin closed Sb targetsBounded
 
 end TypePM

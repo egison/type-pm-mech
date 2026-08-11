@@ -782,6 +782,30 @@ theorem stateFactorization_let_of_children
       (DDSynthOrigin.letE valueOrigin bodyOrigin stable) := by
   exact valueFactorization.trans bodyFactorization
 
+/-- Shared allocation/check/freeze skeleton for data constructors and
+primitives.  Their public Origin constructors differ only in the signature
+lookup that selects the same `CtorScheme`. -/
+private theorem stateFactorization_ctorLike
+    {q : InferenceBase.FreshSupply} {S : Subst} {scheme : CtorScheme}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger}
+    (childrenFactorization : DDErasure.StateFactorization
+      (InferenceBase.instantiateCtorScheme q scheme).supply S
+      (DDLedger.markCtorInstance ledger q scheme) q' S' ledger₁) :
+    DDErasure.StateFactorization q S ledger q' S'
+      (DDLedger.freezeExport ledger₁ S'
+        (Inference.freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2) := by
+  have allocation := DDErasure.StateFactorization.ofTransition
+    (S := S) (SupplyExtends.instantiateCtorScheme q scheme)
+    (DDLedger.RefinesBelow.markCtorInstance q ledger scheme)
+  have freezing := DDErasure.StateFactorization.ofTransition
+    (S := S') (SupplyExtends.refl q')
+    (DDLedger.RefinesBelow.freezeExport q' ledger₁ S'
+      (Inference.freshCapImages q scheme.capBinders)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2)
+  exact (allocation.trans childrenFactorization).trans freezing
+
 /-- A data constructor allocates its instance, checks the children, then
 freezes precisely the exported capability leaves. -/
 theorem stateFactorization_ctor_of_children
@@ -798,15 +822,7 @@ theorem stateFactorization_ctor_of_children
     (childrenFactorization :
       DDChecksOrigin.StateFactorization childrenOrigin) :
     StateFactorization (DDSynthOrigin.ctor lookup childrenOrigin) := by
-  have allocation := DDErasure.StateFactorization.ofTransition
-    (S := S) (SupplyExtends.instantiateCtorScheme q scheme)
-    (DDLedger.RefinesBelow.markCtorInstance q ledger scheme)
-  have freezing := DDErasure.StateFactorization.ofTransition
-    (S := S') (SupplyExtends.refl q')
-    (DDLedger.RefinesBelow.freezeExport q' ledger₁ S'
-      (Inference.freshCapImages q scheme.capBinders)
-      (InferenceBase.instantiateCtorScheme q scheme).value.2)
-  exact (allocation.trans childrenFactorization).trans freezing
+  exact stateFactorization_ctorLike childrenFactorization
 
 /-- Primitive application has the same allocation/check/freeze state shape
 as a data constructor. -/
@@ -824,15 +840,7 @@ theorem stateFactorization_prim_of_children
     (childrenFactorization :
       DDChecksOrigin.StateFactorization childrenOrigin) :
     StateFactorization (DDSynthOrigin.prim lookup childrenOrigin) := by
-  have allocation := DDErasure.StateFactorization.ofTransition
-    (S := S) (SupplyExtends.instantiateCtorScheme q scheme)
-    (DDLedger.RefinesBelow.markCtorInstance q ledger scheme)
-  have freezing := DDErasure.StateFactorization.ofTransition
-    (S := S') (SupplyExtends.refl q')
-    (DDLedger.RefinesBelow.freezeExport q' ledger₁ S'
-      (Inference.freshCapImages q scheme.capBinders)
-      (InferenceBase.instantiateCtorScheme q scheme).value.2)
-  exact (allocation.trans childrenFactorization).trans freezing
+  exact stateFactorization_ctorLike childrenFactorization
 
 /-- Matcher synthesis reserves its target, traverses its clauses, and then
 freezes the inferred producer capability.  The clause suffix is kept as an
