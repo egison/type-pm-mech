@@ -253,7 +253,8 @@ theorem runResolvedConstraint_stateExtension
           exact (state.stateExtension_recordSolve step).right_congr
             (Option.some.inj success)
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction
@@ -279,7 +280,8 @@ theorem runConstraint_stateExtension
           exact (state.stateExtension_recordSolve step).right_congr
             (Option.some.inj success)
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction

@@ -94,6 +94,26 @@ theorem alignAtSlot_stateExtension
     exact first.trans second
   · exact alignTypes_stateExtension success
 
+theorem alignResolvedProductMatcherAtSlot_stateExtension
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.StateExtension result :=
+  runResolvedConstraint_stateExtension success
+
+theorem alignResolvedSlotTupleAtSlot_stateExtension
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.StateExtension result := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨step, _, restSuccess⟩
+  exact (state.stateExtension_recordSolve step).trans
+    (runResolvedConstraint_stateExtension restSuccess)
+
 theorem alignExprResultAtExpected_stateExtension
     {path : SyntaxPath} {expressionResult : ExprResult}
     {expected : Ty} {result : InferState}
@@ -101,16 +121,44 @@ theorem alignExprResultAtExpected_stateExtension
       some result) :
     expressionResult.state.StateExtension result := by
   unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type")
-      (expectedCoercionSource expressionResult.state expressionResult.target
-        expected) expected with
-  | none => simp [alignmentEq] at success
-  | some aligned =>
-      simp only [alignmentEq, Option.some.injEq] at success
-      subst result
-      exact (alignAtSlot_stateExtension alignmentEq).trans
-        (aligned.stateExtension_recordEvent _)
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedProductMatcherAtSlot
+          expressionResult.state (freshOrigin .expression path "expected-type")
+          duals consumerCap consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignResolvedProductMatcherAtSlot_stateExtension
+            alignmentEq).trans (aligned.stateExtension_recordEvent _)
+  | slotTupleLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedSlotTupleAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignResolvedSlotTupleAtSlot_stateExtension alignmentEq).trans
+            (aligned.stateExtension_recordEvent _)
+  | raw =>
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") expressionResult.target
+          expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some aligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignAtSlot_stateExtension alignmentEq).trans
+            (aligned.stateExtension_recordEvent _)
 
 theorem alignDuals_stateExtension
     {state result : InferState} {origin : ConstraintOrigin}

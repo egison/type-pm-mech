@@ -1381,77 +1381,108 @@ theorem history_terminal_apply_eq
   rw [List.drop_append_length]
   simpa only [replay] using sequential
 
-/--
-Reconstruct the explicit unary product node selected by
-`expectedCoercionSource`.  The executable selector only changes the source at
-a slot use site and only when the raw inferred target itself exposes a
-product of matchers or a product of slots.
-Consequently no normalized component is substituted a second time at the
-terminal cut.
--/
-theorem expectedCoercionSource_deriv
+/-- Apply a suffix substitution once to a locally resolved product of
+matchers, then reconstruct its explicit unary matcher lift. -/
+theorem productMatcherTarget_deriv
     {signature : FrozenSig} {context : Context} {expression : Expr}
-    {state : InferState} {inferred expected : Ty} {terminalSubst : Subst}
-    (derivation :
-      ExprDeriv signature context expression (terminalSubst.apply inferred)) :
+    {source : Ty} {duals : List Dual} {post : Subst}
+    (sourceView : productMatcherDuals? source = some duals)
+    (derivation : ExprDeriv signature context expression (post.apply source)) :
     ExprDeriv signature context expression
-      (terminalSubst.apply
-        (expectedCoercionSource state inferred expected)) := by
-  cases matcherView : productMatcherDuals? inferred with
-  | some duals =>
-      cases requested : state.prevailing.apply expected
-      all_goals try
-        simpa [expectedCoercionSource, matcherView, requested] using derivation
-      all_goals
-        have rawShape := productMatcherDuals?_sound matcherView
-        have productDerivation : ExprDeriv signature context expression
-            (.prod ((duals.map (Dual.applySubst terminalSubst)).map fun dual =>
-              .matcher dual.cap dual.target)) := by
-          rw [rawShape] at derivation
-          simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-            Function.comp_def] using derivation
-        have liftEq : terminalSubst.apply inferred
-            = .prod ((duals.map (Dual.applySubst terminalSubst)).map
-              fun dual => .matcher dual.cap dual.target) := by
-          rw [rawShape]
-          simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-            Function.comp_def]
-        have lifted :=
-          ExprDeriv.coerceProductMatcher productDerivation liftEq
-        simpa [expectedCoercionSource, matcherView, requested,
-          productMatcherTarget, Subst.apply_matcher, Cap.apply_prod,
-          Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-          Function.comp_def] using lifted
-  | none =>
-      cases slotView : productSlotDuals? inferred with
-      | none =>
-          simp [expectedCoercionSource, matcherView, slotView]
-          exact derivation
-      | some duals =>
-          cases requested : state.prevailing.apply expected
-          all_goals try
-            simpa [expectedCoercionSource, matcherView, slotView, requested]
-              using derivation
-          case slot =>
-            have rawShape := productSlotDuals?_sound slotView
-            have productDerivation : ExprDeriv signature context expression
-                (.prod ((duals.map (Dual.applySubst terminalSubst)).map
-                  fun dual => .slot dual.cap dual.target)) := by
-              rw [rawShape] at derivation
-              simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-                Function.comp_def] using derivation
-            have liftEq : terminalSubst.apply inferred
-                = .prod ((duals.map (Dual.applySubst terminalSubst)).map
-                  fun dual => .slot dual.cap dual.target) := by
-              rw [rawShape]
-              simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-                Function.comp_def]
-            have lifted :=
-              ExprDeriv.coerceSlotTuple productDerivation liftEq
-            simpa [expectedCoercionSource, matcherView, slotView, requested,
-              slotTupleTarget, Subst.apply_slot, Cap.apply_prod,
-              Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
-              Function.comp_def] using lifted
+      (post.apply (productMatcherTarget duals)) := by
+  have rawShape := productMatcherDuals?_sound sourceView
+  have productDerivation : ExprDeriv signature context expression
+      (.prod ((duals.map (Dual.applySubst post)).map fun dual =>
+        .matcher dual.cap dual.target)) := by
+    rw [rawShape] at derivation
+    simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+      Function.comp_def] using derivation
+  have liftEq : post.apply source =
+      .prod ((duals.map (Dual.applySubst post)).map fun dual =>
+        .matcher dual.cap dual.target) := by
+    rw [rawShape]
+    simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+      Function.comp_def]
+  have lifted := ExprDeriv.coerceProductMatcher productDerivation liftEq
+  simpa [productMatcherTarget, Subst.apply_matcher, Cap.apply_prod,
+    Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+    Function.comp_def] using lifted
+
+/-- Apply a suffix substitution once to a locally resolved product of slots,
+then reconstruct its explicit unary slot lift. -/
+theorem slotTupleTarget_deriv
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {source : Ty} {duals : List Dual} {post : Subst}
+    (sourceView : productSlotDuals? source = some duals)
+    (derivation : ExprDeriv signature context expression (post.apply source)) :
+    ExprDeriv signature context expression
+      (post.apply (slotTupleTarget duals)) := by
+  have rawShape := productSlotDuals?_sound sourceView
+  have productDerivation : ExprDeriv signature context expression
+      (.prod ((duals.map (Dual.applySubst post)).map fun dual =>
+        .slot dual.cap dual.target)) := by
+    rw [rawShape] at derivation
+    simpa [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+      Function.comp_def] using derivation
+  have liftEq : post.apply source =
+      .prod ((duals.map (Dual.applySubst post)).map fun dual =>
+        .slot dual.cap dual.target) := by
+    rw [rawShape]
+    simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+      Function.comp_def]
+  have lifted := ExprDeriv.coerceSlotTuple productDerivation liftEq
+  simpa [slotTupleTarget, Subst.apply_slot, Cap.apply_prod,
+    Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
+    Function.comp_def] using lifted
+
+/-- Finish one recorded expected-type cut from a derivation of the local
+event source after the exact solver suffix. -/
+private theorem recordedExpectedAlignment_deriv
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {state localAligned terminal : InferState} {expected localInferred : Ty}
+    (bridge : WBridgeWF signature terminal)
+    (alignmentHistory : state.HistoryPrefix localAligned)
+    (sourceDerivation : ExprDeriv signature context expression
+      (applyDeltas
+        (solveSlice terminal.trace state.trace.solves.length
+          terminal.trace.solves.length)
+        localInferred))
+    (history : (localAligned.recordEvent (.slotAlignment
+      state.trace.solves.length localAligned.trace.solves.length localInferred
+      (state.prevailing.apply expected))).HistoryPrefix terminal) :
+    ExprDeriv signature context expression
+      (terminal.prevailing.apply expected) := by
+  let slotEvent := TraceEvent.slotAlignment state.trace.solves.length
+    localAligned.trace.solves.length localInferred
+    (state.prevailing.apply expected)
+  have localMembership : slotEvent ∈
+      (localAligned.recordEvent slotEvent).trace.events := by
+    simp [slotEvent, InferState.recordEvent]
+  have finalMembership := history.event_mem localMembership
+  have slotCertificate := bridge.slotAlignments.final finalMembership
+  have alignedHistory : localAligned.HistoryPrefix terminal :=
+    (InferState.historyPrefix_recordEvent localAligned slotEvent).trans history
+  have expressionHistory : state.HistoryPrefix terminal :=
+    alignmentHistory.trans alignedHistory
+  have requestedTerminal := history_terminal_apply_eq expressionHistory expected
+  cases slotCertificate with
+  | equal alignedEq =>
+      have finalEq : applyDeltas
+          (solveSlice terminal.trace state.trace.solves.length
+            terminal.trace.solves.length) localInferred =
+          terminal.prevailing.apply expected := by
+        rw [requestedTerminal]
+        exact alignedEq
+      rw [← finalEq]
+      exact sourceDerivation
+  | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
+      postVariable producerResult consumerResult =>
+      rw [producerResult] at sourceDerivation
+      have coerced := ExprDeriv.coerceMatcherToSlot
+        (by simpa only [Subst.apply_matcher] using sourceDerivation)
+        raw postVariable
+      rw [requestedTerminal, consumerResult]
+      simpa only [Subst.apply_slot] using coerced
 
 /--
 Reconstruct checking for one already-synthesized expression result.  Both the
@@ -1471,56 +1502,160 @@ theorem alignExprResultAtExpected_deriv
     (history : aligned.HistoryPrefix terminal) :
     ExprDeriv signature context expression
       (terminal.prevailing.apply expected) := by
-  let source := expectedCoercionSource expressionResult.state
-    expressionResult.target expected
-  let localInferred := expressionResult.state.prevailing.apply source
-  let localRequested := expressionResult.state.prevailing.apply expected
-  change (match alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type") source expected with
-    | none => none
-    | some result => some (result.recordEvent (.slotAlignment
-        expressionResult.state.trace.solves.length result.trace.solves.length
-        localInferred localRequested))) = some aligned at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type") source expected with
-  | none => simp [alignmentEq] at success
-  | some localAligned =>
-      simp only [alignmentEq, Option.some.injEq] at success
-      subst aligned
-      let slotEvent := TraceEvent.slotAlignment
-        expressionResult.state.trace.solves.length
-        localAligned.trace.solves.length localInferred localRequested
-      have alignedHistory : localAligned.HistoryPrefix terminal :=
-        (InferState.historyPrefix_recordEvent localAligned slotEvent).trans history
-      have expressionHistory : expressionResult.state.HistoryPrefix terminal :=
-        (alignAtSlot_historyPrefix alignmentEq).trans alignedHistory
-      have sourceDerivation : ExprDeriv signature context expression
-          (terminal.prevailing.apply source) := by
-        exact expectedCoercionSource_deriv derivation
-      have localMembership : slotEvent ∈
-          (localAligned.recordEvent slotEvent).trace.events := by
-        simp [slotEvent, InferState.recordEvent]
-      have finalMembership := history.event_mem localMembership
-      have slotCertificate := bridge.slotAlignments.final finalMembership
-      have inferredTerminal := history_terminal_apply_eq expressionHistory source
-      have requestedTerminal :=
-        history_terminal_apply_eq expressionHistory expected
-      cases slotCertificate with
-      | equal alignedEq =>
-          have finalEq : terminal.prevailing.apply source =
-              terminal.prevailing.apply expected := by
-            rw [inferredTerminal, requestedTerminal]
-            exact alignedEq
-          rw [← finalEq]
-          exact sourceDerivation
-      | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
-          postVariable producerResult consumerResult =>
-          rw [inferredTerminal, producerResult] at sourceDerivation
-          have coerced := ExprDeriv.coerceMatcherToSlot
-            (by simpa only [Subst.apply_matcher] using sourceDerivation)
-            raw postVariable
-          rw [requestedTerminal, consumerResult]
-          simpa only [Subst.apply_slot] using coerced
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | raw =>
+      unfold alignExprResultAtExpected at success
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") expressionResult.target
+          expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some localAligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success
+          subst aligned
+          have alignmentHistory := alignAtSlot_historyPrefix alignmentEq
+          have alignedHistory : localAligned.HistoryPrefix terminal :=
+            (InferState.historyPrefix_recordEvent localAligned _).trans history
+          have expressionHistory : expressionResult.state.HistoryPrefix terminal :=
+            alignmentHistory.trans alignedHistory
+          have terminalEq := history_terminal_apply_eq expressionHistory
+            expressionResult.target
+          have sourceDerivation : ExprDeriv signature context expression
+              (applyDeltas
+                (solveSlice terminal.trace
+                  expressionResult.state.trace.solves.length
+                  terminal.trace.solves.length)
+                (expressionResult.state.prevailing.apply
+                  expressionResult.target)) := by
+            rw [← terminalEq]
+            exact derivation
+          exact recordedExpectedAlignment_deriv bridge alignmentHistory
+            sourceDerivation history
+  | productMatcherLift duals =>
+      cases matcherView : productMatcherDuals?
+          (expressionResult.state.prevailing.apply expressionResult.target) with
+      | none =>
+          cases slotView : productSlotDuals?
+              (expressionResult.state.prevailing.apply expressionResult.target) <;>
+            cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, slotView,
+              expectedView] at planEq
+      | some found =>
+          cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, expectedView] at planEq
+          rename_i consumerCap consumerTarget
+          subst found
+          unfold alignExprResultAtExpected at success
+          cases alignmentEq : alignResolvedProductMatcherAtSlot
+              expressionResult.state
+              (freshOrigin .expression path "expected-type") duals consumerCap
+              consumerTarget with
+          | none =>
+              simp [expectedCoercionPlan, matcherView, expectedView,
+                alignmentEq] at success
+          | some localAligned =>
+              simp [expectedCoercionPlan, matcherView, expectedView,
+                alignmentEq] at success
+              subst aligned
+              have alignmentHistory :=
+                alignResolvedProductMatcherAtSlot_historyPrefix alignmentEq
+              have alignedHistory : localAligned.HistoryPrefix terminal :=
+                (InferState.historyPrefix_recordEvent localAligned _).trans history
+              have expressionHistory :
+                  expressionResult.state.HistoryPrefix terminal :=
+                alignmentHistory.trans alignedHistory
+              have terminalEq := history_terminal_apply_eq expressionHistory
+                expressionResult.target
+              let suffix := solveSlice terminal.trace
+                expressionResult.state.trace.solves.length
+                terminal.trace.solves.length
+              let post := replayFrom Subst.id suffix
+              have rawDerivation : ExprDeriv signature context expression
+                  (post.apply (expressionResult.state.prevailing.apply
+                    expressionResult.target)) := by
+                change ExprDeriv signature context expression
+                  ((replayFrom Subst.id suffix).apply
+                    (expressionResult.state.prevailing.apply
+                      expressionResult.target))
+                rw [replayFrom_apply, Subst.apply_id]
+                rw [← terminalEq]
+                exact derivation
+              have lifted := productMatcherTarget_deriv matcherView rawDerivation
+              have sourceDerivation : ExprDeriv signature context expression
+                  (applyDeltas suffix (productMatcherTarget duals)) := by
+                change ExprDeriv signature context expression
+                  ((replayFrom Subst.id suffix).apply
+                    (productMatcherTarget duals)) at lifted
+                rw [replayFrom_apply, Subst.apply_id] at lifted
+                exact lifted
+              exact recordedExpectedAlignment_deriv bridge alignmentHistory
+                sourceDerivation (by simpa only [expectedView] using history)
+  | slotTupleLift duals =>
+      cases matcherView : productMatcherDuals?
+          (expressionResult.state.prevailing.apply expressionResult.target) with
+      | some found =>
+          cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, expectedView] at planEq
+      | none =>
+          cases slotView : productSlotDuals?
+              (expressionResult.state.prevailing.apply expressionResult.target) with
+          | none =>
+              cases expectedView : expressionResult.state.prevailing.apply expected <;>
+                simp [expectedCoercionPlan, matcherView, slotView,
+                  expectedView] at planEq
+          | some found =>
+              cases expectedView : expressionResult.state.prevailing.apply expected <;>
+                simp [expectedCoercionPlan, matcherView, slotView,
+                  expectedView] at planEq
+              rename_i consumerCap consumerTarget
+              subst found
+              unfold alignExprResultAtExpected at success
+              cases alignmentEq : alignResolvedSlotTupleAtSlot
+                  expressionResult.state
+                  (freshOrigin .expression path "expected-type") duals
+                  consumerCap consumerTarget with
+              | none =>
+                  simp [expectedCoercionPlan, matcherView, slotView,
+                    expectedView, alignmentEq] at success
+              | some localAligned =>
+                  simp [expectedCoercionPlan, matcherView, slotView,
+                    expectedView, alignmentEq] at success
+                  subst aligned
+                  have alignmentHistory :=
+                    alignResolvedSlotTupleAtSlot_historyPrefix alignmentEq
+                  have alignedHistory : localAligned.HistoryPrefix terminal :=
+                    (InferState.historyPrefix_recordEvent localAligned _).trans
+                      history
+                  have expressionHistory :
+                      expressionResult.state.HistoryPrefix terminal :=
+                    alignmentHistory.trans alignedHistory
+                  have terminalEq := history_terminal_apply_eq expressionHistory
+                    expressionResult.target
+                  let suffix := solveSlice terminal.trace
+                    expressionResult.state.trace.solves.length
+                    terminal.trace.solves.length
+                  let post := replayFrom Subst.id suffix
+                  have rawDerivation : ExprDeriv signature context expression
+                      (post.apply (expressionResult.state.prevailing.apply
+                        expressionResult.target)) := by
+                    change ExprDeriv signature context expression
+                      ((replayFrom Subst.id suffix).apply
+                        (expressionResult.state.prevailing.apply
+                          expressionResult.target))
+                    rw [replayFrom_apply, Subst.apply_id]
+                    rw [← terminalEq]
+                    exact derivation
+                  have lifted := slotTupleTarget_deriv slotView rawDerivation
+                  have sourceDerivation : ExprDeriv signature context expression
+                      (applyDeltas suffix (slotTupleTarget duals)) := by
+                    change ExprDeriv signature context expression
+                      ((replayFrom Subst.id suffix).apply
+                        (slotTupleTarget duals)) at lifted
+                    rw [replayFrom_apply, Subst.apply_id] at lifted
+                    exact lifted
+                  exact recordedExpectedAlignment_deriv bridge alignmentHistory
+                    sourceDerivation
+                      (by simpa only [expectedView] using history)
 
 /-- Successful pointwise pattern-target alignment identifies every child
 target at an enclosing terminal cut. -/

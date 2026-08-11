@@ -112,7 +112,8 @@ theorem runResolvedConstraint_factorizingTrace
           subst result
           exact factorizing.recordSolve step stepFactorizing
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction
@@ -143,7 +144,8 @@ theorem runConstraint_factorizingTrace
           subst result
           exact factorizing.recordSolve step stepFactorizing
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction
@@ -402,6 +404,28 @@ theorem alignAtSlot_factorizingTraceExtension
       (runResolvedConstraint_factorizingTraceExtension restSuccess)
   · exact alignTypes_factorizingTraceExtension success
 
+theorem alignResolvedProductMatcherAtSlot_factorizingTraceExtension
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.FactorizingTraceExtension result :=
+  runResolvedConstraint_factorizingTraceExtension success
+
+theorem alignResolvedSlotTupleAtSlot_factorizingTraceExtension
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.FactorizingTraceExtension result := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨step, stepSuccess, restSuccess⟩
+  intro factorizing
+  have middleFactorizing := factorizing.recordSolve step
+    (solveResolvedWithLedger_stepLocallyFactorizing stepSuccess)
+  exact runResolvedConstraint_factorizingTrace middleFactorizing restSuccess
+
 theorem alignExprResultAtExpected_factorizingTraceExtension
     {path : SyntaxPath} {expressionResult : ExprResult}
     {expected : Ty} {result : InferState}
@@ -409,16 +433,46 @@ theorem alignExprResultAtExpected_factorizingTraceExtension
       some result) :
     expressionResult.state.FactorizingTraceExtension result := by
   unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type")
-      (expectedCoercionSource expressionResult.state expressionResult.target
-        expected) expected with
-  | none => simp [alignmentEq] at success
-  | some aligned =>
-      simp only [alignmentEq, Option.some.injEq] at success
-      subst result
-      exact (alignAtSlot_factorizingTraceExtension alignmentEq).trans
-        (aligned.factorizingTraceExtension_recordEvent _)
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedProductMatcherAtSlot
+          expressionResult.state (freshOrigin .expression path "expected-type")
+          duals consumerCap consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignResolvedProductMatcherAtSlot_factorizingTraceExtension
+            alignmentEq).trans
+            (aligned.factorizingTraceExtension_recordEvent _)
+  | slotTupleLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedSlotTupleAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignResolvedSlotTupleAtSlot_factorizingTraceExtension
+            alignmentEq).trans
+            (aligned.factorizingTraceExtension_recordEvent _)
+  | raw =>
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") expressionResult.target
+          expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some aligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignAtSlot_factorizingTraceExtension alignmentEq).trans
+            (aligned.factorizingTraceExtension_recordEvent _)
 
 theorem alignDuals_factorizingTraceExtension
     {state result : InferState} {origin : ConstraintOrigin}

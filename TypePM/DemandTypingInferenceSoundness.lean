@@ -795,120 +795,72 @@ theorem alignAtSlot_slotTupleLift_ddAlignRun
     expectedView exactCap
     (adjustedSourceEq ▸ adjustedRequestedEq ▸ exactTarget)
 
-/-- A type whose cut-resolved view is a matcher cannot be one of the raw
-product coercion sources, so the executable selector leaves it unchanged. -/
-theorem expectedCoercionSource_of_resolvedMatcher
-    (state : InferState) (raw expected : Ty)
-    {producerCap : Cap} {producerTarget : Ty}
-    (rawView : state.prevailing.apply raw =
-      .matcher producerCap producerTarget) :
-    expectedCoercionSource state raw expected = raw := by
-  cases raw <;> simp [expectedCoercionSource, productMatcherDuals?,
-    productSlotDuals?, Subst.apply, Ty.applyCapability, Ty.applyTarget]
-      at rawView ⊢
-
-/-- Lift the raw matcher-to-slot branch through the event-only
-`alignExprResultAtExpected` wrapper. -/
-theorem alignExprResultAtExpected_matcherToSlot_ddAlignRun
-    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
-    {final : InferState} {producerCap consumerCap : Cap}
-    {producerTarget consumerTarget : Ty}
-    (rawView : expressionResult.state.prevailing.apply
-      expressionResult.target = .matcher producerCap producerTarget)
-    (expectedView : expressionResult.state.prevailing.apply expected =
-      .slot consumerCap consumerTarget)
-    (success : alignExprResultAtExpected path expressionResult expected =
-      some final) :
-    DDAlignRun expressionResult.target expected expressionResult.state final := by
-  have sourceEq := expectedCoercionSource_of_resolvedMatcher
-    expressionResult.state expressionResult.target expected rawView
-  unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type") expressionResult.target
-      expected with
-  | none => simp [sourceEq, alignmentEq] at success
-  | some aligned =>
-      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
-      subst final
-      rcases alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
-          alignmentEq with
-        ⟨supplyEq, ledgerEq, alignedDD⟩
-      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
-        by simpa using alignedDD⟩
-
-/-- Lift the raw product-matcher branch through coercion-source selection and
-the event-only expected-alignment wrapper. -/
-theorem alignExprResultAtExpected_productMatcherLift_ddAlignRun
-    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
-    {final : InferState} {duals : List Dual}
+/-- Reconstruct a product-matcher lift executed directly on the cut-resolved
+component views.  The DD indices remain the original raw source and expected
+types; the resolved dual list is used only by the local solver. -/
+theorem alignResolvedProductMatcherAtSlot_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {duals : List Dual}
     {consumerCap : Cap} {consumerTarget : Ty}
-    (rawView : productMatcherDuals? expressionResult.target = some duals)
-    (expectedView : expressionResult.state.prevailing.apply expected =
+    (rawView : productMatcherDuals? (state.prevailing.apply raw) = some duals)
+    (expectedView : state.prevailing.apply expected =
       .slot consumerCap consumerTarget)
-    (success : alignExprResultAtExpected path expressionResult expected =
-      some final) :
-    DDAlignRun expressionResult.target expected expressionResult.state final := by
-  have sourceEq : expectedCoercionSource expressionResult.state
-      expressionResult.target expected = productMatcherTarget duals := by
-    simp [expectedCoercionSource, rawView, expectedView]
-  unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type")
-      (productMatcherTarget duals) expected with
-  | none => simp [sourceEq, alignmentEq] at success
-  | some aligned =>
-      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
-      subst final
-      rcases alignAtSlot_productMatcherLift_ddAlignRun rawView expectedView
-          alignmentEq with
-        ⟨supplyEq, ledgerEq, alignedDD⟩
-      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
-        by simpa using alignedDD⟩
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some final) :
+    DDAlignRun raw expected state final := by
+  unfold alignResolvedProductMatcherAtSlot at success
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin
+      (.producerToSlot (.prod (duals.map Dual.cap))
+        (.prod (duals.map Dual.target)) consumerCap consumerTarget) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      dsimp at success
+      split at success
+      · have finalEq := Option.some.inj success
+        subst final
+        refine ⟨rfl, rfl, ?_⟩
+        rw [InferState.prevailing_recordSolve]
+        exact DDAlignWithLedger.productMatcherLift rawView expectedView
+          (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
+      · contradiction
 
-/-- Lift the raw product-slot branch through coercion-source selection and
-the event-only expected-alignment wrapper.  Raw matcher failure fixes the
-empty-product precedence in favor of this slot-tuple branch. -/
-theorem alignExprResultAtExpected_slotTupleLift_ddAlignRun
-    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
-    {final : InferState} {duals : List Dual}
+/-- Reconstruct a slot-tuple lift executed directly on the cut-resolved
+component views. -/
+theorem alignResolvedSlotTupleAtSlot_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {duals : List Dual}
     {consumerCap : Cap} {consumerTarget : Ty}
-    (matcherNone : productMatcherDuals? expressionResult.target = none)
-    (rawView : productSlotDuals? expressionResult.target = some duals)
-    (expectedView : expressionResult.state.prevailing.apply expected =
+    (matcherNone : productMatcherDuals? (state.prevailing.apply raw) = none)
+    (rawView : productSlotDuals? (state.prevailing.apply raw) = some duals)
+    (expectedView : state.prevailing.apply expected =
       .slot consumerCap consumerTarget)
-    (success : alignExprResultAtExpected path expressionResult expected =
-      some final) :
-    DDAlignRun expressionResult.target expected expressionResult.state final := by
-  have sourceEq : expectedCoercionSource expressionResult.state
-      expressionResult.target expected = slotTupleTarget duals := by
-    simp [expectedCoercionSource, matcherNone, rawView, expectedView]
-  have resolvedMatcherNone : productMatcherDuals?
-      (expressionResult.state.prevailing.apply expressionResult.target) =
-        none :=
-    productMatcherDuals?_apply_none_of_productSlot matcherNone rawView
-  have resolvedSlotView : productSlotDuals?
-      (expressionResult.state.prevailing.apply expressionResult.target) =
-        some (duals.map
-          (Dual.applySubst expressionResult.state.prevailing)) :=
-    productSlotDuals?_apply rawView
-  have demand : demandClass
-      (expressionResult.state.prevailing.apply expressionResult.target)
-      (expressionResult.state.prevailing.apply expected) =
-        .slotTupleLift := by
-    simp [demandClass, resolvedMatcherNone, resolvedSlotView, expectedView]
-  unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type")
-      (slotTupleTarget duals) expected with
-  | none => simp [sourceEq, alignmentEq] at success
-  | some aligned =>
-      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
-      subst final
-      rcases alignAtSlot_slotTupleLift_ddAlignRun rawView expectedView demand
-          alignmentEq with
-        ⟨supplyEq, ledgerEq, alignedDD⟩
-      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
-        by simpa using alignedDD⟩
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some final) :
+    DDAlignRun raw expected state final := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨capStep, capSuccess, targetSuccess⟩
+  rcases solveResolvedWithLedger_capEq_originSafeExactCapMGU capSuccess with
+    ⟨capTargetId, exactCap⟩
+  rcases runResolvedConstraint_targetEq_exact targetSuccess with
+    ⟨targetStep, _, finalEq, exactTarget⟩
+  subst final
+  have capDeltaEq : capStep.delta =
+      ⟨capStep.delta.cap, TySubst.id⟩ := by
+    rw [← capTargetId]
+  have demand : demandClass (state.prevailing.apply raw)
+      (state.prevailing.apply expected) = .slotTupleLift := by
+    simp [demandClass, matcherNone, rawView, expectedView]
+  refine ⟨rfl, rfl, ?_⟩
+  rw [InferState.prevailing_recordSolve,
+    InferState.prevailing_recordSolve, capDeltaEq]
+  exact DDAlignWithLedger.slotTupleLift demand rawView expectedView exactCap
+    (by
+      simpa [InferState.recordSolve, Subst.apply, capTargetId,
+        Ty.applyTarget_id] using exactTarget)
 
 /-- The paired kernel rejects a product/slot outer-constructor mismatch at
 every fuel. -/
@@ -965,8 +917,8 @@ expected-alignment wrapper. -/
 private theorem alignExprResultAtExpected_of_rawSource_ddAlignRun
     {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
     {final : InferState}
-    (sourceEq : expectedCoercionSource expressionResult.state
-      expressionResult.target expected = expressionResult.target)
+    (planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected = .raw)
     (alignSound : ∀ aligned,
       alignAtSlot expressionResult.state
         (freshOrigin .expression path "expected-type")
@@ -980,9 +932,9 @@ private theorem alignExprResultAtExpected_of_rawSource_ddAlignRun
   cases alignmentEq : alignAtSlot expressionResult.state
       (freshOrigin .expression path "expected-type") expressionResult.target
       expected with
-  | none => simp [sourceEq, alignmentEq] at success
+  | none => simp [planEq, alignmentEq] at success
   | some aligned =>
-      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
+      simp only [planEq, alignmentEq, Option.some.injEq] at success
       subst final
       rcases alignSound aligned alignmentEq with
         ⟨supplyEq, ledgerEq, alignedDD⟩
@@ -998,57 +950,95 @@ theorem alignExprResultAtExpected_ddAlignRun
     (success : alignExprResultAtExpected path expressionResult expected =
       some final) :
     DDAlignRun expressionResult.target expected expressionResult.state final := by
-  cases matcherView : productMatcherDuals? expressionResult.target with
-  | some duals =>
-      cases expectedView : expressionResult.state.prevailing.apply expected <;>
-        first
-        | exact alignExprResultAtExpected_productMatcherLift_ddAlignRun
-            matcherView expectedView success
-        | exact alignExprResultAtExpected_of_rawSource_ddAlignRun
-            (by simp [expectedCoercionSource, matcherView, expectedView])
-            (by
-              intro aligned alignmentEq
-              exact alignAtSlot_ordinary_ddAlignRun
-                (by simp [demandClass, expectedView]) alignmentEq)
-            success
-  | none =>
-      cases slotView : productSlotDuals? expressionResult.target with
-      | some duals =>
-          cases expectedView :
-              expressionResult.state.prevailing.apply expected <;>
-            first
-            | exact alignExprResultAtExpected_slotTupleLift_ddAlignRun
-                matcherView slotView expectedView success
-            | exact alignExprResultAtExpected_of_rawSource_ddAlignRun
-                (by simp [expectedCoercionSource, matcherView, slotView,
-                  expectedView])
-                (by
-                  intro aligned alignmentEq
-                  exact alignAtSlot_ordinary_ddAlignRun
-                    (by simp [demandClass, expectedView]) alignmentEq)
-                success
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases matcherView : productMatcherDuals?
+          (expressionResult.state.prevailing.apply expressionResult.target) with
       | none =>
-          apply alignExprResultAtExpected_of_rawSource_ddAlignRun
-            (by simp [expectedCoercionSource, matcherView, slotView]) ?_ success
-          intro aligned alignmentEq
-          cases rawView :
-              expressionResult.state.prevailing.apply expressionResult.target <;>
-            cases expectedView :
-              expressionResult.state.prevailing.apply expected <;>
-            first
-            | exact alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
-                alignmentEq
-            | exact alignAtSlot_slotToSlot_ddAlignRun rawView expectedView
-                alignmentEq
-            | (have impossible := alignAtSlot_resolvedProd_slot_eq_none
+          cases slotView : productSlotDuals?
+              (expressionResult.state.prevailing.apply expressionResult.target) <;>
+            cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, slotView,
+              expectedView] at planEq
+      | some found =>
+          cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, expectedView] at planEq
+          rename_i consumerCap consumerTarget
+          subst found
+          unfold alignExprResultAtExpected at success
+          cases alignmentEq : alignResolvedProductMatcherAtSlot
+              expressionResult.state
+              (freshOrigin .expression path "expected-type") duals consumerCap
+              consumerTarget with
+          | none =>
+              simp [expectedCoercionPlan, matcherView, expectedView,
+                alignmentEq] at success
+          | some aligned =>
+              simp [expectedCoercionPlan, matcherView, expectedView,
+                alignmentEq] at success
+              subst final
+              rcases alignResolvedProductMatcherAtSlot_ddAlignRun matcherView
+                  expectedView alignmentEq with
+                ⟨supplyEq, ledgerEq, alignedDD⟩
+              exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+                by simpa using alignedDD⟩
+  | slotTupleLift duals =>
+      cases matcherView : productMatcherDuals?
+          (expressionResult.state.prevailing.apply expressionResult.target) with
+      | some found =>
+          cases expectedView : expressionResult.state.prevailing.apply expected <;>
+            simp [expectedCoercionPlan, matcherView, expectedView] at planEq
+      | none =>
+          cases slotView : productSlotDuals?
+              (expressionResult.state.prevailing.apply expressionResult.target) with
+          | none => simp [expectedCoercionPlan, matcherView, slotView] at planEq
+          | some found =>
+              cases expectedView : expressionResult.state.prevailing.apply expected <;>
+                simp [expectedCoercionPlan, matcherView, slotView,
+                  expectedView] at planEq
+              rename_i consumerCap consumerTarget
+              subst found
+              unfold alignExprResultAtExpected at success
+              cases alignmentEq : alignResolvedSlotTupleAtSlot
                   expressionResult.state
-                  (freshOrigin .expression path "expected-type")
-                  expressionResult.target expected _ _ _ rawView expectedView
-               rw [impossible] at alignmentEq
-               contradiction)
-            | exact alignAtSlot_ordinary_ddAlignRun
-                (by simp [demandClass, productMatcherDuals?,
-                  productSlotDuals?, rawView, expectedView]) alignmentEq
+                  (freshOrigin .expression path "expected-type") duals
+                  consumerCap consumerTarget with
+              | none =>
+                  simp [expectedCoercionPlan, matcherView, slotView,
+                    expectedView, alignmentEq] at success
+              | some aligned =>
+                  simp [expectedCoercionPlan, matcherView, slotView,
+                    expectedView, alignmentEq] at success
+                  subst final
+                  rcases alignResolvedSlotTupleAtSlot_ddAlignRun matcherView
+                      slotView expectedView alignmentEq with
+                    ⟨supplyEq, ledgerEq, alignedDD⟩
+                  exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+                    by simpa using alignedDD⟩
+  | raw =>
+      apply alignExprResultAtExpected_of_rawSource_ddAlignRun planEq ?_ success
+      intro aligned alignmentEq
+      cases rawView : expressionResult.state.prevailing.apply
+          expressionResult.target <;>
+        cases expectedView : expressionResult.state.prevailing.apply expected <;>
+        first
+        | exact alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
+            alignmentEq
+        | exact alignAtSlot_slotToSlot_ddAlignRun rawView expectedView alignmentEq
+        | exact alignAtSlot_ordinary_ddAlignRun
+            (by
+              unfold expectedCoercionPlan at planEq
+              unfold demandClass
+              rw [rawView, expectedView] at planEq ⊢
+              cases matcherView : productMatcherDuals?
+                  (expressionResult.state.prevailing.apply
+                    expressionResult.target) <;>
+                cases slotView : productSlotDuals?
+                  (expressionResult.state.prevailing.apply
+                    expressionResult.target) <;>
+                simp_all)
+            alignmentEq
 
 /-- Compose synthesis and expected-type alignment into the single public DD
 checking rule. -/
@@ -1108,8 +1098,7 @@ theorem checkExprFuel_matcherToSlot_ddCheckRun
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
   exact DDSynthRun.check synthRun
-    (alignExprResultAtExpected_matcherToSlot_ddAlignRun rawView expectedView
-      alignmentEq)
+    (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
 /-- The raw product-matcher branch reconstructs the explicit DD product lift
 before composing it with checking. -/
@@ -1132,8 +1121,7 @@ theorem checkExprFuel_productMatcherLift_ddCheckRun
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
   exact DDSynthRun.check synthRun
-    (alignExprResultAtExpected_productMatcherLift_ddAlignRun rawView
-      expectedView alignmentEq)
+    (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
 /-- The domain and state produced by the executable lambda-entry allocation. -/
 def lambdaDomain (initial : InferState) (path : SyntaxPath) : Ty :=

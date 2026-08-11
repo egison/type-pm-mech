@@ -38,9 +38,9 @@ raw product untouched, so only the ordinary alignment of a raw matcher can
 succeed at a matcher-headed use site. -/
 theorem productMatcher_expected_source
     (state : Inference.InferState) :
-    Inference.expectedCoercionSource state concretePairProductType
-      concretePairMatcherType = concretePairProductType := by
-  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.expectedCoercionPlan state concretePairProductType
+      concretePairMatcherType = .raw := by
+  simp [Inference.expectedCoercionPlan, Inference.productMatcherDuals?,
     Inference.productSlotDuals?, Inference.matcherDual?, Inference.slotDual?,
     concretePairProductType, concretePairMatcherType]
 
@@ -48,12 +48,12 @@ theorem productMatcher_expected_source
 matcher-to-slot alignment path. -/
 theorem productMatcher_slot_source
     (state : Inference.InferState) :
-    Inference.expectedCoercionSource state concretePairProductType
-      concretePairSlotType = concretePairMatcherType := by
-  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.expectedCoercionPlan state concretePairProductType
+      concretePairSlotType = .productMatcherLift
+        [⟨.any, .int⟩, ⟨.any, .int⟩] := by
+  simp [Inference.expectedCoercionPlan, Inference.productMatcherDuals?,
     Inference.productSlotDuals?, Inference.matcherDual?,
-    Inference.productMatcherTarget,
-    concretePairProductType, concretePairMatcherType, concretePairSlotType]
+    Cap.apply, concretePairProductType, concretePairSlotType]
 
 def concretePairOfSlotsType : Ty :=
   .prod [.slot .any .int, .slot .any .int]
@@ -62,21 +62,36 @@ def concretePairOfSlotsType : Ty :=
 lift when the aggregate slot is expected. -/
 theorem productSlot_slot_source
     (state : Inference.InferState) :
-    Inference.expectedCoercionSource state concretePairOfSlotsType
-      concretePairSlotType = concretePairSlotType := by
-  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
+    Inference.expectedCoercionPlan state concretePairOfSlotsType
+      concretePairSlotType = .slotTupleLift
+        [⟨.any, .int⟩, ⟨.any, .int⟩] := by
+  simp [Inference.expectedCoercionPlan, Inference.productMatcherDuals?,
     Inference.productSlotDuals?, Inference.matcherDual?, Inference.slotDual?,
-    Inference.slotTupleTarget, concretePairOfSlotsType, concretePairSlotType]
+    Cap.apply, concretePairOfSlotsType, concretePairSlotType]
 
 /-- Both component recognizers accept the empty product.  The executable
 selector resolves that overlap by choosing the matcher-product branch. -/
 theorem emptyProduct_prefers_productMatcher
     (state : Inference.InferState) :
-    Inference.expectedCoercionSource state (.prod [])
-      (.slot (.prod []) (.prod [])) =
-        .matcher (.prod []) (.prod []) := by
-  simp [Inference.expectedCoercionSource, Inference.productMatcherDuals?,
-    Inference.productSlotDuals?, Inference.productMatcherTarget]
+    Inference.expectedCoercionPlan state (.prod [])
+      (.slot (.prod []) (.prod [])) = .productMatcherLift [] := by
+  simp [Inference.expectedCoercionPlan, Inference.productMatcherDuals?,
+    Inference.productSlotDuals?]
+
+/-- Product recognition uses the cut-resolved source, even when the raw
+inference index is still a metavariable. -/
+theorem resolvedProductMatcher_selects_lift
+    (state : Inference.InferState) (varId : TypePM.TyVar)
+    (resolved : state.prevailing.apply (.var varId) =
+      concretePairProductType) :
+    Inference.expectedCoercionPlan state (.var varId)
+      concretePairSlotType = .productMatcherLift
+        [⟨.any, .int⟩, ⟨.any, .int⟩] := by
+  simp [Inference.expectedCoercionPlan, resolved,
+    Inference.productMatcherDuals?, Inference.productSlotDuals?,
+    Inference.matcherDual?, Inference.slotDual?, Cap.apply,
+    concretePairProductType,
+    concretePairSlotType]
 
 /-! ## Domain-directed application checking -/
 

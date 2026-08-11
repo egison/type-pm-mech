@@ -72,5 +72,49 @@ theorem concreteProducer_typed :
       consumerExpression concreteProducerResult.resolvedTarget :=
   Inference.infer_success_runtimeTyping concreteProducer_public_succeeds
 
+/-! ## Safe producer renaming
+
+Two independently instantiated constructor results export distinct frozen
+capability variables.  Applying the first result to the second requires only
+renaming the argument producer variable to the function-domain producer
+variable.  This is the positive boundary paired with structural strengthening:
+freeze preserves variable shape, not the accidental fresh-variable name. -/
+
+def safeRenameSignature : FrozenSig where
+  observability := fun _ => none
+  dataCtors :=
+    [("makeF", {
+        capBinders := [⟨0⟩]
+        tyBinders := []
+        args := []
+        result := .fn (.matcher (.var ⟨0⟩) .int) .int }),
+      ("makeM", {
+        capBinders := [⟨0⟩]
+        tyBinders := []
+        args := []
+        result := .matcher (.var ⟨0⟩) .int })]
+  patternCtors := []
+  patternFuns := []
+  primitives := []
+  constructorsByFormer := []
+  armExhaustive := basicArmExhaustive
+
+def safeRenameExpression : Expr :=
+  .app (.ctor "makeF" []) (.ctor "makeM" [])
+
+def safeRenameResult : Inference.ExprResult :=
+  (Inference.infer safeRenameSignature [] safeRenameExpression).get
+    (by native_decide)
+
+/-- A frozen producer may be renamed to another frozen producer variable. -/
+theorem safeRename_public_succeeds :
+    Inference.infer safeRenameSignature [] safeRenameExpression =
+      some safeRenameResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem safeRename_result_type :
+    safeRenameResult.resolvedTarget = .int := by
+  native_decide
+
 end ProducerStrengtheningRegression
 end TypePM

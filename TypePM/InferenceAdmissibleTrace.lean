@@ -158,7 +158,8 @@ theorem runResolvedConstraint_admissibleTrace
           subst result
           exact admissible.recordSolve step stepAdmissible
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction
@@ -189,7 +190,8 @@ theorem runConstraint_admissibleTrace
           subst result
           exact admissible.recordSolve step stepAdmissible
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction

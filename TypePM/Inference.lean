@@ -731,22 +731,62 @@ theorem capSubstFixesVarsCheck_eq_true
       FixesCapVars substitution varIds := by
   simp [capSubstFixesVarsCheck, FixesCapVars, List.all_eq_true]
 
-/-- Every chronological delta preserves every protected producer image. -/
-def ProtectedProducerTrace (state : InferState) : Prop :=
-  ∀ step, step ∈ state.trace.solves ->
-    FixesCapVars step.delta.cap state.protectedCaps
+/-- A capability post sends every protected producer to a variable whose
+origin is no longer structurally flexible.  Safe renaming is intentional:
+producer freeze forbids structural strengthening, not alpha-renaming. -/
+def SafeCapVars (ledger : CapabilityOriginLedger)
+    (substitution : CapSubst) (varIds : List CapVar) : Prop :=
+  ∀ varId, varId ∈ varIds →
+    ∃ image,
+      substitution varId = .var image ∧
+        ledger.originOf image ≠ .structuralFlexible
 
-/-- Executable audit of producer non-strengthening for a complete trace. -/
+/-- Finite executable check for ledger-safe producer renaming. -/
+def capSubstSafeVarsCheck (ledger : CapabilityOriginLedger)
+    (substitution : CapSubst) (varIds : List CapVar) : Bool :=
+  varIds.all fun varId =>
+    match substitution varId with
+    | .var image => decide (ledger.originOf image ≠ .structuralFlexible)
+    | _ => false
+
+theorem capSubstSafeVarsCheck_eq_true
+    (ledger : CapabilityOriginLedger) (substitution : CapSubst)
+    (varIds : List CapVar) :
+    capSubstSafeVarsCheck ledger substitution varIds = true ↔
+      SafeCapVars ledger substitution varIds := by
+  simp only [capSubstSafeVarsCheck, List.all_eq_true, SafeCapVars]
+  constructor
+  · intro checked varId membership
+    have checkedAt := checked varId membership
+    cases equation : substitution varId with
+    | var image =>
+        refine ⟨image, rfl, ?_⟩
+        simpa [equation] using checkedAt
+    | any => simp [equation] at checkedAt
+    | skolem name => simp [equation] at checkedAt
+    | con name children => simp [equation] at checkedAt
+    | prod children => simp [equation] at checkedAt
+  · intro safe varId membership
+    rcases safe varId membership with ⟨image, equation, nonStructural⟩
+    simp [equation, nonStructural]
+
+/-- The final prevailing substitution preserves every protected producer as
+a ledger-safe variable image.  Unlike the former guard, this condition does
+not require each historical delta to fix every producer pointwise. -/
+def ProtectedProducerTrace (state : InferState) : Prop :=
+  SafeCapVars state.capabilityOrigins (replay state.trace.solves).cap
+    state.protectedCaps
+
+/-- Executable terminal audit of producer non-strengthening. -/
 def protectedProducerTraceCheck (state : InferState) : Bool :=
-  state.trace.solves.all fun step =>
-    capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+  capSubstSafeVarsCheck state.capabilityOrigins
+    (replay state.trace.solves).cap
+    state.protectedCaps
 
 theorem protectedProducerTraceCheck_eq_true (state : InferState) :
-    protectedProducerTraceCheck state = true <->
+  protectedProducerTraceCheck state = true <->
       ProtectedProducerTrace state := by
-  simp only [protectedProducerTraceCheck, List.all_eq_true,
-    capSubstFixesVarsCheck_eq_true]
-  rfl
+  exact capSubstSafeVarsCheck_eq_true _ _ _
 
 /-- The unique prevailing substitution is replayed from all prior steps. -/
 def InferState.prevailing (state : InferState) : Subst :=
@@ -972,7 +1012,8 @@ def runConstraint
     state.trace.solves.length origin resolved
   match resolved with
   | .producerToSlot _ _ _ _ =>
-      if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
+      if capSubstSafeVarsCheck state.capabilityOrigins step.delta.cap
+          state.protectedCaps then
         pure (state.recordSolve step)
       else
         none
@@ -1910,7 +1951,8 @@ def runResolvedConstraint
     state.trace.solves.length origin constraint
   match constraint with
   | .producerToSlot _ _ _ _ =>
-      if capSubstFixesVarsCheck step.delta.cap state.protectedCaps then
+      if capSubstSafeVarsCheck state.capabilityOrigins step.delta.cap
+          state.protectedCaps then
         pure (state.recordSolve step)
       else
         none
@@ -1980,12 +2022,7 @@ def matcherDual? : Ty -> Option Dual
   | .matcher capability target => some ⟨capability, target⟩
   | _ => none
 
-/--
-Recognize a raw product whose every component is a matcher.  This deliberately
-inspects the raw inferred target, not its prevailing-substitution-normalized
-image: the returned duals are reused as raw reconstruction indices and must
-therefore receive the terminal substitution exactly once.
--/
+/-- Recognize a product whose every component is a matcher. -/
 def productMatcherDuals? : Ty -> Option (List Dual)
   | .prod targets => targets.mapM matcherDual?
   | _ => none
@@ -2018,7 +2055,7 @@ def slotDual? : Ty -> Option Dual
   | .slot capability target => some ⟨capability, target⟩
   | _ => none
 
-/-- Recognize a raw product whose every component is already a slot. -/
+/-- Recognize a product whose every component is already a slot. -/
 def productSlotDuals? : Ty -> Option (List Dual)
   | .prod targets => targets.mapM slotDual?
   | _ => none
@@ -2054,42 +2091,35 @@ def productMatcherTarget (duals : List Dual) : Ty :=
 def slotTupleTarget (duals : List Dual) : Ty :=
   .slot (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
 
-/--
-Choose the raw type presented to expected-type alignment.  This helper is
-the slot-demand coercion principle in executable form: a coercion source is
-selected only when the substituted expected type already demands a slot
-head, and any other expectation — unresolved, matcher-headed, or ordinary —
-leaves the synthesized type untouched.  Raw types are never structured to
-enable a coercion, and a matcher-headed expectation admits only the ordinary
-alignment of a raw matcher (a tuple behaves as a product matcher exactly at
-the moment it is consumed as a matcher, and every built-in consumption site
-expects a slot).  At a slot use site, a raw product of matchers is first
-lifted by the explicit unary `coerceProductMatcher` rule; `alignAtSlot` then
-performs the existing producer-stable matcher-to-slot conversion.  A raw
-product of slots is lifted by `coerceSlotTuple`.  Matcher-product lifting
-has precedence for the empty product, whose two component recognizers both
-succeed vacuously.
+/-- Executable branch selected at one expected-type cut.  Product recognition
+uses exactly the same cut-resolved source view as `DemandTyping.demandClass`.
+The selected duals are local views, never raw reconstruction indices. -/
+inductive ExpectedCoercionPlan where
+  | productMatcherLift (duals : List Dual)
+  | slotTupleLift (duals : List Dual)
+  | raw
+deriving Repr, DecidableEq
 
-Keeping this choice in a non-recursive helper leaves the Algorithm W traversal
-and its fuel argument unchanged.
--/
-def expectedCoercionSource
-    (state : InferState) (inferred expected : Ty) : Ty :=
-  match productMatcherDuals? inferred, productSlotDuals? inferred,
+/-- Select a use-site coercion from the two cut-resolved views.  Matcher-product
+lifting has precedence for the empty product, mirroring `demandClass`. -/
+def expectedCoercionPlan
+    (state : InferState) (inferred expected : Ty) : ExpectedCoercionPlan :=
+  match productMatcherDuals? (state.prevailing.apply inferred),
+      productSlotDuals? (state.prevailing.apply inferred),
       state.prevailing.apply expected with
-  | some duals, _, .slot _ _ => productMatcherTarget duals
-  | _, some duals, .slot _ _ => slotTupleTarget duals
-  | _, _, _ => inferred
+  | some duals, _, .slot _ _ => .productMatcherLift duals
+  | _, some duals, .slot _ _ => .slotTupleLift duals
+  | _, _, _ => .raw
 
 /-- The slot-demand principle in theorem form: whenever the selector presents
 anything other than the raw synthesized type, the substituted expected type
 already exposes a slot head at this cut. -/
-theorem expectedCoercionSource_slotDemand
+theorem expectedCoercionPlan_slotDemand
     (state : InferState) (inferred expected : Ty)
-    (changed : expectedCoercionSource state inferred expected ≠ inferred) :
+    (changed : expectedCoercionPlan state inferred expected ≠ .raw) :
     ∃ consumerCap consumerTarget,
       state.prevailing.apply expected = .slot consumerCap consumerTarget := by
-  unfold expectedCoercionSource at changed
+  unfold expectedCoercionPlan at changed
   split at changed
   all_goals first
     | exact absurd rfl changed
@@ -2098,14 +2128,37 @@ theorem expectedCoercionSource_slotDemand
 /-- A matcher-headed expectation is not a coercion demand: the selector
 leaves the synthesized type untouched, so only the ordinary alignment of a
 raw matcher can succeed at such a use site. -/
-theorem expectedCoercionSource_matcherExpected
+theorem expectedCoercionPlan_matcherExpected
     (state : InferState) (inferred expected : Ty)
     {consumerCap : Cap} {consumerTarget : Ty}
     (matcherExpected :
       state.prevailing.apply expected = .matcher consumerCap consumerTarget) :
-    expectedCoercionSource state inferred expected = inferred := by
-  unfold expectedCoercionSource
+    expectedCoercionPlan state inferred expected = .raw := by
+  unfold expectedCoercionPlan
   split <;> simp_all
+
+/-- Execute the product-matcher branch on the already resolved component
+duals.  No prevailing substitution is applied to these local views again. -/
+def alignResolvedProductMatcherAtSlot
+    (state : InferState) (origin : ConstraintOrigin) (duals : List Dual)
+    (consumerCap : Cap) (consumerTarget : Ty) : Option InferState :=
+  runResolvedConstraint state origin
+    (.producerToSlot (.prod (duals.map Dual.cap))
+      (.prod (duals.map Dual.target)) consumerCap consumerTarget)
+
+/-- Execute the slot-tuple branch on already resolved component duals.  The
+capability delta, rather than the full prevailing substitution, is applied to
+the local targets before the second solve. -/
+def alignResolvedSlotTupleAtSlot
+    (state : InferState) (origin : ConstraintOrigin) (duals : List Dual)
+    (consumerCap : Cap) (consumerTarget : Ty) : Option InferState := do
+  let step <- solveResolvedWithLedger state.capabilityOrigins
+    state.trace.solves.length origin
+    (.capEq (.prod (duals.map Dual.cap)) consumerCap)
+  let middle := state.recordSolve step
+  runResolvedConstraint middle origin
+    (.targetEq (step.delta.apply (.prod (duals.map Dual.target)))
+      (step.delta.apply consumerTarget))
 
 /--
 Align an already-synthesized expression result with an expected type and
@@ -2116,11 +2169,26 @@ same coercion selection without changing the mutual recursion graph.
 def alignExprResultAtExpected
     (path : SyntaxPath) (result : ExprResult) (expected : Ty) :
     Option InferState :=
-  let source := expectedCoercionSource result.state result.target expected
-  let inferred := result.state.prevailing.apply source
+  let resolvedInferred := result.state.prevailing.apply result.target
   let requested := result.state.prevailing.apply expected
-  match alignAtSlot result.state
-      (freshOrigin .expression path "expected-type") source expected with
+  let plan := expectedCoercionPlan result.state result.target expected
+  let inferred := match plan with
+    | .productMatcherLift duals => productMatcherTarget duals
+    | .slotTupleLift duals => slotTupleTarget duals
+    | .raw => resolvedInferred
+  let aligned := match plan, requested with
+    | .productMatcherLift duals, .slot consumerCap consumerTarget =>
+        alignResolvedProductMatcherAtSlot result.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget
+    | .slotTupleLift duals, .slot consumerCap consumerTarget =>
+        alignResolvedSlotTupleAtSlot result.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget
+    | .raw, _ => alignAtSlot result.state
+        (freshOrigin .expression path "expected-type") result.target expected
+    | _, _ => none
+  match aligned with
   | none => none
   | some aligned =>
       some (aligned.recordEvent (.slotAlignment
@@ -3884,7 +3952,8 @@ theorem runResolvedConstraint_historyPrefix
           exact (state.historyPrefix_recordSolve step).right_congr
             (Option.some.inj success)
       | producerToSlot _ _ _ _ =>
-          change (if capSubstFixesVarsCheck step.delta.cap state.protectedCaps
+          change (if capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps
             then some (state.recordSolve step) else none) =
               some result at success
           split at success <;> try contradiction
@@ -3952,6 +4021,26 @@ theorem alignAtSlot_historyPrefix
     exact first.trans second
   · exact alignTypes_historyPrefix success
 
+theorem alignResolvedProductMatcherAtSlot_historyPrefix
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.HistoryPrefix result := by
+  exact runResolvedConstraint_historyPrefix success
+
+theorem alignResolvedSlotTupleAtSlot_historyPrefix
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    state.HistoryPrefix result := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨step, stepSuccess, restSuccess⟩
+  exact (state.historyPrefix_recordSolve step).trans
+    (runResolvedConstraint_historyPrefix restSuccess)
+
 /-- Expected-type alignment extends the synthesized expression history. -/
 theorem alignExprResultAtExpected_historyPrefix
     {path : SyntaxPath} {expressionResult : ExprResult}
@@ -3960,16 +4049,46 @@ theorem alignExprResultAtExpected_historyPrefix
       some result) :
     expressionResult.state.HistoryPrefix result := by
   unfold alignExprResultAtExpected at success
-  cases alignmentEq : alignAtSlot expressionResult.state
-      (freshOrigin .expression path "expected-type")
-      (expectedCoercionSource expressionResult.state expressionResult.target
-        expected) expected with
-  | none => simp [alignmentEq] at success
-  | some aligned =>
-      simp only [alignmentEq, Option.some.injEq] at success
-      subst result
-      exact (alignAtSlot_historyPrefix alignmentEq).trans
-        (aligned.historyPrefix_recordEvent _)
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedProductMatcherAtSlot
+          expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact
+            (alignResolvedProductMatcherAtSlot_historyPrefix alignmentEq).trans
+              (aligned.historyPrefix_recordEvent _)
+  | slotTupleLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedSlotTupleAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignResolvedSlotTupleAtSlot_historyPrefix alignmentEq).trans
+            (aligned.historyPrefix_recordEvent _)
+  | raw =>
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") expressionResult.target
+          expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some aligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success
+          subst result
+          exact (alignAtSlot_historyPrefix alignmentEq).trans
+            (aligned.historyPrefix_recordEvent _)
 
 theorem alignDuals_historyPrefix
     {state result : InferState} {origin : ConstraintOrigin}
