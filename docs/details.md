@@ -180,12 +180,25 @@ variable-onlyにfreezeされる．
 `InferenceInputWF` は入力境界を記述するが，公開成功定理の caller premise ではない．validator
 が必要な `WBridgeWF` を成功 result から構成する．
 
-`DemandTypingInferenceSoundness` は，successful traversalのsupply，prevailing substitution，origin
-ledgerをDD derivationの入出力indexへ直接一致させるexact-state runを構成する．expression synthesis／
-checkingに加えてuser pattern／pattern listのrunもあり，pattern listのnil／cons，pattern variable，
-wildcard，value pattern，parameter embed，tuple patternまで実行分岐から`DDPatternOrigin`へ再構成済みで
-ある．残るuser-pattern分岐はpattern constructor，and／or，pattern-function applicationであり，
-primitive／data pattern，arm，clauseとともに後続の相互帰納へ統合する．
+`infer` 成功から `DDTyping` へのsoundnessは三段で構成する．第一段はsolver bridgeとconstructor
+sliceであり，successful traversalのsupply，prevailing substitution，origin ledgerをraw DD
+derivationの入出力indexへ正確に一致させる．第二段の10-family相互帰納はexpression synthesis／
+checking，expression list，user pattern／pattern list，matcher，arm，clauseを同じfuel inductionで
+再構成する．第三段はappend-only historyで全recursive callを一つのroot終端へ接続し，validatorの
+`WBridgeWF`から `let` generalization，matcher finalization，pattern-constructor compatibilityの
+三事実をterminal auditへ載せる．
+
+公開定理はcaller premiseを成功等式だけに戻す．
+
+```text
+Inference.infer_success_ddTyping :
+  infer signature context expression = some result →
+  DDTyping signature context expression result.resolvedTarget
+```
+
+したがって `WBridgeWF` と `HistoryPrefix` はcertified runを組み立てる内部indexであり，公開APIへ
+漏れない．この経路は `RuntimeTyping` を介さずsource typingを直接構成する．一方，次節の
+`infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
 
 ## 4. RuntimeTyping は内部 certificate である
 
@@ -212,9 +225,11 @@ oracle として保持することはない．`ExprDeriv.toRuntimeTyping` が最
 ```text
 infer Σ Γ e = some result
   → infer_success_reconstruct
-  → ExprDeriv Σ (result.S Γ) e result.resolvedTarget
+  → ExprDeriv Σ (ResolvedContext result.state.prevailing Γ)
+      e result.resolvedTarget
   → infer_success_runtimeTyping
-  → RuntimeTyping Σ (result.S Γ) e result.resolvedTarget
+  → RuntimeTyping Σ (ResolvedContext result.state.prevailing Γ)
+      e result.resolvedTarget
 ```
 
 `CoherentExpr` は `ExprDeriv` の役割名であり，別コピーの judgment ではない．`CoreTyping` と
@@ -315,13 +330,16 @@ pattern capture は depth-first・左から右の `PPatCoreOrder` から導出�
 global 条件は `FrozenSigWF` だけである．`SignatureChecker` の `frozenSigWFCheck` が有限 checker，
 `frozenSigWFCheck_sound` がその soundness を与える．
 
-公開定理は次の合成で得られる．
+公開安全性に必要な構成要素は次の形で機械化済みである．
 
 ```text
 DDTyping + FrozenSigWF
   → RuntimeTyping          terminal-fixedな全familyのstate erasure
-  → runtime safety         証明済み
+  → CoreSafetyの各性質     preservation／progress／到達可能性
 ```
+
+`DDTyping`を入口としてこれらを一つに束ねたsource-facingな公開定理はRoadmap milestone 4で
+構成する．state erasureはclosed signature・空contextに対する定理である．
 
 ## 7. Damas–Milner 断片
 
@@ -339,6 +357,8 @@ DDTyping + FrozenSigWF
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
+- `DemandTypingInferenceSoundnessRegression`: terminal `let` とrecursive matcherに対するpublic
+  `infer_success_ddTyping`．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
 - `PatternFunctionSafetyRegression`: pattern function と matching safety の接続．
@@ -361,7 +381,10 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingLedgerMetatheory` | ledger extension，freeze，supply-scoped transition補題 |
 | `DemandTypingOriginMetatheory` | 全Origin familyのledger evolution定理 |
 | `DemandTypingIdempotence` | alignmentと全14 raw DD familyのsolved-form保存 |
-| `DemandTypingInferenceSoundness` | successful executable traversalから`DDSynth`／`DDSynthOrigin`を再構成する直接soundness帰納パッケージ |
+| `DemandTypingInferenceSoundness` | exact solver／alignment bridgeとexact-state runの基礎 |
+| `DemandTypingInferenceSoundnessFixMatcher`／`Let`／`Patterns`／`Matcher` | constructor別の再構成slice |
+| `DemandTypingInferenceSoundnessMutual` | 全10 traversal familyのraw exact-state相互再構成 |
+| `DemandTypingInferenceSoundnessComplete`／`Certified`／`Public` | terminal-audited run，validator bridge，公開 `infer_success_ddTyping` |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |

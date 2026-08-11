@@ -54,7 +54,7 @@ $\neg\mathsf{DDTyping}(\mathit{letCapFreezeProgram})$ を閉じる negative regr
 or-pattern，delegating matcher，let-polymorphic producer の public positive Origin certificate も
 構成済みである．
 
-\subsection{実行可能推論から内部 certificate へ}
+\subsection{実行可能推論からDDTypingへ}
 
 公開 inference は停止する raw traversal と有限の fail-closed validator の合成である．
 \[
@@ -66,15 +66,23 @@ or-pattern，delegating matcher，let-polymorphic producer の public positive O
 raw traversal の executable ledger と DD の intrinsic Origin certificate は同じ policy を別の
 役割で記録する．前者は solver を実行時に fail closed にし，後者は関係的 derivation の solve
 admissibility を証明する．validator は trace から binder-local instance，alignment，matcher
-finalization，let generalization，freeze event を再検査し，reconstruction certificate を構成する．
-
-$S_r=r.\mathsf{state.prevailing}$ とすると，公開成功から次を得る．
+finalization，let generalization，freeze event を再検査する．成功したfuelled traversalは，
+expression synthesis／checking，expression list，pattern，matcher，arm，clauseを含む10 familyの
+相互帰納により，同じsupply，prevailing substitution，origin ledgerを持つraw DD derivationへ
+再構成される．append-only historyは各再帰呼出しを一つのroot終端へ接続し，validatorの証拠から
+$\mathtt{let}$，matcher，pattern constructorのterminal auditを構成する．従って公開成功から
+次を得る．
 \[
 \frac{\mathsf{infer}(\Sighat,\Gamma,e)=\mathsf{some}\;r}
-{\mathsf{RuntimeTyping}(\Sighat,S_r\Gamma,e,r.\mathsf{resolvedTarget})}.
+{\mathsf{DDTyping}(\Sighat,\Gamma,e,r.\mathsf{resolvedTarget})}.
 \]
-$\mathsf{RuntimeTyping}$ は source acceptance ではなく，solver state を持たない内部 certificate
-である．この定理は caller-supplied bridge や $\mathsf{InferenceInputWF}$ を前提にしない．
+この定理は $\mathsf{RuntimeTyping}$ を経由せず，caller-supplied bridge，history，
+$\mathsf{InferenceInputWF}$を前提にしない．
+
+これとは独立に，$S_r=r.\mathsf{state.prevailing}$として公開成功から
+$\mathsf{RuntimeTyping}(\Sighat,S_r\Gamma,e,r.\mathsf{resolvedTarget})$を再構成する既存経路もある．
+$\mathsf{RuntimeTyping}$ は source acceptance ではなく，solver stateを持たない内部certificateで
+あり，動的メタ理論との直接接続に用いる．一般contextについて二つの経路を同一視する主張はしない．
 
 \subsection{動的安全性}
 
@@ -84,9 +92,11 @@ machine について，typed state の一段保存，局所 progress，到達可
 の substitution typing を証明済みである．空 successor 列は正当な match failure であり stuck
 ではない．一般の program termination は主張しない．
 
-\subsection{DDTyping から安全性への接続}
+\subsection{DDTyping から安全性への構成要素}
 
-公開安全性定理の構造は次である．
+目標とするsource-facingな公開安全性定理の構造は模式的に次である．ここで
+$\mathsf{RuntimeSafe}$はLeanの単一judgment名ではなく，$\mathsf{CoreSafety}$が束ねる
+preservation，progress，到達可能性，成功branch typingを略記する．
 \[
 \Sighat.\mathsf{SchemesClosed}
 \Longrightarrow
@@ -96,7 +106,9 @@ machine について，typed state の一段保存，局所 progress，到達可
 \Longrightarrow
 \mathsf{RuntimeSafe}(\Sighat,e,\tau).
 \]
-両方の矢印を機械化済みである．第一の矢印では，入力cutより前のorigin policyを保存する
+第一の矢印と，$\mathsf{RuntimeTyping}$を前提とする$\mathsf{CoreSafety}$の各構成要素は
+機械化済みである．$\mathsf{DDTyping}$を入口として後者を一つに束ねる公開定理は今後の接続である．
+第一の矢印では，入力cutより前のorigin policyを保存する
 supply-scopedな残余substitutionと，各局所出力を一つのroot終端substitutionへ結ぶ
 $\mathsf{StateFactorization}$を使う．全14 Origin familyのfactorizationとconstructor-wise erasureを
 一つの終端cutへ固定した相互帰納にまとめ，supply，prevailing substitution，ledgerを消去する．
@@ -139,7 +151,8 @@ Origin transition を executable trace および terminal validator に対応付
 全 expression／pattern／arm／clause の raw DD family，それらに対応する intrinsic Origin family，
 ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，全14 raw familyの
 solved-form保存，terminal audit，terminal-fixedな相互runtime erasure，closed-programの
-$\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{RuntimeTyping}$への
-reconstruction，concrete dynamic safetyはLean~4に機械化済みである．public freeze回帰も閉じている．
-DD／inferの受理完全性は別の未完成接続である．
+$\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{DDTyping}$および
+$\mathsf{RuntimeTyping}$へのreconstruction，concrete dynamic safetyはLean~4に機械化済みである．
+public freeze回帰も閉じている．受理接続に関しては，逆向きのDD／infer受理完全性だけが
+未完成である．source-facingな公開安全性のbundled theoremは別の今後の接続である．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

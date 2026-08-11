@@ -64,7 +64,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   が `MatcherSlot` であること**とする．checking は式を先に synthesize し，その cut で
   prevailing 適用後の expected head を観測して branch を決定する．非恒等 coercion の
   終点は常に slot（`matcherToSlot`／`productMatcher; matcherToSlot`／`slotTuple` の
-  三形）であり，Matcher 終点の coercion を demand 経路（selector・将来の `DDTyping`）に
+  三形）であり，Matcher 終点の coercion を demand 経路（selector・`DDTyping`）に
   追加しない．matcher-expected 位置は raw `Matcher` の通常単一化だけを許す．
 - 「通常単一化の失敗」を coercion の負前提にしない．failed attempt の rollback，fuel
   切れ，guard 拒否を coercion の根拠に持ち込まない．branch 選択は visible な head から
@@ -85,7 +85,8 @@ commit／push はその都度の明示指示がある場合に限るという規
 
 - 公開 entry point `infer` は停止する raw 走査 `inferRaw` と有限な fail-closed terminal
   validator の合成である．公開 `infer` が成功したとき，成功等式だけから
-  `infer_success_runtimeTyping` が内部 `RuntimeTyping` certificate を与える状態を維持する．
+  `infer_success_ddTyping` が唯一のsource typingである `DDTyping` を与える状態を維持する．
+  `infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
 - `InferenceInputWF` を soundness の前提に戻さない．`WBridgeWF` は validator が内部で
   構成する証明書であり，呼び出し側の追加前提に戻さない．terminal validator の
   completeness は主張しない．
@@ -101,7 +102,8 @@ commit／push はその都度の明示指示がある場合に限るという規
   分岐を判断側へ持ち込まない（raw visibility は executable inference との対応境界である）．
   pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の
   一致を崩す規則変更をしない．matcher literal の finalization 検査群を DD 側だけ
-  弱めない．
+  弱めない．受理接続に関しては `DDTyping → infer` の逆向き完全性だけが未証明であり，soundnessの
+  `WBridgeWF`／historyをcaller premiseへ露出して穴を埋めない．
 
 ### 動的安全性
 

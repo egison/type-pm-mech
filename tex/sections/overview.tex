@@ -40,13 +40,17 @@ pattern constructorの三種である．
 動的安全性の証明では，これら三つの推論状態を消去した内部 certificate
 $\mathsf{RuntimeTyping}$ を使う．これは source acceptance を定める第二の型システムではなく，
 runtime value typing と preservation の帰納法を状態履歴から切り離すための補助判断である．
-依存方向は
+source acceptanceと動的安全性に必要な構成要素の依存方向は
 \[
-\mathsf{DDTyping}\Longrightarrow\mathsf{RuntimeTyping}
+\mathsf{infer\ success}\Longrightarrow\mathsf{DDTyping}
+\Longrightarrow\mathsf{RuntimeTyping}
 \Longrightarrow\mathsf{RuntimeSafety}
 \]
-である．最初の矢印は，Origin derivation，終端 substitution に固定した相互 state erasure，
-terminal audit の合成として機械化済みである．
+である．最初の矢印は成功したtraversalの相互DD再構成とterminal validatorとして機械化済みである．
+二番目はclosed signature・空contextに特殊化したOrigin derivation，終端 substitution に固定した
+相互 state erasure，terminal auditの合成である．最後は内部certificateに対する
+$\mathsf{CoreSafety}$の性質を模式的に表す．$\mathsf{DDTyping}$を入口として後二つを束ねた
+source-facingな公開安全性定理は今後の接続である．
 
 \subsection{Origin ledger が表すもの}
 
