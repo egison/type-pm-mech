@@ -748,6 +748,21 @@ theorem program_evaluation :
 def inferenceResult : Inference.ExprResult :=
   (Inference.infer signature [] program).get (by native_decide)
 
+/-- This accepted program needs the capability leaf produced by the `pair`
+pattern constructor to remain structurally flexible until the enclosing
+matcher-to-slot demand.  Freezing every child/result leaf at the local pattern
+constructor cut would reject the later, valid `kappa -> Any` solve. -/
+def pairPatternLeafStructuralizedAfterLocalCut : Bool :=
+  inferenceResult.state.trace.events.any fun event =>
+    match event with
+    | .patternCtorCompatibility _ "pair" _ (.con "Pair" [.var leaf]) =>
+        inferenceResult.state.prevailing.cap leaf == .any
+    | _ => false
+
+theorem pair_pattern_leaf_structuralized_after_local_cut :
+    pairPatternLeafStructuralizedAfterLocalCut = true := by
+  native_decide
+
 theorem inference_success :
     Inference.infer signature [] program = some inferenceResult := by
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)

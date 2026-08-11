@@ -117,10 +117,11 @@ progress，到達可能 state の保存，成功 branch の substitution typing 
 
 ## 未完成の接続
 
-現在の主な未完成部分は二つである．
+現在の主な未完成部分は三つである．
 
 1. `DDTyping → RuntimeTyping` の state erasure
-2. `DDTyping → infer` の受理完全性
+2. `infer → DDTyping` の executable soundness
+3. `DDTyping → infer` の受理完全性
 
 一つ目に必要な capability-origin ledger は DD family 全体へ統合済みである．raw derivation と
 同じ形の intrinsic Origin certificate が，fresh allocation，scheme／dual instance，constructor
@@ -137,7 +138,11 @@ capabilityを不正に強化できる一方，public `DDTyping` ではプログ�
 end-to-end回帰で固定している．既存正例のOrigin certificateもpublic wrapperまで構成済みで
 ある．`RuntimeTyping` の存在を `DDTyping` の premise に埋め込む循環的な定義は採らない．
 
-二つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
+二つ目については，successful executable traversalを同じcut列を持つDD derivationへ直接写す
+証明を開始している．この接続は`RuntimeTyping`を経由せず，raw target，supply，prevailing
+substitution，origin ledgerを保持する内部の帰納パッケージを用いる．
+
+三つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
 raw type を使う箇所を cut-resolved view と一致させる必要がある．最終目標は追加 premise の
 ない次の定理である．
 
@@ -164,7 +169,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
               │
         ┌─────┴──────────┐
         ▼                ▼
-[~] 2. DD state erasure   [ ] 3. infer success → DDTyping
+[~] 2. DD state erasure   [~] 3. infer success → DDTyping
         │                │
         ▼                ▼
 [ ] 4. DD の公開安全性    [ ] 5. DDTyping → infer success
@@ -257,8 +262,13 @@ matcher本体ではscoped rename-only postをshape／clause transportが使うto
 capability／type／scheme／context上で元のpostと一致する補題は実装済みである．ただしproducerに
 現れないstructural leafまでfreezeされるわけではないため，matcher全体へ適用するには有限な関連leaf
 だけを追跡するか，clauseを最終cutで直接再構成する必要がある．これらを解決して残るuser pattern，
-clause，matcherを相互に閉じることが次のcutである．pattern constructorについてはchild／result
-capabilityをexport freezeへ含め，`CapCompatible`をrenaming transportできる provenance が必要である．
+clause，matcherを相互に閉じることが次のcutである．pattern constructorのchild／result
+capabilityを局所cutで一律にexport freezeする案は採れない．`DynamicDispatchRegression`の正例では
+`Pair κ`として合成されたpattern resultが，外側のmatcher-to-slot demandで`κ ↦ Any`と正当に
+具体化されるためである．実行可能推論のterminal validatorは既にraw operandへ最終substitutionを
+再適用して`CapCompatible`を再検査し，`Reconstruction`もその証拠を使用している．したがってDD
+state erasureでも，pattern constructor単体を早期freezeするのではなく，最終consumer cutの
+compatibility evidenceを直接渡す，またはpattern consumer全体の完了まで検査を遅延する必要がある．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
@@ -274,12 +284,17 @@ DDTyping signature [] e τ →
 完了条件は，型付け derivation を premise に持つ oracle や任意の capability transport を
 追加せず，freeze 回帰を含む全例についてこの定理を適用できることである．
 
-### [ ] 3. 実行可能推論の DD soundness を証明する
+### [~] 3. 実行可能推論の DD soundness を証明する
 
 現在の `infer_success_runtimeTyping` より前に，successful trace そのものを ledger-aware DD
 derivation へ再構成する．`inferRaw` の fresh allocation 順，solve cut，generalization，matcher
 finalization を対応する DD constructor へ写し，terminal validator が確認した freeze event を
 DD ledger へ反映する．
+
+最初の帰納不変量として`Inference.DDSynthRun`を定義済みである．これはsuccessful traversalの
+raw targetと，実行状態のsupply／prevailing substitution／origin ledgerに正確に一致する
+`DDSynth`／`DDSynthOrigin`だけを保持し，canonical initial stateから`DDTyping`へ射影できる．
+literalと`something`のleaf traversalについてこの再構成を実装済みである．
 
 中心定理：
 
@@ -358,7 +373,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | 層 | 主な module | 役割 |
 |---|---|---|
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingErasure`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，state-erasure facade，public source typingと回帰 |
+| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingInferenceSoundness`, `DemandTypingErasure`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，推論からDDへの再構成，state-erasure facade，public source typingと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |

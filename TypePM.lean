@@ -72,6 +72,7 @@ import TypePM.DemandTyping
 import TypePM.DemandTypingLedgerMetatheory
 import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
+import TypePM.DemandTypingInferenceSoundness
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingRegression
 
