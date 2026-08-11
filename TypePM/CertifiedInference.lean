@@ -64,13 +64,24 @@ private theorem infer_success_raw_and_checked
       subst raw
       exact ⟨rfl, checked⟩
 
+/-- Public inference success exposes the successful raw traversal needed by
+the direct `infer -> DDTyping` reconstruction.  The terminal bridge remains a
+separate, internal audit; reconstructing DD follows the traversal itself and
+therefore needs no runtime-typing oracle. -/
+theorem infer_success_inferRaw
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    inferRaw signature context expression = some result :=
+  (infer_success_raw_and_checked success).1
+
 /-- Every successful public run preserves all protected producer variables. -/
 theorem infer_protected
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     ProtectedProducerTrace result.state :=
-  inferRaw_protected (infer_success_raw_and_checked success).1
+  inferRaw_protected (infer_success_inferRaw success)
 
 /-- A successful public run constructs the complete algebraic bridge checked by
 the terminal validator. -/

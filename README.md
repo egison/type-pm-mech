@@ -294,7 +294,9 @@ DD ledger へ反映する．
 最初の帰納不変量として`Inference.DDSynthRun`を定義済みである．これはsuccessful traversalの
 raw targetと，実行状態のsupply／prevailing substitution／origin ledgerに正確に一致する
 `DDSynth`／`DDSynthOrigin`だけを保持し，canonical initial stateから`DDTyping`へ射影できる．
-literalと`something`のleaf traversalについてこの再構成を実装済みである．
+variable，literal，`something`とexpression-listのnil／cons traversalについてこの再構成を
+実装済みである．またpublic `infer`の成功から対応する`inferRaw`成功を取り出す補題を公開し，
+最終corollaryがterminal runtime certificateへ迂回しない入口を用意した．
 
 中心定理：
 
