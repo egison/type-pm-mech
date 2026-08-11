@@ -329,7 +329,9 @@ raw slot-productのresolved dual transportと空productのproduct-matcher preced
 slot-tuple liftも再構成済みである．branch別certificateを実行selectorと同じprecedenceで統合し，
 raw／resolved product認識がずれる成功不能caseも明示的に排除した．したがって任意のsuccessful
 expected-type alignmentとchecking traversalをexact-stateな`DDAlignRun`／`DDCheckRun`へ再構成できる．
-次はこのgeneric checking補題を使い，expression traversalの残りconstructorをDD synthesisへ写す．
+このgeneric checking補題を使い，function synthesis，2 target fresh，function alignment，argument checkingを
+threadするapplication traversalも`DDSynth`／`DDSynthOrigin`へ再構成した．次はexpression-list checkingの
+exact-state packageを追加し，constructor／primitive applicationをまとめて閉じる．
 
 中心定理：
 

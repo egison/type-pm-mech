@@ -1043,6 +1043,25 @@ def lambdaEntryState (initial : InferState) (path : SyntaxPath) : InferState :=
   ((visit initial .exprLam path).freshTy
     (freshOrigin .expression path "lambda-domain")).2
 
+/-- The application domain allocated immediately after function synthesis. -/
+def applicationDomain (functionResult : ExprResult) (path : SyntaxPath) : Ty :=
+  (functionResult.state.freshTy
+    (freshOrigin .expression path "application-domain")).1
+
+/-- The application result allocated immediately after its domain. -/
+def applicationResultTarget
+    (functionResult : ExprResult) (path : SyntaxPath) : Ty :=
+  (((functionResult.state.freshTy
+      (freshOrigin .expression path "application-domain")).2).freshTy
+    (freshOrigin .expression path "application-result")).1
+
+/-- State after the two application target allocations. -/
+def applicationFreshState
+    (functionResult : ExprResult) (path : SyntaxPath) : InferState :=
+  (((functionResult.state.freshTy
+      (freshOrigin .expression path "application-domain")).2).freshTy
+    (freshOrigin .expression path "application-result")).2
+
 @[simp] theorem lambdaDomain_eq
     (initial : InferState) (path : SyntaxPath) :
     lambdaDomain initial path = .var initial.supply.nextTy :=
@@ -1063,6 +1082,37 @@ def lambdaEntryState (initial : InferState) (path : SyntaxPath) : InferState :=
     (initial : InferState) (path : SyntaxPath) :
     (lambdaEntryState initial path).capabilityOrigins =
       initial.capabilityOrigins :=
+  rfl
+
+@[simp] theorem applicationDomain_eq
+    (functionResult : ExprResult) (path : SyntaxPath) :
+    applicationDomain functionResult path =
+      .var functionResult.state.supply.nextTy :=
+  rfl
+
+@[simp] theorem applicationResultTarget_eq
+    (functionResult : ExprResult) (path : SyntaxPath) :
+    applicationResultTarget functionResult path =
+      .var (functionResult.state.supply.nextTy + 1) :=
+  rfl
+
+@[simp] theorem applicationFreshState_supply
+    (functionResult : ExprResult) (path : SyntaxPath) :
+    (applicationFreshState functionResult path).supply =
+      { functionResult.state.supply with
+        nextTy := functionResult.state.supply.nextTy + 2 } :=
+  rfl
+
+@[simp] theorem applicationFreshState_prevailing
+    (functionResult : ExprResult) (path : SyntaxPath) :
+    (applicationFreshState functionResult path).prevailing =
+      functionResult.state.prevailing :=
+  rfl
+
+@[simp] theorem applicationFreshState_capabilityOrigins
+    (functionResult : ExprResult) (path : SyntaxPath) :
+    (applicationFreshState functionResult path).capabilityOrigins =
+      functionResult.state.capabilityOrigins :=
   rfl
 
 /-- The empty executable expression-list result is the empty DD derivation. -/
@@ -1132,6 +1182,48 @@ theorem DDSynthRun.tuple
   refine ⟨.prod childTargets, DDSynth.tuple childrenDerived, ?_, ?_⟩
   · simp [finishExpr, targetsEq]
   · simpa [finishExpr] using DDSynthOrigin.tuple childrenOrigin
+
+/-- Compose function synthesis, exact function-shape alignment, and generic
+argument checking into an application synthesis run. -/
+theorem DDSynthRun.app
+    {signature : FrozenSig} {context : Context}
+    {function argument : Expr} {initial : InferState} {path : SyntaxPath}
+    {functionResult : ExprResult} {functionAligned argumentFinal : InferState}
+    (functionRun : DDSynthRun signature context function
+      (visit initial .exprApp path) functionResult)
+    (functionAlignRun : DDAlignTypesRun functionResult.target
+      (.fn (applicationDomain functionResult path)
+        (applicationResultTarget functionResult path))
+      (applicationFreshState functionResult path) functionAligned)
+    (argumentRun : DDCheckRun signature context argument
+      (applicationDomain functionResult path) functionAligned argumentFinal) :
+    DDSynthRun signature context (.app function argument) initial
+      (finishExpr (.app function argument) path
+        (applicationResultTarget functionResult path) argumentFinal) := by
+  rcases functionRun with
+    ⟨functionTarget, functionDerived, functionTargetEq, functionOrigin⟩
+  rcases functionAlignRun with
+    ⟨alignedSupplyEq, alignedLedgerEq, functionAlignedDD⟩
+  unfold DDCheckRun at argumentRun
+  rw [alignedSupplyEq, alignedLedgerEq] at argumentRun
+  simp only [applicationFreshState_supply, applicationFreshState_capabilityOrigins,
+    applicationDomain_eq] at argumentRun
+  rcases argumentRun with ⟨argumentDerived, argumentOrigin⟩
+  subst functionTarget
+  change DDSynth signature initial.supply initial.prevailing context function
+    functionResult.target functionResult.state.supply
+      functionResult.state.prevailing at functionDerived
+  change DDSynthOrigin signature functionDerived initial.capabilityOrigins
+    functionResult.state.capabilityOrigins at functionOrigin
+  simp only [applicationFreshState_capabilityOrigins,
+    applicationFreshState_prevailing, applicationDomain_eq,
+    applicationResultTarget_eq] at functionAlignedDD
+  refine ⟨.var (functionResult.state.supply.nextTy + 1),
+    DDSynth.app functionDerived functionAlignedDD.erase argumentDerived,
+    ?_, ?_⟩
+  · simp [finishExpr]
+  · simpa [finishExpr] using
+      DDSynthOrigin.app functionOrigin functionAlignedDD argumentOrigin
 
 /-- The empty branch of the executable expression-list traversal reconstructs
 the empty DD list certificate. -/
@@ -1263,6 +1355,82 @@ theorem inferExprFuel_tuple_ddSynthRun
         simpa [inferExprFuel, childrenEq] using success
       subst result
       exact DDSynthRun.tuple (childrenSound children childrenEq)
+
+/-- The application branch uses the function synthesis hypothesis, aligns it
+with the two freshly allocated arrow indices, and checks the argument through
+the generic expected-alignment theorem. -/
+theorem inferExprFuel_app_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {function argument : Expr}
+    {initial : InferState} {result : ExprResult}
+    (functionSound : ∀ functionResult : ExprResult,
+      inferExprFuel fuel signature context selfEnv (0 :: path) function
+        (visit initial .exprApp path) = some functionResult →
+      DDSynthRun signature context function (visit initial .exprApp path)
+        functionResult)
+    (argumentSound : ∀ (argumentInitial : InferState)
+        (argumentResult : ExprResult),
+      inferExprFuel fuel signature context selfEnv (1 :: path) argument
+        argumentInitial = some argumentResult →
+      DDSynthRun signature context argument argumentInitial argumentResult)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.app function argument) initial = some result) :
+    DDSynthRun signature context (.app function argument) initial result := by
+  cases functionEq : inferExprFuel fuel signature context selfEnv (0 :: path)
+      function (visit initial .exprApp path) with
+  | none => simp [inferExprFuel, functionEq] at success
+  | some functionResult =>
+      cases functionAlignEq : alignTypes
+          (applicationFreshState functionResult path)
+          (freshOrigin .expression path "application-function")
+          functionResult.target
+          (.fn (applicationDomain functionResult path)
+            (applicationResultTarget functionResult path)) with
+      | none =>
+          have actualFunctionAlignEq := functionAlignEq
+          simp only [applicationDomain, applicationResultTarget,
+            applicationFreshState] at actualFunctionAlignEq
+          simp [inferExprFuel, functionEq, actualFunctionAlignEq] at success
+      | some functionAligned =>
+          have actualFunctionAlignEq := functionAlignEq
+          simp only [applicationDomain, applicationResultTarget,
+            applicationFreshState] at actualFunctionAlignEq
+          cases argumentEq : inferExprFuel fuel signature context selfEnv
+              (1 :: path) argument functionAligned with
+          | none =>
+              simp [inferExprFuel, functionEq, actualFunctionAlignEq,
+                argumentEq] at success
+          | some argumentResult =>
+              cases argumentAlignEq : alignExprResultAtExpected (1 :: path)
+                  argumentResult (applicationDomain functionResult path) with
+              | none =>
+                  have actualArgumentAlignEq := argumentAlignEq
+                  simp only [applicationDomain] at actualArgumentAlignEq
+                  simp [inferExprFuel, functionEq, actualFunctionAlignEq,
+                    argumentEq, actualArgumentAlignEq] at success
+              | some argumentFinal =>
+                  have actualArgumentAlignEq := argumentAlignEq
+                  simp only [applicationDomain] at actualArgumentAlignEq
+                  have resultEq : finishExpr (.app function argument) path
+                      (applicationResultTarget functionResult path)
+                      argumentFinal = result := by
+                    apply Option.some.inj
+                    simpa [inferExprFuel, functionEq, actualFunctionAlignEq,
+                      argumentEq, actualArgumentAlignEq,
+                      applicationResultTarget] using success
+                  subst result
+                  have argumentCheckSuccess :
+                      checkExprFuel (fuel + 1) signature context selfEnv
+                        (1 :: path) argument
+                        (applicationDomain functionResult path)
+                        functionAligned = some argumentFinal := by
+                    simpa [checkExprFuel, argumentEq] using argumentAlignEq
+                  have argumentRun := checkExprFuel_ddCheckRun argumentEq
+                    (argumentSound functionAligned argumentResult argumentEq)
+                    argumentCheckSuccess
+                  exact DDSynthRun.app
+                    (functionSound functionResult functionEq)
+                    (alignTypes_ddAlignTypesRun functionAlignEq) argumentRun
 
 /-- Context lookup uses the executable scheme-instantiation helper and
 reconstructs the matching rename-only origin transition.  A direct-self hit
