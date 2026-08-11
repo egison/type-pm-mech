@@ -531,9 +531,6 @@ theorem runtimeErasure_pctor_of_terminal_children
       (context.applySubst S₃) (parameters.applySubst S₃)
       (bindings.applySubst S₃) patterns
       (duals.map (Dual.applySubst S₃)) (bindings'.applySubst S₃))
-    (compatibleAtTerminal : entry.CapCompatible
-      ((duals.map (Dual.applySubst S₃)).map Dual.cap)
-      (capability.apply S₃.cap))
     (instanceAtTerminal : entry.Inst
       ((duals.map (Dual.applySubst S₃)).map Dual.target)
       (S₃.apply
@@ -550,7 +547,11 @@ theorem runtimeErasure_pctor_of_terminal_children
   exact TerminalPatternResolution.ctor
     (result := ⟨capability.apply S₃.cap,
       S₃.apply (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩)
-    lookup childrenErasure compatibleAtTerminal instanceAtTerminal
+    lookup childrenErasure
+      (by
+        simpa only [Dual.map_cap_applySubst, Cap.applyList_eq_map] using
+          Inference.capCompatibleCheck_sound compatibleCheck)
+      instanceAtTerminal
 
 /-- Pattern-function application has no residual work once its canonical
 value-flow instance and all argument patterns are available at the terminal
