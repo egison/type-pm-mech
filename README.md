@@ -326,7 +326,10 @@ exact-stateな`DDAlignTypesWithLedger`へ再構成済みであり，ordinary typ
 event-onlyな`alignTypes` wrapperと`alignAtSlot`のordinary fallbackもexact-state certificateへ
 持ち上げ済みであり，slot-to-slotのcapability-then-target 2-solve分岐も再構成した．次は
 raw slot-productのresolved dual transportと空productのproduct-matcher precedenceを含む
-slot-tuple liftも再構成済みである．次はbranch別certificateを統合し，checking alignment全体を完成する．
+slot-tuple liftも再構成済みである．branch別certificateを実行selectorと同じprecedenceで統合し，
+raw／resolved product認識がずれる成功不能caseも明示的に排除した．したがって任意のsuccessful
+expected-type alignmentとchecking traversalをexact-stateな`DDAlignRun`／`DDCheckRun`へ再構成できる．
+次はこのgeneric checking補題を使い，expression traversalの残りconstructorをDD synthesisへ写す．
 
 中心定理：
 

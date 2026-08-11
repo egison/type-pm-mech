@@ -388,15 +388,13 @@ theorem alignTypes_ddAlignTypesRun
   simpa [DDAlignTypesRun] using
     (alignTypesCore_ddAlignTypesRun coreSuccess)
 
-/-- Reconstruct the ordinary checking fallback.  The demand class excludes
-matcher-to-slot coercion, while the pair class excludes the homogeneous slot
-branch; the remaining executable path is the event-wrapped type alignment. -/
+/-- Reconstruct the ordinary checking fallback.  An ordinary demand class
+excludes both specialized resolved-head branches, leaving the event-wrapped
+type alignment. -/
 theorem alignAtSlot_ordinary_ddAlignRun
     {state final : InferState} {origin : ConstraintOrigin}
     {raw expected : Ty}
     (demand : demandClass (state.prevailing.apply raw)
-      (state.prevailing.apply expected) = .ordinary)
-    (pairClass : alignPairClass (state.prevailing.apply raw)
       (state.prevailing.apply expected) = .ordinary)
     (success : alignAtSlot state origin raw expected = some final) :
     DDAlignRun raw expected state final := by
@@ -404,7 +402,7 @@ theorem alignAtSlot_ordinary_ddAlignRun
   simp only at success
   split at success
   · simp_all [demandClass, productMatcherDuals?, productSlotDuals?]
-  · simp_all [alignPairClass]
+  · simp_all [demandClass, productMatcherDuals?, productSlotDuals?]
   · rcases alignTypes_ddAlignTypesRun success with
       ⟨supplyEq, ledgerEq, aligned⟩
     exact ⟨supplyEq, ledgerEq,
@@ -811,6 +809,146 @@ theorem alignExprResultAtExpected_slotTupleLift_ddAlignRun
       exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
         by simpa using alignedDD⟩
 
+/-- The paired kernel rejects a product/slot outer-constructor mismatch at
+every fuel. -/
+private theorem solvePairedTy_prod_slot_eq_none
+    (fuel : Nat) (ledger : CapabilityOriginLedger) (components : List Ty)
+    (consumerCap : Cap) (consumerTarget : Ty) :
+    PairedUnification.solvePairedTy fuel ledger (.prod components)
+      (.slot consumerCap consumerTarget) = none := by
+  cases fuel with
+  | zero => rfl
+  | succ fuel =>
+      rw [PairedUnification.solvePairedTy]
+      split
+      · contradiction
+      · rfl
+
+/-- A resolved product cannot take the raw fallback path to a slot: paired
+equality preserves the two distinct outer constructors and fails immediately. -/
+private theorem alignAtSlot_resolvedProd_slot_eq_none
+    (state : InferState) (origin : ConstraintOrigin) (raw expected : Ty)
+    (components : List Ty) (consumerCap : Cap) (consumerTarget : Ty)
+    (rawView : state.prevailing.apply raw = .prod components)
+    (expectedView : state.prevailing.apply expected =
+      .slot consumerCap consumerTarget) :
+    alignAtSlot state origin raw expected = none := by
+  have targetSolveNone : solveTargetEqWithLedger state.capabilityOrigins
+      state.trace.solves.length origin (.prod components)
+        (.slot consumerCap consumerTarget) = none := by
+    unfold solveTargetEqWithLedger
+    split
+    · rfl
+    · rename_i result solved
+      rw [solvePairedTy_prod_slot_eq_none] at solved
+      contradiction
+  have coreNone : alignTypesCore state origin raw expected = none := by
+    unfold alignTypesCore
+    simp only [rawView, expectedView]
+    unfold runResolvedConstraint
+    change (do
+      let step ← solveTargetEqWithLedger state.capabilityOrigins
+        state.trace.solves.length origin (.prod components)
+          (.slot consumerCap consumerTarget)
+      pure (state.recordSolve step)) = none
+    rw [targetSolveNone]
+    rfl
+  unfold alignAtSlot
+  simp only [rawView, expectedView]
+  unfold alignTypes
+  rw [coreNone]
+  rfl
+
+/-- Lift any raw-source `alignAtSlot` reconstruction through the event-only
+expected-alignment wrapper. -/
+private theorem alignExprResultAtExpected_of_rawSource_ddAlignRun
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final : InferState}
+    (sourceEq : expectedCoercionSource expressionResult.state
+      expressionResult.target expected = expressionResult.target)
+    (alignSound : ∀ aligned,
+      alignAtSlot expressionResult.state
+        (freshOrigin .expression path "expected-type")
+        expressionResult.target expected = some aligned →
+      DDAlignRun expressionResult.target expected expressionResult.state
+        aligned)
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final) :
+    DDAlignRun expressionResult.target expected expressionResult.state final := by
+  unfold alignExprResultAtExpected at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type") expressionResult.target
+      expected with
+  | none => simp [sourceEq, alignmentEq] at success
+  | some aligned =>
+      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
+      subst final
+      rcases alignSound aligned alignmentEq with
+        ⟨supplyEq, ledgerEq, alignedDD⟩
+      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+        by simpa using alignedDD⟩
+
+/-- Reconstruct every successful expected-type alignment using the same raw
+coercion-source precedence and resolved-head dispatch as the executable
+selector. -/
+theorem alignExprResultAtExpected_ddAlignRun
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final : InferState}
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final) :
+    DDAlignRun expressionResult.target expected expressionResult.state final := by
+  cases matcherView : productMatcherDuals? expressionResult.target with
+  | some duals =>
+      cases expectedView : expressionResult.state.prevailing.apply expected <;>
+        first
+        | exact alignExprResultAtExpected_productMatcherLift_ddAlignRun
+            matcherView expectedView success
+        | exact alignExprResultAtExpected_of_rawSource_ddAlignRun
+            (by simp [expectedCoercionSource, matcherView, expectedView])
+            (by
+              intro aligned alignmentEq
+              exact alignAtSlot_ordinary_ddAlignRun
+                (by simp [demandClass, expectedView]) alignmentEq)
+            success
+  | none =>
+      cases slotView : productSlotDuals? expressionResult.target with
+      | some duals =>
+          cases expectedView :
+              expressionResult.state.prevailing.apply expected <;>
+            first
+            | exact alignExprResultAtExpected_slotTupleLift_ddAlignRun
+                matcherView slotView expectedView success
+            | exact alignExprResultAtExpected_of_rawSource_ddAlignRun
+                (by simp [expectedCoercionSource, matcherView, slotView,
+                  expectedView])
+                (by
+                  intro aligned alignmentEq
+                  exact alignAtSlot_ordinary_ddAlignRun
+                    (by simp [demandClass, expectedView]) alignmentEq)
+                success
+      | none =>
+          apply alignExprResultAtExpected_of_rawSource_ddAlignRun
+            (by simp [expectedCoercionSource, matcherView, slotView]) ?_ success
+          intro aligned alignmentEq
+          cases rawView :
+              expressionResult.state.prevailing.apply expressionResult.target <;>
+            cases expectedView :
+              expressionResult.state.prevailing.apply expected <;>
+            first
+            | exact alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
+                alignmentEq
+            | exact alignAtSlot_slotToSlot_ddAlignRun rawView expectedView
+                alignmentEq
+            | (have impossible := alignAtSlot_resolvedProd_slot_eq_none
+                  expressionResult.state
+                  (freshOrigin .expression path "expected-type")
+                  expressionResult.target expected _ _ _ rawView expectedView
+               rw [impossible] at alignmentEq
+               contradiction)
+            | exact alignAtSlot_ordinary_ddAlignRun
+                (by simp [demandClass, productMatcherDuals?,
+                  productSlotDuals?, rawView, expectedView]) alignmentEq
+
 /-- Compose synthesis and expected-type alignment into the single public DD
 checking rule. -/
 theorem DDSynthRun.check
@@ -827,6 +965,25 @@ theorem DDSynthRun.check
   rw [supplyEq, ledgerEq]
   refine ⟨DDCheck.mk synthDerived aligned.erase, ?_⟩
   exact DDCheckOrigin.mk synthOrigin aligned
+
+/-- Any successful checking traversal composes its synthesis run with the
+generic expected-alignment reconstruction. -/
+theorem checkExprFuel_ddCheckRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
+    {expected : Ty} {initial final : InferState}
+    {synthesized : ExprResult}
+    (inferEq : inferExprFuel fuel signature context selfEnv path expression
+      initial = some synthesized)
+    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (success : checkExprFuel (fuel + 1) signature context selfEnv path
+      expression expected initial = some final) :
+    DDCheckRun signature context expression expected initial final := by
+  have alignmentEq :
+      alignExprResultAtExpected path synthesized expected = some final := by
+    simpa [checkExprFuel, inferEq] using success
+  exact DDSynthRun.check synthRun
+    (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
 /-- The matcher-to-slot branch of executable checking reconstructs the single
 DD checking rule from its synthesis induction hypothesis. -/
