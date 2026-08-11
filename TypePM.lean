@@ -10,6 +10,7 @@ import TypePM.PolyInstantiation
 import TypePM.PolyInstantiationTransport
 import TypePM.PolySubstitutionLaws
 import TypePM.PolyFreshInstantiation
+import TypePM.SchemeOpeningLists
 import TypePM.Relation
 import TypePM.Annotation
 import TypePM.CapMatch
