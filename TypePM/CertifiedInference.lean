@@ -75,6 +75,26 @@ theorem infer_success_inferRaw
     inferRaw signature context expression = some result :=
   (infer_success_raw_and_checked success).1
 
+/-- Public success exposes the exact fuelled traversal at the canonical
+initial state.  The producer-protection filter never changes the result. -/
+theorem infer_success_inferExprFuel
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (success : infer signature context expression = some result) :
+    inferExprFuel (inferenceFuel expression) signature context [] [] expression
+      (initialState signature context) = some result := by
+  have rawSuccess := infer_success_inferRaw success
+  unfold inferRaw at rawSuccess
+  cases core : inferExprFuel (inferenceFuel expression) signature context [] []
+      expression (initialState signature context) with
+  | none => simp [core] at rawSuccess
+  | some raw =>
+      have guarded : enforceProtectedResult raw = some result := by
+        simpa [core] using rawSuccess
+      have equality := (enforceProtectedResult_sound guarded).1
+      subst raw
+      rfl
+
 /-- Every successful public run preserves all protected producer variables. -/
 theorem infer_protected
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -84,8 +104,9 @@ theorem infer_protected
   inferRaw_protected (infer_success_inferRaw success)
 
 /-- A successful public run constructs the complete algebraic bridge checked by
-the terminal validator. -/
-private theorem infer_success_bridge
+the terminal validator.  This remains an internal proof certificate rather
+than an additional caller premise. -/
+theorem infer_success_wBridgeWF
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
@@ -103,7 +124,7 @@ theorem infer_success_reconstruct
       expression result.resolvedTarget :=
   inferRaw_success_reconstruct
     (infer_success_raw_and_checked success).1
-    (infer_success_bridge success)
+    (infer_success_wBridgeWF success)
 
 /-- State erasure for a successful executable inference run.
 
