@@ -306,9 +306,11 @@ DD規則が要求するrange／idempotenceを含む`ExactTargetMGU`／`ExactPair
 越えない`TySubst.RangeWithin`まで証明済みである．さらに`TyResult`／`TyListResult`自身が
 supportの入力free-variable内性とimage rangeを保持するよう整理し，入力に対する
 `TySubst.SupportWithin`も公開済みである．さらにsolverが変更した各support変数を最終imageから
-消去する`supportElim`を結果certificateへ加え，そこから`TySubst.Idempotent`を導いた．通常target
-MGUの`ExactTargetMGU` bridgeに残るのは，target substitutionのimageに現れるcapability variableが
-入力constraintのcapability範囲内にあることだけである．
+消去する`supportElim`を結果certificateへ加え，そこから`TySubst.Idempotent`を導いた．target
+substitutionのimageに現れるcapability variableについても入力constraint内のrangeをcertificateへ
+統合し，既存のsoundness／global universalityとこれらの性質をまとめる
+`mguTy_exactTargetMGU`を構成した．したがって通常target solverの`ExactTargetMGU` bridgeは完了し，
+次はorigin-oriented capability／paired solverのexact bridgeが必要である．
 
 中心定理：
 

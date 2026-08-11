@@ -174,6 +174,68 @@ theorem Ty.ftvList_applyTargetList :
 
 end
 
+mutual
+
+/-- A capability variable of a target-substituted type is either an
+original capability variable or a capability variable of an image. -/
+theorem Ty.mem_fcv_applyTarget :
+    ∀ (target : Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ (target.applyTarget T).fcv →
+      varId ∈ target.fcv ∨
+        ∃ tyVar, tyVar ∈ target.ftv ∧ varId ∈ (T tyVar).fcv
+  | .var tyVar, _, _, mem => Or.inr ⟨tyVar, by simp [Ty.ftv], mem⟩
+  | .skolem _, _, _, mem => nomatch mem
+  | .unit, _, _, mem => nomatch mem
+  | .int, _, _, mem => nomatch mem
+  | .bool, _, _, mem => nomatch mem
+  | .data _ fields, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList fields T varId mem
+  | .prod components, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList components T varId mem
+  | .fn domain codomain, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · rcases Ty.mem_fcv_applyTarget domain T varId here with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inl own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
+      · rcases Ty.mem_fcv_applyTarget codomain T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
+  | .matcher capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact Or.inl (List.mem_append.mpr (Or.inl here))
+      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · exact Or.inr image
+  | .slot capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact Or.inl (List.mem_append.mpr (Or.inl here))
+      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · exact Or.inr image
+
+/-- List form of `Ty.mem_fcv_applyTarget`. -/
+theorem Ty.memList_fcvList_applyTargetList :
+    ∀ (types : List Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ Ty.fcvList (Ty.applyTargetList T types) →
+      varId ∈ Ty.fcvList types ∨
+        ∃ tyVar, tyVar ∈ Ty.ftvList types ∧ varId ∈ (T tyVar).fcv
+  | [], _, _, mem => nomatch mem
+  | τ :: types, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · rcases Ty.mem_fcv_applyTarget τ T varId here with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inl own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
+      · rcases Ty.memList_fcvList_applyTargetList types T varId there
+          with own | image
+        · exact Or.inl (List.mem_append.mpr (Or.inr own))
+        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
+          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
+
+end
+
 /-! ## Structural fuel bounds -/
 
 mutual
@@ -259,6 +321,8 @@ structure TyResult (left right : Ty) where
     ∀ candidate, varId ∉ (subst candidate).ftv
   inputRange : ∀ x y, y ∈ (subst x).ftv →
     y = x ∨ y ∈ left.ftv ++ right.ftv
+  capInputRange : ∀ candidate varId, varId ∈ (subst candidate).fcv →
+    varId ∈ left.fcv ++ right.fcv
   sound : left.applyTarget subst = right.applyTarget subst
   universal :
     ∀ U : TySubst, left.applyTarget U = right.applyTarget U →
@@ -275,6 +339,8 @@ structure TyListResult (left right : List Ty) where
     ∀ candidate, varId ∉ (subst candidate).ftv
   inputRange : ∀ x y, y ∈ (subst x).ftv →
     y = x ∨ y ∈ Ty.ftvList left ++ Ty.ftvList right
+  capInputRange : ∀ candidate varId, varId ∈ (subst candidate).fcv →
+    varId ∈ Ty.fcvList left ++ Ty.fcvList right
   sound : Ty.applyTargetList subst left = Ty.applyTargetList subst right
   universal :
     ∀ U : TySubst, Ty.applyTargetList U left = Ty.applyTargetList U right →
@@ -361,6 +427,49 @@ private theorem supportElim_comp
       exact innerElim varId innerMem candidate middleMem
     · exact innerAvoidsOuter varId innerMem inOuter
   · exact outerElim varId outerMem middle imageMem
+
+private theorem capInputRange_id (allowed : List CapVar) :
+    ∀ candidate varId, varId ∈ (TySubst.id candidate).fcv →
+      varId ∈ allowed := by
+  intro candidate varId membership
+  nomatch membership
+
+private theorem capInputRange_single
+    (bound : TypePM.TyVar) (replacement : Ty) (allowed : List CapVar)
+    (replacementCaps : ∀ varId, varId ∈ replacement.fcv →
+      varId ∈ allowed) :
+    ∀ candidate varId,
+      varId ∈ (TySubst.single bound replacement candidate).fcv →
+        varId ∈ allowed := by
+  intro candidate varId membership
+  by_cases same : bound = candidate
+  · subst candidate
+    exact replacementCaps varId (by
+      simpa [TySubst.single] using membership)
+  · have imageEq : TySubst.single bound replacement candidate =
+        .var candidate := by
+      simp [TySubst.single, same]
+    rw [imageEq] at membership
+    nomatch membership
+
+private theorem capInputRange_comp
+    {inner outer : TySubst} {innerCaps outerCaps : List CapVar}
+    (innerRange : ∀ candidate varId,
+      varId ∈ (inner candidate).fcv → varId ∈ innerCaps)
+    (outerRange : ∀ candidate varId,
+      varId ∈ (outer candidate).fcv → varId ∈ outerCaps)
+    (outerWithin : ∀ varId, varId ∈ outerCaps →
+      varId ∈ innerCaps) :
+    ∀ candidate varId,
+      varId ∈ (TySubst.comp outer inner candidate).fcv →
+        varId ∈ innerCaps := by
+  intro candidate varId membership
+  rw [show TySubst.comp outer inner candidate =
+    (inner candidate).applyTarget outer from rfl] at membership
+  rcases Ty.mem_fcv_applyTarget _ _ _ membership with own | image
+  · exact innerRange candidate varId own
+  · obtain ⟨source, _, imageMem⟩ := image
+    exact outerWithin varId (outerRange source varId imageMem)
 
 mutual
 
@@ -517,6 +626,7 @@ private def solveTy :
           supportInput := by simp
           supportElim := by simp
           inputRange := inputRange_id _
+          capInputRange := capInputRange_id _
           sound := by subst right; rfl
           universal := fun U _ => ⟨U, funext fun _ => rfl⟩
         }
@@ -533,6 +643,8 @@ private def solveTy :
                 supportInput := by simp [Ty.ftv]
                 supportElim := supportElim_single varId right hoccurs
                 inputRange := inputRange_single varId right _ fun y mem =>
+                  List.mem_append.mpr (Or.inr mem)
+                capInputRange := capInputRange_single varId right _ fun cap mem =>
                   List.mem_append.mpr (Or.inr mem)
                 sound := by
                   simp only [Ty.applyTarget, TySubst.single, if_pos]
@@ -561,6 +673,8 @@ private def solveTy :
                 supportElim := supportElim_single varId left hoccurs
                 inputRange := inputRange_single varId left _ fun y mem =>
                   List.mem_append.mpr (Or.inl mem)
+                capInputRange := capInputRange_single varId left _ fun cap mem =>
+                  List.mem_append.mpr (Or.inl mem)
                 sound := by
                   simp only [Ty.applyTarget, TySubst.single, if_pos]
                   exact Ty.applyTarget_single_of_not_mem varId left left hoccurs
@@ -588,6 +702,8 @@ private def solveTy :
                     supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
+                    capInputRange := by
+                      simpa [Ty.fcv] using result.capInputRange
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hname, result.sound]
@@ -611,6 +727,8 @@ private def solveTy :
                   supportElim := result.supportElim
                   inputRange := by
                     simpa [Ty.ftv] using result.inputRange
+                  capInputRange := by
+                    simpa [Ty.fcv] using result.capInputRange
                   sound := by
                     simp only [Ty.applyTarget]
                     exact congrArg Ty.prod result.sound
@@ -733,6 +851,49 @@ private def solveTy :
                               rcases List.mem_append.mp domainInput with h | h
                               · exact Or.inl (Or.inl h)
                               · exact Or.inr (Or.inl h)
+                      capInputRange := by
+                        apply capInputRange_comp
+                          (innerCaps :=
+                            (Ty.fn leftDomain leftCodomain).fcv ++
+                              (Ty.fn rightDomain rightCodomain).fcv)
+                          (outerCaps :=
+                            (leftCodomain.applyTarget
+                              domainResult.subst).fcv ++
+                            (rightCodomain.applyTarget
+                              domainResult.subst).fcv)
+                        · intro candidate varId membership
+                          have input := domainResult.capInputRange candidate
+                            varId membership
+                          simp only [Ty.fcv, List.mem_append] at input ⊢
+                          rcases input with h | h
+                          · exact Or.inl (Or.inl h)
+                          · exact Or.inr (Or.inl h)
+                        · exact codomainResult.capInputRange
+                        · intro varId membership
+                          simp only [List.mem_append] at membership
+                          rcases membership with leftMem | rightMem
+                          · rcases Ty.mem_fcv_applyTarget _ _ _ leftMem with
+                              own | image
+                            · simp only [Ty.fcv, List.mem_append]
+                              exact Or.inl (Or.inr own)
+                            · obtain ⟨source, _, imageMem⟩ := image
+                              have input := domainResult.capInputRange source
+                                varId imageMem
+                              simp only [Ty.fcv, List.mem_append] at input ⊢
+                              rcases input with h | h
+                              · exact Or.inl (Or.inl h)
+                              · exact Or.inr (Or.inl h)
+                          · rcases Ty.mem_fcv_applyTarget _ _ _ rightMem with
+                              own | image
+                            · simp only [Ty.fcv, List.mem_append]
+                              exact Or.inr (Or.inr own)
+                            · obtain ⟨source, _, imageMem⟩ := image
+                              have input := domainResult.capInputRange source
+                                varId imageMem
+                              simp only [Ty.fcv, List.mem_append] at input ⊢
+                              rcases input with h | h
+                              · exact Or.inl (Or.inl h)
+                              · exact Or.inr (Or.inl h)
                       sound := by
                         simp only [Ty.applyTarget]
                         rw [Ty.applyTarget_comp codomainResult.subst
@@ -781,6 +942,13 @@ private def solveTy :
                     supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
+                    capInputRange := by
+                      intro candidate varId membership
+                      have input := result.capInputRange candidate varId membership
+                      simp only [Ty.fcv, List.mem_append] at input ⊢
+                      rcases input with leftMem | rightMem
+                      · exact Or.inl (Or.inr leftMem)
+                      · exact Or.inr (Or.inr rightMem)
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hcap, result.sound]
@@ -805,6 +973,13 @@ private def solveTy :
                     supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
+                    capInputRange := by
+                      intro candidate varId membership
+                      have input := result.capInputRange candidate varId membership
+                      simp only [Ty.fcv, List.mem_append] at input ⊢
+                      rcases input with leftMem | rightMem
+                      · exact Or.inl (Or.inr leftMem)
+                      · exact Or.inr (Or.inr rightMem)
                     sound := by
                       simp only [Ty.applyTarget]
                       rw [hcap, result.sound]
@@ -830,6 +1005,7 @@ private def solveTyList :
         supportInput := by simp
         supportElim := by simp
         inputRange := inputRange_id _
+        capInputRange := capInputRange_id _
         sound := rfl
         universal := fun U _ => ⟨U, funext fun _ => rfl⟩
       }
@@ -940,6 +1116,49 @@ private def solveTyList :
                         exact Or.inr (Or.inr sourceMem)
                       · simp only [Ty.ftvList, List.mem_append]
                         rcases List.mem_append.mp headInput with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
+                capInputRange := by
+                  apply capInputRange_comp
+                    (innerCaps :=
+                      Ty.fcvList (leftHead :: leftTail) ++
+                        Ty.fcvList (rightHead :: rightTail))
+                    (outerCaps :=
+                      Ty.fcvList (Ty.applyTargetList headResult.subst
+                        leftTail) ++
+                      Ty.fcvList (Ty.applyTargetList headResult.subst
+                        rightTail))
+                  · intro candidate varId membership
+                    have input := headResult.capInputRange candidate varId
+                      membership
+                    simp only [Ty.fcvList, List.mem_append] at input ⊢
+                    rcases input with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+                  · exact tailResult.capInputRange
+                  · intro varId membership
+                    simp only [List.mem_append] at membership
+                    rcases membership with leftMem | rightMem
+                    · rcases Ty.memList_fcvList_applyTargetList _ _ _
+                        leftMem with own | image
+                      · simp only [Ty.fcvList, List.mem_append]
+                        exact Or.inl (Or.inr own)
+                      · obtain ⟨source, _, imageMem⟩ := image
+                        have input := headResult.capInputRange source varId
+                          imageMem
+                        simp only [Ty.fcvList, List.mem_append] at input ⊢
+                        rcases input with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
+                    · rcases Ty.memList_fcvList_applyTargetList _ _ _
+                        rightMem with own | image
+                      · simp only [Ty.fcvList, List.mem_append]
+                        exact Or.inr (Or.inr own)
+                      · obtain ⟨source, _, imageMem⟩ := image
+                        have input := headResult.capInputRange source varId
+                          imageMem
+                        simp only [Ty.fcvList, List.mem_append] at input ⊢
+                        rcases input with h | h
                         · exact Or.inl (Or.inl h)
                         · exact Or.inr (Or.inl h)
                 sound := by
@@ -3587,6 +3806,22 @@ theorem mguTyFuel_imageVarsFixed
       exact result.support image fun supportMem =>
         result.supportElim image supportMem source imageMem
 
+/-- Capability variables occurring in target-substitution images returned by
+the fuelled solver all occur in the input constraint. -/
+theorem mguTyFuel_capInputRange
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (success : mguTyFuel fuel left right = some S) :
+    ∀ candidate varId, varId ∈ (S candidate).fcv →
+      varId ∈ left.fcv ++ right.fcv := by
+  unfold mguTyFuel at success
+  cases run : solveTy fuel left right with
+  | none => simp [run] at success
+  | some result =>
+      have resultEq : result.subst = S := by
+        simpa [run] using success
+      subst S
+      exact result.capInputRange
+
 /-- Complete-wrapper form of `mguTyFuel_inputRange`. -/
 theorem mguTy_inputRange
     {left right : Ty} {S : TySubst}
@@ -3607,6 +3842,14 @@ theorem mguTy_imageVarsFixed
     (success : mguTy left right = some S) :
     ∀ source image, image ∈ (S source).ftv → S image = .var image := by
   exact mguTyFuel_imageVarsFixed success
+
+/-- Complete-wrapper form of `mguTyFuel_capInputRange`. -/
+theorem mguTy_capInputRange
+    {left right : Ty} {S : TySubst}
+    (success : mguTy left right = some S) :
+    ∀ candidate varId, varId ∈ (S candidate).fcv →
+      varId ∈ left.fcv ++ right.fcv := by
+  exact mguTyFuel_capInputRange success
 
 /-! ## Solvability completeness
 

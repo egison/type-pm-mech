@@ -133,6 +133,16 @@ theorem Unification.mguTy_supportWithin
     S.SupportWithin (left.ftv ++ right.ftv) :=
   Unification.mguTy_supportInput success
 
+/-- Capability variables carried by executable target-unifier images all
+come from the input constraint. -/
+theorem Unification.mguTy_capRangeWithin
+    {left right : Ty} {S : TySubst}
+    (success : Unification.mguTy left right = some S) :
+    S.CapRangeWithin (left.ftv ++ right.ftv)
+      (left.fcv ++ right.fcv) := by
+  intro candidate _ varId membership
+  exact Unification.mguTy_capInputRange success candidate varId membership
+
 /-- Applying twice is applying once: the capability solved-form condition. -/
 def CapSubst.Idempotent (S : CapSubst) : Prop :=
   ∀ capability : Cap, (capability.apply S).apply S = capability.apply S
@@ -684,6 +694,20 @@ theorem Unification.mguTy_idempotent
   apply Ty.applyTarget_eq_self_of_ftv_fixed
   intro image imageMem
   exact Unification.mguTy_imageVarsFixed success source image imageMem
+
+/-- A successful executable target unification supplies the full exact MGU
+certificate required by demand-directed alignment. -/
+theorem Unification.mguTy_exactTargetMGU
+    {left right : Ty} {S : TySubst}
+    (success : Unification.mguTy left right = some S) :
+    ExactTargetMGU left right S := by
+  refine ⟨⟨Unification.mguTy_sound success, ?_⟩,
+    Unification.mguTy_supportWithin success,
+    Unification.mguTy_rangeWithin success,
+    Unification.mguTy_capRangeWithin success,
+    Unification.mguTy_idempotent success⟩
+  intro competitor equal
+  exact Unification.mguTy_universal success equal
 
 /-- The identity capability substitution is idempotent. -/
 theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
@@ -2797,6 +2821,23 @@ inductive DDDPats (signature : FrozenSig) :
 
 end
 
+/-- Public demand-typing alias for the lower-layer target-substitution
+capability decomposition theorem. -/
+theorem Ty.mem_fcv_applyTarget
+    (target : Ty) (T : TySubst) (varId : CapVar)
+    (membership : varId ∈ (target.applyTarget T).fcv) :
+    varId ∈ target.fcv ∨
+      ∃ tyVar, tyVar ∈ target.ftv ∧ varId ∈ (T tyVar).fcv :=
+  Unification.Ty.mem_fcv_applyTarget target T varId membership
+
+/-- List alias for `Ty.mem_fcv_applyTarget`. -/
+theorem Ty.memList_fcvList_applyTargetList
+    (types : List Ty) (T : TySubst) (varId : CapVar)
+    (membership : varId ∈ Ty.fcvList (Ty.applyTargetList T types)) :
+    varId ∈ Ty.fcvList types ∨
+      ∃ tyVar, tyVar ∈ Ty.ftvList types ∧ varId ∈ (T tyVar).fcv :=
+  Unification.Ty.memList_fcvList_applyTargetList types T varId membership
+
 mutual
 
 /-- Demand-directed primitive-pattern checking against one shared matcher
@@ -4009,68 +4050,6 @@ theorem Ty.fcvList_applyCapabilityList :
   | τ :: types, C => by
       simp only [Ty.applyCapabilityList, Ty.fcvList, List.flatMap_append,
         Ty.fcv_applyCapability τ C, Ty.fcvList_applyCapabilityList types C]
-
-end
-
-mutual
-
-/-- A capability variable of a target-substituted type is either an
-original capability variable or a capability variable of an image. -/
-theorem Ty.mem_fcv_applyTarget :
-    ∀ (target : Ty) (T : TySubst) (varId : CapVar),
-      varId ∈ (target.applyTarget T).fcv →
-      varId ∈ target.fcv ∨
-        ∃ tyVar, tyVar ∈ target.ftv ∧ varId ∈ (T tyVar).fcv
-  | .var tyVar, _, _, mem => Or.inr ⟨tyVar, by simp [Ty.ftv], mem⟩
-  | .skolem _, _, _, mem => nomatch mem
-  | .unit, _, _, mem => nomatch mem
-  | .int, _, _, mem => nomatch mem
-  | .bool, _, _, mem => nomatch mem
-  | .data _ fields, T, varId, mem =>
-      Ty.memList_fcvList_applyTargetList fields T varId mem
-  | .prod components, T, varId, mem =>
-      Ty.memList_fcvList_applyTargetList components T varId mem
-  | .fn domain codomain, T, varId, mem => by
-      rcases List.mem_append.mp mem with here | there
-      · rcases Ty.mem_fcv_applyTarget domain T varId here with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inl own))
-        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
-      · rcases Ty.mem_fcv_applyTarget codomain T varId there with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inr own))
-        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
-  | .matcher capability target, T, varId, mem => by
-      rcases List.mem_append.mp mem with here | there
-      · exact Or.inl (List.mem_append.mpr (Or.inl here))
-      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inr own))
-        · exact Or.inr image
-  | .slot capability target, T, varId, mem => by
-      rcases List.mem_append.mp mem with here | there
-      · exact Or.inl (List.mem_append.mpr (Or.inl here))
-      · rcases Ty.mem_fcv_applyTarget target T varId there with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inr own))
-        · exact Or.inr image
-
-/-- List form of `Ty.mem_fcv_applyTarget`. -/
-theorem Ty.memList_fcvList_applyTargetList :
-    ∀ (types : List Ty) (T : TySubst) (varId : CapVar),
-      varId ∈ Ty.fcvList (Ty.applyTargetList T types) →
-      varId ∈ Ty.fcvList types ∨
-        ∃ tyVar, tyVar ∈ Ty.ftvList types ∧ varId ∈ (T tyVar).fcv
-  | [], _, _, mem => nomatch mem
-  | τ :: types, T, varId, mem => by
-      rcases List.mem_append.mp mem with here | there
-      · rcases Ty.mem_fcv_applyTarget τ T varId here with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inl own))
-        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inl tyMem), imageMem⟩
-      · rcases Ty.memList_fcvList_applyTargetList types T varId there
-          with own | image
-        · exact Or.inl (List.mem_append.mpr (Or.inr own))
-        · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-          exact Or.inr ⟨tyVar, List.mem_append.mpr (Or.inr tyMem), imageMem⟩
 
 end
 
