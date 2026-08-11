@@ -5,6 +5,7 @@ import TypePM.PolySyntax
 import TypePM.PolyScheme
 import TypePM.PolyGeneralization
 import TypePM.PolyInstantiation
+import TypePM.PolyInstantiationTransport
 import TypePM.PolyFreshInstantiation
 import TypePM.Relation
 import TypePM.Annotation

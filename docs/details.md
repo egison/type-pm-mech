@@ -233,6 +233,10 @@ canonical fresh allocatorはbound index `i`をincoming supplyの`next + i`へ写
 generalizationはenvironment外のsolver metavariableをduplicate-freeなlistへ正規化した直後にcloseし，
 選択に用いたnamed variableを完成したschemeへ保存しない．ordinary syntaxのfree-variable traversalと
 list normalizationは旧scheme relationから独立したmoduleへ分離している．
+ambient substitution transportは，選択済みcapability opening像が後続作用でもvariableへ写る
+`ValueOpening.Post`だけを要求する．poly payload上の構造帰納により，substituted schemeのopeningと
+opened ordinary typeへの作用が一致することを証明済みであり，binder support，`RangeFixed`，
+`NoCapture`はこの定理に現れない．
 旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
 後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
 payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．
