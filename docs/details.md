@@ -302,8 +302,9 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingOrigin` | 全raw derivationに対応するintrinsic Origin certificateとpublic `DDTyping` wrapper |
 | `DemandTypingLedgerMetatheory` | ledger extension，freeze，supply-scoped transition補題 |
 | `DemandTypingOriginMetatheory` | 全Origin familyのledger evolution定理 |
-| `DemandTypingErasure` | expression四familyのscoped factorizationと初期erasure基盤 |
-| `DemandTypingErasurePatterns` | 全14 Origin familyのpremise-free state factorization |
+| `DemandTypingErasure` | state-erasure開発全体のpublic facade |
+| `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
+| `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |
 | `DemandTypingErasureTransport` | canonical scheme instanceのbinder-image-local transport |
 | `DemandTypingRegression` | raw境界，Origin-aware局所solve，DD回帰 |
 

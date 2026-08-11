@@ -1,4 +1,4 @@
-import TypePM.DemandTypingErasure
+import TypePM.DemandTypingErasureCore
 import TypePM.SourceSubstitution
 import TypePM.SourceGeneralization
 

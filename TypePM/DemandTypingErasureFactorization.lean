@@ -1,15 +1,13 @@
-import TypePM.DemandTypingErasure
+import TypePM.DemandTypingErasureCore
 
 /-!
-# State factorization for pattern-layer demand typing
+# Premise-free state factorization for demand typing
 
 This module extends the scoped residual-post construction to the auxiliary
-alignment relations used only by patterns, then composes those cuts through
-pattern-constructor projection, the three pattern layers, arm traversal, and
-clause traversal.  The resulting constructor lemmas expose the actual
-allocation, solve, child, and freeze sequence.  At the expression/pattern
-mutual boundary they ask only for the corresponding child factorization;
-they do not assume a typing derivation or a runtime-erasure conclusion.
+pattern alignments and closes state factorization over all 14 origin-aware
+demand-typing families.  Its constructor lemmas expose the actual allocation,
+solve, child, and freeze sequence; the final mutual theorems require only
+signature closure and bounded inputs.
 -/
 
 namespace TypePM

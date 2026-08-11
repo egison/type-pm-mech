@@ -322,7 +322,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | 層 | 主な module | 役割 |
 |---|---|---|
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingErasure`, `DemandTypingErasurePatterns`, `DemandTypingErasureTransport`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，state-erasure基盤，public source typingと回帰 |
+| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingErasure`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，state-erasure facade，public source typingと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |

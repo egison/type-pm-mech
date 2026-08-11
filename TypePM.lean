@@ -73,8 +73,6 @@ import TypePM.DemandTypingLedgerMetatheory
 import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
 import TypePM.DemandTypingErasure
-import TypePM.DemandTypingErasurePatterns
-import TypePM.DemandTypingErasureTransport
 import TypePM.DemandTypingRegression
 
 /-!
@@ -84,7 +82,7 @@ This is the public import surface of the current formalization.  `DDTyping` is
 the only source-language typing judgment.  `RuntimeTyping` is an internal,
 state-free certificate used after inference state has been erased; it supports
 value typing and the dynamic metatheory but does not define source acceptance.
-The `DemandTypingErasure` modules contain scoped state factorization for the
-expression and pattern families, together with canonical-instance transport
-lemmas for the certificate-erasure bridge toward that internal judgment.
+`DemandTypingErasure` is the facade for scoped state factorization, the
+premise-free 14-family closure, and canonical-instance transport toward that
+internal judgment.
 -/
