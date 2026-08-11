@@ -337,7 +337,12 @@ capability export freezeをDD ledger transitionへ接続し，constructor／prim
 non-matcher recursive functionのfix branchも再構成済みである．次はmatcher bodyのfix placeholderと，
 matcher／pattern／clauseの相互familyを必要とするbranchへ進む．この接続で見つかったbatch capability
 fresheningのledger list順は，`markCapRange`を実行時のhead-insertion順へcanonicalizeして修正し，
-2-variable allocationのexact-order回帰と従来表現との`originOf`同値を固定した．
+2-variable allocationのexact-order回帰と従来表現との`originOf`同値を固定した．`fixMatcher`の
+stateful／supply-indexed skeleton対応は，3 mutual familyを明示再帰で証明する必要がある．大規模な
+`grind`による一括証明はLean検査には通るもののolean生成が収束しないため採用しない．また`letE`の
+Origin certificateが要求するterminal generalization stabilityは，現状の実行成功だけから回収する
+bridgeがまだない．したがって以後はmatcher／pattern／clause相互再構成とgeneralization stabilityを
+独立milestoneとして進める．
 
 中心定理：
 
