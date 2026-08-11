@@ -907,4 +907,49 @@ theorem runtimeErasureUnder_cons
 
 end DDClausesOrigin
 
+namespace DDSynthOrigin
+
+/-- Matcher finalization obtains its shared clause certificate directly from
+the later-cut clause invariant and the two executable finalization audits.
+The only remaining matcher-local algebraic premise is fixedness of the
+already-finalized producer capability. -/
+theorem runtimeErasure_matcher_of_clause_invariant
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {clauses : List Clause}
+    {rawHoleLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} {evidence : List Shape.Evidence} {capability : Cap}
+    {ledger ledger₁ : CapabilityOriginLedger}
+    {clausesRaw : DDClauses signature
+      { q with nextTy := q.nextTy + 1 } S context clauses
+      (.var q.nextTy) rawHoleLists q' S'}
+    (clausesOrigin : DDClausesOrigin signature clausesRaw ledger ledger₁)
+    (collected : Inference.collectClauseEvidence signature.toMatcherSig
+      clauses (terminalHoleCaps S' rawHoleLists) = some evidence)
+    (inferred : Shape.inferShape signature.observability evidence =
+      some capability)
+    (clauseCaps : Inference.clauseCapsListCheck signature capability clauses
+      (terminalHoleCaps S' rawHoleLists) = true)
+    (catchAll : Inference.catchAllLastCheck clauses = true)
+    (binders : Inference.matcherBindersCheck clauses = true)
+    (arms : Inference.armExhaustiveCheck signature clauses
+      (S'.apply (.var q.nextTy)) = true)
+    (coverage : Inference.coverageCheck signature.toMatcherSig clauses
+      capability = true)
+    (clausesUnder : DDClausesOrigin.RuntimeErasureUnderAt clausesOrigin
+      capability evidence)
+    (capabilityFixed : capability.apply S'.cap = capability) :
+    RuntimeErasure
+      (DDSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
+        catchAll binders arms coverage) := by
+  have clausesAtTerminal : DDClausesOrigin.RuntimeErasureAt clausesOrigin
+      capability evidence :=
+    DDClausesOrigin.runtimeErasure_of_under (origin := clausesOrigin)
+      clausesUnder (Inference.clauseCapsListCheck_sound clauseCaps)
+      (Inference.collectClauseEvidence_sound collected)
+  exact runtimeErasure_matcher_of_clauses clausesOrigin collected inferred
+    clauseCaps catchAll binders arms coverage
+    (ResolvedClausesTy.ofShared clausesAtTerminal) capabilityFixed
+
+end DDSynthOrigin
+
 end TypePM
