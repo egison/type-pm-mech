@@ -89,7 +89,15 @@ structure OrientedCapResult
   subst : CapSubst
   capSupportVars : List CapVar
   capSupport : subst.SupportWithin capSupportVars
+  supportInput : ∀ varId, varId ∈ capSupportVars →
+    varId ∈ left.fcv ++ right.fcv
+  supportElim : ∀ varId, varId ∈ capSupportVars →
+    ∀ candidate, varId ∉ (subst candidate).fcv
+  inputRange : ∀ candidate varId, varId ∈ (subst candidate).fcv →
+    varId = candidate ∨ varId ∈ left.fcv ++ right.fcv
   sound : left.apply subst = right.apply subst
+  globalUniversal : ∀ U : CapSubst, left.apply U = right.apply U →
+    ∃ R : CapSubst, U = CapSubst.comp R subst
   admissible : AdmissibleCapPost ledger subst
   /-- Every admissible competitor that solves the same constraint absorbs the
   returned substitution.  Taking the competitor itself as residual gives
@@ -103,7 +111,16 @@ structure OrientedCapListResult
   subst : CapSubst
   capSupportVars : List CapVar
   capSupport : subst.SupportWithin capSupportVars
+  supportInput : ∀ varId, varId ∈ capSupportVars →
+    varId ∈ Cap.fcvList left ++ Cap.fcvList right
+  supportElim : ∀ varId, varId ∈ capSupportVars →
+    ∀ candidate, varId ∉ (subst candidate).fcv
+  inputRange : ∀ candidate varId, varId ∈ (subst candidate).fcv →
+    varId = candidate ∨ varId ∈ Cap.fcvList left ++ Cap.fcvList right
   sound : Cap.applyList subst left = Cap.applyList subst right
+  globalUniversal : ∀ U : CapSubst,
+    Cap.applyList U left = Cap.applyList U right →
+      ∃ R : CapSubst, U = CapSubst.comp R subst
   admissible : AdmissibleCapPost ledger subst
   universal : ∀ U : CapSubst, AdmissibleCapPost ledger U →
     Cap.applyList U left = Cap.applyList U right →
@@ -130,6 +147,116 @@ private theorem comp_capSupport
   simp only [CapSubst.comp, earlierSupport varId outside.1, Cap.apply]
   exact laterSupport varId outside.2
 
+private theorem orientedInputRange_id (allowed : List CapVar) :
+    ∀ candidate varId, varId ∈ (CapSubst.id candidate).fcv →
+      varId = candidate ∨ varId ∈ allowed := by
+  intro candidate varId membership
+  exact Or.inl (by simpa [CapSubst.id, Cap.fcv] using membership)
+
+private theorem orientedInputRange_single
+    (bound : CapVar) (replacement : Cap) (allowed : List CapVar)
+    (replacementVars : ∀ varId, varId ∈ replacement.fcv →
+      varId ∈ allowed) :
+    ∀ candidate varId,
+      varId ∈ (Unification.CapSubst.single bound replacement candidate).fcv →
+        varId = candidate ∨ varId ∈ allowed := by
+  intro candidate varId membership
+  by_cases same : bound = candidate
+  · subst candidate
+    exact Or.inr (replacementVars varId (by
+      simpa [Unification.CapSubst.single] using membership))
+  · exact Or.inl (by
+      simpa [Unification.CapSubst.single, same, Cap.fcv] using membership)
+
+private theorem orientedInputRange_comp
+    {inner outer : CapSubst} {innerVars outerVars : List CapVar}
+    (innerRange : ∀ candidate varId, varId ∈ (inner candidate).fcv →
+      varId = candidate ∨ varId ∈ innerVars)
+    (outerRange : ∀ candidate varId, varId ∈ (outer candidate).fcv →
+      varId = candidate ∨ varId ∈ outerVars)
+    (outerWithin : ∀ varId, varId ∈ outerVars →
+      varId ∈ innerVars) :
+    ∀ candidate varId,
+      varId ∈ (CapSubst.comp outer inner candidate).fcv →
+        varId = candidate ∨ varId ∈ innerVars := by
+  intro candidate varId membership
+  rw [show CapSubst.comp outer inner candidate =
+    (inner candidate).apply outer from rfl,
+    Unification.Cap.fcv_apply] at membership
+  obtain ⟨middle, middleMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases outerRange middle varId imageMem with equal | outerMem
+  · subst varId
+    exact innerRange candidate middle middleMem
+  · exact Or.inr (outerWithin varId outerMem)
+
+private theorem orientedInputRange_applyList_mem
+    {subst : CapSubst} {allowed : List CapVar} {caps : List Cap}
+    (range : ∀ candidate varId, varId ∈ (subst candidate).fcv →
+      varId = candidate ∨ varId ∈ allowed)
+    {varId : CapVar} (membership : varId ∈
+      Cap.fcvList (Cap.applyList subst caps)) :
+    varId ∈ Cap.fcvList caps ∨ varId ∈ allowed := by
+  rw [Unification.Cap.fcvList_applyList] at membership
+  obtain ⟨source, sourceMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases range source varId imageMem with rfl | inAllowed
+  · exact Or.inl sourceMem
+  · exact Or.inr inAllowed
+
+private theorem orientedSupportElim_single
+    (bound : CapVar) (replacement : Cap) (notOccurs : bound ∉ replacement.fcv) :
+    ∀ supportVar, supportVar ∈ [bound] → ∀ candidate,
+      supportVar ∉
+        (Unification.CapSubst.single bound replacement candidate).fcv := by
+  intro supportVar supportMem candidate membership
+  have supportEq : supportVar = bound := by simpa using supportMem
+  subst supportVar
+  by_cases same : bound = candidate
+  · subst candidate
+    exact notOccurs (by
+      simpa [Unification.CapSubst.single] using membership)
+  · have imageEq : Unification.CapSubst.single bound replacement candidate =
+        .var candidate := by
+      simp [Unification.CapSubst.single, same]
+    rw [imageEq] at membership
+    exact same (by simpa [Cap.fcv] using membership)
+
+private theorem orientedSupportElim_comp
+    {inner outer : CapSubst}
+    {innerSupport outerSupport outerVars : List CapVar}
+    (innerElim : ∀ varId, varId ∈ innerSupport →
+      ∀ candidate, varId ∉ (inner candidate).fcv)
+    (outerElim : ∀ varId, varId ∈ outerSupport →
+      ∀ candidate, varId ∉ (outer candidate).fcv)
+    (outerRange : ∀ candidate varId,
+      varId ∈ (outer candidate).fcv →
+        varId = candidate ∨ varId ∈ outerVars)
+    (innerAvoidsOuter : ∀ varId, varId ∈ innerSupport →
+      varId ∉ outerVars) :
+    ∀ varId, varId ∈ innerSupport ++ outerSupport →
+      ∀ candidate, varId ∉ (CapSubst.comp outer inner candidate).fcv := by
+  intro varId supportMem candidate membership
+  rw [show CapSubst.comp outer inner candidate =
+    (inner candidate).apply outer from rfl,
+    Unification.Cap.fcv_apply] at membership
+  obtain ⟨middle, middleMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases List.mem_append.mp supportMem with innerMem | outerMem
+  · rcases outerRange middle varId imageMem with equal | inOuter
+    · subst middle
+      exact innerElim varId innerMem candidate middleMem
+    · exact innerAvoidsOuter varId innerMem inOuter
+  · exact outerElim varId outerMem middle imageMem
+
+private theorem orientedSupportElim_not_mem_applyList
+    {subst : CapSubst} {support : List CapVar}
+    (elim : ∀ varId, varId ∈ support →
+      ∀ candidate, varId ∉ (subst candidate).fcv)
+    {varId : CapVar} (supportMem : varId ∈ support) (caps : List Cap) :
+    varId ∉ Cap.fcvList (Cap.applyList subst caps) := by
+  intro membership
+  rw [Unification.Cap.fcvList_applyList] at membership
+  obtain ⟨source, _, imageMem⟩ := List.mem_flatMap.mp membership
+  exact elim varId supportMem source imageMem
+
 mutual
 
 /-- Fuelled origin-oriented capability unification. -/
@@ -143,7 +270,11 @@ def solveCap :
           subst := CapSubst.id
           capSupportVars := []
           capSupport := CapSubst.id_supportWithin []
+          supportInput := by simp
+          supportElim := by simp
+          inputRange := orientedInputRange_id _
           sound := by subst right; rfl
+          globalUniversal := fun U _ => ⟨U, funext fun _ => rfl⟩
           admissible := AdmissibleCapPost.id ledger
           universal := by
             intro U _ _
@@ -158,9 +289,28 @@ def solveCap :
                 subst := Unification.CapSubst.single varId (.var otherId)
                 capSupportVars := [varId]
                 capSupport := single_capSupport varId (.var otherId)
+                supportInput := by simp [Cap.fcv]
+                supportElim := by
+                  apply orientedSupportElim_single
+                  simpa [Cap.fcv] using
+                    (show varId ≠ otherId from fun h => hequal (by rw [h]))
+                inputRange := orientedInputRange_single varId (.var otherId) _
+                  fun imageVar membership => by
+                    simp only [Cap.fcv, List.mem_singleton, List.mem_append]
+                      at membership ⊢
+                    exact Or.inr membership
                 sound := by
                   have hne : varId ≠ otherId := fun h => hequal (by rw [h])
                   simp [Cap.apply, Unification.CapSubst.single, hne]
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply] using hunify
+                  · simp [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply, hcandidate]
                 admissible :=
                   admissible_single_structuralFlexible ledger varId _ hflexLeft
                 universal := by
@@ -179,9 +329,29 @@ def solveCap :
                 subst := Unification.CapSubst.single otherId (.var varId)
                 capSupportVars := [otherId]
                 capSupport := single_capSupport otherId (.var varId)
+                supportInput := by simp [Cap.fcv]
+                supportElim := by
+                  apply orientedSupportElim_single
+                  simpa [Cap.fcv] using
+                    (show otherId ≠ varId from
+                      fun h => hequal (by rw [h]))
+                inputRange := orientedInputRange_single otherId (.var varId) _
+                  fun imageVar membership => by
+                    simp only [Cap.fcv, List.mem_singleton, List.mem_append]
+                      at membership ⊢
+                    exact Or.inl membership
                 sound := by
                   have hne : varId ≠ otherId := fun h => hequal (by rw [h])
                   simp [Cap.apply, Unification.CapSubst.single, Ne.symm hne]
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : otherId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply] using hunify.symm
+                  · simp [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply, hcandidate]
                 admissible :=
                   admissible_single_structuralFlexible ledger otherId _
                     hflexRight
@@ -200,9 +370,28 @@ def solveCap :
                 subst := Unification.CapSubst.single varId (.var otherId)
                 capSupportVars := [varId]
                 capSupport := single_capSupport varId (.var otherId)
+                supportInput := by simp [Cap.fcv]
+                supportElim := by
+                  apply orientedSupportElim_single
+                  simpa [Cap.fcv] using
+                    (show varId ≠ otherId from fun h => hequal (by rw [h]))
+                inputRange := orientedInputRange_single varId (.var otherId) _
+                  fun imageVar membership => by
+                    simp only [Cap.fcv, List.mem_singleton, List.mem_append]
+                      at membership ⊢
+                    exact Or.inr membership
                 sound := by
                   have hne : varId ≠ otherId := fun h => hequal (by rw [h])
                   simp [Cap.apply, Unification.CapSubst.single, hne]
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : varId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply] using hunify
+                  · simp [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply, hcandidate]
                 admissible :=
                   admissible_single_rename ledger varId otherId hrenameLeft
                     hflexRight
@@ -221,9 +410,29 @@ def solveCap :
                 subst := Unification.CapSubst.single otherId (.var varId)
                 capSupportVars := [otherId]
                 capSupport := single_capSupport otherId (.var varId)
+                supportInput := by simp [Cap.fcv]
+                supportElim := by
+                  apply orientedSupportElim_single
+                  simpa [Cap.fcv] using
+                    (show otherId ≠ varId from
+                      fun h => hequal (by rw [h]))
+                inputRange := orientedInputRange_single otherId (.var varId) _
+                  fun imageVar membership => by
+                    simp only [Cap.fcv, List.mem_singleton, List.mem_append]
+                      at membership ⊢
+                    exact Or.inl membership
                 sound := by
                   have hne : varId ≠ otherId := fun h => hequal (by rw [h])
                   simp [Cap.apply, Unification.CapSubst.single, Ne.symm hne]
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, funext fun candidate => ?_⟩
+                  by_cases hcandidate : otherId = candidate
+                  · subst candidate
+                    simpa [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply] using hunify.symm
+                  · simp [CapSubst.comp, Unification.CapSubst.single,
+                      Cap.apply, hcandidate]
                 admissible :=
                   admissible_single_rename ledger otherId varId hrenameRight
                     hflexLeft
@@ -248,10 +457,24 @@ def solveCap :
                   subst := Unification.CapSubst.single varId right
                   capSupportVars := [varId]
                   capSupport := single_capSupport varId right
+                  supportInput := by simp [Cap.fcv]
+                  supportElim := orientedSupportElim_single varId right hoccurs
+                  inputRange := orientedInputRange_single varId right _
+                    fun imageVar membership =>
+                      List.mem_append.mpr (Or.inr membership)
                   sound := by
                     simp only [Cap.apply, Unification.CapSubst.single, if_pos]
                     exact (Unification.Cap.apply_single_of_not_mem varId right
                       right hoccurs).symm
+                  globalUniversal := by
+                    intro U hunify
+                    refine ⟨U, funext fun candidate => ?_⟩
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [CapSubst.comp, Unification.CapSubst.single,
+                        Cap.apply] using hunify
+                    · simp [CapSubst.comp, Unification.CapSubst.single,
+                        Cap.apply, hcandidate]
                   admissible :=
                     admissible_single_structuralFlexible ledger varId _ hflex
                   universal := by
@@ -275,10 +498,24 @@ def solveCap :
                   subst := Unification.CapSubst.single varId left
                   capSupportVars := [varId]
                   capSupport := single_capSupport varId left
+                  supportInput := by simp [Cap.fcv]
+                  supportElim := orientedSupportElim_single varId left hoccurs
+                  inputRange := orientedInputRange_single varId left _
+                    fun imageVar membership =>
+                      List.mem_append.mpr (Or.inl membership)
                   sound := by
                     simp only [Cap.apply, Unification.CapSubst.single, if_pos]
                     exact Unification.Cap.apply_single_of_not_mem varId left
                       left hoccurs
+                  globalUniversal := by
+                    intro U hunify
+                    refine ⟨U, funext fun candidate => ?_⟩
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [CapSubst.comp, Unification.CapSubst.single,
+                        Cap.apply] using hunify.symm
+                    · simp [CapSubst.comp, Unification.CapSubst.single,
+                        Cap.apply, hcandidate]
                   admissible :=
                     admissible_single_structuralFlexible ledger varId _ hflex
                   universal := by
@@ -302,9 +539,18 @@ def solveCap :
                     subst := result.subst
                     capSupportVars := result.capSupportVars
                     capSupport := result.capSupport
+                    supportInput := by
+                      simpa [Cap.fcv] using result.supportInput
+                    supportElim := result.supportElim
+                    inputRange := by
+                      simpa [Cap.fcv] using result.inputRange
                     sound := by
                       simp only [Cap.apply]
                       rw [hname, result.sound]
+                    globalUniversal := by
+                      intro U hunify
+                      simp only [Cap.apply, Cap.con.injEq] at hunify
+                      exact result.globalUniversal U hunify.2
                     admissible := result.admissible
                     universal := by
                       intro U admissible hunify
@@ -321,9 +567,18 @@ def solveCap :
                   subst := result.subst
                   capSupportVars := result.capSupportVars
                   capSupport := result.capSupport
+                  supportInput := by
+                    simpa [Cap.fcv] using result.supportInput
+                  supportElim := result.supportElim
+                  inputRange := by
+                    simpa [Cap.fcv] using result.inputRange
                   sound := by
                     simp only [Cap.apply]
                     exact congrArg Cap.prod result.sound
+                  globalUniversal := by
+                    intro U hunify
+                    simp only [Cap.apply, Cap.prod.injEq] at hunify
+                    exact result.globalUniversal U hunify
                   admissible := result.admissible
                   universal := by
                     intro U admissible hunify
@@ -343,7 +598,11 @@ def solveCapList :
         subst := CapSubst.id
         capSupportVars := []
         capSupport := CapSubst.id_supportWithin []
+        supportInput := by simp
+        supportElim := by simp
+        inputRange := orientedInputRange_id _
         sound := rfl
+        globalUniversal := fun U _ => ⟨U, funext fun _ => rfl⟩
         admissible := AdmissibleCapPost.id ledger
         universal := by
           intro U _ _
@@ -365,6 +624,81 @@ def solveCapList :
                   headResult.capSupportVars ++ tailResult.capSupportVars
                 capSupport :=
                   comp_capSupport headResult.capSupport tailResult.capSupport
+                supportInput := by
+                  intro varId membership
+                  simp only [List.mem_append] at membership
+                  rcases membership with headMem | tailMem
+                  · have input := headResult.supportInput varId headMem
+                    simp only [Cap.fcvList, List.mem_append] at input ⊢
+                    rcases input with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+                  · have input := tailResult.supportInput varId tailMem
+                    simp only [List.mem_append] at input
+                    rcases input with leftMem | rightMem
+                    · rcases orientedInputRange_applyList_mem
+                        headResult.inputRange leftMem with own | headInput
+                      · simp only [Cap.fcvList, List.mem_append]
+                        exact Or.inl (Or.inr own)
+                      · simp only [Cap.fcvList, List.mem_append]
+                        rcases List.mem_append.mp headInput with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
+                    · rcases orientedInputRange_applyList_mem
+                        headResult.inputRange rightMem with own | headInput
+                      · simp only [Cap.fcvList, List.mem_append]
+                        exact Or.inr (Or.inr own)
+                      · simp only [Cap.fcvList, List.mem_append]
+                        rcases List.mem_append.mp headInput with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
+                supportElim := by
+                  apply orientedSupportElim_comp headResult.supportElim
+                    tailResult.supportElim tailResult.inputRange
+                  intro varId supportMem membership
+                  simp only [List.mem_append] at membership
+                  rcases membership with leftMem | rightMem
+                  · exact (orientedSupportElim_not_mem_applyList
+                      headResult.supportElim supportMem leftTail) leftMem
+                  · exact (orientedSupportElim_not_mem_applyList
+                      headResult.supportElim supportMem rightTail) rightMem
+                inputRange := by
+                  apply orientedInputRange_comp
+                    (innerVars :=
+                      Cap.fcvList (leftHead :: leftTail) ++
+                        Cap.fcvList (rightHead :: rightTail))
+                    (outerVars :=
+                      Cap.fcvList (Cap.applyList headResult.subst leftTail) ++
+                      Cap.fcvList (Cap.applyList headResult.subst rightTail))
+                  · intro candidate varId membership
+                    rcases headResult.inputRange candidate varId membership with
+                      rfl | headInput
+                    · exact Or.inl rfl
+                    · apply Or.inr
+                      simp only [Cap.fcvList, List.mem_append]
+                      rcases List.mem_append.mp headInput with h | h
+                      · exact Or.inl (Or.inl h)
+                      · exact Or.inr (Or.inl h)
+                  · exact tailResult.inputRange
+                  · intro varId membership
+                    simp only [List.mem_append] at membership
+                    rcases membership with leftMem | rightMem
+                    · rcases orientedInputRange_applyList_mem
+                        headResult.inputRange leftMem with own | headInput
+                      · simp only [Cap.fcvList, List.mem_append]
+                        exact Or.inl (Or.inr own)
+                      · simp only [Cap.fcvList, List.mem_append]
+                        rcases List.mem_append.mp headInput with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
+                    · rcases orientedInputRange_applyList_mem
+                        headResult.inputRange rightMem with own | headInput
+                      · simp only [Cap.fcvList, List.mem_append]
+                        exact Or.inr (Or.inr own)
+                      · simp only [Cap.fcvList, List.mem_append]
+                        rcases List.mem_append.mp headInput with h | h
+                        · exact Or.inl (Or.inl h)
+                        · exact Or.inr (Or.inl h)
                 sound := by
                   rw [Cap.applyList_comp tailResult.subst headResult.subst,
                     Cap.applyList_comp tailResult.subst headResult.subst]
@@ -373,6 +707,23 @@ def solveCapList :
                     (fun capability => capability.apply tailResult.subst)
                     headResult.sound
                   rw [hhead, tailResult.sound]
+                globalUniversal := by
+                  intro U hunify
+                  simp only [Cap.applyList, List.cons.injEq] at hunify
+                  obtain ⟨hhead, htail⟩ := hunify
+                  obtain ⟨R₁, hR₁⟩ := headResult.globalUniversal U hhead
+                  have htail' :
+                      Cap.applyList R₁
+                          (Cap.applyList headResult.subst leftTail) =
+                        Cap.applyList R₁
+                          (Cap.applyList headResult.subst rightTail) := by
+                    rw [← Cap.applyList_comp, ← Cap.applyList_comp, ← hR₁]
+                    exact htail
+                  obtain ⟨R₂, hR₂⟩ := tailResult.globalUniversal R₁ htail'
+                  refine ⟨R₂, ?_⟩
+                  rw [hR₁, hR₂]
+                  funext candidate
+                  simp [CapSubst.comp, Cap.apply_comp]
                 admissible :=
                   AdmissibleCapPost.comp tailResult.admissible
                     headResult.admissible

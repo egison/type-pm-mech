@@ -709,6 +709,54 @@ theorem Unification.mguTy_exactTargetMGU
   intro competitor equal
   exact Unification.mguTy_universal success equal
 
+/-- The origin-oriented capability kernel carries the global exactness facts
+required by demand-directed equality alignment in addition to its
+ledger-relative admissibility certificate. -/
+theorem PairedUnification.OrientedCapResult.exactCapMGU
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : PairedUnification.OrientedCapResult ledger left right) :
+    ExactCapMGU left right result.subst := by
+  refine ⟨⟨result.sound, result.globalUniversal⟩, ?_, ?_, ?_⟩
+  · intro varId outside
+    exact result.capSupport varId fun supportMem =>
+      outside (result.supportInput varId supportMem)
+  · intro source sourceMem image imageMem
+    rcases result.inputRange source image imageMem with rfl | inputMem
+    · exact sourceMem
+    · exact inputMem
+  · apply CapSubst.idempotent_of_pointwise
+    intro source
+    apply Cap.apply_eq_self_of_fcv_fixed
+    intro image imageMem
+    exact result.capSupport image fun supportMem =>
+      result.supportElim image supportMem source imageMem
+
+/-- Exactness plus the kernel's ledger admissibility is precisely the
+origin-safe capability MGU premise used by ledger-aware DD rules. -/
+theorem PairedUnification.OrientedCapResult.originSafeExactCapMGU
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : PairedUnification.OrientedCapResult ledger left right) :
+    OriginSafeExactCapMGU ledger left right result.subst :=
+  ⟨result.exactCapMGU, result.admissible⟩
+
+/-- A successful executable capability-equality solve exposes the exact
+origin-safe capability MGU stored in its emitted solver step. -/
+theorem Inference.solveCapEqWithLedger_originSafeExactCapMGU
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : Inference.ConstraintOrigin} {left right : Cap}
+    {step : Inference.SolveStep}
+    (success : Inference.solveCapEqWithLedger ledger solveCount origin
+      left right = some step) :
+    step.delta.target = TySubst.id ∧
+      OriginSafeExactCapMGU ledger left right step.delta.cap := by
+  unfold Inference.solveCapEqWithLedger at success
+  split at success
+  · contradiction
+  · rename_i result solved
+    have stepEq := Option.some.inj success
+    subst step
+    exact ⟨rfl, result.originSafeExactCapMGU⟩
+
 /-- The identity capability substitution is idempotent. -/
 theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
   intro capability
