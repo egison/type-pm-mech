@@ -121,6 +121,144 @@ DDTyping signature [] e τ →
 `nestedCapProgram` と swapped 版は DD で型付かず，推論器も拒否する意図された負例である．
 一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は DD の正例である．
 
+## Roadmap
+
+roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に戻したり，その derivation の
+存在を `DDTyping` の premise に加えたりせず，DD derivation 自身が安全性と実行可能推論への
+接続に必要な情報を持つ形を完成させる．
+
+```text
+現在の DDTyping／infer／runtime safety
+              │
+              ▼
+1. freeze provenance を DD family へ統合
+              │
+        ┌─────┴──────────┐
+        ▼                ▼
+2. DD state erasure   3. infer success → DDTyping
+        │                │
+        ▼                ▼
+4. DD の公開安全性    5. DDTyping → infer success
+                         │
+                         ▼
+                    6. 受理同値と注釈不要性
+```
+
+### 0. 現在の基盤
+
+次は完成済みの出発点であり，後続 milestone で維持する不変量である．
+
+- 全 expression／pattern／arm／clause form に `DDSynth`／`DDCheck` family がある．
+- checking は synthesis 後の一 cut で一度だけ alignment を行う．
+- 非恒等 coercion は slot-headed expected type に限られる．
+- exact MGU，state replay，supply extension，boundedness が証明されている．
+- `infer` の成功から reconstruction と `RuntimeTyping` を構成できる．
+- `RuntimeTyping`，`ValueTy`，matching-state judgment 上の動的安全性が証明されている．
+
+### 1. Capability freeze provenance を DD family へ統合する
+
+`q; S` に加えて capability-origin ledger を DD family の入出力 state に持たせる．fresh
+capability の生成理由を `rigid`／`renameOnly`／`structuralFlexible` として記録し，scheme
+instance，`let` generalization，producer export で必要な freeze transition を規則に含める．
+`DDAlign` の ordinary solve と one-way solve は，その cut の ledger に対して admissible な
+delta だけを受け入れる．
+
+完了条件：
+
+- ledger の extension，freeze，substitution replay に関する基本補題が全 DD family で成り立つ．
+- `capFreezeProgram` と `letCapFreezeProgram` は新しい `DDTyping` では導出不能になる．
+- or-pattern，delegating matcher，let-polymorphic producer など既存の正例は導出可能なままである．
+- `nestedCapProgram`，matcher-expected product application など既存の負例は導出不能なままである．
+- public `DDTyping` は canonical initial ledger から開始し，外部の freeze premise を要求しない．
+
+### 2. DD state erasure を証明する
+
+ledger-aware な DD derivation から，supply，prevailing substitution，origin ledger を消去して
+`RuntimeTyping` certificate を構成する．expression だけを個別に処理せず，expression list，
+user pattern，primitive pattern，data pattern，arm，clause の相互 family 全体について射影を
+証明する．`let` では一般化 scheme の binder-local value-flow instance，matcher literalでは
+共有 target と terminal hole capability の一致を回収する．
+
+一般の context では終端 substitution を context に適用した `RuntimeTyping` を構成する．その
+closed-program corollary が中心定理である：
+
+```text
+DDSynth signature q S context e raw q' S' →
+  RuntimeTyping signature (context.applySubst S') e (S'.apply raw)
+
+DDTyping signature [] e τ →
+  RuntimeTyping signature [] e τ
+```
+
+完了条件は，型付け derivation を premise に持つ oracle や任意の capability transport を
+追加せず，freeze 回帰を含む全例についてこの定理を適用できることである．
+
+### 3. 実行可能推論の DD soundness を証明する
+
+現在の `infer_success_runtimeTyping` より前に，successful trace そのものを ledger-aware DD
+derivation へ再構成する．`inferRaw` の fresh allocation 順，solve cut，generalization，matcher
+finalization を対応する DD constructor へ写し，terminal validator が確認した freeze event を
+DD ledger へ反映する．
+
+中心定理：
+
+```text
+infer signature context e = some result →
+  DDTyping signature context e result.resolvedTarget
+```
+
+これにより，公開推論器の成功は唯一の source typing に対して sound である，という通常の API を
+得る．`RuntimeTyping` はこの定理と milestone 2 の合成から内部的に回収できる．
+
+### 4. DDTyping から公開動的安全性を導く
+
+milestone 2 の state erasure と既存の preservation／progress を合成し，公開定理の premise から
+`RuntimeTyping` を隠す．`FrozenSigWF` は従来どおり実行可能 checker から確立する．
+
+目標とする公開形：
+
+```text
+DDTyping signature [] e τ →
+FrozenSigWF signature →
+runtime safety package for e at τ
+```
+
+expression evaluation と matching machine の既存定理をこの入口から利用できること，および
+`Soundness` module の公開結果が source typing と runtime safety を同時に返すことを完了条件とする．
+
+### 5. DDTyping に対する推論器の受理完全性を証明する
+
+DD derivation を左から右に読み，対応する `inferRaw` traversal が成功することを証明する．先に
+executable selector の product source 認識を raw view から cut-resolved view へ揃え，DD の
+`demandClass` と実装の branch 選択を一致させる．その後，DD の exact solve witness を実行
+solver の result へ対応させ，生成された trace が terminal validator を通ることまで示す．
+
+中心定理：
+
+```text
+DDTyping signature [] e τ →
+  (infer signature [] e).isSome
+```
+
+途中結果として raw traversal の完全性と terminal validator の完全性を分けて定理化してよいが，
+最終定理には `RawSourceVisible`，`FreezeCompatible`，caller-supplied bridge などの追加 premise を
+残さない．
+
+### 6. 受理同値と注釈不要性を公開する
+
+milestone 3 と 5 を合成し，closed program について source typability と公開推論器の成功を
+対応付ける．
+
+```text
+(∃ τ, DDTyping signature [] e τ) ↔
+  (infer signature [] e).isSome
+```
+
+この同値を本 mechanization の annotation-freeness 定理とする．あわせて，`inferType` が返す型と
+DD derivation の型の関係を定式化し，DD fragment に対する decidability と，必要なら条件付き
+principality を独立に議論する．`RuntimeTyping` 全体の principality 反例を DDTyping の結果として
+流用しない．
+
 ## 機械化済みの主な性質
 
 - `DDCheck` の非恒等 branch は slot-headed expected type に限られる．
