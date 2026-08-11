@@ -283,24 +283,24 @@ theorem PolyTy.map_applyMeta_comp {capArity tyArity : Nat}
 end
 
 
-namespace PolyScheme
+namespace Scheme
 
-@[simp] theorem applyMeta_id (scheme : PolyScheme) :
+@[simp] theorem applyMeta_id (scheme : Scheme) :
     scheme.applyMeta Subst.id = scheme := by
   cases scheme with
   | mk capArity tyArity body =>
-      simp [PolyScheme.applyMeta, PolyTy.applyMeta_id]
+      simp [Scheme.applyMeta, PolyTy.applyMeta_id]
 
 theorem applyMeta_comp (S₂ S₁ : Subst)
     (crossFixed : (Subst.mk S₂.cap S₁.target).RangeFixed)
-    (scheme : PolyScheme) :
+    (scheme : Scheme) :
     scheme.applyMeta (Subst.comp S₂ S₁) =
       (scheme.applyMeta S₁).applyMeta S₂ := by
   cases scheme with
   | mk capArity tyArity body =>
-      simp only [PolyScheme.applyMeta]
+      simp only [Scheme.applyMeta]
       congr 1
       exact PolyTy.applyMeta_comp S₂ S₁ crossFixed body
 
-end PolyScheme
+end Scheme
 end TypePM

@@ -7,7 +7,7 @@ import TypePM.UniqueVars
 
 Generalization first chooses the ordinary solver metavariables not present in
 the environment, then immediately closes them into finite bound indices.  The
-chosen names are not retained in the resulting `PolyScheme`.
+chosen names are not retained in the resulting `Scheme`.
 -/
 
 namespace TypePM
@@ -22,20 +22,20 @@ def generalizedTyVars (envTys : List TypePM.TyVar)
   uniqueVars (target.ftv.filter (fun varId => varId ∉ envTys))
 
 /-- Generalize an ordinary type and close the selected metavariables at once. -/
-def PolyScheme.generalize (envCaps : List CapVar)
-    (envTys : List TypePM.TyVar) (target : Ty) : PolyScheme :=
-  PolyScheme.close (generalizedCapVars envCaps target)
+def Scheme.generalize (envCaps : List CapVar)
+    (envTys : List TypePM.TyVar) (target : Ty) : Scheme :=
+  Scheme.close (generalizedCapVars envCaps target)
     (generalizedTyVars envTys target) target
 
-@[simp] theorem PolyScheme.generalize_capArity
+@[simp] theorem Scheme.generalize_capArity
     (envCaps : List CapVar) (envTys : List TypePM.TyVar) (target : Ty) :
-    (PolyScheme.generalize envCaps envTys target).capArity =
+    (Scheme.generalize envCaps envTys target).capArity =
       (generalizedCapVars envCaps target).length := by
   rfl
 
-@[simp] theorem PolyScheme.generalize_tyArity
+@[simp] theorem Scheme.generalize_tyArity
     (envCaps : List CapVar) (envTys : List TypePM.TyVar) (target : Ty) :
-    (PolyScheme.generalize envCaps envTys target).tyArity =
+    (Scheme.generalize envCaps envTys target).tyArity =
       (generalizedTyVars envTys target).length := by
   rfl
 

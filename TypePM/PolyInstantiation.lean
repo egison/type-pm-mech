@@ -94,7 +94,7 @@ theorem PolyTy.instantiate_lift_list {capArity tyArity : Nat}
 
 end
 
-namespace PolyScheme
+namespace Scheme
 
 /-! ## Declarative value-flow opening -/
 
@@ -104,17 +104,17 @@ The codomain of `capImage` makes the source calculus's variable-only
 capability policy structural: a capability binder cannot be opened directly
 by a constructor or product capability.  Target binders retain ordinary
 structural specialization. -/
-structure ValueOpening (scheme : PolyScheme) where
+structure ValueOpening (scheme : Scheme) where
   capImage : Fin scheme.capArity → CapVar
   tyImage : Fin scheme.tyArity → Ty
 
 /-- Open a scheme using a declarative variable-only assignment. -/
-def openValue (scheme : PolyScheme) (opening : scheme.ValueOpening) : Ty :=
+def openValue (scheme : Scheme) (opening : scheme.ValueOpening) : Ty :=
   scheme.instantiate (fun index => .var (opening.capImage index))
     opening.tyImage
 
 /-- Declarative value flow used by expression-variable lookup. -/
-def ValueFlowInst (scheme : PolyScheme) (target : Ty) : Prop :=
+def ValueFlowInst (scheme : Scheme) (target : Ty) : Prop :=
   ∃ opening : scheme.ValueOpening, scheme.openValue opening = target
 
 /-! ## Fresh inference opening -/
@@ -124,20 +124,20 @@ def ValueFlowInst (scheme : PolyScheme) (target : Ty) : Prop :=
 The finite domains are the scheme's binder arities, so no binder lists or
 support predicates are needed.  Injectivity records pairwise distinct
 allocation independently of freshness for a particular ambient scope. -/
-structure FreshOpening (scheme : PolyScheme) where
+structure FreshOpening (scheme : Scheme) where
   capImage : Fin scheme.capArity → CapVar
   tyImage : Fin scheme.tyArity → TypePM.TyVar
   capInjective : Function.Injective capImage
   tyInjective : Function.Injective tyImage
 
 /-- Forget fresh-allocation facts at the declarative boundary. -/
-def FreshOpening.toValueOpening {scheme : PolyScheme}
+def FreshOpening.toValueOpening {scheme : Scheme}
     (opening : scheme.FreshOpening) : scheme.ValueOpening where
   capImage := opening.capImage
   tyImage := fun index => .var (opening.tyImage index)
 
 /-- A fresh opening avoids the variables reserved by one ambient scope. -/
-structure FreshFor {scheme : PolyScheme} (opening : scheme.FreshOpening)
+structure FreshFor {scheme : Scheme} (opening : scheme.FreshOpening)
     (reservedCaps : List CapVar) (reservedTys : List TypePM.TyVar) : Prop where
   capFresh : ∀ index, opening.capImage index ∉ reservedCaps
   tyFresh : ∀ index, opening.tyImage index ∉ reservedTys
@@ -168,10 +168,10 @@ theorem ValueFlowInst.mono_eq {declared actual : Ty}
 
 /-- Every fresh opening is already a safe declarative value-flow instance of
 its computed opened type. -/
-theorem FreshOpening.toValueFlowInst {scheme : PolyScheme}
+theorem FreshOpening.toValueFlowInst {scheme : Scheme}
     (opening : scheme.FreshOpening) :
     scheme.ValueFlowInst (scheme.openValue opening.toValueOpening) := by
   exact ⟨opening.toValueOpening, rfl⟩
 
-end PolyScheme
+end Scheme
 end TypePM

@@ -88,20 +88,20 @@ end
 
 end PolyTy
 
-namespace PolyScheme
+namespace Scheme
 
 /-- Free capability solver metavariables of a scheme.
 
 No binder filtering is required: bound occurrences are already distinct
 `PolyCap.bound` nodes. -/
-def fcv (scheme : PolyScheme) : List CapVar :=
+def fcv (scheme : Scheme) : List CapVar :=
   scheme.body.fcv
 
 /-- Free ordinary-type solver metavariables of a scheme. -/
-def ftv (scheme : PolyScheme) : List TypePM.TyVar :=
+def ftv (scheme : Scheme) : List TypePM.TyVar :=
   scheme.body.ftv
 
-end PolyScheme
+end Scheme
 
 namespace PolyFreeVarsRegression
 
@@ -124,7 +124,7 @@ numeric binder subtraction. -/
 theorem collisionScheme_fcv :
     ({ capArity := 1
        tyArity := 0
-       body := collisionBody } : PolyScheme).fcv = [0] := by
+       body := collisionBody } : Scheme).fcv = [0] := by
   rfl
 
 end PolyFreeVarsRegression

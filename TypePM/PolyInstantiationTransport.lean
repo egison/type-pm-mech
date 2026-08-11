@@ -11,13 +11,13 @@ selected by that opening: each such image must remain a capability variable.
 
 namespace TypePM
 
-namespace PolyScheme
+namespace Scheme
 
 /-! ## Local post-opening witness -/
 
 /-- The variable images obtained by transporting one declarative opening
 through a later solver substitution. -/
-structure ValueOpening.Post {scheme : PolyScheme}
+structure ValueOpening.Post {scheme : Scheme}
     (opening : scheme.ValueOpening) (substitution : Subst) where
   capImage : Fin scheme.capArity → CapVar
   capEquation : ∀ index,
@@ -26,14 +26,14 @@ structure ValueOpening.Post {scheme : PolyScheme}
 /-- Repackage the transported images as an opening of the substituted scheme.
 Target images may be structural and therefore use the complete ordered paired
 action. -/
-def ValueOpening.Post.toOpening {scheme : PolyScheme}
+def ValueOpening.Post.toOpening {scheme : Scheme}
     {opening : scheme.ValueOpening} {substitution : Subst}
     (post : opening.Post substitution) :
     (scheme.applyMeta substitution).ValueOpening where
   capImage := post.capImage
   tyImage := fun index => substitution.apply (opening.tyImage index)
 
-end PolyScheme
+end Scheme
 
 /-! ## Structural transport through polymorphic payloads -/
 
@@ -196,14 +196,14 @@ theorem PolyTy.instantiate_applyMeta_list
 
 end
 
-namespace PolyScheme
+namespace Scheme
 
 /-! ## Scheme transport -/
 
 /-- Capture-free opening commutes with ambient substitution.  The post witness
 contains exactly the local variable-image equations needed by the capability
 part of the result. -/
-theorem openValue_applyMeta {scheme : PolyScheme}
+theorem openValue_applyMeta {scheme : Scheme}
     (substitution : Subst) (opening : scheme.ValueOpening)
     (post : opening.Post substitution) :
     (scheme.applyMeta substitution).openValue post.toOpening =
@@ -213,7 +213,7 @@ theorem openValue_applyMeta {scheme : PolyScheme}
 
 /-- Declarative value flow is transported to the ambiently substituted scheme
 whenever the selected capability images remain variables. -/
-theorem ValueFlowInst.transportApplyMeta {scheme : PolyScheme} {target : Ty}
+theorem ValueFlowInst.transportApplyMeta {scheme : Scheme} {target : Ty}
     (substitution : Subst) (instantiation : scheme.ValueFlowInst target)
     (postOf : ∀ opening : scheme.ValueOpening,
       scheme.openValue opening = target → Nonempty (opening.Post substitution)) :
@@ -226,7 +226,7 @@ theorem ValueFlowInst.transportApplyMeta {scheme : PolyScheme} {target : Ty}
 
 /-- Pointed form of value-flow transport when the caller already retains the
 opening and its result equation. -/
-theorem ValueOpening.transportApplyMeta {scheme : PolyScheme} {target : Ty}
+theorem ValueOpening.transportApplyMeta {scheme : Scheme} {target : Ty}
     (substitution : Subst) (opening : scheme.ValueOpening)
     (result : scheme.openValue opening = target)
     (post : opening.Post substitution) :
@@ -235,5 +235,5 @@ theorem ValueOpening.transportApplyMeta {scheme : PolyScheme} {target : Ty}
   refine ⟨post.toOpening, ?_⟩
   rw [openValue_applyMeta substitution opening post, result]
 
-end PolyScheme
+end Scheme
 end TypePM

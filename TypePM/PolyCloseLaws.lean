@@ -137,7 +137,7 @@ end
 
 end PolyTy
 
-namespace PolyScheme
+namespace Scheme
 
 /-- Closing an ordinary target and reopening its finite binders with the
 original binder-list variables is a left inverse, even when a binder list
@@ -151,5 +151,5 @@ theorem instantiate_close_get
       target := by
   exact PolyTy.instantiate_abstract_get capBinders tyBinders target
 
-end PolyScheme
+end Scheme
 end TypePM
