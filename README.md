@@ -314,8 +314,10 @@ substitutionのimageに現れるcapability variableについても入力constrai
 matcher-to-slotとproduct-of-matchers liftのalignment，およびそれらを使うchecking分岐を
 exact-stateなDD derivationへ再構成した．origin-oriented capability kernelにも入力内support，
 range，support elimination，global universalityを保持させ，ledger admissibilityとは独立に
-`ExactCapMGU`を構成できるbridgeを完成した．次はpaired solverに同じglobal exactnessを追加し，
-slot-tuple lift，slot-to-slot，ordinary equalityの残り3分岐を閉じる．
+`ExactCapMGU`を構成できるbridgeを完成した．paired solverについても，全unifierがsolver結果を
+経由するglobal universalityまでは全構造分岐で証明済みである．次はpaired
+resultにcapability／target両sortの入力内supportとimage range，paired idempotenceを追加して
+`ExactPairedMGU` bridgeを完成し，slot-tuple lift，slot-to-slot，ordinary equalityの残り3分岐を閉じる．
 
 中心定理：
 

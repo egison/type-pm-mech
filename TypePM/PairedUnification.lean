@@ -1155,6 +1155,10 @@ structure PairedResult
   targetSupportVars : List TypePM.TyVar
   targetSupport : subst.target.SupportWithin targetSupportVars
   sound : subst.apply left = subst.apply right
+  /-- Every paired competitor, independently of the origin ledger, factors
+  through the returned substitution. -/
+  globalUniversal : ∀ U : Subst, U.apply left = U.apply right →
+    ∃ R : Subst, U = Subst.seq R subst
   admissible : AdmissiblePost ledger subst
   /-- Relative universality for the two-sorted solver.  An admissible competitor
   absorbs the returned paired substitution under cross-sort-aware sequencing. -/
@@ -1170,6 +1174,9 @@ structure PairedListResult
   targetSupportVars : List TypePM.TyVar
   targetSupport : subst.target.SupportWithin targetSupportVars
   sound : left.map subst.apply = right.map subst.apply
+  globalUniversal : ∀ U : Subst,
+    left.map U.apply = right.map U.apply →
+      ∃ R : Subst, U = Subst.seq R subst
   admissible : AdmissiblePost ledger subst
   universal : ∀ U : Subst, AdmissiblePost ledger U →
     left.map U.apply = right.map U.apply → U = Subst.seq U subst
@@ -1227,6 +1234,51 @@ private theorem absorb_seq
     _ = Subst.seq U (Subst.seq later earlier) :=
       (PhasedPost.seq_assoc U later earlier).symm
 
+/-- A factorization through an earlier phase and then through a later phase
+composes into a factorization through their sequential composition. -/
+private theorem factor_seq
+    {U residual₁ residual₂ earlier later : Subst}
+    (earlierFactors : U = Subst.seq residual₁ earlier)
+    (laterFactors : residual₁ = Subst.seq residual₂ later) :
+    U = Subst.seq residual₂ (Subst.seq later earlier) := by
+  calc
+    U = Subst.seq residual₁ earlier := earlierFactors
+    _ = Subst.seq (Subst.seq residual₂ later) earlier :=
+      congrArg (fun residual => Subst.seq residual earlier) laterFactors
+    _ = Subst.seq residual₂ (Subst.seq later earlier) :=
+      (PhasedPost.seq_assoc residual₂ later earlier).symm
+
+/-- A capability factorization lifts to the paired substitution whose target
+residual is the competitor's original target component. -/
+private theorem factor_capOnly
+    {U : Subst} {C residualCap : CapSubst}
+    (capFactors : U.cap = CapSubst.comp residualCap C) :
+    U = Subst.seq (Subst.mk residualCap U.target)
+      (Subst.mk C TySubst.id) := by
+  apply PhasedPost.subst_ext
+  · exact capFactors
+  · funext varId
+    rfl
+
+/-- A residual acts on a solved input exactly as the original competitor when
+the competitor factors through the solver result. -/
+private theorem apply_of_factors
+    {U residual solved : Subst}
+    (factors : U = Subst.seq residual solved) (target : Ty) :
+    residual.apply (solved.apply target) = U.apply target := by
+  rw [← Subst.seq_apply, ← factors]
+
+/-- List form of `apply_of_factors`. -/
+private theorem map_apply_of_factors
+    {U residual solved : Subst}
+    (factors : U = Subst.seq residual solved) (targets : List Ty) :
+    (targets.map solved.apply).map residual.apply = targets.map U.apply := by
+  induction targets with
+  | nil => rfl
+  | cons target targets induction =>
+      simp only [List.map_cons, List.cons.injEq]
+      exact ⟨apply_of_factors factors target, induction⟩
+
 /-- An absorbed substitution may be inserted before applying the competitor. -/
 private theorem apply_of_absorbs
     {U solved : Subst} (absorbs : U = Subst.seq U solved) (target : Ty) :
@@ -1264,6 +1316,14 @@ def solvePairedTy :
           targetSupportVars := []
           targetSupport := TySubst.id_supportWithin []
           sound := by subst right; rfl
+          globalUniversal := by
+            intro U _
+            refine ⟨U, ?_⟩
+            apply PhasedPost.subst_ext
+            · funext varId
+              rfl
+            · funext varId
+              rfl
           admissible := AdmissiblePost.id ledger
           universal := by
             intro U _ _
@@ -1293,6 +1353,21 @@ def solvePairedTy :
                     if_pos]
                   exact (Unification.Ty.applyTarget_single_of_not_mem varId
                     right right hoccurs).symm
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, ?_⟩
+                  apply PhasedPost.subst_ext
+                  · funext candidate
+                    rfl
+                  · funext candidate
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [Subst.seq, Unification.TySubst.single,
+                        Subst.apply, Ty.applyCapability, Ty.applyTarget]
+                        using hunify
+                    · simp [Subst.seq, Unification.TySubst.single,
+                        Subst.apply, Ty.applyCapability, Ty.applyTarget,
+                        hcandidate]
                 admissible := admissiblePost_targetOnly ledger _
                 universal := by
                   intro U _ hunify
@@ -1327,6 +1402,21 @@ def solvePairedTy :
                     if_pos]
                   exact Unification.Ty.applyTarget_single_of_not_mem varId
                     left left hoccurs
+                globalUniversal := by
+                  intro U hunify
+                  refine ⟨U, ?_⟩
+                  apply PhasedPost.subst_ext
+                  · funext candidate
+                    rfl
+                  · funext candidate
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [Subst.seq, Unification.TySubst.single,
+                        Subst.apply, Ty.applyCapability, Ty.applyTarget]
+                        using hunify.symm
+                    · simp [Subst.seq, Unification.TySubst.single,
+                        Subst.apply, Ty.applyCapability, Ty.applyTarget,
+                        hcandidate]
                 admissible := admissiblePost_targetOnly ledger _
                 universal := by
                   intro U _ hunify
@@ -1357,6 +1447,11 @@ def solvePairedTy :
                     sound := by
                       rw [subst_apply_data, subst_apply_data, hname,
                         result.sound]
+                    globalUniversal := by
+                      intro U hunify
+                      rw [subst_apply_data, subst_apply_data] at hunify
+                      simp only [Ty.data.injEq] at hunify
+                      exact result.globalUniversal U hunify.2
                     admissible := result.admissible
                     universal := by
                       intro U admissible hunify
@@ -1379,6 +1474,11 @@ def solvePairedTy :
                   targetSupport := result.targetSupport
                   sound := by
                     rw [subst_apply_prod, subst_apply_prod, result.sound]
+                  globalUniversal := by
+                    intro U hunify
+                    rw [subst_apply_prod, subst_apply_prod] at hunify
+                    simp only [Ty.prod.injEq] at hunify
+                    exact result.globalUniversal U hunify
                   admissible := result.admissible
                   universal := by
                     intro U admissible hunify
@@ -1414,6 +1514,25 @@ def solvePairedTy :
                         rw [subst_apply_fn, subst_apply_fn, Subst.seq_apply,
                           Subst.seq_apply, Subst.seq_apply, Subst.seq_apply,
                           domainResult.sound, codomainResult.sound]
+                      globalUniversal := by
+                        intro U hunify
+                        rw [subst_apply_fn, subst_apply_fn] at hunify
+                        simp only [Ty.fn.injEq] at hunify
+                        obtain ⟨hdomain, hcodomain⟩ := hunify
+                        obtain ⟨R₁, domainFactors⟩ :=
+                          domainResult.globalUniversal U hdomain
+                        have hcodomain' :
+                            R₁.apply
+                                (domainResult.subst.apply leftCodomain) =
+                              R₁.apply
+                                (domainResult.subst.apply rightCodomain) := by
+                          rw [apply_of_factors domainFactors,
+                            apply_of_factors domainFactors]
+                          exact hcodomain
+                        obtain ⟨R₂, codomainFactors⟩ :=
+                          codomainResult.globalUniversal R₁ hcodomain'
+                        exact ⟨R₂,
+                          factor_seq domainFactors codomainFactors⟩
                       admissible :=
                         AdmissiblePost.seq codomainResult.admissible
                           domainResult.admissible
@@ -1491,6 +1610,32 @@ def solvePairedTy :
                             capOnly_apply]
                           exact targetResult.sound
                         rw [hcap, htarget]
+                      globalUniversal := by
+                        intro U hunify
+                        rw [subst_apply_matcher, subst_apply_matcher] at hunify
+                        simp only [Ty.matcher.injEq] at hunify
+                        obtain ⟨hcap, htarget⟩ := hunify
+                        obtain ⟨residualCap, capFactors⟩ :=
+                          capResult.globalUniversal U.cap hcap
+                        let R₁ : Subst := Subst.mk residualCap U.target
+                        have capPairFactors : U = Subst.seq R₁
+                            (Subst.mk capResult.subst TySubst.id) := by
+                          exact factor_capOnly capFactors
+                        have htarget' :
+                            R₁.apply
+                                (leftTarget.applyCapability capResult.subst) =
+                              R₁.apply
+                                (rightTarget.applyCapability
+                                  capResult.subst) := by
+                          rw [← capOnly_apply capResult.subst leftTarget,
+                            ← capOnly_apply capResult.subst rightTarget,
+                            apply_of_factors capPairFactors,
+                            apply_of_factors capPairFactors]
+                          exact htarget
+                        obtain ⟨R₂, targetFactors⟩ :=
+                          targetResult.globalUniversal R₁ htarget'
+                        exact ⟨R₂,
+                          factor_seq capPairFactors targetFactors⟩
                       admissible :=
                         AdmissiblePost.seq targetResult.admissible
                           (admissiblePost_capOnly capResult.admissible)
@@ -1581,6 +1726,32 @@ def solvePairedTy :
                             capOnly_apply]
                           exact targetResult.sound
                         rw [hcap, htarget]
+                      globalUniversal := by
+                        intro U hunify
+                        rw [subst_apply_slot, subst_apply_slot] at hunify
+                        simp only [Ty.slot.injEq] at hunify
+                        obtain ⟨hcap, htarget⟩ := hunify
+                        obtain ⟨residualCap, capFactors⟩ :=
+                          capResult.globalUniversal U.cap hcap
+                        let R₁ : Subst := Subst.mk residualCap U.target
+                        have capPairFactors : U = Subst.seq R₁
+                            (Subst.mk capResult.subst TySubst.id) := by
+                          exact factor_capOnly capFactors
+                        have htarget' :
+                            R₁.apply
+                                (leftTarget.applyCapability capResult.subst) =
+                              R₁.apply
+                                (rightTarget.applyCapability
+                                  capResult.subst) := by
+                          rw [← capOnly_apply capResult.subst leftTarget,
+                            ← capOnly_apply capResult.subst rightTarget,
+                            apply_of_factors capPairFactors,
+                            apply_of_factors capPairFactors]
+                          exact htarget
+                        obtain ⟨R₂, targetFactors⟩ :=
+                          targetResult.globalUniversal R₁ htarget'
+                        exact ⟨R₂,
+                          factor_seq capPairFactors targetFactors⟩
                       admissible :=
                         AdmissiblePost.seq targetResult.admissible
                           (admissiblePost_capOnly capResult.admissible)
@@ -1638,6 +1809,14 @@ def solvePairedTyList :
         targetSupportVars := []
         targetSupport := TySubst.id_supportWithin []
         sound := rfl
+        globalUniversal := by
+          intro U _
+          refine ⟨U, ?_⟩
+          apply PhasedPost.subst_ext
+          · funext varId
+            rfl
+          · funext varId
+            rfl
         admissible := AdmissiblePost.id ledger
         universal := by
           intro U _ _
@@ -1680,6 +1859,22 @@ def solvePairedTyList :
                   have htail := tailResult.sound
                   simp only [List.map_map, Function.comp_def] at htail
                   rw [hhead, htail]
+                globalUniversal := by
+                  intro U hunify
+                  simp only [List.map, List.cons.injEq] at hunify
+                  obtain ⟨hhead, htail⟩ := hunify
+                  obtain ⟨R₁, headFactors⟩ :=
+                    headResult.globalUniversal U hhead
+                  have htail' :
+                      (leftTail.map headResult.subst.apply).map R₁.apply =
+                        (rightTail.map headResult.subst.apply).map
+                          R₁.apply := by
+                    rw [map_apply_of_factors headFactors,
+                      map_apply_of_factors headFactors]
+                    exact htail
+                  obtain ⟨R₂, tailFactors⟩ :=
+                    tailResult.globalUniversal R₁ htail'
+                  exact ⟨R₂, factor_seq headFactors tailFactors⟩
                 admissible :=
                   AdmissiblePost.seq tailResult.admissible
                     headResult.admissible
@@ -2255,6 +2450,23 @@ theorem mguPairedTy_sound
         simpa [hsolve] using hsuccess
       subst S
       exact result.sound
+
+/-- Every paired unifier, without an origin-ledger side condition, factors
+through the substitution returned by the executable paired solver. -/
+theorem mguPairedTy_globalUniversal
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S U : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S)
+    (competitorSound : U.apply left = U.apply right) :
+    ∃ R : Subst, U = Subst.seq R S := by
+  unfold mguPairedTy at hsuccess
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.globalUniversal U competitorSound
 
 /-- Every substitution returned by the paired solver respects the origin
 ledger. -/
