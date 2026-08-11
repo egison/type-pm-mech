@@ -11,11 +11,12 @@ substitution, and capability-origin ledger.  Trace events remain evidence for
 constructing the certificate, rather than becoming an additional premise of
 source typing.
 
-The initial slices cover variable lookup, the two expression leaves whose
-executable traversal performs no solve, and expression-list nil/cons.  Their
-shape is the mutual induction invariant required by the remaining expression
-constructors: executable raw targets are preserved, and the output indices of
-the DD derivation are exactly the output state of the run.
+The initial slices cover variable lookup, lambda, tuple, the two expression
+leaves whose executable traversal performs no solve, and expression-list
+nil/cons.  Their shape is the mutual induction invariant required by the
+remaining expression constructors: executable raw targets are preserved, and
+the output indices of the DD derivation are exactly the output state of the
+run.
 -/
 
 namespace TypePM
@@ -102,6 +103,37 @@ def DDSynthsRun (signature : FrozenSig) (context : Context)
         DDSynthsOrigin signature derived initial.capabilityOrigins
           result.state.capabilityOrigins
 
+/-- The domain and state produced by the executable lambda-entry allocation. -/
+def lambdaDomain (initial : InferState) (path : SyntaxPath) : Ty :=
+  ((visit initial .exprLam path).freshTy
+    (freshOrigin .expression path "lambda-domain")).1
+
+def lambdaEntryState (initial : InferState) (path : SyntaxPath) : InferState :=
+  ((visit initial .exprLam path).freshTy
+    (freshOrigin .expression path "lambda-domain")).2
+
+@[simp] theorem lambdaDomain_eq
+    (initial : InferState) (path : SyntaxPath) :
+    lambdaDomain initial path = .var initial.supply.nextTy :=
+  rfl
+
+@[simp] theorem lambdaEntryState_supply
+    (initial : InferState) (path : SyntaxPath) :
+    (lambdaEntryState initial path).supply =
+      { initial.supply with nextTy := initial.supply.nextTy + 1 } :=
+  rfl
+
+@[simp] theorem lambdaEntryState_prevailing
+    (initial : InferState) (path : SyntaxPath) :
+    (lambdaEntryState initial path).prevailing = initial.prevailing :=
+  rfl
+
+@[simp] theorem lambdaEntryState_capabilityOrigins
+    (initial : InferState) (path : SyntaxPath) :
+    (lambdaEntryState initial path).capabilityOrigins =
+      initial.capabilityOrigins :=
+  rfl
+
 /-- The empty executable expression-list result is the empty DD derivation. -/
 theorem DDSynthsRun.nil
     (signature : FrozenSig) (context : Context) (initial : InferState) :
@@ -124,6 +156,51 @@ theorem DDSynthsRun.cons
     ?_, ?_⟩
   · simp [headEq, tailEq]
   · exact DDSynthsOrigin.cons headOrigin tailOrigin
+
+/-- Reconstruct lambda synthesis from the exact body-entry run. -/
+theorem DDSynthRun.lam
+    {signature : FrozenSig} {context : Context} {name : String} {body : Expr}
+    {initial : InferState} {path : SyntaxPath} {bodyResult : ExprResult}
+    (bodyRun : DDSynthRun signature
+      ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
+      (lambdaEntryState initial path) bodyResult) :
+    DDSynthRun signature context (.lam name body) initial
+      (finishExpr (.lam name body) path
+        (.fn (lambdaDomain initial path) bodyResult.target)
+        bodyResult.state) := by
+  rcases bodyRun with ⟨bodyTarget, bodyDerived, bodyEq, bodyOrigin⟩
+  change DDSynth signature
+    { initial.supply with nextTy := initial.supply.nextTy + 1 }
+    initial.prevailing
+    ((name, Scheme.mono (.var initial.supply.nextTy)) :: context) body
+    bodyTarget bodyResult.state.supply bodyResult.state.prevailing at bodyDerived
+  change DDSynthOrigin signature bodyDerived initial.capabilityOrigins
+    bodyResult.state.capabilityOrigins at bodyOrigin
+  refine ⟨.fn (.var initial.supply.nextTy) bodyTarget,
+    DDSynth.lam bodyDerived, ?_, ?_⟩
+  · simp [finishExpr, bodyEq]
+  · simpa [finishExpr] using DDSynthOrigin.lam bodyOrigin
+
+/-- Reconstruct tuple synthesis from the exact expression-list run after the
+tuple visit event. -/
+theorem DDSynthRun.tuple
+    {signature : FrozenSig} {context : Context} {expressions : List Expr}
+    {initial : InferState} {path : SyntaxPath} {children : ExprsResult}
+    (childrenRun : DDSynthsRun signature context expressions
+      (visit initial .exprTuple path) children) :
+    DDSynthRun signature context (.tuple expressions) initial
+      (finishExpr (.tuple expressions) path (.prod children.targets)
+        children.state) := by
+  rcases childrenRun with
+    ⟨childTargets, childrenDerived, targetsEq, childrenOrigin⟩
+  change DDSynths signature initial.supply initial.prevailing context
+    expressions childTargets children.state.supply
+    children.state.prevailing at childrenDerived
+  change DDSynthsOrigin signature childrenDerived initial.capabilityOrigins
+    children.state.capabilityOrigins at childrenOrigin
+  refine ⟨.prod childTargets, DDSynth.tuple childrenDerived, ?_, ?_⟩
+  · simp [finishExpr, targetsEq]
+  · simpa [finishExpr] using DDSynthOrigin.tuple childrenOrigin
 
 /-- The empty branch of the executable expression-list traversal reconstructs
 the empty DD list certificate. -/
@@ -191,6 +268,70 @@ theorem DDSynthRun.toDDTyping
   · exact derived
   · exact origin
   · simp [ExprResult.resolvedTarget, targetEq]
+
+/-- The lambda branch delegates exactly one smaller traversal to its body;
+the functional premise is the expression induction hypothesis at the fresh
+domain state. -/
+theorem inferExprFuel_lam_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String} {body : Expr}
+    {initial : InferState} {result : ExprResult}
+    (bodySound : ∀ bodyResult : ExprResult,
+      inferExprFuel fuel signature
+        ((name, Scheme.mono (lambdaDomain initial path)) :: context)
+        (selfEnv.erase name) (0 :: path) body
+        (lambdaEntryState initial path) = some bodyResult →
+      DDSynthRun signature
+        ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
+        (lambdaEntryState initial path) bodyResult)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.lam name body) initial = some result) :
+    DDSynthRun signature context (.lam name body) initial result := by
+  cases bodyEq : inferExprFuel fuel signature
+      ((name, Scheme.mono (lambdaDomain initial path)) :: context)
+      (selfEnv.erase name) (0 :: path) body
+      (lambdaEntryState initial path) with
+  | none =>
+      have actualBodyEq := bodyEq
+      simp only [lambdaDomain, lambdaEntryState] at actualBodyEq
+      simp [inferExprFuel, actualBodyEq] at success
+  | some bodyResult =>
+      have actualBodyEq := bodyEq
+      simp only [lambdaDomain, lambdaEntryState] at actualBodyEq
+      have resultEq :
+          finishExpr (.lam name body) path
+            (.fn (lambdaDomain initial path) bodyResult.target)
+            bodyResult.state = result := by
+        apply Option.some.inj
+        simpa [inferExprFuel, lambdaDomain, actualBodyEq] using success
+      subst result
+      exact DDSynthRun.lam (bodySound bodyResult bodyEq)
+
+/-- The tuple branch delegates to the expression-list induction hypothesis
+after recording its syntax visit. -/
+theorem inferExprFuel_tuple_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expressions : List Expr}
+    {initial : InferState} {result : ExprResult}
+    (childrenSound : ∀ children : ExprsResult,
+      inferExprsFuel fuel signature context selfEnv path 0 expressions
+        (visit initial .exprTuple path) = some children →
+      DDSynthsRun signature context expressions
+        (visit initial .exprTuple path) children)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.tuple expressions) initial = some result) :
+    DDSynthRun signature context (.tuple expressions) initial result := by
+  cases childrenEq : inferExprsFuel fuel signature context selfEnv path 0
+      expressions (visit initial .exprTuple path) with
+  | none => simp [inferExprFuel, childrenEq] at success
+  | some children =>
+      have resultEq :
+          finishExpr (.tuple expressions) path (.prod children.targets)
+            children.state = result := by
+        apply Option.some.inj
+        simpa [inferExprFuel, childrenEq] using success
+      subst result
+      exact DDSynthRun.tuple (childrenSound children childrenEq)
 
 /-- Context lookup uses the executable scheme-instantiation helper and
 reconstructs the matching rename-only origin transition.  A direct-self hit
