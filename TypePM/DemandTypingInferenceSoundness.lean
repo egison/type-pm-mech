@@ -185,6 +185,67 @@ theorem alignAtSlot_matcherToSlot_ddAlignRun
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
 
+/-- A raw product-matcher view is preserved by the prevailing paired
+substitution, with that substitution applied pointwise to its duals. -/
+theorem productMatcherDuals?_apply
+    {raw : Ty} {duals : List Dual} {S : Subst}
+    (rawView : productMatcherDuals? raw = some duals) :
+    productMatcherDuals? (S.apply raw) =
+      some (duals.map (Dual.applySubst S)) := by
+  have rawShape := productMatcherDuals?_sound rawView
+  subst raw
+  clear rawView
+  have mapped : List.mapM (fun dual : Dual =>
+      some (Dual.applySubst S dual)) duals =
+      some (duals.map (Dual.applySubst S)) := by
+    induction duals with
+    | nil => rfl
+    | cons dual duals induction => simp [List.mapM_cons, induction]
+  simpa [productMatcherDuals?, matcherDual?, Subst.apply_prod,
+    List.map_map, Dual.applySubst, Dual.apply, Function.comp_def] using mapped
+
+/-- Reconstruct the product-matcher lift from the executable synthetic unary
+matcher source.  The DD rule remains indexed by the original product type. -/
+theorem alignAtSlot_productMatcherLift_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (rawView : productMatcherDuals? raw = some duals)
+    (expectedView : state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : alignAtSlot state origin (productMatcherTarget duals) expected =
+      some final) :
+    DDAlignRun raw expected state final := by
+  let resolvedDuals := duals.map (Dual.applySubst state.prevailing)
+  have sourceView : state.prevailing.apply (productMatcherTarget duals) =
+      .matcher (.prod (resolvedDuals.map Dual.cap))
+        (.prod (resolvedDuals.map Dual.target)) := by
+    simp [resolvedDuals, productMatcherTarget, Subst.apply_matcher,
+      Cap.apply_prod, Subst.apply_prod, List.map_map, Dual.applySubst,
+      Dual.apply, Function.comp_def]
+  unfold alignAtSlot at success
+  simp only [sourceView, expectedView] at success
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin
+      (.producerToSlot (.prod (resolvedDuals.map Dual.cap))
+        (.prod (resolvedDuals.map Dual.target)) consumerCap consumerTarget) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      dsimp at success
+      split at success
+      · rename_i checked
+        have finalEq := Option.some.inj success
+        subst final
+        refine ⟨rfl, rfl, ?_⟩
+        rw [InferState.prevailing_recordSolve]
+        exact DDAlignWithLedger.productMatcherLift
+          (by simpa [resolvedDuals] using productMatcherDuals?_apply rawView)
+          expectedView
+          (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
+      · contradiction
+
 /-- A type whose cut-resolved view is a matcher cannot be one of the raw
 product coercion sources, so the executable selector leaves it unchanged. -/
 theorem expectedCoercionSource_of_resolvedMatcher
@@ -221,6 +282,35 @@ theorem alignExprResultAtExpected_matcherToSlot_ddAlignRun
       simp only [sourceEq, alignmentEq, Option.some.injEq] at success
       subst final
       rcases alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
+          alignmentEq with
+        ⟨supplyEq, ledgerEq, alignedDD⟩
+      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+        by simpa using alignedDD⟩
+
+/-- Lift the raw product-matcher branch through coercion-source selection and
+the event-only expected-alignment wrapper. -/
+theorem alignExprResultAtExpected_productMatcherLift_ddAlignRun
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final : InferState} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (rawView : productMatcherDuals? expressionResult.target = some duals)
+    (expectedView : expressionResult.state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final) :
+    DDAlignRun expressionResult.target expected expressionResult.state final := by
+  have sourceEq : expectedCoercionSource expressionResult.state
+      expressionResult.target expected = productMatcherTarget duals := by
+    simp [expectedCoercionSource, rawView, expectedView]
+  unfold alignExprResultAtExpected at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type")
+      (productMatcherTarget duals) expected with
+  | none => simp [sourceEq, alignmentEq] at success
+  | some aligned =>
+      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
+      subst final
+      rcases alignAtSlot_productMatcherLift_ddAlignRun rawView expectedView
           alignmentEq with
         ⟨supplyEq, ledgerEq, alignedDD⟩
       exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
@@ -267,6 +357,30 @@ theorem checkExprFuel_matcherToSlot_ddCheckRun
   exact DDSynthRun.check synthRun
     (alignExprResultAtExpected_matcherToSlot_ddAlignRun rawView expectedView
       alignmentEq)
+
+/-- The raw product-matcher branch reconstructs the explicit DD product lift
+before composing it with checking. -/
+theorem checkExprFuel_productMatcherLift_ddCheckRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
+    {expected : Ty} {initial final : InferState}
+    {synthesized : ExprResult} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (inferEq : inferExprFuel fuel signature context selfEnv path expression
+      initial = some synthesized)
+    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (rawView : productMatcherDuals? synthesized.target = some duals)
+    (expectedView : synthesized.state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : checkExprFuel (fuel + 1) signature context selfEnv path
+      expression expected initial = some final) :
+    DDCheckRun signature context expression expected initial final := by
+  have alignmentEq :
+      alignExprResultAtExpected path synthesized expected = some final := by
+    simpa [checkExprFuel, inferEq] using success
+  exact DDSynthRun.check synthRun
+    (alignExprResultAtExpected_productMatcherLift_ddAlignRun rawView
+      expectedView alignmentEq)
 
 /-- The domain and state produced by the executable lambda-entry allocation. -/
 def lambdaDomain (initial : InferState) (path : SyntaxPath) : Ty :=

@@ -311,9 +311,11 @@ substitutionのimageに現れるcapability variableについても入力constrai
 統合し，既存のsoundness／global universalityとこれらの性質をまとめる
 `mguTy_exactTargetMGU`を構成した．したがって通常target solverの`ExactTargetMGU` bridgeは完了した．
 さらにproducer-to-slot solverの成功からorigin admissibilityを含む`OriginSafeOneWayDelta`を回収し，
-matcher-to-slot alignmentと，それを使うchecking分岐をexact-stateなDD derivationへ再構成した．
-次はordinary equalityとproduct liftに必要なorigin-oriented capability／paired solverのexact bridgeを
-構成し，alignmentの残り4分岐を閉じる．
+matcher-to-slotとproduct-of-matchers liftのalignment，およびそれらを使うchecking分岐を
+exact-stateなDD derivationへ再構成した．origin-oriented capability kernelにも入力内support，
+range，support elimination，global universalityを保持させ，ledger admissibilityとは独立に
+`ExactCapMGU`を構成できるbridgeを完成した．次はpaired solverに同じglobal exactnessを追加し，
+slot-tuple lift，slot-to-slot，ordinary equalityの残り3分岐を閉じる．
 
 中心定理：
 
