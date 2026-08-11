@@ -285,6 +285,11 @@ end
 
 namespace Scheme
 
+@[simp] theorem applyMeta_mono (substitution : Subst) (target : Ty) :
+    (Scheme.mono target).applyMeta substitution =
+      Scheme.mono (substitution.apply target) := by
+  simp [Scheme.mono, Scheme.applyMeta, PolyTy.applyMeta_lift]
+
 @[simp] theorem applyMeta_id (scheme : Scheme) :
     scheme.applyMeta Subst.id = scheme := by
   cases scheme with
