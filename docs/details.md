@@ -219,6 +219,9 @@ scheme captureの表現上の解消に向け，`Syntax`／`PolySyntax`にscheme�
 `PolyTy n m`を導入した．bound variableは`Fin n`／`Fin m`，solver metavariableは既存の
 `CapVar`／`TyVar`であり，通常の`Cap`／`Ty`とunifierにはbound constructorを追加しない．
 `PolyTy.applyMeta`はmetavariable節だけを書き換え，通常型からのliftはbound occurrenceを生成できない．
+`PolyScheme`は二つのbinder数とdependentな`PolyTy` payloadだけを保持する．named binder listは
+`PolyScheme.close`の入力に限られ，閉じたschemeには保存されない．具体化はcaller-suppliedな
+`Fin` openingを通じてのみ通常の`Ty`へ戻る．
 旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
 後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
 payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．

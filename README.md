@@ -255,7 +255,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
 - [x] expressionの主要構造規則と，data／primitive patternの構造的erasureを構成する．
 - [x] scheme substitutionのno-capture条件とbinder-local instance compositionを定式化する．
 - [x] solver metavariableとscheme bound variableを型レベルで分離する，scheme専用の
-  `PolyCap`／`PolyTy`基盤と旧collisionのcapture不能回帰を構成する．
+  `PolyCap`／`PolyTy`，canonical `PolyScheme`，close／open境界と旧collisionの
+  capture不能回帰を構成する．
 - [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
 - [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
 - [ ] matcher／clauseを終端cutで相互に再構成する．
