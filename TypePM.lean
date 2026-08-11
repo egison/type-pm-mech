@@ -1,6 +1,7 @@
 import TypePM.Syntax
 import TypePM.Term
 import TypePM.Substitution
+import TypePM.PolySyntax
 import TypePM.Relation
 import TypePM.Annotation
 import TypePM.CapMatch

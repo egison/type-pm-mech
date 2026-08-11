@@ -184,6 +184,42 @@ instance : DecidableEq Ty :=
 def Ty.listT (τ : Ty) : Ty :=
   .data "List" [τ]
 
+/-! ## Capture-free scheme payload syntax
+
+Runtime and solver types contain metavariables only.  Scheme payloads use a
+separate syntax whose bound variables are finite de Bruijn indices.  Thus a
+bound variable cannot be passed to a unification substitution, and every
+payload is already in a canonical alpha-normal form. -/
+
+/-- Capabilities inside a scheme with `capArity` bound capability variables. -/
+inductive PolyCap (capArity : Nat) where
+  | any
+  | mvar    : CapVar → PolyCap capArity
+  | bound   : Fin capArity → PolyCap capArity
+  | skolem  : Nat → PolyCap capArity
+  | con     : String → List (PolyCap capArity) → PolyCap capArity
+  | prod    : List (PolyCap capArity) → PolyCap capArity
+deriving Repr
+
+/-- Types inside a scheme with separate capability and target binder arities. -/
+inductive PolyTy (capArity tyArity : Nat) where
+  | mvar    : TypePM.TyVar → PolyTy capArity tyArity
+  | bound   : Fin tyArity → PolyTy capArity tyArity
+  | skolem  : Nat → PolyTy capArity tyArity
+  | unit
+  | int
+  | bool
+  | data    : String → List (PolyTy capArity tyArity) →
+      PolyTy capArity tyArity
+  | prod    : List (PolyTy capArity tyArity) → PolyTy capArity tyArity
+  | fn      : PolyTy capArity tyArity → PolyTy capArity tyArity →
+      PolyTy capArity tyArity
+  | matcher : PolyCap capArity → PolyTy capArity tyArity →
+      PolyTy capArity tyArity
+  | slot    : PolyCap capArity → PolyTy capArity tyArity →
+      PolyTy capArity tyArity
+deriving Repr
+
 /-- Type schemes quantify capability and ordinary type variables separately. -/
 structure Scheme where
   capBinders : List CapVar

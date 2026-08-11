@@ -188,7 +188,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 |---|---|---|---|
 | 0. 基盤 | 完了 | DD判断，exact solve，runtime certificate，既存動的安全性 | なし |
 | 1. freeze provenance | 完了 | Origin ledger，public正例／負例回帰 | なし |
-| 2. DD state erasure | 一部完了 | 全14 familyのfactorization，多くのconstructor-wise erasure | variable／`let`のno-capture保存，matcher／clause終端再構成，pattern-constructorの終端compatibility |
+| 2. DD state erasure | 一部完了 | 全14 familyのfactorization，多くのconstructor-wise erasure，capture-free poly syntax基盤 | expression `Scheme`のpoly payload移行，variable／`let` transport，matcher／clause終端再構成，pattern-constructorの終端compatibility |
 | 3. infer success → DDTyping | 一部完了 | exact solver bridge，checking alignment全分岐，通常expression constructorの大半 | `fixMatcher`，`letE`，`matcher`，`matchAll`，pattern／arm／clause相互再構成，public中心定理 |
 | 4. DDの公開安全性 | 未着手 | 利用するpreservation／progressは既存 | milestone 2のclosed-program erasure後に公開定理を合成 |
 | 5. DDTyping → infer success | 未着手 | 完全性に必要なexact solver基盤は既存 | traversal完全性，terminal validator完全性 |
@@ -197,7 +197,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 現在のcritical pathは次の二本である．
 
 1. milestone 3のmatcher／pattern／clause相互再構成を閉じ，`infer success → DDTyping`を完成する．
-2. milestone 2のno-captureとmatcher終端再構成を閉じ，その後milestone 4を合成する．
+2. milestone 2のcapture-free `Scheme`移行とmatcher終端再構成を閉じ，その後milestone 4を合成する．
 
 milestone 5は1と2に依存しないが，現在はsource soundnessと公開安全性の完成を
 優先するため未着手とする．
@@ -254,7 +254,10 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
 - [x] checking alignment全5分岐を終端`RuntimeAlignment`へ射影する．
 - [x] expressionの主要構造規則と，data／primitive patternの構造的erasureを構成する．
 - [x] scheme substitutionのno-capture条件とbinder-local instance compositionを定式化する．
-- [ ] variable／`let`で，後続solve全体が`Context.NoCapture`を保存することを示す．
+- [x] solver metavariableとscheme bound variableを型レベルで分離する，scheme専用の
+  `PolyCap`／`PolyTy`基盤と旧collisionのcapture不能回帰を構成する．
+- [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
+- [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
 - [ ] matcher／clauseを終端cutで相互に再構成する．
 - [ ] pattern constructorの`CapCompatible`を早期freezeせず，終端consumerの証拠から回収する．
 - [ ] `DDTyping signature [] e τ → RuntimeTyping signature [] e τ`を公開定理として閉じる．
@@ -293,6 +296,12 @@ scheme substitutionの逐次合成を得る定理を実装済みである．一�
 後続のadmissible suffixが新たにbinder captureを起こしてvalue-flow instanceを失わせる第二反例も
 固定している．したがって，過去のleaf-local premiseでは足りず，context中の各scheme／free variable
 ごとのavoidanceを後続solve全体で保存する必要がある．
+この状態不変量を追加する代わりに，scheme payloadをsolverの`Cap`／`Ty`から分離する移行を開始した．
+`PolyCap n`／`PolyTy n m`ではbound occurrenceを`Fin`，free occurrenceを既存metavariableで表し，
+ambient substitutionのrangeからbound occurrenceを構築できない．`Fin`はcanonicalなde Bruijn index
+なので全payloadがalpha-normal formであり，substitutionごとのfresh nominal renameと
+alpha-equivalenceを導入せずに構造的等式を維持できる．現時点では基盤とcollision回帰までで，既存
+`Scheme`のpayload移行後にこの段落の`NoCapture`残課題を削除する．
 この境界は`Context.NoCapture`，context substitutionの逐次合成，binder-local instance composition，
 canonical value-flow transportとして補題化済みであり，variable leafの従来のscheme equality／
 `InstCompositionAt`／binder equation premiseは，lookup前後の2つの`NoCapture`条件へ簡約できている．

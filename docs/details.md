@@ -215,6 +215,16 @@ specification として使えないことだけを示す．`DDTyping` の princi
 
 ## 5. capability freeze と state erasure の基盤
 
+scheme captureの表現上の解消に向け，`Syntax`／`PolySyntax`にscheme専用の`PolyCap n`／
+`PolyTy n m`を導入した．bound variableは`Fin n`／`Fin m`，solver metavariableは既存の
+`CapVar`／`TyVar`であり，通常の`Cap`／`Ty`とunifierにはbound constructorを追加しない．
+`PolyTy.applyMeta`はmetavariable節だけを書き換え，通常型からのliftはbound occurrenceを生成できない．
+旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
+後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
+payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．
+現在は移行基盤の段階であり，以下の既存`Scheme.NoCapture`分析はexpression `Scheme`のpayload移行後に
+無条件のpoly-substitution algebraへ置換する．
+
 capability-origin ledgerは現行DD familyへ統合済みである．raw derivationと同じ構造のOrigin
 certificateが，instance，fresh allocation，selective export，matcher finalization，solve
 admissibility，`let` terminal generalization stabilityを追跡する．public `DDTyping` は空ledgerから
