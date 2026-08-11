@@ -136,6 +136,114 @@ end
 
 mutual
 
+/-- Variables of an applied capability are the image variables of its
+variables. -/
+theorem Cap.fcv_apply :
+    ∀ (cap : Cap) (S : CapSubst),
+      (cap.apply S).fcv = cap.fcv.flatMap fun x => (S x).fcv
+  | .any, _ => rfl
+  | .var _, _ => by simp [Cap.apply, Cap.fcv]
+  | .skolem _, _ => rfl
+  | .con _ children, S => by
+      simp only [Cap.apply, Cap.fcv]
+      exact Cap.fcvList_applyList children S
+  | .prod components, S => by
+      simp only [Cap.apply, Cap.fcv]
+      exact Cap.fcvList_applyList components S
+
+/-- List form of `Cap.fcv_apply`. -/
+theorem Cap.fcvList_applyList :
+    ∀ (caps : List Cap) (S : CapSubst),
+      Cap.fcvList (Cap.applyList S caps) =
+        (Cap.fcvList caps).flatMap fun x => (S x).fcv
+  | [], _ => rfl
+  | cap :: caps, S => by
+      simp only [Cap.applyList, Cap.fcvList, List.flatMap_append,
+        Cap.fcv_apply cap S, Cap.fcvList_applyList caps S]
+
+end
+
+mutual
+
+/-- Capability application does not change target variables. -/
+theorem Ty.ftv_applyCapability :
+    ∀ (target : Ty) (C : CapSubst),
+      (target.applyCapability C).ftv = target.ftv
+  | .var _, _ => rfl
+  | .skolem _, _ => rfl
+  | .unit, _ => rfl
+  | .int, _ => rfl
+  | .bool, _ => rfl
+  | .data _ fields, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftvList_applyCapabilityList fields C
+  | .prod components, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftvList_applyCapabilityList components C
+  | .fn domain codomain, C => by
+      simp only [Ty.applyCapability, Ty.ftv,
+        Ty.ftv_applyCapability domain C, Ty.ftv_applyCapability codomain C]
+  | .matcher capability target, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftv_applyCapability target C
+  | .slot capability target, C => by
+      simp only [Ty.applyCapability, Ty.ftv]
+      exact Ty.ftv_applyCapability target C
+
+/-- List form of `Ty.ftv_applyCapability`. -/
+theorem Ty.ftvList_applyCapabilityList :
+    ∀ (types : List Ty) (C : CapSubst),
+      Ty.ftvList (Ty.applyCapabilityList C types) = Ty.ftvList types
+  | [], _ => rfl
+  | τ :: types, C => by
+      simp only [Ty.applyCapabilityList, Ty.ftvList,
+        Ty.ftv_applyCapability τ C, Ty.ftvList_applyCapabilityList types C]
+
+end
+
+mutual
+
+/-- Capability variables of a capability-substituted type are the image
+variables of its capability variables. -/
+theorem Ty.fcv_applyCapability :
+    ∀ (target : Ty) (C : CapSubst),
+      (target.applyCapability C).fcv = target.fcv.flatMap fun x => (C x).fcv
+  | .var _, _ => rfl
+  | .skolem _, _ => rfl
+  | .unit, _ => rfl
+  | .int, _ => rfl
+  | .bool, _ => rfl
+  | .data _ fields, C => by
+      simp only [Ty.applyCapability, Ty.fcv]
+      exact Ty.fcvList_applyCapabilityList fields C
+  | .prod components, C => by
+      simp only [Ty.applyCapability, Ty.fcv]
+      exact Ty.fcvList_applyCapabilityList components C
+  | .fn domain codomain, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Ty.fcv_applyCapability domain C, Ty.fcv_applyCapability codomain C]
+  | .matcher capability target, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Cap.fcv_apply capability C, Ty.fcv_applyCapability target C]
+  | .slot capability target, C => by
+      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
+        Cap.fcv_apply capability C, Ty.fcv_applyCapability target C]
+
+/-- List form of `Ty.fcv_applyCapability`. -/
+theorem Ty.fcvList_applyCapabilityList :
+    ∀ (types : List Ty) (C : CapSubst),
+      Ty.fcvList (Ty.applyCapabilityList C types) =
+        (Ty.fcvList types).flatMap fun x => (C x).fcv
+  | [], _ => rfl
+  | τ :: types, C => by
+      simp only [Ty.applyCapabilityList, Ty.fcvList, List.flatMap_append,
+        Ty.fcv_applyCapability τ C, Ty.fcvList_applyCapabilityList types C]
+
+end
+
+
+mutual
+
 /-- Target variables of an applied type are the image variables of its
 target variables. -/
 theorem Ty.ftv_applyTarget :
@@ -2395,35 +2503,6 @@ theorem mguTy_of_fuel_le
 Solvability completeness needs exact control of the variables occurring
 after a substitution and the classical occurs-check contradiction.  These
 lemmas characterise both sorts. -/
-
-mutual
-
-/-- Variables of an applied capability are the image variables of its
-variables. -/
-theorem Cap.fcv_apply :
-    ∀ (cap : Cap) (S : CapSubst),
-      (cap.apply S).fcv = cap.fcv.flatMap fun x => (S x).fcv
-  | .any, _ => rfl
-  | .var _, _ => by simp [Cap.apply, Cap.fcv]
-  | .skolem _, _ => rfl
-  | .con _ children, S => by
-      simp only [Cap.apply, Cap.fcv]
-      exact Cap.fcvList_applyList children S
-  | .prod components, S => by
-      simp only [Cap.apply, Cap.fcv]
-      exact Cap.fcvList_applyList components S
-
-/-- List form of `Cap.fcv_apply`. -/
-theorem Cap.fcvList_applyList :
-    ∀ (caps : List Cap) (S : CapSubst),
-      Cap.fcvList (Cap.applyList S caps) =
-        (Cap.fcvList caps).flatMap fun x => (S x).fcv
-  | [], _ => rfl
-  | cap :: caps, S => by
-      simp only [Cap.applyList, Cap.fcvList, List.flatMap_append,
-        Cap.fcv_apply cap S, Cap.fcvList_applyList caps S]
-
-end
 
 mutual
 

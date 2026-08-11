@@ -71,7 +71,7 @@ theorem Scheme.applySubst_fcv_fixed_of_idempotent
   have notCapBinder : varId ∉ capBinders :=
     of_decide_eq_true (List.mem_filter.mp membership).2
   rcases Ty.mem_fcv_applyTarget _ _ varId bodyMem with own | targetImage
-  · rw [Ty.fcv_applyCapability] at own
+  · rw [Unification.Ty.fcv_applyCapability] at own
     rcases List.mem_flatMap.mp own with
       ⟨sourceVar, sourceMem, imageMem⟩
     by_cases bound : sourceVar ∈ capBinders
@@ -82,18 +82,18 @@ theorem Scheme.applySubst_fcv_fixed_of_idempotent
     · have imageMem' : varId ∈ (S.cap sourceVar).fcv := by
         simpa [CapSubst.mask, bound] using imageMem
       have inCapApplied : varId ∈ (body.applyCapability S.cap).fcv := by
-        rw [Ty.fcv_applyCapability]
+        rw [Unification.Ty.fcv_applyCapability]
         exact List.mem_flatMap.mpr ⟨sourceVar, sourceMem, imageMem'⟩
       exact idem.image_cap_fixed body varId
         (Ty.mem_fcv_applyTarget_of_mem _ _ _ inCapApplied)
   · rcases targetImage with ⟨sourceVar, sourceMem, imageMem⟩
-    rw [Ty.ftv_applyCapability] at sourceMem
+    rw [Unification.Ty.ftv_applyCapability] at sourceMem
     by_cases bound : sourceVar ∈ tyBinders
     · simp [TySubst.mask, bound, Ty.fcv] at imageMem
     · have imageMem' : varId ∈ (S.target sourceVar).fcv := by
         simpa [TySubst.mask, bound] using imageMem
       have sourceMem' : sourceVar ∈ (body.applyCapability S.cap).ftv := by
-        simpa [Ty.ftv_applyCapability] using sourceMem
+        simpa [Unification.Ty.ftv_applyCapability] using sourceMem
       exact idem.image_cap_fixed body varId
         (Ty.mem_fcv_applyTarget_of_image _ _ sourceMem' imageMem')
 
@@ -113,7 +113,8 @@ theorem Scheme.applySubst_ftv_fixed_of_idempotent
   change varId ∈
     (((body.applyCapability (S.cap.mask capBinders)).applyTarget
       (S.target.mask tyBinders))).ftv at bodyMem
-  rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at bodyMem
+  rw [Unification.Ty.ftv_applyTarget,
+    Unification.Ty.ftv_applyCapability] at bodyMem
   rcases List.mem_flatMap.mp bodyMem with
     ⟨sourceVar, sourceMem, imageMem⟩
   by_cases bound : sourceVar ∈ tyBinders
@@ -126,7 +127,8 @@ theorem Scheme.applySubst_ftv_fixed_of_idempotent
     have finalMem : varId ∈ (S.apply body).ftv := by
       change varId ∈
         ((body.applyCapability S.cap).applyTarget S.target).ftv
-      rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability]
+      rw [Unification.Ty.ftv_applyTarget,
+        Unification.Ty.ftv_applyCapability]
       exact List.mem_flatMap.mpr ⟨sourceVar, sourceMem, imageMem'⟩
     exact idem.image_target_fixed body varId finalMem
 

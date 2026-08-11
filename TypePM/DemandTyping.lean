@@ -4023,86 +4023,6 @@ conjunct.
 
 mutual
 
-/-- Capability application does not change target variables. -/
-theorem Ty.ftv_applyCapability :
-    ∀ (target : Ty) (C : CapSubst),
-      (target.applyCapability C).ftv = target.ftv
-  | .var _, _ => rfl
-  | .skolem _, _ => rfl
-  | .unit, _ => rfl
-  | .int, _ => rfl
-  | .bool, _ => rfl
-  | .data _ fields, C => by
-      simp only [Ty.applyCapability, Ty.ftv]
-      exact Ty.ftvList_applyCapabilityList fields C
-  | .prod components, C => by
-      simp only [Ty.applyCapability, Ty.ftv]
-      exact Ty.ftvList_applyCapabilityList components C
-  | .fn domain codomain, C => by
-      simp only [Ty.applyCapability, Ty.ftv,
-        Ty.ftv_applyCapability domain C, Ty.ftv_applyCapability codomain C]
-  | .matcher capability target, C => by
-      simp only [Ty.applyCapability, Ty.ftv]
-      exact Ty.ftv_applyCapability target C
-  | .slot capability target, C => by
-      simp only [Ty.applyCapability, Ty.ftv]
-      exact Ty.ftv_applyCapability target C
-
-/-- List form of `Ty.ftv_applyCapability`. -/
-theorem Ty.ftvList_applyCapabilityList :
-    ∀ (types : List Ty) (C : CapSubst),
-      Ty.ftvList (Ty.applyCapabilityList C types) = Ty.ftvList types
-  | [], _ => rfl
-  | τ :: types, C => by
-      simp only [Ty.applyCapabilityList, Ty.ftvList,
-        Ty.ftv_applyCapability τ C, Ty.ftvList_applyCapabilityList types C]
-
-end
-
-mutual
-
-/-- Capability variables of a capability-substituted type are the image
-variables of its capability variables. -/
-theorem Ty.fcv_applyCapability :
-    ∀ (target : Ty) (C : CapSubst),
-      (target.applyCapability C).fcv = target.fcv.flatMap fun x => (C x).fcv
-  | .var _, _ => rfl
-  | .skolem _, _ => rfl
-  | .unit, _ => rfl
-  | .int, _ => rfl
-  | .bool, _ => rfl
-  | .data _ fields, C => by
-      simp only [Ty.applyCapability, Ty.fcv]
-      exact Ty.fcvList_applyCapabilityList fields C
-  | .prod components, C => by
-      simp only [Ty.applyCapability, Ty.fcv]
-      exact Ty.fcvList_applyCapabilityList components C
-  | .fn domain codomain, C => by
-      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
-        Ty.fcv_applyCapability domain C, Ty.fcv_applyCapability codomain C]
-  | .matcher capability target, C => by
-      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
-        Unification.Cap.fcv_apply capability C,
-        Ty.fcv_applyCapability target C]
-  | .slot capability target, C => by
-      simp only [Ty.applyCapability, Ty.fcv, List.flatMap_append,
-        Unification.Cap.fcv_apply capability C,
-        Ty.fcv_applyCapability target C]
-
-/-- List form of `Ty.fcv_applyCapability`. -/
-theorem Ty.fcvList_applyCapabilityList :
-    ∀ (types : List Ty) (C : CapSubst),
-      Ty.fcvList (Ty.applyCapabilityList C types) =
-        (Ty.fcvList types).flatMap fun x => (C x).fcv
-  | [], _ => rfl
-  | τ :: types, C => by
-      simp only [Ty.applyCapabilityList, Ty.fcvList, List.flatMap_append,
-        Ty.fcv_applyCapability τ C, Ty.fcvList_applyCapabilityList types C]
-
-end
-
-mutual
-
 /-- Target substitution cannot erase a capability occurrence already present
 in the target skeleton.  It may add capability occurrences through target
 images, but every original capability leaf survives. -/
@@ -4198,7 +4118,7 @@ theorem Scheme.mem_applySubst_body_fcv_of_bound
     simp [masked, CapSubst.mask, binderMem]
   have inCapabilityApplied : binder ∈
       (scheme.body.applyCapability masked.cap).fcv := by
-    rw [Ty.fcv_applyCapability]
+    rw [Unification.Ty.fcv_applyCapability]
     simp only [List.mem_flatMap]
     exact ⟨binder, bodyMem, by simp [maskedImage, Cap.fcv]⟩
   change binder ∈
@@ -4293,7 +4213,7 @@ theorem SchemeInstanceCapOccurrenceView.ofBodyBinder
       InferenceBase.freshCapSubst, binderMem]
   have inCapabilityApplied : ⟨q.nextCap + binder.id⟩ ∈
       (scheme.body.applyCapability assignment.subst.cap).fcv := by
-    rw [Ty.fcv_applyCapability]
+    rw [Unification.Ty.fcv_applyCapability]
     simp only [List.mem_flatMap]
     exact ⟨binder, bodyMem, by simp [imageEquation, Cap.fcv]⟩
   have valueMem : ⟨q.nextCap + binder.id⟩ ∈
@@ -4563,7 +4483,8 @@ theorem ExactPairedMGU.prevailing_fixed {S delta : Subst} {left right : Ty}
     have mem' : varId ∈
         (((S.apply target).applyCapability delta.cap).applyTarget
           delta.target).ftv := mem
-    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem'
+    rw [Unification.Ty.ftv_applyTarget,
+      Unification.Ty.ftv_applyCapability] at mem'
     obtain ⟨tyVar, tyMem, imageMem⟩ := List.mem_flatMap.mp mem'
     by_cases inConstraint :
         tyVar ∈ (S.apply left).ftv ++ (S.apply right).ftv
@@ -4581,7 +4502,7 @@ theorem ExactPairedMGU.prevailing_fixed {S delta : Subst} {left right : Ty}
         (((S.apply target).applyCapability delta.cap).applyTarget
           delta.target).fcv := mem
     rcases Ty.mem_fcv_applyTarget _ _ _ mem' with inCapSide | inTargetImage
-    · rw [Ty.fcv_applyCapability] at inCapSide
+    · rw [Unification.Ty.fcv_applyCapability] at inCapSide
       obtain ⟨capVar, capMem, imageMem⟩ := List.mem_flatMap.mp inCapSide
       by_cases inConstraint :
           capVar ∈ (S.apply left).fcv ++ (S.apply right).fcv
@@ -4595,7 +4516,7 @@ theorem ExactPairedMGU.prevailing_fixed {S delta : Subst} {left right : Ty}
         subst h
         exact idem.image_cap_fixed target varId capMem
     · obtain ⟨tyVar, tyMem, imageMem⟩ := inTargetImage
-      rw [Ty.ftv_applyCapability] at tyMem
+      rw [Unification.Ty.ftv_applyCapability] at tyMem
       by_cases inConstraint :
           tyVar ∈ (S.apply left).ftv ++ (S.apply right).ftv
       · have imageIn : varId ∈ (S.apply left).fcv ++ (S.apply right).fcv :=
@@ -4736,19 +4657,20 @@ theorem Subst.BoundedBy.apply {q : InferenceBase.FreshSupply} {S : Subst}
   constructor
   · intro varId mem
     rcases Ty.mem_fcv_applyTarget _ S.target varId mem with own | image
-    · rw [Ty.fcv_applyCapability] at own
+    · rw [Unification.Ty.fcv_applyCapability] at own
       simp only [List.mem_flatMap] at own
       obtain ⟨original, originalMem, imageMem⟩ := own
       exact bounded.capImagesBounded original
         (targetBounded.caps original originalMem) varId imageMem
     · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-      rw [Ty.ftv_applyCapability] at tyMem
+      rw [Unification.Ty.ftv_applyCapability] at tyMem
       exact (bounded.targetImagesBounded tyVar
         (targetBounded.targets tyVar tyMem)).caps varId imageMem
   · intro varId mem
     have mem' : varId ∈
         ((target.applyCapability S.cap).applyTarget S.target).ftv := mem
-    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem'
+    rw [Unification.Ty.ftv_applyTarget,
+      Unification.Ty.ftv_applyCapability] at mem'
     simp only [List.mem_flatMap] at mem'
     obtain ⟨original, originalMem, imageMem⟩ := mem'
     exact (bounded.targetImagesBounded original
@@ -5060,13 +4982,13 @@ theorem Subst.BoundedBy.applyCapabilityTy {q : InferenceBase.FreshSupply}
     (target.applyCapability S.cap).BoundedBy q := by
   constructor
   · intro w hw
-    rw [Ty.fcv_applyCapability] at hw
+    rw [Unification.Ty.fcv_applyCapability] at hw
     simp only [List.mem_flatMap] at hw
     obtain ⟨original, originalMem, imageMem⟩ := hw
     exact bounded.capImagesBounded original
       (targetBounded.caps original originalMem) w imageMem
   · intro w hw
-    rw [Ty.ftv_applyCapability] at hw
+    rw [Unification.Ty.ftv_applyCapability] at hw
     exact targetBounded.targets w hw
 
 
@@ -5933,7 +5855,7 @@ theorem instantiateBinders_apply_boundedBy
         (InferenceBase.instantiateBinders q capBinders
           tyBinders).subst.target).fcv := mem
     rcases Ty.mem_fcv_applyTarget _ _ varId mem' with own | image
-    · rw [Ty.fcv_applyCapability] at own
+    · rw [Unification.Ty.fcv_applyCapability] at own
       simp only [List.mem_flatMap] at own
       obtain ⟨original, originalMem, imageMem⟩ := own
       by_cases hbinder : original ∈ capBinders
@@ -5966,7 +5888,8 @@ theorem instantiateBinders_apply_boundedBy
           tyBinders).subst.cap).applyTarget
         (InferenceBase.instantiateBinders q capBinders
           tyBinders).subst.target).ftv := mem
-    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem'
+    rw [Unification.Ty.ftv_applyTarget,
+      Unification.Ty.ftv_applyCapability] at mem'
     simp only [List.mem_flatMap] at mem'
     obtain ⟨original, originalMem, imageMem⟩ := mem'
     by_cases hbinder : original ∈ tyBinders
@@ -6311,7 +6234,7 @@ theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
     simp only [Scheme.applySubst, Scheme.fcv] at mem
     obtain ⟨mem', hnotbinder⟩ := List.mem_filter.mp mem
     rcases Ty.mem_fcv_applyTarget _ _ varId mem' with own | image
-    · rw [Ty.fcv_applyCapability] at own
+    · rw [Unification.Ty.fcv_applyCapability] at own
       simp only [List.mem_flatMap] at own
       obtain ⟨original, originalMem, imageMem⟩ := own
       by_cases hbinder : original ∈ scheme.capBinders
@@ -6324,7 +6247,7 @@ theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
           (bounded.caps original (List.mem_filter.mpr
             ⟨originalMem, by simpa using hbinder⟩)) varId imageMem
     · obtain ⟨tyVar, tyMem, imageMem⟩ := image
-      rw [Ty.ftv_applyCapability] at tyMem
+      rw [Unification.Ty.ftv_applyCapability] at tyMem
       have imageMem' : varId ∈
           (S.target.mask scheme.tyBinders tyVar).fcv := imageMem
       by_cases hbinder : tyVar ∈ scheme.tyBinders
@@ -6341,7 +6264,8 @@ theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
     have mem'' : varId ∈ ((scheme.body.applyCapability
         (S.cap.mask scheme.capBinders)).applyTarget
         (S.target.mask scheme.tyBinders)).ftv := mem'
-    rw [Unification.Ty.ftv_applyTarget, Ty.ftv_applyCapability] at mem''
+    rw [Unification.Ty.ftv_applyTarget,
+      Unification.Ty.ftv_applyCapability] at mem''
     simp only [List.mem_flatMap] at mem''
     obtain ⟨original, originalMem, imageMem⟩ := mem''
     have imageMem' : varId ∈
