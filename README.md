@@ -305,8 +305,10 @@ DD規則が要求するrange／idempotenceを含む`ExactTargetMGU`／`ExactPair
 `TyRange` certificateを公開し，image target variableが入力constraintのfree-variable範囲を
 越えない`TySubst.RangeWithin`まで証明済みである．さらに`TyResult`／`TyListResult`自身が
 supportの入力free-variable内性とimage rangeを保持するよう整理し，入力に対する
-`TySubst.SupportWithin`も公開済みである．残るcapability rangeとidempotenceは，solverが変更した
-各変数を最終imageから消去する相互invariantから導く．
+`TySubst.SupportWithin`も公開済みである．さらにsolverが変更した各support変数を最終imageから
+消去する`supportElim`を結果certificateへ加え，そこから`TySubst.Idempotent`を導いた．通常target
+MGUの`ExactTargetMGU` bridgeに残るのは，target substitutionのimageに現れるcapability variableが
+入力constraintのcapability範囲内にあることだけである．
 
 中心定理：
 

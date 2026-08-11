@@ -674,6 +674,17 @@ theorem TySubst.idempotent_of_pointwise {S : TySubst}
   funext varId
   exact fixed varId
 
+/-- The executable target unifier returns a solved-form substitution. -/
+theorem Unification.mguTy_idempotent
+    {left right : Ty} {S : TySubst}
+    (success : Unification.mguTy left right = some S) :
+    S.Idempotent := by
+  apply TySubst.idempotent_of_pointwise
+  intro source
+  apply Ty.applyTarget_eq_self_of_ftv_fixed
+  intro image imageMem
+  exact Unification.mguTy_imageVarsFixed success source image imageMem
+
 /-- The identity capability substitution is idempotent. -/
 theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
   intro capability

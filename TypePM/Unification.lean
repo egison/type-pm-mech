@@ -255,6 +255,8 @@ structure TyResult (left right : Ty) where
   support : subst.SupportWithin supportVars
   supportInput : ∀ varId, varId ∈ supportVars →
     varId ∈ left.ftv ++ right.ftv
+  supportElim : ∀ varId, varId ∈ supportVars →
+    ∀ candidate, varId ∉ (subst candidate).ftv
   inputRange : ∀ x y, y ∈ (subst x).ftv →
     y = x ∨ y ∈ left.ftv ++ right.ftv
   sound : left.applyTarget subst = right.applyTarget subst
@@ -269,6 +271,8 @@ structure TyListResult (left right : List Ty) where
   support : subst.SupportWithin supportVars
   supportInput : ∀ varId, varId ∈ supportVars →
     varId ∈ Ty.ftvList left ++ Ty.ftvList right
+  supportElim : ∀ varId, varId ∈ supportVars →
+    ∀ candidate, varId ∉ (subst candidate).ftv
   inputRange : ∀ x y, y ∈ (subst x).ftv →
     y = x ∨ y ∈ Ty.ftvList left ++ Ty.ftvList right
   sound : Ty.applyTargetList subst left = Ty.applyTargetList subst right
@@ -312,6 +316,51 @@ private theorem inputRange_comp
   · subst y
     exact innerRange x middle middleMem
   · exact Or.inr (outerWithin y outerMem)
+
+private theorem supportElim_single
+    (varId : TypePM.TyVar) (replacement : Ty)
+    (notOccurs : varId ∉ replacement.ftv) :
+    ∀ supportVar, supportVar ∈ [varId] → ∀ candidate,
+      supportVar ∉ (TySubst.single varId replacement candidate).ftv := by
+  intro supportVar supportMem candidate membership
+  have supportEq : supportVar = varId := by
+    simpa using supportMem
+  subst supportVar
+  by_cases same : varId = candidate
+  · subst candidate
+    exact notOccurs (by simpa [TySubst.single] using membership)
+  · have imageEq : TySubst.single varId replacement candidate =
+        .var candidate := by
+      simp [TySubst.single, same]
+    rw [imageEq] at membership
+    have equal : varId = candidate := by simpa [Ty.ftv] using membership
+    exact same equal
+
+private theorem supportElim_comp
+    {inner outer : TySubst}
+    {innerSupport outerSupport outerVars : List TypePM.TyVar}
+    (innerElim : ∀ varId, varId ∈ innerSupport →
+      ∀ candidate, varId ∉ (inner candidate).ftv)
+    (outerElim : ∀ varId, varId ∈ outerSupport →
+      ∀ candidate, varId ∉ (outer candidate).ftv)
+    (outerRange : ∀ x y, y ∈ (outer x).ftv →
+      y = x ∨ y ∈ outerVars)
+    (innerAvoidsOuter : ∀ varId, varId ∈ innerSupport →
+      varId ∉ outerVars) :
+    ∀ varId, varId ∈ innerSupport ++ outerSupport →
+      ∀ candidate,
+        varId ∉ (TySubst.comp outer inner candidate).ftv := by
+  intro varId supportMem candidate membership
+  rw [show TySubst.comp outer inner candidate =
+    (inner candidate).applyTarget outer from rfl,
+    Ty.ftv_applyTarget] at membership
+  obtain ⟨middle, middleMem, imageMem⟩ := List.mem_flatMap.mp membership
+  rcases List.mem_append.mp supportMem with innerMem | outerMem
+  · rcases outerRange middle varId imageMem with equal | inOuter
+    · subst middle
+      exact innerElim varId innerMem candidate middleMem
+    · exact innerAvoidsOuter varId innerMem inOuter
+  · exact outerElim varId outerMem middle imageMem
 
 mutual
 
@@ -466,6 +515,7 @@ private def solveTy :
           supportVars := []
           support := TySubst.id_supportWithin []
           supportInput := by simp
+          supportElim := by simp
           inputRange := inputRange_id _
           sound := by subst right; rfl
           universal := fun U _ => ⟨U, funext fun _ => rfl⟩
@@ -481,6 +531,7 @@ private def solveTy :
                 supportVars := [varId]
                 support := TySubst.single_supportWithin varId right
                 supportInput := by simp [Ty.ftv]
+                supportElim := supportElim_single varId right hoccurs
                 inputRange := inputRange_single varId right _ fun y mem =>
                   List.mem_append.mpr (Or.inr mem)
                 sound := by
@@ -507,6 +558,7 @@ private def solveTy :
                 supportVars := [varId]
                 support := TySubst.single_supportWithin varId left
                 supportInput := by simp [Ty.ftv]
+                supportElim := supportElim_single varId left hoccurs
                 inputRange := inputRange_single varId left _ fun y mem =>
                   List.mem_append.mpr (Or.inl mem)
                 sound := by
@@ -533,6 +585,7 @@ private def solveTy :
                     support := result.support
                     supportInput := by
                       simpa [Ty.ftv] using result.supportInput
+                    supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
                     sound := by
@@ -555,6 +608,7 @@ private def solveTy :
                   support := result.support
                   supportInput := by
                     simpa [Ty.ftv] using result.supportInput
+                  supportElim := result.supportElim
                   inputRange := by
                     simpa [Ty.ftv] using result.inputRange
                   sound := by
@@ -617,6 +671,23 @@ private def solveTy :
                               rcases List.mem_append.mp domainInput with h | h
                               · exact Or.inl (Or.inl h)
                               · exact Or.inr (Or.inl h)
+                      supportElim := by
+                        apply supportElim_comp
+                          domainResult.supportElim codomainResult.supportElim
+                          codomainResult.inputRange
+                        intro varId supportMem membership
+                        simp only [List.mem_append] at membership
+                        rcases membership with leftMem | rightMem
+                        · rw [Ty.ftv_applyTarget] at leftMem
+                          obtain ⟨source, _, imageMem⟩ :=
+                            List.mem_flatMap.mp leftMem
+                          exact domainResult.supportElim varId supportMem
+                            source imageMem
+                        · rw [Ty.ftv_applyTarget] at rightMem
+                          obtain ⟨source, _, imageMem⟩ :=
+                            List.mem_flatMap.mp rightMem
+                          exact domainResult.supportElim varId supportMem
+                            source imageMem
                       inputRange := by
                         apply inputRange_comp
                           (innerVars :=
@@ -707,6 +778,7 @@ private def solveTy :
                     support := result.support
                     supportInput := by
                       simpa [Ty.ftv] using result.supportInput
+                    supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
                     sound := by
@@ -730,6 +802,7 @@ private def solveTy :
                     support := result.support
                     supportInput := by
                       simpa [Ty.ftv] using result.supportInput
+                    supportElim := result.supportElim
                     inputRange := by
                       simpa [Ty.ftv] using result.inputRange
                     sound := by
@@ -755,6 +828,7 @@ private def solveTyList :
         supportVars := []
         support := TySubst.id_supportWithin []
         supportInput := by simp
+        supportElim := by simp
         inputRange := inputRange_id _
         sound := rfl
         universal := fun U _ => ⟨U, funext fun _ => rfl⟩
@@ -807,6 +881,22 @@ private def solveTyList :
                         rcases List.mem_append.mp headInput with h | h
                         · exact Or.inl (Or.inl h)
                         · exact Or.inr (Or.inl h)
+                supportElim := by
+                  apply supportElim_comp headResult.supportElim
+                    tailResult.supportElim tailResult.inputRange
+                  intro varId supportMem membership
+                  simp only [List.mem_append] at membership
+                  rcases membership with leftMem | rightMem
+                  · rw [Ty.ftvList_applyTargetList] at leftMem
+                    obtain ⟨source, _, imageMem⟩ :=
+                      List.mem_flatMap.mp leftMem
+                    exact headResult.supportElim varId supportMem source
+                      imageMem
+                  · rw [Ty.ftvList_applyTargetList] at rightMem
+                    obtain ⟨source, _, imageMem⟩ :=
+                      List.mem_flatMap.mp rightMem
+                    exact headResult.supportElim varId supportMem source
+                      imageMem
                 inputRange := by
                   apply inputRange_comp
                     (innerVars :=
@@ -3479,6 +3569,24 @@ theorem mguTyFuel_supportInput
       exact result.support varId fun supportMem =>
         outside (result.supportInput varId supportMem)
 
+/-- Every target variable occurring in a returned image is fixed by the
+returned substitution.  This is the pointwise solved-form certificate needed
+to derive idempotence in the demand-typing layer. -/
+theorem mguTyFuel_imageVarsFixed
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (success : mguTyFuel fuel left right = some S) :
+    ∀ source image, image ∈ (S source).ftv → S image = .var image := by
+  unfold mguTyFuel at success
+  cases run : solveTy fuel left right with
+  | none => simp [run] at success
+  | some result =>
+      have resultEq : result.subst = S := by
+        simpa [run] using success
+      subst S
+      intro source image imageMem
+      exact result.support image fun supportMem =>
+        result.supportElim image supportMem source imageMem
+
 /-- Complete-wrapper form of `mguTyFuel_inputRange`. -/
 theorem mguTy_inputRange
     {left right : Ty} {S : TySubst}
@@ -3492,6 +3600,13 @@ theorem mguTy_supportInput
     (success : mguTy left right = some S) :
     S.SupportWithin (left.ftv ++ right.ftv) := by
   exact mguTyFuel_supportInput success
+
+/-- Complete-wrapper form of `mguTyFuel_imageVarsFixed`. -/
+theorem mguTy_imageVarsFixed
+    {left right : Ty} {S : TySubst}
+    (success : mguTy left right = some S) :
+    ∀ source image, image ∈ (S source).ftv → S image = .var image := by
+  exact mguTyFuel_imageVarsFixed success
 
 /-! ## Solvability completeness
 
