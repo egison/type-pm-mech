@@ -700,8 +700,122 @@ theorem runtimeErasureUnder_cons
 
 end DDArmsOrigin
 
+private theorem subst_eq_seq_id (S : Subst) :
+    S = Subst.seq Subst.id S := by
+  apply PhasedPost.subst_ext
+  · funext varId
+    exact (Cap.apply_id (S.cap varId)).symm
+  · funext varId
+    exact (Subst.apply_id (S.target varId)).symm
+
+namespace DDClauseOrigin
+
+/-- Later-cut erasure for one clause, parameterized by the two pieces of
+matcher-finalization evidence that are deliberately absent from `DDClause`:
+the selected matcher capability and the clause shape evidence. -/
+def RuntimeErasureUnderAt
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {clause : Clause} {sharedTarget : Ty}
+    {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDClause signature q S context clause sharedTarget holes q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    (_origin : DDClauseOrigin signature raw ledger ledger')
+    (capability : Cap) (evidence : Shape.Evidence) : Prop :=
+  ∀ {final : InferenceBase.FreshSupply} {finalSubst post : Subst}
+      {finalLedger : CapabilityOriginLedger},
+    finalSubst = Subst.seq post S' →
+    DDErasure.AdmissiblePostBetween q' final ledger' finalLedger post →
+    PPatCapsAt signature true clause.pp
+      ((holes.map (Dual.applySubst finalSubst)).map Dual.cap) capability →
+    clauseEvidence signature.toMatcherSig clause.pp
+      ((holes.map (Dual.applySubst finalSubst)).map Dual.cap) = some evidence →
+    ClauseTy signature finalSubst (context.applySubst finalSubst) clause
+      capability (finalSubst.apply sharedTarget) evidence
+
+/-- Specialize the later-cut invariant to the clause's own terminal cut. -/
+theorem runtimeErasure_of_under
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {clause : Clause} {sharedTarget : Ty}
+    {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDClause signature q S context clause sharedTarget holes q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    {origin : DDClauseOrigin signature raw ledger ledger'}
+    {capability : Cap} {evidence : Shape.Evidence}
+    (under : RuntimeErasureUnderAt origin capability evidence)
+    (caps : PPatCapsAt signature true clause.pp
+      ((holes.map (Dual.applySubst S')).map Dual.cap) capability)
+    (shape : clauseEvidence signature.toMatcherSig clause.pp
+      ((holes.map (Dual.applySubst S')).map Dual.cap) = some evidence) :
+    DDClauseOrigin.RuntimeErasureAt origin capability evidence := by
+  exact under (final := q') (post := Subst.id) (finalLedger := ledger')
+    (subst_eq_seq_id S') (DDErasure.AdmissiblePostBetween.id q' ledger')
+    caps shape
+
+/-- A clause transports its primitive pattern and next-matchers across the
+chronological suffixes ending at the arms cut.  Final capability and shape
+evidence enter only at that common terminal cut. -/
+theorem runtimeErasureUnder_mk
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {pp : PPat} {next : Expr} {arms : List Arm}
+    {sharedTarget : Ty} {holes : List Dual} {ppBindings : MonoCtx}
+    {nextMatchers : List Expr} {q₁ : InferenceBase.FreshSupply}
+    {S₁ : Subst} {q₂ : InferenceBase.FreshSupply} {S₂ : Subst}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger ledger₁ ledger₂ ledger' : CapabilityOriginLedger}
+    {ppRaw : DDPPat signature q S pp sharedTarget holes ppBindings q₁ S₁}
+    (ppOrigin : DDPPatOrigin signature ppRaw ledger ledger₁)
+    (decomposed : decomposeME next holes.length = some nextMatchers)
+    {nextRaw : DDChecks signature q₁ S₁ context nextMatchers
+      (holes.map fun hole => .slot hole.cap hole.target) q₂ S₂}
+    (nextOrigin : DDChecksOrigin signature nextRaw ledger₁ ledger₂)
+    {armsRaw : DDArms signature q₂ S₂ context ppBindings arms
+      sharedTarget (Ty.listT (prodTy (holes.map Dual.target))) q' S'}
+    (armsOrigin : DDArmsOrigin signature armsRaw ledger₂ ledger')
+    (ppUnder : DDPPatOrigin.RuntimeErasureUnder ppOrigin)
+    (nextUnder : DDChecksOrigin.RuntimeErasureUnder nextOrigin)
+    (armsUnder : DDArmsOrigin.RuntimeErasureUnder armsOrigin)
+    (nextFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q₂ S₂ ledger₂)
+    (armsFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
+      q' S' ledger')
+    {capability : Cap} {evidence : Shape.Evidence} :
+    RuntimeErasureUnderAt
+      (DDClauseOrigin.mk ppOrigin decomposed nextOrigin armsOrigin)
+      capability evidence := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+    capsAtFinal evidenceAtFinal
+  rcases armsFactorization with ⟨armsPost, armsEquation, armsAdmissible⟩
+  have nextEquation : finalSubst =
+      Subst.seq (Subst.seq post armsPost) S₂ := by
+    rw [terminalEquation, armsEquation]
+    exact PhasedPost.seq_assoc post armsPost S₂
+  have nextAtFinal := nextUnder nextEquation
+    (armsAdmissible.seq admissible)
+  rcases nextFactorization with
+    ⟨nextPost, nextFactorEquation, nextFactorAdmissible⟩
+  have ppEquation : finalSubst =
+      Subst.seq (Subst.seq (Subst.seq post armsPost) nextPost) S₁ := by
+    rw [nextEquation, nextFactorEquation]
+    exact PhasedPost.seq_assoc (Subst.seq post armsPost) nextPost S₁
+  have ppAtFinal := ppUnder ppEquation
+    (nextFactorAdmissible.seq (armsAdmissible.seq admissible))
+  have armsAtFinal := armsUnder terminalEquation admissible
+  exact ClauseTy.mk (clauseEvidence_coreOrder evidenceAtFinal)
+    (.ofTerminal ppAtFinal) capsAtFinal
+    (by simpa using decomposed) (by
+      simpa only [List.map_map, Function.comp_def, Subst.apply_slot,
+        Dual.applySubst, Dual.apply]
+        using nextAtFinal)
+    (by simpa only [Subst.apply_listT, Subst.apply_prodTy,
+      Dual.map_target_applySubst] using armsAtFinal)
+    evidenceAtFinal
+
+end DDClauseOrigin
+
 namespace DDClausesOrigin
 
+/-- Clause-list erasure consumes the capability/evidence audit performed by
+matcher finalization at the same later cut. -/
 def RuntimeErasureUnderAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List Clause} {sharedTarget : Ty}
@@ -714,8 +828,31 @@ def RuntimeErasureUnderAt
       {finalLedger : CapabilityOriginLedger},
     finalSubst = Subst.seq post S' →
     DDErasure.AdmissiblePostBetween q' final ledger' finalLedger post →
+    Inference.ClauseCapsList signature clauses
+      (terminalHoleCaps finalSubst holeLists) capability →
+    Inference.ClauseEvidenceList signature.toMatcherSig clauses
+      (terminalHoleCaps finalSubst holeLists) evidences →
     ClausesTy signature finalSubst (context.applySubst finalSubst) clauses
       capability (finalSubst.apply sharedTarget) evidences
+
+/-- Specialize clause-list erasure to its own terminal finalization audit. -/
+theorem runtimeErasure_of_under
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
+    {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} {raw : DDClauses signature q S context clauses sharedTarget
+      holeLists q' S'} {ledger ledger' : CapabilityOriginLedger}
+    {origin : DDClausesOrigin signature raw ledger ledger'}
+    {capability : Cap} {evidences : List Shape.Evidence}
+    (under : RuntimeErasureUnderAt origin capability evidences)
+    (caps : Inference.ClauseCapsList signature clauses
+      (terminalHoleCaps S' holeLists) capability)
+    (shape : Inference.ClauseEvidenceList signature.toMatcherSig clauses
+      (terminalHoleCaps S' holeLists) evidences) :
+    DDClausesOrigin.RuntimeErasureAt origin capability evidences := by
+  exact under (final := q') (post := Subst.id) (finalLedger := ledger')
+    (subst_eq_seq_id S') (DDErasure.AdmissiblePostBetween.id q' ledger')
+    caps shape
 
 theorem runtimeErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
@@ -725,8 +862,48 @@ theorem runtimeErasureUnder_nil
       (DDClausesOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (sharedTarget := sharedTarget) (ledger := ledger))
       capability [] := by
-  intro final finalSubst post finalLedger equation admissible
+  intro final finalSubst post finalLedger equation admissible caps evidence
+  cases caps
+  cases evidence
   exact ClausesTy.nil
+
+/-- A nonempty clause list transports the head across the tail traversal and
+then consumes the matching head/tail finalization witnesses structurally. -/
+theorem runtimeErasureUnder_cons
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {clause : Clause} {clauses : List Clause}
+    {sharedTarget : Ty} {holes : List Dual} {holeLists : List (List Dual)}
+    {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger}
+    {head : DDClause signature q S context clause sharedTarget holes q₁ S₁}
+    {tail : DDClauses signature q₁ S₁ context clauses sharedTarget
+      holeLists q' S'}
+    (headOrigin : DDClauseOrigin signature head ledger ledger₁)
+    (tailOrigin : DDClausesOrigin signature tail ledger₁ ledger')
+    (headUnder : DDClauseOrigin.RuntimeErasureUnderAt headOrigin capability
+      evidence)
+    (tailUnder : RuntimeErasureUnderAt tailOrigin capability evidences)
+    (tailFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q' S' ledger') :
+    RuntimeErasureUnderAt (DDClausesOrigin.cons headOrigin tailOrigin)
+      capability (evidence :: evidences) := by
+  intro final finalSubst post finalLedger terminalEquation admissible caps evs
+  cases caps with
+  | cons headCaps tailCaps =>
+      cases evs with
+      | cons headEvidence tailEvidence =>
+          rcases tailFactorization with
+            ⟨tailPost, tailEquation, tailAdmissible⟩
+          have headEquation : finalSubst =
+              Subst.seq (Subst.seq post tailPost) S₁ := by
+            rw [terminalEquation, tailEquation]
+            exact PhasedPost.seq_assoc post tailPost S₁
+          have headAtFinal := headUnder headEquation
+            (tailAdmissible.seq admissible) headCaps headEvidence
+          have tailAtFinal := tailUnder terminalEquation admissible
+            tailCaps tailEvidence
+          exact ClausesTy.cons headAtFinal tailAtFinal
 
 end DDClausesOrigin
 
