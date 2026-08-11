@@ -297,6 +297,11 @@ raw targetと，実行状態のsupply／prevailing substitution／origin ledger�
 variable，literal，`something`，lambda，tupleとexpression-listのnil／cons traversalについて
 この再構成を実装済みである．またpublic `infer`の成功から対応する`inferRaw`成功を取り出す補題を公開し，
 最終corollaryがterminal runtime certificateへ迂回しない入口を用意した．
+checking側にもexact-stateな`DDAlignRun`／`DDCheckRun`とsynthesisからの合成補題を用意した．
+generic alignmentを実行solverから再構成するには，solverの既存soundness／support／universalityを
+DD規則が要求するrange／idempotenceを含む`ExactTargetMGU`／`ExactPairedMGU`まで強めるbridgeが
+次に必要である．ledger-relativeな成功結果についても，成功したsubstitution自体のglobal MGU性を
+証明し，DDのexactness契約は弱めない方針である．
 
 中心定理：
 

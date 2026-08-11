@@ -103,6 +103,40 @@ def DDSynthsRun (signature : FrozenSig) (context : Context)
         DDSynthsOrigin signature derived initial.capabilityOrigins
           result.state.capabilityOrigins
 
+/-- Exact-state certificate for one checking traversal. -/
+def DDCheckRun (signature : FrozenSig) (context : Context)
+    (expression : Expr) (expected : Ty) (initial final : InferState) : Prop :=
+  ∃ derived : DDCheck signature initial.supply initial.prevailing context
+      expression expected final.supply final.prevailing,
+    DDCheckOrigin signature derived initial.capabilityOrigins
+      final.capabilityOrigins
+
+/-- State-indexed declarative image of an executable expected-type alignment.
+Alignment never allocates variables or changes the origin ledger; only its
+prevailing substitution advances. -/
+def DDAlignRun (raw expected : Ty) (initial final : InferState) : Prop :=
+  final.supply = initial.supply ∧
+    final.capabilityOrigins = initial.capabilityOrigins ∧
+      DDAlignWithLedger initial.capabilityOrigins initial.prevailing raw
+        expected final.prevailing
+
+/-- Compose synthesis and expected-type alignment into the single public DD
+checking rule. -/
+theorem DDSynthRun.check
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {expected : Ty} {initial : InferState} {synthesized : ExprResult}
+    {final : InferState}
+    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (alignRun : DDAlignRun synthesized.target expected synthesized.state final) :
+    DDCheckRun signature context expression expected initial final := by
+  rcases synthRun with ⟨raw, synthDerived, targetEq, synthOrigin⟩
+  rcases alignRun with ⟨supplyEq, ledgerEq, aligned⟩
+  subst raw
+  unfold DDCheckRun
+  rw [supplyEq, ledgerEq]
+  refine ⟨DDCheck.mk synthDerived aligned.erase, ?_⟩
+  exact DDCheckOrigin.mk synthOrigin aligned
+
 /-- The domain and state produced by the executable lambda-entry allocation. -/
 def lambdaDomain (initial : InferState) (path : SyntaxPath) : Ty :=
   ((visit initial .exprLam path).freshTy
