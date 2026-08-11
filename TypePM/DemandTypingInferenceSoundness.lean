@@ -1,4 +1,5 @@
 import TypePM.DemandTypingOrigin
+import TypePM.InferenceLedgerAdmissibility
 
 /-!
 # Executable traversal to demand-directed typing
@@ -120,6 +121,111 @@ def DDAlignRun (raw expected : Ty) (initial final : InferState) : Prop :=
       DDAlignWithLedger initial.capabilityOrigins initial.prevailing raw
         expected final.prevailing
 
+/-- The executable one-way solver returns exactly the origin-safe delta used
+by the DD matcher-to-slot rule. -/
+theorem solveResolvedWithLedger_originSafeOneWayDelta
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : ConstraintOrigin}
+    {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
+    {step : SolveStep}
+    (success : solveResolvedWithLedger ledger solveCount origin
+      (.producerToSlot producerCap producerTarget consumerCap consumerTarget) =
+        some step) :
+    OriginSafeOneWayDelta ledger producerCap producerTarget consumerCap
+      consumerTarget step.delta := by
+  have admissible :=
+    solveResolvedWithLedger_producerToSlot_admissible success
+  change solveProducerToSlotWithLedger ledger solveCount origin producerCap
+    producerTarget consumerCap consumerTarget = some step at success
+  unfold solveProducerToSlotWithLedger at success
+  split at success
+  · contradiction
+  · rename_i bindings matched
+    simp only at success
+    split at success
+    · split at success
+      · contradiction
+      · rename_i targetSubst unified
+        have stepEq := Option.some.inj success
+        subst step
+        refine ⟨⟨bindings, matched, rfl, ?_⟩, admissible⟩
+        exact Unification.mguTy_exactTargetMGU unified
+    · contradiction
+
+/-- Reconstruct the raw matcher-to-slot branch of executable slot alignment.
+The protected-producer check is retained by the executable success equation;
+the DD rule consumes the exact origin-safe one-way delta from the same solve. -/
+theorem alignAtSlot_matcherToSlot_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    (rawView : state.prevailing.apply raw =
+      .matcher producerCap producerTarget)
+    (expectedView : state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : alignAtSlot state origin raw expected = some final) :
+    DDAlignRun raw expected state final := by
+  unfold alignAtSlot at success
+  simp only [rawView, expectedView] at success
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin
+      (.producerToSlot producerCap producerTarget consumerCap consumerTarget) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      dsimp at success
+      split at success
+      · rename_i checked
+        have finalEq := Option.some.inj success
+        subst final
+        refine ⟨rfl, rfl, ?_⟩
+        rw [InferState.prevailing_recordSolve]
+        exact DDAlignWithLedger.matcherToSlot rawView expectedView
+          (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
+      · contradiction
+
+/-- A type whose cut-resolved view is a matcher cannot be one of the raw
+product coercion sources, so the executable selector leaves it unchanged. -/
+theorem expectedCoercionSource_of_resolvedMatcher
+    (state : InferState) (raw expected : Ty)
+    {producerCap : Cap} {producerTarget : Ty}
+    (rawView : state.prevailing.apply raw =
+      .matcher producerCap producerTarget) :
+    expectedCoercionSource state raw expected = raw := by
+  cases raw <;> simp [expectedCoercionSource, productMatcherDuals?,
+    productSlotDuals?, Subst.apply, Ty.applyCapability, Ty.applyTarget]
+      at rawView ⊢
+
+/-- Lift the raw matcher-to-slot branch through the event-only
+`alignExprResultAtExpected` wrapper. -/
+theorem alignExprResultAtExpected_matcherToSlot_ddAlignRun
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final : InferState} {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    (rawView : expressionResult.state.prevailing.apply
+      expressionResult.target = .matcher producerCap producerTarget)
+    (expectedView : expressionResult.state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final) :
+    DDAlignRun expressionResult.target expected expressionResult.state final := by
+  have sourceEq := expectedCoercionSource_of_resolvedMatcher
+    expressionResult.state expressionResult.target expected rawView
+  unfold alignExprResultAtExpected at success
+  cases alignmentEq : alignAtSlot expressionResult.state
+      (freshOrigin .expression path "expected-type") expressionResult.target
+      expected with
+  | none => simp [sourceEq, alignmentEq] at success
+  | some aligned =>
+      simp only [sourceEq, alignmentEq, Option.some.injEq] at success
+      subst final
+      rcases alignAtSlot_matcherToSlot_ddAlignRun rawView expectedView
+          alignmentEq with
+        ⟨supplyEq, ledgerEq, alignedDD⟩
+      exact ⟨by simpa using supplyEq, by simpa using ledgerEq,
+        by simpa using alignedDD⟩
+
 /-- Compose synthesis and expected-type alignment into the single public DD
 checking rule. -/
 theorem DDSynthRun.check
@@ -136,6 +242,31 @@ theorem DDSynthRun.check
   rw [supplyEq, ledgerEq]
   refine ⟨DDCheck.mk synthDerived aligned.erase, ?_⟩
   exact DDCheckOrigin.mk synthOrigin aligned
+
+/-- The matcher-to-slot branch of executable checking reconstructs the single
+DD checking rule from its synthesis induction hypothesis. -/
+theorem checkExprFuel_matcherToSlot_ddCheckRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
+    {expected : Ty} {initial final : InferState}
+    {synthesized : ExprResult} {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    (inferEq : inferExprFuel fuel signature context selfEnv path expression
+      initial = some synthesized)
+    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (rawView : synthesized.state.prevailing.apply synthesized.target =
+      .matcher producerCap producerTarget)
+    (expectedView : synthesized.state.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (success : checkExprFuel (fuel + 1) signature context selfEnv path
+      expression expected initial = some final) :
+    DDCheckRun signature context expression expected initial final := by
+  have alignmentEq :
+      alignExprResultAtExpected path synthesized expected = some final := by
+    simpa [checkExprFuel, inferEq] using success
+  exact DDSynthRun.check synthRun
+    (alignExprResultAtExpected_matcherToSlot_ddAlignRun rawView expectedView
+      alignmentEq)
 
 /-- The domain and state produced by the executable lambda-entry allocation. -/
 def lambdaDomain (initial : InferState) (path : SyntaxPath) : Ty :=
