@@ -263,6 +263,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
   supply bounds／ambient freshnessを構成する．
 - [x] environmentに現れないsolver metavariableを選択し，named binderを保存せず直ちに
   `PolyScheme`へcloseするgeneralizationを構成する．
+- [x] poly payloadのfree solver metavariableをbound indexと構造的に区別し，binder listの
+  subtractionを使わないscheme free-variable traversalを構成する．
 - [x] 実際のcapability opening像が後続作用でもvariableに留まるという局所条件だけで，
   openingとambient substitutionのtransportを構成する．
 - [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．

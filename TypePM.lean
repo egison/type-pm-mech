@@ -3,6 +3,7 @@ import TypePM.Term
 import TypePM.Substitution
 import TypePM.PolySyntax
 import TypePM.PolyScheme
+import TypePM.PolyFreeVars
 import TypePM.PolyGeneralization
 import TypePM.PolyInstantiation
 import TypePM.PolyInstantiationTransport
