@@ -2123,11 +2123,11 @@ theorem instantiateScheme_freshInstAt
     (capBelow : InferenceBase.CapVarsBelow supply reservedCaps)
     (tyBelow : InferenceBase.TyVarsBelow supply reservedTys) :
     scheme.FreshInstAt reservedCaps reservedTys
-      (InferenceBase.instantiateScheme supply scheme).subst.cap
-      (InferenceBase.instantiateScheme supply scheme).subst.target
+      (InferenceBase.instantiateNamedScheme supply scheme).subst.cap
+      (InferenceBase.instantiateNamedScheme supply scheme).subst.target
       (freshCapImages supply scheme.capBinders)
       (freshTyImages supply scheme.tyBinders)
-      (InferenceBase.instantiateScheme supply scheme).value := by
+      (InferenceBase.instantiateNamedScheme supply scheme).value := by
   let assignment :=
     InferenceBase.instantiateBinders supply scheme.capBinders scheme.tyBinders
   have capFresh := InferenceBase.instantiateBinders_cap_fresh supply
@@ -2143,13 +2143,13 @@ theorem instantiateScheme_freshInstAt
   · simp only [freshCapImages, List.map_map]
     apply List.map_congr_left
     intro binder membership
-    simp [InferenceBase.instantiateScheme,
+    simp [InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
       membership]
   · simp only [freshTyImages, List.map_map]
     apply List.map_congr_left
     intro binder membership
-    simp [InferenceBase.instantiateScheme,
+    simp [InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders, InferenceBase.freshTySubst,
       membership]
   · unfold freshCapImages
@@ -2262,7 +2262,7 @@ def instantiateSchemeInState
     (signature : FrozenSig) (rawContext normalizedContext : Context)
     (name : String) (state : InferState) (scheme : NamedScheme) : Ty × InferState :=
   let incomingSupply := state.supply
-  let instantiation := InferenceBase.instantiateScheme incomingSupply scheme
+  let instantiation := InferenceBase.instantiateNamedScheme incomingSupply scheme
   let protectedIds := freshCapImages incomingSupply scheme.capBinders
   let targetImages := freshTyImages incomingSupply scheme.tyBinders
   let fixedCaps := SourceFixedCapScope signature normalizedContext

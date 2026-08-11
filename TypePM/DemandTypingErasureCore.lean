@@ -655,7 +655,7 @@ theorem stateFactorization_var
       (DDSynthOrigin.var (signature := signature) (q := q)
         (ledger := ledger) lookup) := by
   exact DDErasure.StateFactorization.ofTransition
-    (SupplyExtends.instantiateScheme q scheme)
+    (SupplyExtends.instantiateNamedScheme q scheme)
     (DDLedger.RefinesBelow.markSchemeInstance q ledger scheme)
 
 /-- Literal synthesis is a state identity. -/

@@ -353,7 +353,7 @@ structure InstanceResult (Payload : Type) where
   supply : FreshSupply
 
 /-- Instantiate every binder of an expression scheme simultaneously. -/
-def instantiateScheme
+def instantiateNamedScheme
     (supply : FreshSupply) (scheme : NamedScheme) : InstanceResult Ty :=
   let assignment :=
     instantiateBinders supply scheme.capBinders scheme.tyBinders
@@ -390,9 +390,9 @@ def instantiateCtorScheme
 theorem instantiateScheme_sound
     (supply : FreshSupply) (scheme : NamedScheme) :
     scheme.InstAt
-      (instantiateScheme supply scheme).subst.cap
-      (instantiateScheme supply scheme).subst.target
-      (instantiateScheme supply scheme).value := by
+      (instantiateNamedScheme supply scheme).subst.cap
+      (instantiateNamedScheme supply scheme).subst.target
+      (instantiateNamedScheme supply scheme).value := by
   refine ⟨?_, ?_, ?_, rfl⟩
   · exact instantiateBinders_cap_support supply
       scheme.capBinders scheme.tyBinders
@@ -434,22 +434,22 @@ theorem instantiateCtorScheme_sound
 /-- Looking up a monomorphic scheme allocates no substitutions. -/
 @[simp] theorem instantiateScheme_mono_subst
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (NamedScheme.mono target)).subst = Subst.id := by
+    (instantiateNamedScheme supply (NamedScheme.mono target)).subst = Subst.id := by
   rfl
 
 /-- Looking up a monomorphic scheme does not advance either fresh counter. -/
 @[simp] theorem instantiateScheme_mono_supply
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (NamedScheme.mono target)).supply = supply := by
+    (instantiateNamedScheme supply (NamedScheme.mono target)).supply = supply := by
   cases supply
   rfl
 
 /-- Looking up a monomorphic scheme returns the identical body. -/
 @[simp] theorem instantiateScheme_mono_value
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (NamedScheme.mono target)).value = target := by
+    (instantiateNamedScheme supply (NamedScheme.mono target)).value = target := by
   change
-    (instantiateScheme supply (NamedScheme.mono target)).subst.apply target = target
+    (instantiateNamedScheme supply (NamedScheme.mono target)).subst.apply target = target
   rw [instantiateScheme_mono_subst]
   exact Subst.apply_id target
 

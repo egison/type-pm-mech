@@ -34,7 +34,7 @@ def post : Subst :=
 def sourceScheme : NamedScheme := rawScheme.applySubst prevailing
 
 def lookupSupply : InferenceBase.FreshSupply :=
-  (InferenceBase.instantiateScheme inputSupply sourceScheme).supply
+  (InferenceBase.instantiateNamedScheme inputSupply sourceScheme).supply
 
 def beforeLedger : CapabilityOriginLedger :=
   CapabilityOriginLedger.markStructuralFlexible

@@ -156,10 +156,10 @@ theorem instantiateSchemeInState_stateExtension
   history := instantiateSchemeInState_historyPrefix signature rawContext
     normalizedContext name state scheme
   supplyCap := by
-    simp [instantiateSchemeInState, InferenceBase.instantiateScheme,
+    simp [instantiateSchemeInState, InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders, InferState.recordEvent]
   supplyTy := by
-    simp [instantiateSchemeInState, InferenceBase.instantiateScheme,
+    simp [instantiateSchemeInState, InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders, InferState.recordEvent]
   protectedCaps := by
     intro varId membership

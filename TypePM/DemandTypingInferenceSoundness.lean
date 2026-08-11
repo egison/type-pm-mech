@@ -75,7 +75,7 @@ namespace Inference
     (signature : FrozenSig) (rawContext normalizedContext : Context)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
-      scheme).1 = (InferenceBase.instantiateScheme state.supply scheme).value :=
+      scheme).1 = (InferenceBase.instantiateNamedScheme state.supply scheme).value :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_supply
@@ -83,7 +83,7 @@ namespace Inference
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.supply =
-        (InferenceBase.instantiateScheme state.supply scheme).supply :=
+        (InferenceBase.instantiateNamedScheme state.supply scheme).supply :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_capabilityOrigins
@@ -2004,7 +2004,7 @@ theorem inferExprFuel_var_ddSynthRun
           have ddLookup :
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
-          refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
+          refine ⟨(InferenceBase.instantiateNamedScheme initial.supply scheme).value,
             DDSynth.var ddLookup, ?_, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit]
           · simpa [finishExpr, visit,
@@ -2021,7 +2021,7 @@ theorem inferExprFuel_var_ddSynthRun
           have ddLookup :
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
-          refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
+          refine ⟨(InferenceBase.instantiateNamedScheme initial.supply scheme).value,
             DDSynth.var ddLookup, ?_, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit,
               recordSelfReference]

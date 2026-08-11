@@ -208,15 +208,15 @@ def NamedScheme.canonicalPostSubst
     (q : InferenceBase.FreshSupply) (scheme : NamedScheme) (post : Subst) : Subst :=
   Subst.mk
     (scheme.postCap post
-      (InferenceBase.instantiateScheme q scheme).subst.cap)
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap)
     (scheme.postTarget post
-      (InferenceBase.instantiateScheme q scheme).subst.target)
+      (InferenceBase.instantiateNamedScheme q scheme).subst.target)
 
 @[simp] theorem NamedScheme.canonicalPostSubst_cap_binder
     {q : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     {binder : CapVar} (binderMem : binder ∈ scheme.capBinders) :
     (scheme.canonicalPostSubst q post).cap binder =
-      ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
+      ((InferenceBase.instantiateNamedScheme q scheme).subst.cap binder).apply
         post.cap := by
   simp [NamedScheme.canonicalPostSubst, NamedScheme.postCap, binderMem]
 
@@ -227,8 +227,8 @@ def NamedScheme.instantiateCompositionAt_of_noCapture
     (hygiene : scheme.NoCapture post)
     (rangeFixed : (scheme.canonicalPostSubst q post).RangeFixed) :
     scheme.InstCompositionAt post
-      (InferenceBase.instantiateScheme q scheme).subst.cap
-      (InferenceBase.instantiateScheme q scheme).subst.target where
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap
+      (InferenceBase.instantiateNamedScheme q scheme).subst.target where
   composedCap := (scheme.canonicalPostSubst q post).cap
   composedTarget := (scheme.canonicalPostSubst q post).target
   capSupport := scheme.postCap_support post _
@@ -250,10 +250,10 @@ theorem NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (hygiene : scheme.NoCapture post)
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post) :
     (scheme.applySubst post).ValueFlowInst
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
+      (post.apply (InferenceBase.instantiateNamedScheme q scheme).value) := by
   refine ⟨(scheme.canonicalPostSubst q post).cap,
     (scheme.canonicalPostSubst q post).target, ?_⟩
   refine
@@ -268,7 +268,7 @@ theorem NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     refine ⟨finalImage, ?_⟩
     rw [NamedScheme.canonicalPostSubst_cap_binder
       (q := q) (scheme := scheme) (post := post) binderMem']
-    simp [InferenceBase.instantiateScheme,
+    simp [InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
       binderMem', Cap.apply, finalEquation]
   · exact NamedScheme.post_apply_of_noCapture
@@ -293,10 +293,10 @@ theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
     (bounded : S.BoundedBy q) (idem : S.Idempotent)
     (terminalEquation : S' = Subst.seq post S)
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post) :
     RuntimeTyping signature (context.applySubst S') (.var name)
-      (S'.apply (InferenceBase.instantiateScheme q scheme).value) := by
+      (S'.apply (InferenceBase.instantiateNamedScheme q scheme).value) := by
   subst S'
   have terminalSchemeEquation :
       rawScheme.applySubst (Subst.seq post S) = scheme.applySubst post := by
@@ -310,13 +310,13 @@ theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
   have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     futureHygiene admissible
   have sourceFixed : S.apply
-      (InferenceBase.instantiateScheme q scheme).value =
-        (InferenceBase.instantiateScheme q scheme).value := by
+      (InferenceBase.instantiateNamedScheme q scheme).value =
+        (InferenceBase.instantiateNamedScheme q scheme).value := by
     rw [← sourceSchemeEquation]
     exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   have transported : RuntimeTyping signature
       (context.applySubst (Subst.seq post S)) (.var name)
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) :=
+      (post.apply (InferenceBase.instantiateNamedScheme q scheme).value) :=
     RuntimeTyping.var terminalLookup instanceTyping
   rw [Subst.seq_apply, sourceFixed]
   exact transported

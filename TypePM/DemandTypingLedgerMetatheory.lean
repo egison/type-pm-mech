@@ -237,12 +237,12 @@ theorem RefinesBelow.markCapRange
 theorem LedgerBelow.markSchemeInstance
     {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}
     (scheme : NamedScheme) (below : LedgerBelow q ledger) :
-    LedgerBelow (InferenceBase.instantiateScheme q scheme).supply
+    LedgerBelow (InferenceBase.instantiateNamedScheme q scheme).supply
       (markSchemeInstance ledger q scheme) := by
   apply LedgerBelow.setOrigins below
   · exact instantiateBinders_cap_monotone q scheme.capBinders scheme.tyBinders
   · intro varId membership
-    simpa [InferenceBase.instantiateScheme] using
+    simpa [InferenceBase.instantiateNamedScheme] using
       freshCapImages_lt q scheme.capBinders varId membership
 
 theorem RefinesBelow.markSchemeInstance

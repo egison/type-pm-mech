@@ -345,7 +345,7 @@ check resolves the inner domain by an ordinary demand-free alignment. -/
 theorem dmInnerFunction_ddSynth :
     DDSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
       (.var "id") (.fn (.var 1) (.var 1)) ⟨0, 2⟩ Subst.id := by
-  simpa [dmIdScheme, InferenceBase.instantiateScheme,
+  simpa [dmIdScheme, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -356,7 +356,7 @@ theorem dmInnerFunction_ddSynthOrigin :
     DDSynthOrigin emptySignature dmInnerFunction_ddSynth [] [] := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages,
     dmIdScheme, CapabilityOriginLedger.setOrigins,
-    InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+    InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply] using
@@ -367,7 +367,7 @@ theorem dmInnerFunction_ddSynthOrigin :
 theorem dmInnerArgumentVar_ddSynth :
     DDSynth emptySignature ⟨0, 4⟩ dmAlign1 [("id", dmIdScheme)]
       (.var "id") (.fn (.var 4) (.var 4)) ⟨0, 5⟩ dmAlign1 := by
-  simpa [dmIdScheme, InferenceBase.instantiateScheme,
+  simpa [dmIdScheme, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -379,7 +379,7 @@ theorem dmInnerArgumentVar_ddSynthOrigin :
     DDSynthOrigin emptySignature dmInnerArgumentVar_ddSynth [] [] := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages,
     dmIdScheme, CapabilityOriginLedger.setOrigins,
-    InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+    InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply] using
@@ -517,7 +517,7 @@ bare matcher producer by an ordinary demand-free alignment. -/
 theorem nestedCapLetFirstFunction_ddSynth :
     DDSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
       (.var "f") (.fn (.var 1) (.var 1)) ⟨0, 2⟩ Subst.id := by
-  simpa [dmIdScheme, InferenceBase.instantiateScheme,
+  simpa [dmIdScheme, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -527,7 +527,7 @@ theorem nestedCapLetFirstFunction_ddSynth :
 theorem nestedCapLetFirstFunction_ddSynthOrigin :
     DDSynthOrigin emptySignature nestedCapLetFirstFunction_ddSynth [] [] := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, dmIdScheme,
-    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateScheme,
+    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -577,7 +577,7 @@ no slot demand. -/
 theorem nestedCapLetSecondFunction_ddSynth :
     DDSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
       (.var "f") (.fn (.var 5) (.var 5)) ⟨0, 6⟩ nestedCapLetCheck1 := by
-  simpa [dmIdScheme, InferenceBase.instantiateScheme,
+  simpa [dmIdScheme, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -588,7 +588,7 @@ theorem nestedCapLetSecondFunction_ddSynth :
 theorem nestedCapLetSecondFunction_ddSynthOrigin :
     DDSynthOrigin emptySignature nestedCapLetSecondFunction_ddSynth [] [] := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, dmIdScheme,
-    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateScheme,
+    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply] using
@@ -1503,7 +1503,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
     by decide
   simp only [InferenceBase.instantiateScheme_mono_supply, initialTy,
     initialCap, Nat.reduceAdd] at producerAligned secondCuts
-  simp [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+  simp [InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst, producerScheme,
     Cap.apply, Subst.apply, Ty.applyCapability, Ty.applyTarget]
     at producerAligned
@@ -1854,7 +1854,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   let firstScheme := generalized.applySubst valueDelta
   let firstSupply : InferenceBase.FreshSupply := ⟨2, 3⟩
   let firstPostSupply :=
-    (InferenceBase.instantiateScheme firstSupply firstScheme).supply
+    (InferenceBase.instantiateNamedScheme firstSupply firstScheme).supply
   let preLookupLedger :=
     DDLedger.freezeExport
       (DDLedger.markSchemeInstance
@@ -1899,16 +1899,16 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
     simpa [Subst.apply_id, Ty.fcv, Cap.fcv] using firstImageNe
   have resolvedInstance :
       valueDelta.apply
-          (InferenceBase.instantiateScheme firstSupply firstScheme).value =
+          (InferenceBase.instantiateNamedScheme firstSupply firstScheme).value =
         .fn
           (.matcher (.var firstImage)
             (valueDelta.apply
-              ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+              ((InferenceBase.instantiateNamedScheme firstSupply firstScheme).subst.apply
                 ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
                   (valueDelta.target.mask generalized.tyBinders)).apply
                     (valueDelta.apply (.var 2))))))
           (valueDelta.apply
-            ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+            ((InferenceBase.instantiateNamedScheme firstSupply firstScheme).subst.apply
               ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
                 (valueDelta.target.mask generalized.tyBinders)).apply
                   (.data "Packed" [])))) := by
@@ -1928,7 +1928,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   change DDAlignTypesWithLedger
     (DDLedger.markSchemeInstance preLookupLedger firstSupply firstScheme)
     valueDelta
-    (InferenceBase.instantiateScheme firstSupply firstScheme).value
+    (InferenceBase.instantiateNamedScheme firstSupply firstScheme).value
     (.fn (.var firstPostSupply.nextTy)
       (.var (firstPostSupply.nextTy + 1))) _
     at firstAligned
@@ -1952,7 +1952,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
         .matcher (.var renamedImage)
           (functionDelta.apply
             (valueDelta.apply
-              ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+              ((InferenceBase.instantiateNamedScheme firstSupply firstScheme).subst.apply
                 ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
                   (valueDelta.target.mask generalized.tyBinders)).apply
                     (valueDelta.apply (.var 2)))))) := by
@@ -2338,7 +2338,7 @@ theorem orBody_ddSynth :
     DDSynth emptySignature ⟨2, 3⟩ orTerminal
       [("x", NamedScheme.mono (.var 0))] (.var "x") .int ⟨2, 3⟩
       orTerminal := by
-  simpa [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+  simpa [InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply, NamedScheme.mono] using
@@ -2351,7 +2351,7 @@ theorem orBody_ddSynthOrigin :
       orPatternLedger₂ := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages,
     NamedScheme.mono, CapabilityOriginLedger.setOrigins,
-    InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+    InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply] using
@@ -2569,7 +2569,7 @@ theorem delegatingInnerBodyVar_ddSynth :
     DDSynth emptySignature ⟨2, 4⟩ delegatingInner2
       [("y", NamedScheme.mono (.var 2)), ("v", NamedScheme.mono (.var 0))]
       (.var "y") .int ⟨2, 4⟩ delegatingInner2 := by
-  simpa [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+  simpa [InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply, NamedScheme.mono] using
@@ -2582,7 +2582,7 @@ theorem delegatingInnerBodyVar_ddSynthOrigin :
     DDSynthOrigin emptySignature delegatingInnerBodyVar_ddSynth
       delegatingLedger₁ delegatingLedger₁ := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages,
-    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateScheme,
+    CapabilityOriginLedger.setOrigins, InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
     Ty.applyCapability, Ty.applyTarget, Cap.apply, NamedScheme.mono] using

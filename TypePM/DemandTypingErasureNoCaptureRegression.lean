@@ -75,11 +75,11 @@ distinct capabilities `2` and `0`, and therefore cannot be such an instance. -/
 theorem suffixCapture_not_valueFlowInst :
     ¬ (rawScheme.applySubst prevailing).ValueFlowInst
       (prevailing.apply
-        (InferenceBase.instantiateScheme inputSupply rawScheme).value) := by
+        (InferenceBase.instantiateNamedScheme inputSupply rawScheme).value) := by
   rintro ⟨C, T, instantiation⟩
   have result := instantiation.result
   simp [rawScheme, prevailing, inputSupply, NamedScheme.applySubst,
-    InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+    InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] at result
   rcases result with ⟨first, second⟩

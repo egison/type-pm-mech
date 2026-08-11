@@ -163,20 +163,20 @@ theorem NamedScheme.instantiate_value_fixed_of_free_fixed
       S.cap varId = .var varId)
     (targetFixed : ∀ varId, varId ∈ scheme.ftv →
       S.target varId = .var varId) :
-    S.apply (InferenceBase.instantiateScheme q scheme).value =
-      (InferenceBase.instantiateScheme q scheme).value := by
-  let fresh := (InferenceBase.instantiateScheme q scheme).subst
+    S.apply (InferenceBase.instantiateNamedScheme q scheme).value =
+      (InferenceBase.instantiateNamedScheme q scheme).value := by
+  let fresh := (InferenceBase.instantiateNamedScheme q scheme).subst
   have capEquation : scheme.postCap S fresh.cap = fresh.cap := by
     funext candidate
     by_cases binder : candidate ∈ scheme.capBinders
     · have freshEquation : fresh.cap candidate =
           .var ⟨q.nextCap + candidate.id⟩ := by
-        simp [fresh, InferenceBase.instantiateScheme,
+        simp [fresh, InferenceBase.instantiateNamedScheme,
           InferenceBase.instantiateBinders,
           InferenceBase.freshCapSubst, binder]
       simp only [NamedScheme.postCap, binder, if_true, freshEquation, Cap.apply]
       exact bounded.capFixedAbove _ (Nat.le_add_right _ _)
-    · simp [NamedScheme.postCap, fresh, InferenceBase.instantiateScheme,
+    · simp [NamedScheme.postCap, fresh, InferenceBase.instantiateNamedScheme,
         InferenceBase.instantiateBinders,
         InferenceBase.freshCapSubst, binder]
   have targetEquation : scheme.postTarget S fresh.target = fresh.target := by
@@ -184,13 +184,13 @@ theorem NamedScheme.instantiate_value_fixed_of_free_fixed
     by_cases binder : candidate ∈ scheme.tyBinders
     · have freshEquation : fresh.target candidate =
           .var (q.nextTy + candidate) := by
-        simp [fresh, InferenceBase.instantiateScheme,
+        simp [fresh, InferenceBase.instantiateNamedScheme,
           InferenceBase.instantiateBinders,
           InferenceBase.freshTySubst, binder]
       simp only [NamedScheme.postTarget, binder, if_true, freshEquation,
         Subst.apply, Ty.applyCapability, Ty.applyTarget]
       exact bounded.targetFixedAbove _ (Nat.le_add_right _ _)
-    · simp [NamedScheme.postTarget, fresh, InferenceBase.instantiateScheme,
+    · simp [NamedScheme.postTarget, fresh, InferenceBase.instantiateNamedScheme,
         InferenceBase.instantiateBinders,
         InferenceBase.freshTySubst, binder]
   have composed := NamedScheme.post_apply
@@ -214,8 +214,8 @@ theorem NamedScheme.instantiate_applySubst_value_fixed
     {S : Subst} {q : InferenceBase.FreshSupply} (raw : NamedScheme)
     (bounded : S.BoundedBy q) (idem : S.Idempotent) :
     S.apply
-        (InferenceBase.instantiateScheme q (raw.applySubst S)).value =
-      (InferenceBase.instantiateScheme q (raw.applySubst S)).value :=
+        (InferenceBase.instantiateNamedScheme q (raw.applySubst S)).value =
+      (InferenceBase.instantiateNamedScheme q (raw.applySubst S)).value :=
   NamedScheme.instantiate_value_fixed_of_free_fixed bounded
     (NamedScheme.applySubst_fcv_fixed_of_idempotent idem raw)
     (NamedScheme.applySubst_ftv_fixed_of_idempotent idem raw)
@@ -339,9 +339,9 @@ variable-only capability instance, without any terminal-post assumption. -/
 def NamedScheme.instantiateVariableInstAt
     (q : InferenceBase.FreshSupply) (scheme : NamedScheme) :
     scheme.VariableInstAt
-      (InferenceBase.instantiateScheme q scheme).subst.cap
-      (InferenceBase.instantiateScheme q scheme).subst.target
-      (InferenceBase.instantiateScheme q scheme).value where
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap
+      (InferenceBase.instantiateNamedScheme q scheme).subst.target
+      (InferenceBase.instantiateNamedScheme q scheme).value where
   capSupport := InferenceBase.instantiateBinders_cap_support q
     scheme.capBinders scheme.tyBinders
   tySupport := InferenceBase.instantiateBinders_ty_support q
@@ -349,7 +349,7 @@ def NamedScheme.instantiateVariableInstAt
   capBinderVariable := by
     intro binder binderMem
     exact ⟨⟨q.nextCap + binder.id⟩, by
-      simp [InferenceBase.instantiateScheme,
+      simp [InferenceBase.instantiateNamedScheme,
         InferenceBase.instantiateBinders,
         InferenceBase.freshCapSubst, binderMem]⟩
   result := rfl
@@ -386,14 +386,14 @@ theorem schemeInstanceImageVariable
     {ledger finalLedger : CapabilityOriginLedger}
     {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
     {binder : CapVar} (binderMem : binder ∈ scheme.capBinders) :
     ∃ finalImage,
       post.cap ⟨q.nextCap + binder.id⟩ = .var finalImage := by
   let view := SchemeInstanceCapView.ofBinder ledger q scheme binderMem
   have imageBelow : q.nextCap + binder.id <
-      (InferenceBase.instantiateScheme q scheme).supply.nextCap := by
+      (InferenceBase.instantiateNamedScheme q scheme).supply.nextCap := by
     change q.nextCap + binder.id <
       q.nextCap + InferenceBase.binderSpan
         (scheme.capBinders.map CapVar.id)
@@ -450,21 +450,21 @@ theorem NamedScheme.instantiateValueFlowUnderAdmissible
     {ledger finalLedger : CapabilityOriginLedger}
     {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
     (externalCapFixed : ∀ varId, varId ∈ scheme.fcv →
       post.cap varId = .var varId)
     (externalTargetFixed : ∀ varId, varId ∈ scheme.ftv →
       post.target varId = .var varId) :
     scheme.ValueFlowInst
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
+      (post.apply (InferenceBase.instantiateNamedScheme q scheme).value) := by
   apply (NamedScheme.instantiateVariableInstAt q scheme).transportResult
       externalCapFixed externalTargetFixed
   intro binder binderMem image imageEquation
   have canonicalEquation :
-      (InferenceBase.instantiateScheme q scheme).subst.cap binder =
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap binder =
         .var ⟨q.nextCap + binder.id⟩ := by
-    simp [InferenceBase.instantiateScheme,
+    simp [InferenceBase.instantiateNamedScheme,
       InferenceBase.instantiateBinders,
       InferenceBase.freshCapSubst, binderMem]
   have imageEquality : image = ⟨q.nextCap + binder.id⟩ := by
@@ -484,17 +484,17 @@ theorem NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     {ledger finalLedger : CapabilityOriginLedger}
     {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
     (composition : scheme.InstCompositionAt post
-      (InferenceBase.instantiateScheme q scheme).subst.cap
-      (InferenceBase.instantiateScheme q scheme).subst.target)
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap
+      (InferenceBase.instantiateNamedScheme q scheme).subst.target)
     (composedCapEquation : ∀ binder, binder ∈ scheme.capBinders →
       composition.composedCap binder =
-        ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
+        ((InferenceBase.instantiateNamedScheme q scheme).subst.cap binder).apply
           post.cap) :
     (scheme.applySubst post).ValueFlowInst
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
+      (post.apply (InferenceBase.instantiateNamedScheme q scheme).value) := by
   apply (NamedScheme.instantiateVariableInstAt q scheme).transportApplied
       composition
   intro binder binderMem
@@ -502,7 +502,7 @@ theorem NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     ⟨finalImage, finalEquation⟩
   refine ⟨finalImage, ?_⟩
   rw [composedCapEquation binder binderMem]
-  simp [InferenceBase.instantiateScheme,
+  simp [InferenceBase.instantiateNamedScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     binderMem, Cap.apply, finalEquation]
 
@@ -551,8 +551,8 @@ theorem runtimeErasure_var_of_instanceFixed
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme)
     (instanceFixed : S.apply
-      (InferenceBase.instantiateScheme q scheme).value =
-        (InferenceBase.instantiateScheme q scheme).value) :
+      (InferenceBase.instantiateNamedScheme q scheme).value =
+        (InferenceBase.instantiateNamedScheme q scheme).value) :
     RuntimeErasure
       (DDSynthOrigin.var (signature := signature) (q := q)
         (ledger := ledger) lookup) := by
@@ -577,8 +577,8 @@ theorem runtimeErasure_var_of_bounded_idempotent
   rcases Context.find?_applySubst_some_origin S context name scheme lookup with
     ⟨rawScheme, _rawLookup, schemeEquation⟩
   have fixed : S.apply
-      (InferenceBase.instantiateScheme q scheme).value =
-        (InferenceBase.instantiateScheme q scheme).value := by
+      (InferenceBase.instantiateNamedScheme q scheme).value =
+        (InferenceBase.instantiateNamedScheme q scheme).value := by
     rw [← schemeEquation]
     exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   exact runtimeErasure_var_of_instanceFixed signature q S context name scheme
@@ -605,17 +605,17 @@ theorem runtimeVar_afterPost_of_admissible
     (bounded : S.BoundedBy q) (idem : S.Idempotent)
     (terminalEquation : S' = Subst.seq post S)
     (admissible : DDErasure.AdmissiblePostBetween
-      (InferenceBase.instantiateScheme q scheme).supply final
+      (InferenceBase.instantiateNamedScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
     (composition : scheme.InstCompositionAt post
-      (InferenceBase.instantiateScheme q scheme).subst.cap
-      (InferenceBase.instantiateScheme q scheme).subst.target)
+      (InferenceBase.instantiateNamedScheme q scheme).subst.cap
+      (InferenceBase.instantiateNamedScheme q scheme).subst.target)
     (composedCapEquation : ∀ binder, binder ∈ scheme.capBinders →
       composition.composedCap binder =
-        ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
+        ((InferenceBase.instantiateNamedScheme q scheme).subst.cap binder).apply
           post.cap) :
     RuntimeTyping signature (context.applySubst S') (.var name)
-      (S'.apply (InferenceBase.instantiateScheme q scheme).value) := by
+      (S'.apply (InferenceBase.instantiateNamedScheme q scheme).value) := by
   subst S'
   have terminalLookup :
       (context.applySubst (Subst.seq post S)).find? name =
@@ -625,14 +625,14 @@ theorem runtimeVar_afterPost_of_admissible
   have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     admissible composition composedCapEquation
   have sourceFixed : S.apply
-      (InferenceBase.instantiateScheme q scheme).value =
-        (InferenceBase.instantiateScheme q scheme).value := by
+      (InferenceBase.instantiateNamedScheme q scheme).value =
+        (InferenceBase.instantiateNamedScheme q scheme).value := by
     rw [← sourceSchemeEquation]
     exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   have transported : RuntimeTyping signature
       (context.applySubst (Subst.seq post S))
       (.var name)
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) :=
+      (post.apply (InferenceBase.instantiateNamedScheme q scheme).value) :=
     RuntimeTyping.var terminalLookup instanceTyping
   rw [Subst.seq_apply, sourceFixed]
   exact transported
