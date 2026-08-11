@@ -112,6 +112,15 @@ def DDCheckRun (signature : FrozenSig) (context : Context)
     DDCheckOrigin signature derived initial.capabilityOrigins
       final.capabilityOrigins
 
+/-- Exact-state certificate for pointwise checking of expression/type lists. -/
+def DDChecksRun (signature : FrozenSig) (context : Context)
+    (expressions : List Expr) (expecteds : List Ty)
+    (initial final : InferState) : Prop :=
+  ∃ derived : DDChecks signature initial.supply initial.prevailing context
+      expressions expecteds final.supply final.prevailing,
+    DDChecksOrigin signature derived initial.capabilityOrigins
+      final.capabilityOrigins
+
 /-- State-indexed declarative image of an executable expected-type alignment.
 Alignment never allocates variables or changes the origin ledger; only its
 prevailing substitution advances. -/
@@ -1122,6 +1131,12 @@ theorem DDSynthsRun.nil
   refine ⟨[], DDSynths.nil, rfl, ?_⟩
   exact DDSynthsOrigin.nil
 
+/-- Empty pointwise checking preserves the exact executable state. -/
+theorem DDChecksRun.nil
+    (signature : FrozenSig) (context : Context) (initial : InferState) :
+    DDChecksRun signature context [] [] initial initial := by
+  exact ⟨DDChecks.nil, DDChecksOrigin.nil⟩
+
 /-- Compose exact head and tail run certificates in source order. -/
 theorem DDSynthsRun.cons
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -1137,6 +1152,20 @@ theorem DDSynthsRun.cons
     ?_, ?_⟩
   · simp [headEq, tailEq]
   · exact DDSynthsOrigin.cons headOrigin tailOrigin
+
+/-- Compose exact head checking with the tail run in source order. -/
+theorem DDChecksRun.cons
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {expressions : List Expr} {expected : Ty} {expecteds : List Ty}
+    {initial middle final : InferState}
+    (headRun : DDCheckRun signature context expression expected initial middle)
+    (tailRun : DDChecksRun signature context expressions expecteds middle final) :
+    DDChecksRun signature context (expression :: expressions)
+      (expected :: expecteds) initial final := by
+  rcases headRun with ⟨headDerived, headOrigin⟩
+  rcases tailRun with ⟨tailDerived, tailOrigin⟩
+  exact ⟨DDChecks.cons headDerived tailDerived,
+    DDChecksOrigin.cons headOrigin tailOrigin⟩
 
 /-- Reconstruct lambda synthesis from the exact body-entry run. -/
 theorem DDSynthRun.lam
@@ -1272,6 +1301,57 @@ theorem inferExprsFuel_cons_ddSynthsRun
           subst result
           exact DDSynthsRun.cons (headSound head headEq)
             (tailSound head tail tailEq)
+
+/-- Successful empty checking-list traversal is the exact empty DD run. -/
+theorem checkExprsFuel_nil_ddChecksRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {initial final : InferState}
+    (success : checkExprsFuel (fuel + 1) signature context selfEnv parent index
+      [] [] initial = some final) :
+    DDChecksRun signature context [] [] initial final := by
+  simp only [checkExprsFuel] at success
+  have finalEq := Option.some.inj success
+  subst final
+  exact DDChecksRun.nil signature context initial
+
+/-- The cons branch checks its synthesized head through the generic checking
+bridge, then threads that exact terminal state into the tail list run. -/
+theorem checkExprsFuel_cons_ddChecksRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {expression : Expr} {expressions : List Expr}
+    {expected : Ty} {expecteds : List Ty}
+    {initial final : InferState}
+    (headSound : ∀ synthesized : ExprResult,
+      inferExprFuel fuel signature context selfEnv (index :: parent)
+        expression initial = some synthesized →
+      DDSynthRun signature context expression initial synthesized)
+    (tailSound : ∀ (middle tailFinal : InferState),
+      checkExprsFuel (fuel + 1) signature context selfEnv parent (index + 1)
+        expressions expecteds middle = some tailFinal →
+      DDChecksRun signature context expressions expecteds middle tailFinal)
+    (success : checkExprsFuel (fuel + 2) signature context selfEnv parent index
+      (expression :: expressions) (expected :: expecteds) initial =
+        some final) :
+    DDChecksRun signature context (expression :: expressions)
+      (expected :: expecteds) initial final := by
+  simp only [checkExprsFuel] at success
+  cases headCheckEq : checkExprFuel (fuel + 1) signature context selfEnv
+      (index :: parent) expression expected initial with
+  | none => simp [headCheckEq] at success
+  | some middle =>
+      have tailEq : checkExprsFuel (fuel + 1) signature context selfEnv parent
+          (index + 1) expressions expecteds middle = some final := by
+        simpa [headCheckEq] using success
+      cases headInferEq : inferExprFuel fuel signature context selfEnv
+          (index :: parent) expression initial with
+      | none => simp [checkExprFuel, headInferEq] at headCheckEq
+      | some synthesized =>
+          have headRun := checkExprFuel_ddCheckRun headInferEq
+            (headSound synthesized headInferEq) headCheckEq
+          exact DDChecksRun.cons headRun
+            (tailSound middle final tailEq)
 
 /-- A reconstructed run from the executable initial state is already a
 public `DDTyping` derivation at the run's resolved result type. -/

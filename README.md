@@ -331,7 +331,8 @@ raw／resolved product認識がずれる成功不能caseも明示的に排除し
 expected-type alignmentとchecking traversalをexact-stateな`DDAlignRun`／`DDCheckRun`へ再構成できる．
 このgeneric checking補題を使い，function synthesis，2 target fresh，function alignment，argument checkingを
 threadするapplication traversalも`DDSynth`／`DDSynthOrigin`へ再構成した．次はexpression-list checkingの
-exact-state packageを追加し，constructor／primitive applicationをまとめて閉じる．
+exact-state `DDChecksRun`とnil／cons traversalも再構成済みである．次はscheme instantiationと
+capability export freezeを接続し，constructor／primitive applicationをまとめて閉じる．
 
 中心定理：
 
