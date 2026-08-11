@@ -33,6 +33,21 @@ namespace Inference
     (state.recordEvent event).capabilityOrigins = state.capabilityOrigins :=
   rfl
 
+@[simp] theorem InferState.freshTy_prevailing
+    (state : InferState) (origin : ConstraintOrigin) :
+    (state.freshTy origin).2.prevailing = state.prevailing :=
+  rfl
+
+@[simp] theorem InferState.freshTy_capabilityOrigins
+    (state : InferState) (origin : ConstraintOrigin) :
+    (state.freshTy origin).2.capabilityOrigins = state.capabilityOrigins :=
+  rfl
+
+@[simp] theorem InferState.freshCap_prevailing
+    (state : InferState) (origin : ConstraintOrigin) :
+    (state.freshCap origin).2.prevailing = state.prevailing :=
+  rfl
+
 @[simp] theorem InferState.recordSource_supply
     (state : InferState) (source : ProducerSource) :
     (state.recordSource source).supply = state.supply :=
@@ -176,6 +191,27 @@ def DDChecksRun (signature : FrozenSig) (context : Context)
       expressions expecteds final.supply final.prevailing,
     DDChecksOrigin signature derived initial.capabilityOrigins
       final.capabilityOrigins
+
+/-- Exact-state certificate for one executable user-pattern traversal. -/
+def DDPatternRun (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (bindings : MonoCtx) (pattern : Pattern)
+    (initial : InferState) (result : PatternResult) : Prop :=
+  ∃ derived : DDPattern signature initial.supply initial.prevailing context
+      parameters bindings pattern result.dual result.bindings
+      result.state.supply result.state.prevailing,
+    DDPatternOrigin signature derived initial.capabilityOrigins
+      result.state.capabilityOrigins
+
+/-- List form of `DDPatternRun`, retaining the exact output bindings and
+state indices of the executable left-to-right traversal. -/
+def DDPatternsRun (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (bindings : MonoCtx) (patterns : List Pattern)
+    (initial : InferState) (result : PatternsResult) : Prop :=
+  ∃ derived : DDPatterns signature initial.supply initial.prevailing context
+      parameters bindings patterns result.duals result.bindings
+      result.state.supply result.state.prevailing,
+    DDPatternsOrigin signature derived initial.capabilityOrigins
+      result.state.capabilityOrigins
 
 /-- State-indexed declarative image of an executable expected-type alignment.
 Alignment never allocates variables or changes the origin ledger; only its
@@ -1276,6 +1312,14 @@ theorem DDChecksRun.nil
     DDChecksRun signature context [] [] initial initial := by
   exact ⟨DDChecks.nil, DDChecksOrigin.nil⟩
 
+/-- Empty user-pattern-list synthesis preserves bindings and state exactly. -/
+theorem DDPatternsRun.nil
+    (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
+    (bindings : MonoCtx) (initial : InferState) :
+    DDPatternsRun signature context parameters bindings [] initial
+      ⟨[], bindings, initial⟩ := by
+  exact ⟨DDPatterns.nil, DDPatternsOrigin.nil⟩
+
 /-- Compose exact head and tail run certificates in source order. -/
 theorem DDSynthsRun.cons
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -1305,6 +1349,23 @@ theorem DDChecksRun.cons
   rcases tailRun with ⟨tailDerived, tailOrigin⟩
   exact ⟨DDChecks.cons headDerived tailDerived,
     DDChecksOrigin.cons headOrigin tailOrigin⟩
+
+/-- Compose exact head and tail user-pattern runs while threading the binding
+context and inference state left to right. -/
+theorem DDPatternsRun.cons
+    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {bindings : MonoCtx} {pattern : Pattern} {patterns : List Pattern}
+    {initial : InferState} {head : PatternResult} {tail : PatternsResult}
+    (headRun : DDPatternRun signature context parameters bindings pattern
+      initial head)
+    (tailRun : DDPatternsRun signature context parameters head.bindings
+      patterns head.state tail) :
+    DDPatternsRun signature context parameters bindings (pattern :: patterns)
+      initial ⟨head.dual :: tail.duals, tail.bindings, tail.state⟩ := by
+  rcases headRun with ⟨headDerived, headOrigin⟩
+  rcases tailRun with ⟨tailDerived, tailOrigin⟩
+  exact ⟨DDPatterns.cons headDerived tailDerived,
+    DDPatternsOrigin.cons headOrigin tailOrigin⟩
 
 /-- Reconstruct lambda synthesis from the exact body-entry run. -/
 theorem DDSynthRun.lam
@@ -2001,6 +2062,221 @@ theorem inferExprFuel_something_ddSynthRun
   refine ⟨.matcher .any (.var initial.supply.nextTy), DDSynth.something,
     rfl, ?_⟩
   exact DDSynthOrigin.something
+
+/-! ## User-pattern reconstruction slices -/
+
+/-- The empty executable pattern-list traversal is the exact nil DD run. -/
+theorem inferPatternsFuel_nil_ddPatternsRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat} {initial : InferState}
+    {result : PatternsResult}
+    (success : inferPatternsFuel (fuel + 1) signature context parameters
+      bindings selfEnv parent index [] initial = some result) :
+    DDPatternsRun signature context parameters bindings [] initial result := by
+  simp only [inferPatternsFuel, Option.some.injEq] at success
+  subst result
+  exact DDPatternsRun.nil signature context parameters bindings initial
+
+/-- The executable pattern-list cons branch is exactly the left-to-right DD
+composition of its head and tail induction hypotheses. -/
+theorem inferPatternsFuel_cons_ddPatternsRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat} {pattern : Pattern}
+    {patterns : List Pattern} {initial : InferState}
+    {result : PatternsResult}
+    (headSound : ∀ head : PatternResult,
+      inferPatternFuel fuel signature context parameters bindings selfEnv
+        (index :: parent) pattern initial = some head →
+      DDPatternRun signature context parameters bindings pattern initial head)
+    (tailSound : ∀ (head : PatternResult) (tail : PatternsResult),
+      inferPatternsFuel fuel signature context parameters head.bindings
+        selfEnv parent (index + 1) patterns head.state = some tail →
+      DDPatternsRun signature context parameters head.bindings patterns
+        head.state tail)
+    (success : inferPatternsFuel (fuel + 1) signature context parameters
+      bindings selfEnv parent index (pattern :: patterns) initial =
+        some result) :
+    DDPatternsRun signature context parameters bindings (pattern :: patterns)
+      initial result := by
+  simp only [inferPatternsFuel] at success
+  cases headEq : inferPatternFuel fuel signature context parameters bindings
+      selfEnv (index :: parent) pattern initial with
+  | none => simp [headEq] at success
+  | some head =>
+      cases tailEq : inferPatternsFuel fuel signature context parameters
+          head.bindings selfEnv parent (index + 1) patterns head.state with
+      | none => simp [headEq, tailEq] at success
+      | some tail =>
+          simp only [headEq, tailEq, Option.some.injEq] at success
+          subst result
+          exact DDPatternsRun.cons (headSound head headEq)
+            (tailSound head tail tailEq)
+
+/-- A successful pattern-variable leaf reconstructs its two fresh indices,
+binding extension, and single structural capability-origin update exactly. -/
+theorem inferPatternFuel_pvar_ddPatternRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {initial : InferState}
+    {result : PatternResult}
+    (success : inferPatternFuel (fuel + 1) signature context parameters
+      bindings selfEnv path (.pvar name) initial = some result) :
+    DDPatternRun signature context parameters bindings (.pvar name) initial
+      result := by
+  simp only [inferPatternFuel] at success
+  split at success
+  · contradiction
+  · rename_i absent
+    have resultEq := Option.some.inj success
+    subst result
+    have freshName : name ∉ bindings.names := by
+      simpa using absent
+    change ∃ derived : DDPattern signature initial.supply
+        initial.prevailing context parameters bindings (.pvar name)
+          ⟨.var ⟨initial.supply.nextCap⟩, .var initial.supply.nextTy⟩
+          (bindings ++ [(name, .var initial.supply.nextTy)])
+          { initial.supply with
+            nextCap := initial.supply.nextCap + 1
+            nextTy := initial.supply.nextTy + 1 }
+          initial.prevailing,
+      DDPatternOrigin signature derived initial.capabilityOrigins
+        (DDLedger.markFreshCap initial.capabilityOrigins initial.supply)
+    exact ⟨DDPattern.pvar freshName,
+      DDPatternOrigin.pvar (signature := signature)
+        (q := initial.supply) (S := initial.prevailing) (context := context)
+        (parameters := parameters) (bindings := bindings)
+        (ledger := initial.capabilityOrigins) freshName⟩
+
+/-- A successful wildcard leaf has the same exact fresh-state transition as
+`pvar`, without extending the binding context. -/
+theorem inferPatternFuel_wild_ddPatternRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {initial : InferState} {result : PatternResult}
+    (success : inferPatternFuel (fuel + 1) signature context parameters
+      bindings selfEnv path .wild initial = some result) :
+    DDPatternRun signature context parameters bindings .wild initial result := by
+  simp only [inferPatternFuel, Option.some.injEq] at success
+  subst result
+  change ∃ derived : DDPattern signature initial.supply initial.prevailing
+      context parameters bindings .wild
+        ⟨.var ⟨initial.supply.nextCap⟩, .var initial.supply.nextTy⟩ bindings
+        { initial.supply with
+          nextCap := initial.supply.nextCap + 1
+          nextTy := initial.supply.nextTy + 1 }
+        initial.prevailing,
+    DDPatternOrigin signature derived initial.capabilityOrigins
+      (DDLedger.markFreshCap initial.capabilityOrigins initial.supply)
+  exact ⟨DDPattern.wild, DDPatternOrigin.wild⟩
+
+/-- Value-pattern synthesis reuses the exact expression run and records the
+single fresh consumer capability at the expression's output cut. -/
+theorem inferPatternFuel_pval_ddPatternRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {initial : InferState}
+    {result : PatternResult}
+    (expressionSound : ∀ expressionResult : ExprResult,
+      inferExprFuel fuel signature (bindings.toContext ++ context) selfEnv
+        (0 :: path) expression (visit initial .patternValue path) =
+          some expressionResult →
+      DDSynthRun signature (bindings.toContext ++ context) expression
+        (visit initial .patternValue path) expressionResult)
+    (success : inferPatternFuel (fuel + 1) signature context parameters
+      bindings selfEnv path (.pval expression) initial = some result) :
+    DDPatternRun signature context parameters bindings (.pval expression)
+      initial result := by
+  cases expressionEq : inferExprFuel fuel signature
+      (bindings.toContext ++ context) selfEnv (0 :: path) expression
+      (visit initial .patternValue path) with
+  | none => simp [inferPatternFuel, expressionEq] at success
+  | some expressionResult =>
+      simp only [inferPatternFuel, expressionEq, Option.some.injEq] at success
+      subst result
+      rcases expressionSound expressionResult expressionEq with
+        ⟨rawTarget, expressionDerived, targetEq, expressionOrigin⟩
+      subst rawTarget
+      simp only [visit, InferState.recordEvent_supply,
+        InferState.prevailing_recordEvent,
+        InferState.recordEvent_capabilityOrigins] at expressionDerived expressionOrigin
+      change ∃ derived : DDPattern signature initial.supply
+          initial.prevailing context parameters bindings (.pval expression)
+          ⟨.var ⟨expressionResult.state.supply.nextCap⟩,
+            expressionResult.target⟩ bindings
+          { expressionResult.state.supply with
+            nextCap := expressionResult.state.supply.nextCap + 1 }
+          expressionResult.state.prevailing,
+        DDPatternOrigin signature derived initial.capabilityOrigins
+          (DDLedger.markFreshCap expressionResult.state.capabilityOrigins
+            expressionResult.state.supply)
+      exact ⟨DDPattern.pval expressionDerived,
+        DDPatternOrigin.pval (parameters := parameters) expressionOrigin⟩
+
+/-- A successful parameter embedding performs no allocation or solve, so its
+lookup directly gives the exact DD pattern and origin certificates. -/
+theorem inferPatternFuel_embed_ddPatternRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {initial : InferState}
+    {result : PatternResult}
+    (success : inferPatternFuel (fuel + 1) signature context parameters
+      bindings selfEnv path (.embed name) initial = some result) :
+    DDPatternRun signature context parameters bindings (.embed name) initial
+      result := by
+  cases lookup : parameters.find? name with
+  | none => simp [inferPatternFuel, lookup] at success
+  | some dual =>
+      simp only [inferPatternFuel, lookup, Option.some.injEq] at success
+      subst result
+      change ∃ derived : DDPattern signature initial.supply
+          initial.prevailing context parameters bindings (.embed name) dual
+          bindings initial.supply initial.prevailing,
+        DDPatternOrigin signature derived initial.capabilityOrigins
+          initial.capabilityOrigins
+      exact ⟨DDPattern.embed lookup,
+        DDPatternOrigin.embed (signature := signature)
+          (q := initial.supply) (S := initial.prevailing) (context := context)
+          (parameters := parameters) (bindings := bindings)
+          (ledger := initial.capabilityOrigins) lookup⟩
+
+/-- Tuple-pattern synthesis is the direct image of its exact list traversal;
+the trailing trace event changes none of the DD indices. -/
+theorem inferPatternFuel_ptuple_ddPatternRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {patterns : List Pattern} {initial : InferState}
+    {result : PatternResult}
+    (childrenSound : ∀ children : PatternsResult,
+      inferPatternsFuel fuel signature context parameters bindings selfEnv
+        path 0 patterns (visit initial .patternTuple path) = some children →
+      DDPatternsRun signature context parameters bindings patterns
+        (visit initial .patternTuple path) children)
+    (success : inferPatternFuel (fuel + 1) signature context parameters
+      bindings selfEnv path (.ptuple patterns) initial = some result) :
+    DDPatternRun signature context parameters bindings (.ptuple patterns)
+      initial result := by
+  cases childrenEq : inferPatternsFuel fuel signature context parameters
+      bindings selfEnv path 0 patterns (visit initial .patternTuple path) with
+  | none => simp [inferPatternFuel, childrenEq] at success
+  | some children =>
+      simp only [inferPatternFuel, childrenEq, Option.some.injEq] at success
+      subst result
+      rcases childrenSound children childrenEq with
+        ⟨childrenDerived, childrenOrigin⟩
+      simp only [visit, InferState.recordEvent_supply,
+        InferState.prevailing_recordEvent,
+        InferState.recordEvent_capabilityOrigins] at childrenDerived childrenOrigin
+      change ∃ derived : DDPattern signature initial.supply
+          initial.prevailing context parameters bindings (.ptuple patterns)
+          ⟨.prod (children.duals.map Dual.cap),
+            .prod (children.duals.map Dual.target)⟩ children.bindings
+          children.state.supply children.state.prevailing,
+        DDPatternOrigin signature derived initial.capabilityOrigins
+          children.state.capabilityOrigins
+      exact ⟨DDPattern.ptuple childrenDerived,
+        DDPatternOrigin.ptuple childrenOrigin⟩
 
 end Inference
 end TypePM

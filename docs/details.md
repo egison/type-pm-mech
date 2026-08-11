@@ -170,6 +170,13 @@ variable-onlyにfreezeされる．
 `InferenceInputWF` は入力境界を記述するが，公開成功定理の caller premise ではない．validator
 が必要な `WBridgeWF` を成功 result から構成する．
 
+`DemandTypingInferenceSoundness` は，successful traversalのsupply，prevailing substitution，origin
+ledgerをDD derivationの入出力indexへ直接一致させるexact-state runを構成する．expression synthesis／
+checkingに加えてuser pattern／pattern listのrunもあり，pattern listのnil／cons，pattern variable，
+wildcard，value pattern，parameter embed，tuple patternまで実行分岐から`DDPatternOrigin`へ再構成済みで
+ある．残るuser-pattern分岐はpattern constructor，and／or，pattern-function applicationであり，
+primitive／data pattern，arm，clauseとともに後続の相互帰納へ統合する．
+
 ## 4. RuntimeTyping は内部 certificate である
 
 [`TypePM/Source.lean`](../TypePM/Source.lean) の `RuntimeTyping` は fresh supply，prevailing solver

@@ -335,7 +335,8 @@ DD ledger へ反映する．
 
 #### 現在の進捗
 
-帰納不変量は `Inference.DDSynthRun`，`DDSynthsRun`，`DDCheckRun`，`DDChecksRun` である．
+帰納不変量は `Inference.DDSynthRun`，`DDSynthsRun`，`DDCheckRun`，`DDChecksRun`，
+`DDPatternRun`，`DDPatternsRun` である．
 これらは raw target と実行状態の supply／prevailing substitution／origin ledger を，DD derivation
 の入出力 index に正確に一致させる．
 
@@ -347,6 +348,8 @@ DD ledger へ反映する．
 - [x] variable，literal，`something`，lambda，tuple，application，constructor，primitive，
   non-matcher `fix` を `DDSynth`／`DDSynthOrigin` へ再構成した．
 - [x] synthesis list と checking list の nil／cons traversal を再構成した．
+- [x] user-patternのexact-state runを導入し，pattern listのnil／consと，`pvar`，wildcard，
+  value pattern，parameter embed，tuple patternを再構成した．
 - [x] constructor instance，capability export freeze，direct-self gate，2-target recursive placeholder を，
   実行 state と DD ledger transition の exact index で一致させた．
 - [x] batch capability freshening の ledger 順を実行時の head-insertion 順へ canonicalize し，
@@ -358,7 +361,8 @@ DD ledger へ反映する．
 
 - [ ] `fixMatcher`：stateful／supply-indexed skeleton freshening の3つの相互 family を，
   olean 生成可能な明示再帰証明として構成する．
-- [ ] `matcher`／pattern／arm／clause：各 successful traversal を対応する DD Origin family へ
+- [ ] `matcher`／pattern／arm／clause：pattern constructor，and／or，pattern-function applicationと，
+  primitive／data pattern，arm，clauseの各 successful traversalを対応するDD Origin familyへ
   相互再構成する．
 - [ ] `matchAll`：target，pattern，matcher checking，body の相互 certificate を thread する．
 - [ ] `letE`：Origin certificate が要求する terminal generalization stability を実行成功から回収する．
