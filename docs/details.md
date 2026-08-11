@@ -145,6 +145,8 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
   再帰的 terminal audit が公開する終端 substitution に対して保持する．
 - closed signature 上で terminal audit を持つ closed-program derivation は，全 family の相互 state erasure により
   `RuntimeTyping` へ射影できる．
+- source-facingな安全性境界では，このsignature closednessを`FrozenSigWF.schemesClosed`から
+  供給し，callerに別premiseとして要求しない．
 - `capFreezeProgram` と `letCapFreezeProgram` はpublic `DDTyping`では導出不能である．
 
 ## 3. executable inference
@@ -305,7 +307,8 @@ DDTyping signature [] e τ → RuntimeTyping signature [] e τ
 ```
 
 が `DDTyping.runtimeTyping` として成立する．`RuntimeTyping` の存在を DD rule の premise に置く循環はなく，この定理は DD derivation
-自身の solved-form preservation，Origin history，terminal audit から得られる．
+自身の solved-form preservation，Origin history，terminal audit から得られる．これはstate erasureの
+正確な低レベルinterfaceであり，公開M4では`FrozenSigWF.schemesClosed`が先頭のpremiseを供給する．
 
 ## 6. dynamics と安全性
 
@@ -327,19 +330,28 @@ literal は `RuntimeTyping` certificate を保持する．
 空 successor list は正当な match failure であり stuck ではない．primitive-pattern 内の value
 pattern capture は depth-first・左から右の `PPatCoreOrder` から導出する．
 
-global 条件は `FrozenSigWF` だけである．`SignatureChecker` の `frozenSigWFCheck` が有限 checker，
-`frozenSigWFCheck_sound` がその soundness を与える．
+global signature条件は `FrozenSigWF` だけである．これは従来のdynamic obligationsに加えて
+`signature.SchemesClosed`をfieldとして持つ．`SignatureChecker`の`frozenSigWFCheck`は全tableの
+scheme closednessも直接検査する有限checkerであり，`frozenSigWFCheck_sound`がその証拠を含む
+`FrozenSigWF`を構成する．function-valuedな`armExhaustive`だけは，signature構築時に固定した
+`armExhaustive = basicArmExhaustive`をsoundness theoremへ渡す．lookupで隠れる重複entryもtable全体の
+検査対象である．
 
-公開安全性に必要な構成要素は次の形で機械化済みである．
+source-facingな公開安全性は次の形で機械化済みである．
 
 ```text
-DDTyping + FrozenSigWF
-  → RuntimeTyping          terminal-fixedな全familyのstate erasure
-  → CoreSafetyの各性質     preservation／progress／到達可能性
+DDTyping signature [] e τ
+  + FrozenSigWF signature
+      ├─ schemesClosed ─→ DDTyping.runtimeTyping
+      └─────────────────→ core_safety
+  → DDTyping.SafeResult signature e τ SF
 ```
 
-`DDTyping`を入口としてこれらを一つに束ねたsource-facingな公開定理はRoadmap milestone 4で
-構成する．state erasureはclosed signature・空contextに対する定理である．
+`DDTyping.safe`は同じ公開型の内部`RuntimeTyping`と，preservation／progress／到達可能性／
+matching consistencyを含む`CoreSafety`を束ねる．`Inference.SafeResult`は推論成功から再構成した
+source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inferenceをこのDD経路へ接続する．
+低レベルstate erasureがclosednessを明示的に受けることと，公開callerが別premiseを渡さないことを
+区別する．
 
 ## 7. Damas–Milner 断片
 
@@ -357,8 +369,12 @@ DDTyping + FrozenSigWF
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
+- `InferenceRegression`: 公開inference traversalと主要な成功／拒否境界．
+- `SignatureChecker`: 全tableのscheme closedness，open pattern-function scheme，lookupで隠れる
+  open schemeの拒否．
 - `DemandTypingInferenceSoundnessRegression`: terminal `let` とrecursive matcherに対するpublic
   `infer_success_ddTyping`．
+- `DemandTypingSafetyRegression`: closed inferenceから`DDTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
 - `PatternFunctionSafetyRegression`: pattern function と matching safety の接続．
@@ -393,6 +409,8 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingTerminalAuditBuilder` | raw derivation，Origin certificate，終端 substitution からの terminal audit 構築 tactic |
 | `DemandTypingTerminalAuditErasure`／`DemandTypingTerminalErasure` | terminal-fixedな相互runtime erasureとmatcher終端再構成 |
 | `DemandTypingRegression`／`DemandTypingTerminalAuditErasureRegression` | raw境界，Origin-aware局所solve，terminal audit，公開state-erasure定理の回帰 |
+| `Soundness` | `DDTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
+| `DemandTypingSafetyRegression` | closed inferenceを公開DD safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件
 

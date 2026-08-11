@@ -79,6 +79,7 @@ import TypePM.PatternFunctionSafetyRegression
 import TypePM.ProducerStrengtheningRegression
 import TypePM.InferenceRegression
 import TypePM.Soundness
+import TypePM.DemandTypingSafetyRegression
 import TypePM.RecursiveExamples
 import TypePM.PatternCtorCapabilityRegression
 import TypePM.DemandTyping
@@ -105,5 +106,8 @@ value typing and the dynamic metatheory but does not define source acceptance.
 idempotence preservation, the terminal-audit tree, full fixed-terminal
 erasure, and the closed-program bridge to that internal judgment.
 `DemandTypingInferenceSoundnessPublic` exposes the converse-facing soundness
-boundary from successful executable inference to `DDTyping`.
+boundary from successful executable inference to `DDTyping`.  `Soundness`
+exposes `DDTyping.safe`, which obtains signature closedness from the single
+public `FrozenSigWF` condition and packages state erasure with the concrete
+dynamic safety interface.
 -/

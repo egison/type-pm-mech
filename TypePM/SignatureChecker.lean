@@ -14,6 +14,7 @@ executable checker.
 theorem `frozenSigWFCheck_sound` discharges every semantic field of
 `FrozenSigWF`:
 
+* every scheme in every complete table is closed outside its own binders;
 * generic instantiation uniqueness follows from a syntactic binder-coverage
   check via the substitution-agreement converse lemmas below;
 * the canonical `nil`/`cons` declarations witness `ListSigWF`;
@@ -1214,15 +1215,36 @@ def patternCtorCheck (signature : FrozenSig) (name : String)
         | none => false)
   | _ => false
 
+/-- Executable closedness check for every entry in the complete frozen
+tables.  Inspecting entries directly is intentional: lookup alone would miss
+a malformed scheme shadowed by an earlier key. -/
+def schemesClosedCheck (signature : FrozenSig) : Bool :=
+  signature.dataCtors.all (fun entry => decide entry.2.Closed) &&
+  signature.patternCtors.all (fun entry => decide entry.2.scheme.Closed) &&
+  signature.patternFuns.all (fun entry => decide entry.2.Closed) &&
+  signature.primitives.all (fun entry => decide entry.2.Closed)
+
+/-- The executable table check establishes common signature closedness. -/
+theorem schemesClosedCheck_sound {signature : FrozenSig}
+    (checked : schemesClosedCheck signature = true) :
+    signature.SchemesClosed := by
+  simp only [schemesClosedCheck, Bool.and_eq_true, List.all_eq_true,
+    decide_eq_true_eq] at checked
+  obtain ⟨⟨⟨dataClosed, patternClosed⟩, funClosed⟩, primClosed⟩ := checked
+  exact FrozenSig.SchemesClosed.of_entries dataClosed patternClosed
+    funClosed primClosed
+
 /--
 Executable frozen-signature well-formedness checker.
 
-The checker is conservative: canonical `nil`/`cons` declarations, syntactic
-data roots with binder coverage, collection-family pattern constructors,
-canonical primitive schemes, and an unshadowed pattern-function namespace.
+The checker is conservative: closed schemes, canonical `nil`/`cons`
+declarations, syntactic data roots with binder coverage, collection-family
+pattern constructors, canonical primitive schemes, and an unshadowed
+pattern-function namespace.
 A signature outside this fragment is rejected, never accepted unsoundly.
 -/
 def frozenSigWFCheck (signature : FrozenSig) : Bool :=
+  schemesClosedCheck signature &&
   decide (signature.findDataCtor "nil" = some nilCanonicalScheme) &&
   decide (signature.findDataCtor "cons" = some consCanonicalScheme) &&
   decide ((signature.patternFuns.map Prod.fst).Nodup) &&
@@ -1231,6 +1253,53 @@ def frozenSigWFCheck (signature : FrozenSig) : Bool :=
     patternCtorCheck signature entry.1 entry.2) &&
   signature.primitives.all (fun entry =>
     decide (entry.2 = primCanonicalScheme entry.1))
+
+/-! ## Closedness boundary regression -/
+
+namespace SignatureCheckerRegression
+
+/-- An otherwise admissible pattern-function scheme whose result leaks one
+ambient target metavariable. -/
+def openPatternFunScheme : DualScheme where
+  capBinders := []
+  tyBinders := []
+  args := []
+  result := ⟨.any, .var 17⟩
+
+/-- The public checker rejects open schemes even when all older dynamic
+shape checks would accept the surrounding signature. -/
+def openPatternFunSignature : FrozenSig where
+  observability := fun _ => none
+  dataCtors :=
+    [("nil", nilCanonicalScheme), ("cons", consCanonicalScheme)]
+  patternCtors := []
+  patternFuns := [("open", openPatternFunScheme)]
+  primitives := []
+  constructorsByFormer := []
+  armExhaustive := basicArmExhaustive
+
+theorem openPatternFunSignature_checker_rejects :
+    frozenSigWFCheck openPatternFunSignature = false := by
+  decide
+
+/-- A closed entry shadows an open entry with the same lookup key.  The
+closedness checker still inspects the complete table rather than only the
+entry returned by lookup. -/
+def shadowedOpenPatternFunSignature : FrozenSig :=
+  { openPatternFunSignature with
+    patternFuns :=
+      [("shadowed",
+          { capBinders := []
+            tyBinders := [17]
+            args := []
+            result := ⟨.any, .var 17⟩ }),
+        ("shadowed", openPatternFunScheme)] }
+
+theorem shadowedOpenPatternFunSignature_closedness_rejects :
+    schemesClosedCheck shadowedOpenPatternFunSignature = false := by
+  decide
+
+end SignatureCheckerRegression
 
 /-! ## Lookup membership -/
 
@@ -1450,10 +1519,11 @@ theorem frozenSigWFCheck_sound
     FrozenSigWF signature := by
   simp only [frozenSigWFCheck, Bool.and_eq_true, decide_eq_true_eq,
     List.all_eq_true] at checked
-  obtain ⟨⟨⟨⟨⟨nilFound, consFound⟩, funsNodup⟩, dataChecked⟩,
-    patternChecked⟩, primChecked⟩ := checked
+  obtain ⟨⟨⟨⟨⟨⟨closedChecked, nilFound⟩, consFound⟩, funsNodup⟩,
+    dataChecked⟩, patternChecked⟩, primChecked⟩ := checked
   refine
-    { listSigWF :=
+    { schemesClosed := schemesClosedCheck_sound closedChecked
+      listSigWF :=
         ⟨⟨nilCanonicalScheme, nilFound, nilCanonicalScheme_inst⟩,
           ⟨consCanonicalScheme, consFound, consCanonicalScheme_inst⟩⟩
       patternFunNamesNodup := funsNodup

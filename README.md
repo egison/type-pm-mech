@@ -8,16 +8,12 @@ source program の型付け可能性を定義する judgment は `DDTyping` だ�
 両者の役割は次の一方向に整理する．
 
 ```text
-source program
-     │
-     ▼
- DDTyping                 唯一の source typing
-     │ state erasure      実装済み：終端audit付きの全family相互消去
-     ▼
- RuntimeTyping            内部の state-free certificate
-     │ preservation / progress
-     ▼
- runtime safety
+DDTyping + FrozenSigWF.schemesClosed
+              │ state erasure
+              ▼
+         RuntimeTyping ──────────────┐
+                                    ├─→ DDTyping.SafeResult ──→ runtime safetyの各性質
+FrozenSigWF ── core_safety ─→ CoreSafety
 ```
 
 `RuntimeTyping` は source acceptance を定義する第二の型システムではない．逆に
@@ -117,7 +113,11 @@ infer Σ Γ e = some r
 
 `FrozenSigWF` の下では，`RuntimeTyping` を持つ式の評価，matching state の一段保存，局所
 progress，到達可能 state の保存，成功 branch の substitution typing を証明済みである．
-一般の program termination は主張しない．
+`FrozenSigWF` はこれらの動的整合性に加えて，signature中の全schemeがbinder外の
+metavariableを持たない `SchemesClosed` を含む．実行可能checker `frozenSigWFCheck` の成功から
+`frozenSigWFCheck_sound` が，signature構築時に固定する
+`armExhaustive = basicArmExhaustive` と合わせてこの単一のglobal条件を構成する．一般の program
+termination は主張しない．
 
 ## 接続の現在地
 
@@ -132,6 +132,20 @@ chronological factorization を使い，全14 family の相互 erasure から cl
 `Inference.infer_success_ddTyping` は，成功した fuelled traversal を同じ cut 列を持つ raw DD
 derivationへ相互再構成し，validator が与える一つの終端 certificate から terminal audit を構成して，
 報告された `resolvedTarget` の `DDTyping` を返す．caller が `WBridgeWF` や history を渡す必要はない．
+
+`DDTyping` からの公開動的安全性も完成している．低レベルの `DDTyping.runtimeTyping` は
+signature closednessを明示的に受け取るが，公開定理 `DDTyping.safe` は
+`FrozenSigWF.schemesClosed`からその証拠を内部で供給する．したがってclosed programについて
+
+```text
+DDTyping signature [] e τ →
+FrozenSigWF signature →
+DDTyping.SafeResult signature e τ SF
+```
+
+が成立する．`DDTyping.SafeResult` は同じ公開型の `RuntimeTyping` と，preservation／progress／
+matching safetyを束ねた `CoreSafety` を保持する．`Inference.infer_closed_safe` はclosedな推論成功を
+`infer → DDTyping → safety` の公開経路へ接続する．
 
 現在残る受理接続は `DDTyping → infer` の受理完全性だけである．これには，上記 freeze 統合に
 加え，現行 executable selector が product source の認識に
@@ -157,7 +171,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 [x] 1. freeze provenance と public 回帰
         │
         ▼
-[x] 2. DD state erasure ─────────→ [ ] 4. DD の公開安全性
+[x] 2. DD state erasure ─────────→ [x] 4. DD の公開安全性
 
 [x] 3. infer success → DDTyping ─┐
                                  ├→ [ ] 6. 受理同値と注釈不要性
@@ -168,7 +182,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 
 ### 進捗サマリ
 
-全7 milestoneのうち，完了4，未着手3である．
+全7 milestoneのうち，完了5，未着手2である．
 
 | milestone | 状態 | 完了した中心部分 | 残る中心部分 |
 |---|---|---|---|
@@ -176,15 +190,12 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 | 1. freeze provenance | 完了 | Origin ledger，public正例／負例回帰 | なし |
 | 2. DD state erasure | 完了 | canonical `Scheme`，全14 familyのfactorizationとidempotence，terminal audit，固定終端への相互erasure，closed-program公開定理 | なし |
 | 3. infer success → DDTyping | 完了 | 全 traversal family の exact-state 相互再構成，terminal audit，public中心定理と回帰 | なし |
-| 4. DDの公開安全性 | 未着手 | closed-program erasureと利用するpreservation／progressは既存 | 動的定理を公開`DDTyping`の前提で合成 |
+| 4. DDの公開安全性 | 完了 | `FrozenSigWF`へのclosedness統合，`DDTyping.safe`，closed inferenceからの公開安全性経路 | なし |
 | 5. DDTyping → infer success | 未着手 | 完全性に必要なexact solver基盤は既存 | traversal完全性，terminal validator完全性 |
 | 6. 受理同値 | 未着手 | なし | milestone 3と5の合成 |
 
-現在の次段は milestone 4であり，完成した closed-program erasure と既存の動的安全性を
-公開 `DDTyping` の前提で合成する．milestone 5の逆向き受理完全性はこれと独立に残る．
-
-milestone 5は1と2に依存しないが，現在はsource soundnessと公開安全性の完成を
-優先するため未着手とする．
+現在の次段は milestone 5である．公開source typingから動的安全性までの順方向は完成しており，
+残る受理接続はDD derivationを実行可能推論の成功へ移す逆向き完全性である．
 
 `infer` 成功から `RuntimeTyping` を再構成する既存定理は，引き続き実行系の内部 certificate への
 独立した経路である．新しい source-facing 経路はまず `DDTyping` を直接再構成する．一般 context
@@ -320,25 +331,28 @@ infer signature context e = some result →
 ```
 
 これにより，公開推論器の成功は唯一の source typing に対して sound である，という通常の API を
-得る．closed signature・空contextへ特殊化した場合は，この定理とmilestone 2の
-`DDTyping.runtimeTyping`を合成して内部 `RuntimeTyping` を回収できる．一般contextの
+得る．空contextへ特殊化した場合は，`FrozenSigWF`が供給するclosednessの下でこの定理と
+milestone 2を`Inference.infer_closed_safe`として合成できる．一般contextの
 `infer_success_runtimeTyping` は既存の独立したreconstruction経路を使う．
 
-### [ ] 4. DDTyping から公開動的安全性を導く
+### [x] 4. DDTyping から公開動的安全性を導く
 
-milestone 2 の state erasure と既存の preservation／progress を合成し，公開定理の premise から
-`RuntimeTyping` を隠す．`FrozenSigWF` は従来どおり実行可能 checker から確立する．
+`FrozenSigWF` に `SchemesClosed` を統合し，milestone 2のstate erasureが必要とするclosednessを
+単一のglobal signature条件から取得する．実行可能checker `frozenSigWFCheck` は全signature
+schemeのclosednessも有限に検査し，成功時に完全な `FrozenSigWF` を構成する．
+function-valuedな`armExhaustive` fieldだけは，signature構築時の定義的等式をchecker soundnessへ渡す．
 
-目標とする公開形：
+公開定理は次の形で完成している．
 
 ```text
 DDTyping signature [] e τ →
 FrozenSigWF signature →
-runtime safety package for e at τ
+DDTyping.SafeResult signature e τ SF
 ```
 
-expression evaluation と matching machine の既存定理をこの入口から利用できること，および
-`Soundness` module の公開結果が source typing と runtime safety を同時に返すことを完了条件とする．
+`DDTyping.safe` は同じ型の内部 `RuntimeTyping` と `CoreSafety` を返すため，expression evaluationと
+matching machineの既存定理をこの入口から利用できる．`Inference.SafeResult` は推論成功から得た
+source `DDTyping` も保持し，`Inference.infer_closed_safe` はclosed inferenceを同じDD入口へ通す．
 
 ### [ ] 5. DDTyping に対する推論器の受理完全性を証明する
 
@@ -386,6 +400,9 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 - `infer signature context expression = some result` から
   `DDTyping signature context expression result.resolvedTarget` を導く．
 - closed signature上で `DDTyping signature [] e τ` から `RuntimeTyping signature [] e τ` を導く．
+- `FrozenSigWF` は全signature schemeのclosednessを含み，実行可能checkerがこの条件も検査する．
+- `DDTyping signature [] e τ` と `FrozenSigWF signature` から，同じ型の内部certificateと
+  concrete safetyを束ねた `DDTyping.SafeResult` を導く．
 - `infer` の成功から reconstruction certificate と `RuntimeTyping` を再構成できる．
 - `FrozenSigWF` の下で concrete evaluation と matching machine の安全性が成り立つ．
 - `sorry`，`admit`，project-defined `axiom` はない．
@@ -398,7 +415,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingInferenceSoundness*`, `DemandTypingErasure`, `DemandTypingRegression*` | raw規則，intrinsic Origin certificate，推論成功からpublic DD typingへの再構成，state erasureと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
-| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |
+| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，`DDTyping.safe`による公開安全性入口 |
 | fragments | `DamasMilner`, `DMTerminalAcceptance` | pattern-free DM 断片 |
 
 詳細な定義・定理・回帰の対応は [`docs/details.md`](docs/details.md)，論文形式の規則は

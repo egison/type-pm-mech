@@ -86,29 +86,33 @@ $\mathsf{RuntimeTyping}$ は source acceptance ではなく，solver stateを持
 
 \subsection{動的安全性}
 
-freeze 済み signature の checker が $\mathsf{FrozenSigWF}$ を確立する．その下で，typed
+freeze 済み signature の checker は，全schemeのbinder外にmetavariableがないことと動的整合性を
+一つに束ねた$\mathsf{FrozenSigWF}$を確立する．function-valuedなexhaustiveness checkerだけは，
+signature構築時に固定した実装との等式をchecker soundnessへ渡す．その下で，typed
 environment における評価は $\mathsf{RuntimeTyping}$ を $\mathsf{ValueTy}$ へ保存する．matching
 machine について，typed state の一段保存，局所 progress，到達可能 state の保存，成功 branch
 の substitution typing を証明済みである．空 successor 列は正当な match failure であり stuck
 ではない．一般の program termination は主張しない．
 
-\subsection{DDTyping から安全性への構成要素}
+\subsection{DDTyping からの公開安全性}
 
-目標とするsource-facingな公開安全性定理の構造は模式的に次である．ここで
-$\mathsf{RuntimeSafe}$はLeanの単一judgment名ではなく，$\mathsf{CoreSafety}$が束ねる
-preservation，progress，到達可能性，成功branch typingを略記する．
+source-facingな公開安全性定理は次の形で機械化済みである．
 \[
-\Sighat.\mathsf{SchemesClosed}
-\Longrightarrow
-\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
-\Longrightarrow
-\mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)
-\Longrightarrow
-\mathsf{RuntimeSafe}(\Sighat,e,\tau).
+\frac{
+  \mathsf{FrozenSigWF}(\Sighat)
+  \qquad
+  \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+}{
+  \mathsf{SafeResult}_{DD}(\Sighat,e,\tau,\mathcal S_F)
+}
+\;\rn{DD-Safety}
 \]
-第一の矢印と，$\mathsf{RuntimeTyping}$を前提とする$\mathsf{CoreSafety}$の各構成要素は
-機械化済みである．$\mathsf{DDTyping}$を入口として後者を一つに束ねる公開定理は今後の接続である．
-第一の矢印では，入力cutより前のorigin policyを保存する
+$\mathsf{SafeResult}_{DD}$はLeanの$\mathsf{DDTyping.SafeResult}$を表し，
+$\mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)$と
+$\mathsf{CoreSafety}(\Sighat,\mathcal S_F)$を保持する．従って内部certificateを公開定理のpremiseに
+露出せず，同じ公開型でevaluationとmatching machineの安全性を利用できる．
+
+この定理のstate-erasure部分では，入力cutより前のorigin policyを保存する
 supply-scopedな残余substitutionと，各局所出力を一つのroot終端substitutionへ結ぶ
 $\mathsf{StateFactorization}$を使う．全14 Origin familyのfactorizationとconstructor-wise erasureを
 一つの終端cutへ固定した相互帰納にまとめ，supply，prevailing substitution，ledgerを消去する．
@@ -131,7 +135,9 @@ $\mathsf{CapabilityDemand}$，slot-to-slotは終端型等式へ消去される�
 \mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)
 \]
 が成立する．certificateの存在をDD ruleのpremiseに置く循環的な定義は用いず，DD derivation自身の
-solved-form保存，Origin history，terminal auditから射影する．
+solved-form保存，Origin history，terminal auditから射影する．このclosednessは低レベルerasureの
+正確なpremiseとして残るが，公開callerは別に渡さない．$\mathsf{FrozenSigWF}$が
+$\Sighat.\mathsf{SchemesClosed}$をfieldとして保持し，実行可能checkerが全tableについて検査する．
 
 \subsection{受理完全性}
 
@@ -152,7 +158,8 @@ Origin transition を executable trace および terminal validator に対応付
 ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，全14 raw familyの
 solved-form保存，terminal audit，terminal-fixedな相互runtime erasure，closed-programの
 $\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{DDTyping}$および
-$\mathsf{RuntimeTyping}$へのreconstruction，concrete dynamic safetyはLean~4に機械化済みである．
+$\mathsf{RuntimeTyping}$へのreconstruction，$\mathsf{DDTyping.safe}$によるsource-facingな公開安全性，
+concrete dynamic safetyはLean~4に機械化済みである．
 public freeze回帰も閉じている．受理接続に関しては，逆向きのDD／infer受理完全性だけが
-未完成である．source-facingな公開安全性のbundled theoremは別の今後の接続である．
+未完成である．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

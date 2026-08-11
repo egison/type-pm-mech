@@ -5253,14 +5253,6 @@ theorem instantiateDualScheme_boundedBy {q : InferenceBase.FreshSupply}
 
 /-! ### Closed signature schemes -/
 
-/-- A constructor scheme with no free variables outside its binders. -/
-def CtorScheme.Closed (scheme : CtorScheme) : Prop :=
-  scheme.fcv = [] ∧ scheme.ftv = []
-
-/-- A dual scheme with no free variables outside its binders. -/
-def DualScheme.Closed (scheme : DualScheme) : Prop :=
-  scheme.fcv = [] ∧ scheme.ftv = []
-
 /-- A closed constructor scheme is bounded by every supply. -/
 theorem CtorScheme.Closed.boundedBy {q : InferenceBase.FreshSupply}
     {scheme : CtorScheme} (closed : scheme.Closed) :
@@ -5284,120 +5276,6 @@ theorem DualScheme.Closed.boundedBy {q : InferenceBase.FreshSupply}
   · intro varId mem
     rw [closed.2] at mem
     exact nomatch mem
-
-instance : DecidablePred CtorScheme.Closed := fun scheme =>
-  decidable_of_iff (scheme.fcv = [] ∧ scheme.ftv = []) Iff.rfl
-
-instance : DecidablePred DualScheme.Closed := fun scheme =>
-  decidable_of_iff (scheme.fcv = [] ∧ scheme.ftv = []) Iff.rfl
-
-/-- Every scheme reachable from the frozen lookup tables is closed.  This
-is the signature-closedness condition of the freshness invariant: a frozen
-signature never leaks an ambient inference metavariable. -/
-structure FrozenSig.SchemesClosed (signature : FrozenSig) : Prop where
-  dataCtors : ∀ {name : String} {scheme : CtorScheme},
-    signature.findDataCtor name = some scheme → scheme.Closed
-  patternCtors : ∀ {name : String}
-    {entry : PatternCtorScheme signature.observability},
-    signature.findPatternCtor name = some entry → entry.scheme.Closed
-  patternFuns : ∀ {name : String} {scheme : DualScheme},
-    signature.findPatternFun name = some scheme → scheme.Closed
-  primitives : ∀ {op : PrimOp} {scheme : CtorScheme},
-    signature.findPrimitive op = some scheme → scheme.Closed
-  /-- The complete table representation carries no free capability
-  metavariables, including entries shadowed by lookup. -/
-  signatureCaps : signature.fcv = []
-  /-- Ordinary free metavariables are absent from the complete table
-  representation as well. -/
-  signatureTargets : signature.ftv = []
-
-/-- Entry-wise sufficient condition for signature closedness: for a
-concrete frozen signature every table is a finite literal, so each
-hypothesis is decidable. -/
-theorem FrozenSig.SchemesClosed.of_entries {signature : FrozenSig}
-    (dataClosed : ∀ entry ∈ signature.dataCtors, entry.2.Closed)
-    (patternClosed : ∀ entry ∈ signature.patternCtors,
-      entry.2.scheme.Closed)
-    (funClosed : ∀ entry ∈ signature.patternFuns, entry.2.Closed)
-    (primClosed : ∀ entry ∈ signature.primitives, entry.2.Closed) :
-    signature.SchemesClosed := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
-  · intro name scheme hfind
-    unfold FrozenSig.findDataCtor at hfind
-    cases hlist : List.find? (fun entry => entry.1 == name)
-        signature.dataCtors with
-    | none => rw [hlist] at hfind; exact nomatch hfind
-    | some entry =>
-        rw [hlist] at hfind
-        cases hfind
-        exact dataClosed entry (List.mem_of_find?_eq_some hlist)
-  · intro name entry hfind
-    unfold FrozenSig.findPatternCtor at hfind
-    cases hlist : List.find? (fun entry => entry.1 == name)
-        signature.patternCtors with
-    | none => rw [hlist] at hfind; exact nomatch hfind
-    | some found =>
-        rw [hlist] at hfind
-        cases hfind
-        exact patternClosed found (List.mem_of_find?_eq_some hlist)
-  · intro name scheme hfind
-    unfold FrozenSig.findPatternFun at hfind
-    cases hlist : List.find? (fun entry => entry.1 == name)
-        signature.patternFuns with
-    | none => rw [hlist] at hfind; exact nomatch hfind
-    | some entry =>
-        rw [hlist] at hfind
-        cases hfind
-        exact funClosed entry (List.mem_of_find?_eq_some hlist)
-  · intro op scheme hfind
-    unfold FrozenSig.findPrimitive at hfind
-    cases hlist : List.find? (fun entry => entry.1 == op)
-        signature.primitives with
-    | none => rw [hlist] at hfind; exact nomatch hfind
-    | some entry =>
-        rw [hlist] at hfind
-        cases hfind
-        exact primClosed entry (List.mem_of_find?_eq_some hlist)
-  · apply List.eq_nil_iff_forall_not_mem.mpr
-    intro varId membership
-    simp only [FrozenSig.fcv, List.mem_append] at membership
-    rcases membership with ((dataMem | patternMem) | funMem) | primMem
-    · rcases List.mem_flatMap.mp dataMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(dataClosed entry entryMem).1] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp patternMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(patternClosed entry entryMem).1] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp funMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(funClosed entry entryMem).1] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp primMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(primClosed entry entryMem).1] at varMem
-      contradiction
-  · apply List.eq_nil_iff_forall_not_mem.mpr
-    intro varId membership
-    simp only [FrozenSig.ftv, List.mem_append] at membership
-    rcases membership with ((dataMem | patternMem) | funMem) | primMem
-    · rcases List.mem_flatMap.mp dataMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(dataClosed entry entryMem).2] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp patternMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(patternClosed entry entryMem).2] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp funMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(funClosed entry entryMem).2] at varMem
-      contradiction
-    · rcases List.mem_flatMap.mp primMem with
-        ⟨entry, entryMem, varMem⟩
-      rw [(primClosed entry entryMem).2] at varMem
-      contradiction
 
 /-! ### Boundedness of contexts -/
 

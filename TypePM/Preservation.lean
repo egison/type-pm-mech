@@ -45,8 +45,13 @@ theorem basicArmExhaustive_success
           obtain ⟨found, member, environment, matched⟩ := induction tailChecked
           exact ⟨found, by simp [member], environment, matched⟩
 
-/-- Concrete frozen-signature conditions needed by the dynamic kernel. -/
+/-- Public well-formedness conditions for a frozen signature.  Closedness
+supports DD state erasure; the remaining fields are consumed by the dynamic
+kernel. -/
 structure FrozenSigWF (signature : FrozenSig) : Prop where
+  /-- Public frozen signatures contain no metavariables outside scheme
+  binders; all polymorphism is represented by the binders themselves. -/
+  schemesClosed : signature.SchemesClosed
   /-- The distinguished `List` constructors have their concrete core shape. -/
   listSigWF : ListSigWF signature
   /-- Pattern-function lookup is a finite map with no shadowed names. -/

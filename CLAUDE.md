@@ -110,10 +110,13 @@ commit／push はその都度の明示指示がある場合に限るという規
 - 内部の動的安全性は concrete `RuntimeTyping`／`ValueTy`／matching-state judgments 上で
   証明する．公開する最終形は `DDTyping` から state erasure を経てこの定理へ接続する．
   抽象 spec に相対化しない．
+- `FrozenSigWF` は `signature.SchemesClosed` をfieldとして保持し，`frozenSigWFCheck` は全tableの
+  scheme closednessも検査する．source-facingな公開安全性定理に`SchemesClosed`を別premiseとして
+  露出しない．低レベルのstate-erasure補題がこのpredicateを明示的に受けることは許す．
 - primitive-pattern pattern は depth-first・左から右に走査し，一度 hole を通過した後の
   value-pattern-pattern を禁止する（`PPatCoreOrder`）．この順序条件から値パターン
   capture admissibility を導出し，公開 preservation の前提には戻さない．局所的な
   埋込み評価の `StepReady` だけは progress 定理の明示前提としてよい．
-- 動的定理の唯一の global 条件 `FrozenSigWF` は仮定に戻さず，実行可能 checker
+- source-facingな公開安全性の唯一のglobal signature条件 `FrozenSigWF` は仮定に戻さず，実行可能 checker
   `frozenSigWFCheck`＋`frozenSigWFCheck_sound` で確立する．checker は保守的・
   fail closed を維持する．
