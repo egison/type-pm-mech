@@ -135,6 +135,7 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
 - ledger transitionは入力ledgerを保ち，fresh supplyの範囲内だけを追加・freezeする．
 - scheme／dual instance，constructor／fresh allocation，selective export，matcher finalizationの
   origin policyがcertificateのconstructorに固定されている．
+- `capFreezeProgram` と `letCapFreezeProgram` はpublic `DDTyping`では導出不能である．
 
 ## 3. executable inference
 
@@ -198,7 +199,7 @@ canonical coercion plan は reconstruction の factorization を表す内部補�
 `PrincipalityCounterexample` は `RuntimeTyping` certificate family 全体を source principal-type
 specification として使えないことだけを示す．`DDTyping` の principality に関する結果ではない．
 
-## 5. capability freeze と未完成の state erasure
+## 5. capability freeze と state erasure の基盤
 
 capability-origin ledgerは現行DD familyへ統合済みである．raw derivationと同じ構造のOrigin
 certificateが，instance，fresh allocation，selective export，matcher finalization，solve
@@ -213,15 +214,25 @@ admissibility，`let` terminal generalization stabilityを追跡する．public 
   lookup後に別の構造へ強化するraw derivation．
 
 これらは現行public `DDTyping` の正例ではない．Origin-awareな局所solveが該当deltaを拒否することは
-証明済みである．一方，プログラム全体について `¬ DDTyping capFreezeProgram` と
-`¬ DDTyping letCapFreezeProgram` を閉じるnegative regressionはまだ未完成である．or-pattern，
-delegating matcher，let-polymorphic producerのpositive Origin certificateは構成済みである．
+証明済みであり，プログラム全体について `¬ DDTyping capFreezeProgram` と
+`¬ DDTyping letCapFreezeProgram` を閉じるnegative regressionも構成済みである．or-pattern，
+delegating matcher，let-polymorphic producerのpositive Origin certificateも構成済みである．
 
-state erasureの本質的な残課題はledgerの追加ではなく，Origin derivationの各constructorから
-`RuntimeTyping` constructorへ情報を射影する相互帰納証明である．この射影ではsupply，prevailing
-substitution，ledgerを消去しつつ，scheme instanceのvariable-only条件，matcher final capability，
-terminal hole capability，`let` generalizationを回収する．`RuntimeTyping` derivationの存在を
-DDのpremiseにする定義は循環するため採らない．
+state erasureについては，入力cutより前のorigin policyを保存するsupply-scopedな
+`AdmissiblePostBetween` と，終端substitutionをそのpostへ分解する`StateFactorization`を定義済みで
+ある．postの合成，boundedness，ledger refinement，alignment全分岐のfactorizationに加え，式，
+user pattern，primitive pattern，data pattern，arm，clauseを含む全14 Origin familyについて，
+`SchemesClosed`と入力boundednessだけからfactorizationを得る無前提の相互定理がある．canonical
+scheme／dual-scheme instanceについては，rename-only ledgerからbinder imageだけのvariable-only
+transportを回収する補題もある．また，variable，literal，`something`，lambda，tupleについては
+state-freeな`RuntimeTyping`への初期erasure補題を構成済みである．
+
+本質的な残課題は，完成したstate factorizationを使い，Origin derivationの各constructorから
+`RuntimeTyping` constructorへ情報を射影する相互帰納証明を完成することである．この射影では
+supply，prevailing substitution，ledgerを
+消去しつつ，scheme instanceのvariable-only条件，matcher final capability，terminal hole capability，
+`let` generalizationを回収する．`RuntimeTyping` derivationの存在をDDのpremiseにする定義は循環する
+ため採らない．
 
 ## 6. dynamics と安全性
 
@@ -250,7 +261,7 @@ global 条件は `FrozenSigWF` だけである．`SignatureChecker` の `frozenS
 
 ```text
 DDTyping + FrozenSigWF
-  → RuntimeTyping          Origin derivationの射影（未完成）
+  → RuntimeTyping          全familyのstate factorization済み／runtime射影は未完成
   → runtime safety         証明済み
 ```
 
@@ -266,7 +277,7 @@ DDTyping + FrozenSigWF
 
 ## 8. 回帰の読み方
 
-- `DemandTypingRegression`: raw DD の旧freeze反例，局所Origin拒否，state replay，supply boundedness．
+- `DemandTypingRegression`: raw DD の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
@@ -291,6 +302,9 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingOrigin` | 全raw derivationに対応するintrinsic Origin certificateとpublic `DDTyping` wrapper |
 | `DemandTypingLedgerMetatheory` | ledger extension，freeze，supply-scoped transition補題 |
 | `DemandTypingOriginMetatheory` | 全Origin familyのledger evolution定理 |
+| `DemandTypingErasure` | expression四familyのscoped factorizationと初期erasure基盤 |
+| `DemandTypingErasurePatterns` | 全14 Origin familyのpremise-free state factorization |
+| `DemandTypingErasureTransport` | canonical scheme instanceのbinder-image-local transport |
 | `DemandTypingRegression` | raw境界，Origin-aware局所solve，DD回帰 |
 
 ## 9. 検証条件

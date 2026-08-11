@@ -1,4 +1,4 @@
-import TypePM.DemandTypingOrigin
+import TypePM.DemandTypingOriginMetatheory
 import TypePM.CertifiedInferenceRegression
 import TypePM.AcceptanceGapRegression
 import TypePM.RecursiveExamples
@@ -1356,6 +1356,142 @@ theorem producerAny_no_ledger_alignment :
       rw [Subst.apply_id, Subst.apply_id] at pairClass
       nomatch pairClass
 
+/-- The origin-aware public judgment rejects the seeded capability-freeze
+counterexample at the producer's second-use cut. -/
+theorem capFreezeProgram_no_ddTyping (target : Ty) :
+    ¬ DDTyping emptySignature producerContext capFreezeProgram target := by
+  rintro ⟨_raw, _q', _S', _derived, _ledger', origin, _published⟩
+  cases origin with
+  | app functionOrigin _outerAligned _outerArgumentOrigin =>
+  cases functionOrigin with
+  | lam bodyOrigin =>
+  cases bodyOrigin with
+  | tuple componentsOrigin =>
+  cases componentsOrigin with
+  | cons firstOrigin restOrigin =>
+  cases restOrigin with
+  | cons secondOrigin _nilOrigin =>
+  cases firstOrigin with
+  | app firstFunctionOrigin firstAligned firstArgumentOrigin =>
+  have closed : emptySignature.SchemesClosed :=
+    FrozenSig.SchemesClosed.of_entries (fun _ mem => nomatch mem)
+      (fun _ mem => nomatch mem) (fun _ mem => nomatch mem)
+      (fun _ mem => nomatch mem)
+  have producerCapFree : producerScheme.fcv = [] := by decide
+  have producerTyFree : producerScheme.ftv = [] := by decide
+  have producerStable : ∀ post : Subst,
+      producerScheme.applySubst post = producerScheme := by
+    intro post
+    apply Scheme.applySubst_eq_self_of_free_fixed
+    · intro varId mem
+      nomatch producerCapFree ▸ mem
+    · intro varId mem
+      nomatch producerTyFree ▸ mem
+  have innerContextBounded : Context.BoundedBy ⟨1, 2⟩
+      capFreezeInnerContext := by
+    intro entry mem
+    simp only [capFreezeInnerContext, producerContext, List.mem_cons,
+      List.not_mem_nil, or_false] at mem
+    rcases mem with rfl | rfl
+    · exact Scheme.BoundedBy.ofMono (Ty.BoundedBy.varOf (by decide))
+    · exact ⟨
+        (fun varId mem => nomatch producerCapFree ▸ mem),
+        (fun varId mem => nomatch producerTyFree ▸ mem)⟩
+  have firstCuts := firstFunctionOrigin.appCutsBounded firstAligned closed
+    (Subst.boundedBy_id ⟨1, 2⟩) innerContextBounded
+  have firstArgumentContextBounded := innerContextBounded.mono
+    (firstFunctionOrigin.erase.supplyExtends.trans
+      (SupplyExtends.bumpTy _ 2))
+  have firstArgumentSubstBounded := firstArgumentOrigin.outputBounded closed
+    firstCuts.alignedSubst firstArgumentContextBounded
+      firstCuts.argumentDomain
+  have firstArgumentRaw := firstArgumentOrigin.erase
+  cases firstFunctionOrigin with
+  | var lookup1 =>
+  simp [Context.applySubst, Context.find?] at lookup1
+  subst_vars
+  change DDAlignTypesWithLedger [] Subst.id (.var 1)
+    (.fn (.var 2) (.var 3)) _ at firstAligned
+  obtain ⟨domainImage, domainView⟩ :=
+    firstAligned.var_fn_domain_variable (by decide) (by decide) (by decide)
+  have firstOutput := firstAligned.output_equal
+  cases firstArgumentOrigin with
+  | mk somethingOrigin firstArgumentAligned =>
+  cases somethingOrigin with
+  | something =>
+  have firstArgumentReplay := DDAlign.replayExtends firstArgumentAligned.erase
+  cases firstArgumentAligned with
+  | productMatcherLift _ slotView _ =>
+      exact nomatch domainView.symm.trans slotView
+  | slotTupleLift _ _ slotView _ _ =>
+      exact nomatch domainView.symm.trans slotView
+  | matcherToSlot _ slotView _ =>
+      exact nomatch domainView.symm.trans slotView
+  | slotToSlot rawView _ _ _ => nomatch rawView
+  | ordinary _ firstArgumentTypes =>
+  have argumentOutput := firstArgumentTypes.output_equal
+  cases firstArgumentTypes with
+  | matcherPair _ rightView _ _ =>
+      exact nomatch domainView.symm.trans rightView
+  | slotPair leftView _ _ _ => nomatch leftView
+  | ordinary _ _firstArgumentSafe =>
+  have sharedOutput := firstArgumentReplay.apply_eq firstOutput
+  cases secondOrigin with
+  | app secondFunctionOrigin secondAligned secondArgumentOrigin =>
+  have secondContextBounded := firstArgumentContextBounded.mono
+    firstArgumentRaw.supplyExtends
+  have secondCuts := secondFunctionOrigin.appCutsBounded secondAligned closed
+    firstArgumentSubstBounded secondContextBounded
+  cases secondFunctionOrigin with
+  | var lookup2 =>
+  simp [Context.applySubst, Context.find?] at lookup2
+  subst_vars
+  rw [InferenceBase.instantiateScheme_mono_value] at secondAligned
+  have initialTy :
+      (Inference.initialSupply emptySignature producerContext).nextTy = 1 :=
+    by decide
+  rw [initialTy] at secondAligned
+  rw [sharedOutput] at secondAligned
+  simp only [InferenceBase.instantiateScheme_mono_supply, initialTy,
+    Nat.reduceAdd] at argumentOutput secondAligned
+  simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply]
+    at argumentOutput secondAligned
+  rw [← argumentOutput] at secondAligned
+  have secondOutput := secondAligned.output_equal
+  simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply]
+    at secondOutput
+  injection secondOutput with secondDomainOutput _secondCodomainOutput
+  cases secondArgumentOrigin with
+  | mk producerOrigin producerAligned =>
+  cases producerOrigin with
+  | var lookupProducer =>
+  simp [Context.applySubst, Context.find?, producerContext, producerStable]
+    at lookupProducer
+  subst_vars
+  have initialCap :
+      (Inference.initialSupply emptySignature producerContext).nextCap = 1 :=
+    by decide
+  simp only [InferenceBase.instantiateScheme_mono_supply, initialTy,
+    initialCap, Nat.reduceAdd] at producerAligned secondCuts
+  simp [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
+    InferenceBase.freshCapSubst, InferenceBase.freshTySubst, producerScheme,
+    Cap.apply, Subst.apply, Ty.applyCapability, Ty.applyTarget]
+    at producerAligned
+  apply producerAligned.not_of_nonStructuralMatcher_any
+  · change _ = Ty.matcher (.var ⟨1⟩) _
+    simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget]
+    congr 1
+    simpa [Cap.apply] using secondCuts.argumentFreshCapFixed
+  · simpa [Subst.apply, Ty.applyCapability, Ty.applyTarget] using
+      secondDomainOutput.symm
+  · intro structural
+    change (DDLedger.markSchemeInstance _ ⟨1, 7⟩
+      producerScheme).originOf ⟨1⟩ = .structuralFlexible at structural
+    rw [DDLedger.markSchemeInstance_origin_of_mem _ ⟨1, 7⟩
+      producerScheme ⟨1⟩
+        (by simp [Inference.freshCapImages, producerScheme])] at structural
+    cases structural
+
 /-- No instance of the quantified producer is `Any`-capped: the declarative
 value flow maps the capability binder only to a variable. -/
 theorem producerScheme_no_any_instance (target : Ty) :
@@ -1566,6 +1702,255 @@ theorem letCapAny_no_ledger_alignment :
   | ordinary pairClass _ =>
       rw [Subst.apply_id, Subst.apply_id] at pairClass
       nomatch pairClass
+
+/-- The public origin-aware judgment rejects the let-generalized capability
+freeze counterexample at its first body use: the generalized capability
+binder is instantiated as a rename-only fresh image, while `something`
+demands `Any`. -/
+theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
+    ¬ DDTyping packSignature letCapContext letCapFreezeProgram target := by
+  rintro ⟨_raw, _q', _S', _derived, _ledger', origin, _published⟩
+  have initial : Inference.initialSupply packSignature letCapContext =
+      ⟨1, 1⟩ := by decide
+  cases origin with
+  | letE valueOrigin bodyOrigin stable =>
+  cases valueOrigin with
+  | lam valueBodyOrigin =>
+  cases valueBodyOrigin with
+  | ctor packLookup packArgsOrigin =>
+  have packFound : packSignature.findDataCtor "Pack" = some packScheme :=
+    by decide
+  rw [packFound] at packLookup
+  injection packLookup with pinnedPack
+  subst pinnedPack
+  cases packArgsOrigin with
+  | cons packArgOrigin packArgsNil =>
+  cases packArgOrigin with
+  | mk xOrigin valueAligned =>
+  cases xOrigin with
+  | var xLookup =>
+  simp [initial, Context.find?] at xLookup
+  subst_vars
+  cases packArgsNil with
+  | nil =>
+  cases valueAligned with
+  | productMatcherLift rawProduct _ _ =>
+      rw [InferenceBase.instantiateScheme_mono_value, Subst.apply_id]
+        at rawProduct
+      nomatch rawProduct
+  | slotTupleLift _ _ expectedSlot _ _ =>
+      simp [initial, packScheme] at expectedSlot
+  | matcherToSlot _ expectedSlot _ =>
+      simp [initial, packScheme] at expectedSlot
+  | slotToSlot rawSlot _ _ _ =>
+      rw [InferenceBase.instantiateScheme_mono_value, Subst.apply_id]
+        at rawSlot
+      nomatch rawSlot
+  | ordinary valueClass valueTypeAligned =>
+  change DDAlignTypesWithLedger _ Subst.id (.var 1)
+    (.matcher (.var ⟨1⟩) (.var 2)) _ at valueTypeAligned
+  cases valueTypeAligned with
+  | matcherPair leftView _ _ _ =>
+      rw [Subst.apply_id] at leftView
+      nomatch leftView
+  | slotPair leftView _ _ _ =>
+      rw [Subst.apply_id] at leftView
+      nomatch leftView
+  | @ordinary valueDelta valuePairClass valueSafe =>
+  have canonicalUnifies :
+      (Subst.mk CapSubst.id
+          (Unification.TySubst.single 1
+            (.matcher (.var ⟨1⟩) (.var 2)))).apply (.var 1) =
+        (Subst.mk CapSubst.id
+          (Unification.TySubst.single 1
+            (.matcher (.var ⟨1⟩) (.var 2)))).apply
+          (.matcher (.var ⟨1⟩) (.var 2)) :=
+    (ExactPairedMGU.varLeft 1 (.matcher (.var ⟨1⟩) (.var 2))
+      (by decide)).1.1
+  obtain ⟨valueCap, valueCapImage⟩ :=
+    valueSafe.exact.1.cap_image_var_of_fixing_unifier canonicalUnifies
+      (varId := ⟨1⟩) rfl
+  have valueEquation := valueSafe.exact.1.1
+  rw [Subst.apply_id, Subst.apply_id] at valueEquation
+  have valueDomainView :
+      valueDelta.apply (.var 1) =
+        .matcher (.var valueCap) (valueDelta.apply (.var 2)) := by
+    simpa only [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+      Cap.apply, valueCapImage] using valueEquation
+  have valueCapBinder : valueCap ∈
+      (packSignature.generalize
+        (Context.applySubst (Subst.seq valueDelta Subst.id) letCapContext)
+        ((Subst.seq valueDelta Subst.id).apply
+          (.fn (.var 1) (.data "Packed" [])))).capBinders := by
+    apply mem_generalize_capBinders
+    · rw [Subst.seq_apply, Subst.apply_id]
+      change valueCap ∈
+        (Ty.fn (valueDelta.apply (.var 1))
+          (valueDelta.apply (.data "Packed" []))).fcv
+      rw [valueDomainView]
+      simp [Ty.fcv, Cap.fcv]
+    · intro inEnvironment
+      rw [List.mem_append] at inEnvironment
+      rcases inEnvironment with inSignature | inContext
+      · simp [AcceptanceGapRegression.packSignature, FrozenSig.fcv,
+          packScheme, CtorScheme.fcv, Ty.fcvList, Ty.fcv, Cap.fcv]
+          at inSignature
+      · change valueCap ∈
+          (Scheme.mono
+            (valueDelta.apply (.matcher (.con "c" []) .int))).fcv
+          at inContext
+        simp [Scheme.fcv, Scheme.mono, Ty.fcv, Cap.apply, Cap.applyList,
+          Cap.fcv, Cap.fcvList] at inContext
+  cases bodyOrigin with
+  | tuple componentsOrigin =>
+  cases componentsOrigin with
+  | cons firstOrigin restOrigin =>
+  cases restOrigin with
+  | cons secondOrigin nilOrigin =>
+  cases firstOrigin with
+  | app firstFunctionOrigin firstAligned firstArgumentOrigin =>
+  cases firstFunctionOrigin with
+  | @var firstQ firstS firstContext firstName firstScheme firstLedger
+      firstLookup =>
+  simp [Context.applySubst, Context.find?] at firstLookup
+  subst_vars
+  have valueCapBinder' : valueCap ∈
+      (packSignature.generalize (Context.applySubst valueDelta letCapContext)
+        (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))).capBinders := by
+    simpa [Subst.seq_apply] using valueCapBinder
+  let generalized := packSignature.generalize
+    (Context.applySubst valueDelta letCapContext)
+    (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))
+  let firstScheme := generalized.applySubst valueDelta
+  let firstSupply : InferenceBase.FreshSupply := ⟨2, 3⟩
+  let firstPostSupply :=
+    (InferenceBase.instantiateScheme firstSupply firstScheme).supply
+  let preLookupLedger :=
+    DDLedger.freezeExport
+      (DDLedger.markSchemeInstance
+        (DDLedger.markCtorInstance [] ⟨1, 2⟩ packScheme)
+        ⟨2, 3⟩ (Scheme.mono (.var 1)))
+      valueDelta
+      (Inference.freshCapImages ⟨1, 2⟩ packScheme.capBinders)
+      (InferenceBase.instantiateCtorScheme ⟨1, 2⟩ packScheme).value.2
+  have instanceView :=
+    SchemeInstanceCapOccurrenceView.ofGeneralizedBinder
+      preLookupLedger firstSupply packSignature
+      (Context.applySubst valueDelta letCapContext)
+      (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))
+      valueDelta valueCapBinder'
+  have generalizedBody : generalized.body =
+      .fn (.matcher (.var valueCap) (valueDelta.apply (.var 2)))
+        (.data "Packed" []) := by
+    change valueDelta.apply (.fn (.var 1) (.data "Packed" [])) = _
+    rw [Subst.apply_fn, valueDomainView]
+    rfl
+  have firstSchemeBody : firstScheme.body =
+      .fn (.matcher (.var valueCap)
+        ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
+          (valueDelta.target.mask generalized.tyBinders)).apply
+            (valueDelta.apply (.var 2))))
+        ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
+          (valueDelta.target.mask generalized.tyBinders)).apply
+            (.data "Packed" [])) := by
+    exact Scheme.applySubst_body_fnMatcherView_of_bound generalized
+      valueDelta valueCapBinder' generalizedBody
+  have instantiatedView :=
+    instanceView.toSchemeInstanceCapView.value_fnMatcherView firstSchemeBody
+  let firstImage : CapVar := ⟨firstSupply.nextCap + valueCap.id⟩
+  have firstImageNe : firstImage ≠ ⟨1⟩ := by
+    intro equality
+    have ids := congrArg CapVar.id equality
+    simp [firstImage, firstSupply] at ids
+    omega
+  have valueDeltaFixesFirstImage : valueDelta.cap firstImage =
+      .var firstImage := by
+    apply valueSafe.exact.2.1
+    simpa [Subst.apply_id, Ty.fcv, Cap.fcv] using firstImageNe
+  have resolvedInstance :
+      valueDelta.apply
+          (InferenceBase.instantiateScheme firstSupply firstScheme).value =
+        .fn
+          (.matcher (.var firstImage)
+            (valueDelta.apply
+              ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+                ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
+                  (valueDelta.target.mask generalized.tyBinders)).apply
+                    (valueDelta.apply (.var 2))))))
+          (valueDelta.apply
+            ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+              ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
+                (valueDelta.target.mask generalized.tyBinders)).apply
+                  (.data "Packed" [])))) := by
+    rw [instantiatedView]
+    change Ty.fn
+      (Ty.matcher
+        (((Cap.var firstImage).apply
+          valueDelta.cap)) _)
+      _ = _
+    rw [show (Cap.var firstImage).apply
+      valueDelta.cap = .var firstImage from valueDeltaFixesFirstImage]
+    simp [firstScheme]
+    constructor <;> rfl
+  simp only [initial, InferenceBase.instantiateScheme_mono_supply]
+    at firstAligned
+  simp [packScheme] at firstAligned
+  change DDAlignTypesWithLedger
+    (DDLedger.markSchemeInstance preLookupLedger firstSupply firstScheme)
+    valueDelta
+    (InferenceBase.instantiateScheme firstSupply firstScheme).value
+    (.fn (.var firstPostSupply.nextTy)
+      (.var (firstPostSupply.nextTy + 1))) _
+    at firstAligned
+  cases firstAligned with
+  | matcherPair leftView _ _ _ =>
+      rw [resolvedInstance] at leftView
+      nomatch leftView
+  | slotPair leftView _ _ _ =>
+      rw [resolvedInstance] at leftView
+      nomatch leftView
+  | @ordinary functionDelta functionClass functionSafe =>
+  have functionEquation := functionSafe.exact.1.1
+  rw [resolvedInstance] at functionEquation
+  injection functionEquation with domainEquation codomainEquation
+  have firstImageOrigin := instanceView.markedOrigin
+  rcases functionSafe.admissible.cap.renameOnly firstImageOrigin with
+    ⟨renamedImage, renamedEquation, renamedNonStructural⟩
+  have expectedDomainView :
+      (Subst.seq functionDelta valueDelta).apply
+          (.var firstPostSupply.nextTy) =
+        .matcher (.var renamedImage)
+          (functionDelta.apply
+            (valueDelta.apply
+              ((InferenceBase.instantiateScheme firstSupply firstScheme).subst.apply
+                ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
+                  (valueDelta.target.mask generalized.tyBinders)).apply
+                    (valueDelta.apply (.var 2)))))) := by
+    rw [Subst.seq_apply]
+    have domainEquation' := domainEquation.symm
+    simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply]
+      at domainEquation'
+    rw [renamedEquation] at domainEquation'
+    simpa only [Subst.apply, Ty.applyCapability,
+      Ty.applyTarget, Cap.apply] using domainEquation'
+  cases firstArgumentOrigin with
+  | mk somethingOrigin firstArgumentAligned =>
+  cases somethingOrigin with
+  | something =>
+  have rawSomethingView :
+      (Subst.seq functionDelta valueDelta).apply
+          (.matcher .any
+            (.var
+              { firstPostSupply with
+                nextTy := firstPostSupply.nextTy + 2 }.nextTy)) =
+        .matcher .any
+          ((Subst.seq functionDelta valueDelta).apply
+            (.var
+              { firstPostSupply with
+                nextTy := firstPostSupply.nextTy + 2 }.nextTy)) :=
+    rfl
+  exact firstArgumentAligned.not_of_any_nonStructuralMatcher
+    rawSomethingView expectedDomainView renamedNonStructural
 
 /-- The second use structures its own fresh instance capability to
 `con "c" []`: two divergent structural solves of the same generalized

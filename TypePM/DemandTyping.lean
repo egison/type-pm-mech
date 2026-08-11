@@ -4042,6 +4042,230 @@ theorem Ty.memList_fcvList_applyTargetList :
 
 end
 
+mutual
+
+/-- Target substitution cannot erase a capability occurrence already present
+in the target skeleton.  It may add capability occurrences through target
+images, but every original capability leaf survives. -/
+theorem Ty.mem_fcv_applyTarget_of_mem :
+    ∀ (target : Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ target.fcv → varId ∈ (target.applyTarget T).fcv
+  | .var _, _, _, mem => nomatch mem
+  | .skolem _, _, _, mem => nomatch mem
+  | .unit, _, _, mem => nomatch mem
+  | .int, _, _, mem => nomatch mem
+  | .bool, _, _, mem => nomatch mem
+  | .data name fields, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList_of_mem fields T varId mem
+  | .prod components, T, varId, mem =>
+      Ty.memList_fcvList_applyTargetList_of_mem components T varId mem
+  | .fn domain codomain, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact List.mem_append.mpr (Or.inl
+          (Ty.mem_fcv_applyTarget_of_mem domain T varId here))
+      · exact List.mem_append.mpr (Or.inr
+          (Ty.mem_fcv_applyTarget_of_mem codomain T varId there))
+  | .matcher capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact List.mem_append.mpr (Or.inl here)
+      · exact List.mem_append.mpr (Or.inr
+          (Ty.mem_fcv_applyTarget_of_mem target T varId there))
+  | .slot capability target, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact List.mem_append.mpr (Or.inl here)
+      · exact List.mem_append.mpr (Or.inr
+          (Ty.mem_fcv_applyTarget_of_mem target T varId there))
+
+/-- List form of `Ty.mem_fcv_applyTarget_of_mem`. -/
+theorem Ty.memList_fcvList_applyTargetList_of_mem :
+    ∀ (types : List Ty) (T : TySubst) (varId : CapVar),
+      varId ∈ Ty.fcvList types →
+        varId ∈ Ty.fcvList (Ty.applyTargetList T types)
+  | [], _, _, mem => nomatch mem
+  | target :: targets, T, varId, mem => by
+      rcases List.mem_append.mp mem with here | there
+      · exact List.mem_append.mpr (Or.inl
+          (Ty.mem_fcv_applyTarget_of_mem target T varId here))
+      · exact List.mem_append.mpr (Or.inr
+          (Ty.memList_fcvList_applyTargetList_of_mem targets T varId there))
+
+end
+
+/-! ### Scheme-instance capability views
+
+These small certificates connect the three representations of one quantified
+capability at a context lookup: its scheme binder, the fresh variable placed
+in the executable instance, and the rename-only entry installed in the DD
+origin ledger.  Keeping the connection explicit avoids reconstructing fresh
+image arithmetic during derivation inversion. -/
+
+/-- The fresh capability image allocated for one expression-scheme binder,
+together with its origin at the post-lookup ledger cut. -/
+structure SchemeInstanceCapView (ledger : CapabilityOriginLedger)
+    (q : InferenceBase.FreshSupply) (scheme : Scheme)
+    (binder image : CapVar) : Prop where
+  binderMem : binder ∈ scheme.capBinders
+  imageEquation :
+    (InferenceBase.instantiateScheme q scheme).subst.cap binder = .var image
+  imageMem : image ∈ Inference.freshCapImages q scheme.capBinders
+  markedOrigin :
+    (DDLedger.markSchemeInstance ledger q scheme).originOf image =
+      .renameOnly
+
+/-- A scheme-instance capability view whose binder actually occurs in the
+scheme body.  The corresponding fresh image therefore occurs in the
+instantiated value as well. -/
+structure SchemeInstanceCapOccurrenceView
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : Scheme) (binder image : CapVar) : Prop
+    extends SchemeInstanceCapView ledger q scheme binder image where
+  bodyMem : binder ∈ scheme.body.fcv
+  valueMem : image ∈ (InferenceBase.instantiateScheme q scheme).value.fcv
+
+/-- Capture-avoiding scheme substitution preserves the binder lists. -/
+@[simp] theorem Scheme.applySubst_capBinders (scheme : Scheme) (S : Subst) :
+    (scheme.applySubst S).capBinders = scheme.capBinders := rfl
+
+/-- A bound capability occurrence in a scheme body survives every
+capture-avoiding external substitution because masking fixes the binder. -/
+theorem Scheme.mem_applySubst_body_fcv_of_bound
+    (scheme : Scheme) (S : Subst) {binder : CapVar}
+    (binderMem : binder ∈ scheme.capBinders)
+    (bodyMem : binder ∈ scheme.body.fcv) :
+    binder ∈ (scheme.applySubst S).body.fcv := by
+  let masked := Subst.mk (S.cap.mask scheme.capBinders)
+    (S.target.mask scheme.tyBinders)
+  have maskedImage : masked.cap binder = .var binder := by
+    simp [masked, CapSubst.mask, binderMem]
+  have inCapabilityApplied : binder ∈
+      (scheme.body.applyCapability masked.cap).fcv := by
+    rw [Ty.fcv_applyCapability]
+    simp only [List.mem_flatMap]
+    exact ⟨binder, bodyMem, by simp [maskedImage, Cap.fcv]⟩
+  change binder ∈
+    ((scheme.body.applyCapability masked.cap).applyTarget masked.target).fcv
+  exact Ty.mem_fcv_applyTarget_of_mem _ _ _ inCapabilityApplied
+
+/-- Membership in a generalized capability-binder list entails occurrence
+in the generalized body. -/
+theorem FrozenSig.generalize_capBinder_bodyMem
+    (signature : FrozenSig) (context : Context) (target : Ty)
+    {binder : CapVar}
+    (binderMem : binder ∈
+      (signature.generalize context target).capBinders) :
+    binder ∈ (signature.generalize context target).body.fcv := by
+  unfold FrozenSig.generalize TypePM.generalize at binderMem ⊢
+  exact (List.mem_filter.mp (mem_uniqueVars.mp binderMem)).1
+
+/-- Every quantified capability binder has one canonical fresh-image view at
+the lookup cut. -/
+theorem SchemeInstanceCapView.ofBinder
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : Scheme) {binder : CapVar}
+    (binderMem : binder ∈ scheme.capBinders) :
+    SchemeInstanceCapView ledger q scheme binder
+      ⟨q.nextCap + binder.id⟩ := by
+  have imageMem : ⟨q.nextCap + binder.id⟩ ∈
+      Inference.freshCapImages q scheme.capBinders :=
+    List.mem_map.mpr ⟨binder, binderMem, rfl⟩
+  exact
+    { binderMem := binderMem
+      imageEquation := by
+        simp [InferenceBase.instantiateScheme,
+          InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
+          binderMem]
+      imageMem := imageMem
+      markedOrigin := DDLedger.markSchemeInstance_origin_of_mem
+        ledger q scheme _ imageMem }
+
+/-- If a viewed binder is the capability at a function domain's matcher
+head, instantiation exposes its fresh image at that same head. -/
+theorem SchemeInstanceCapView.value_fnMatcherView
+    {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
+    {scheme : Scheme} {binder image : CapVar}
+    (view : SchemeInstanceCapView ledger q scheme binder image)
+    {domain codomain : Ty}
+    (bodyView : scheme.body = .fn (.matcher (.var binder) domain) codomain) :
+    (InferenceBase.instantiateScheme q scheme).value =
+      .fn (.matcher (.var image)
+        ((InferenceBase.instantiateScheme q scheme).subst.apply domain))
+        ((InferenceBase.instantiateScheme q scheme).subst.apply codomain) := by
+  change (InferenceBase.instantiateScheme q scheme).subst.apply scheme.body = _
+  rw [bodyView]
+  change Ty.fn
+      (Ty.matcher
+        ((InferenceBase.instantiateScheme q scheme).subst.cap binder)
+        ((InferenceBase.instantiateScheme q scheme).subst.apply domain))
+      ((InferenceBase.instantiateScheme q scheme).subst.apply codomain) = _
+  rw [view.imageEquation]
+
+/-- Capture-avoiding substitution preserves a matcher-headed function domain
+whose capability variable is bound by the scheme. -/
+theorem Scheme.applySubst_body_fnMatcherView_of_bound
+    (scheme : Scheme) (external : Subst) {binder : CapVar}
+    {domain codomain : Ty}
+    (binderMem : binder ∈ scheme.capBinders)
+    (bodyView : scheme.body = .fn (.matcher (.var binder) domain) codomain) :
+    (scheme.applySubst external).body =
+      .fn (.matcher (.var binder)
+        ((Subst.mk (external.cap.mask scheme.capBinders)
+          (external.target.mask scheme.tyBinders)).apply domain))
+        ((Subst.mk (external.cap.mask scheme.capBinders)
+          (external.target.mask scheme.tyBinders)).apply codomain) := by
+  change (Subst.mk (external.cap.mask scheme.capBinders)
+      (external.target.mask scheme.tyBinders)).apply scheme.body = _
+  rw [bodyView]
+  simp [CapSubst.mask, binderMem, Cap.apply]
+
+/-- If the binder occurs in the scheme body, its canonical fresh image is
+visible in the instantiated type. -/
+theorem SchemeInstanceCapOccurrenceView.ofBodyBinder
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : Scheme) {binder : CapVar}
+    (binderMem : binder ∈ scheme.capBinders)
+    (bodyMem : binder ∈ scheme.body.fcv) :
+    SchemeInstanceCapOccurrenceView ledger q scheme binder
+      ⟨q.nextCap + binder.id⟩ := by
+  let assignment := InferenceBase.instantiateBinders q
+    scheme.capBinders scheme.tyBinders
+  have imageEquation : assignment.subst.cap binder =
+      .var ⟨q.nextCap + binder.id⟩ := by
+    simp [assignment, InferenceBase.instantiateBinders,
+      InferenceBase.freshCapSubst, binderMem]
+  have inCapabilityApplied : ⟨q.nextCap + binder.id⟩ ∈
+      (scheme.body.applyCapability assignment.subst.cap).fcv := by
+    rw [Ty.fcv_applyCapability]
+    simp only [List.mem_flatMap]
+    exact ⟨binder, bodyMem, by simp [imageEquation, Cap.fcv]⟩
+  have valueMem : ⟨q.nextCap + binder.id⟩ ∈
+      (InferenceBase.instantiateScheme q scheme).value.fcv := by
+    change ⟨q.nextCap + binder.id⟩ ∈
+      ((scheme.body.applyCapability assignment.subst.cap).applyTarget
+        assignment.subst.target).fcv
+    exact Ty.mem_fcv_applyTarget_of_mem _ _ _ inCapabilityApplied
+  exact
+    { toSchemeInstanceCapView :=
+        SchemeInstanceCapView.ofBinder ledger q scheme binderMem
+      bodyMem := bodyMem
+      valueMem := valueMem }
+
+/-- Direct lookup view for a binder of a generalized scheme after the
+prevailing substitution has been applied to the body context.  This is the
+shape consumed by the DD `let` rule. -/
+theorem SchemeInstanceCapOccurrenceView.ofGeneralizedBinder
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (signature : FrozenSig) (context : Context) (target : Ty)
+    (external : Subst) {binder : CapVar}
+    (binderMem : binder ∈
+      (signature.generalize context target).capBinders) :
+    SchemeInstanceCapOccurrenceView ledger q
+      ((signature.generalize context target).applySubst external) binder
+      ⟨q.nextCap + binder.id⟩ := by
+  apply SchemeInstanceCapOccurrenceView.ofBodyBinder
+  · simpa using binderMem
+  · exact Scheme.mem_applySubst_body_fcv_of_bound _ _ binderMem
+      (FrozenSig.generalize_capBinder_bodyMem _ _ _ binderMem)
+
 /-! ### Fixedness discharge for solved-form composition
 
 A solved-form prevailing substitution fixes the free variables of its own
@@ -4353,6 +4577,21 @@ structure Subst.BoundedBy (q : InferenceBase.FreshSupply) (S : Subst) :
     S.target varId = .var varId
   targetImagesBounded : ∀ varId : TypePM.TyVar, varId < q.nextTy →
     Ty.BoundedBy q (S.target varId)
+
+/-- A substitution bounded at a cut cannot anticipate the next capability
+metavariable allocated at that cut. -/
+theorem Subst.BoundedBy.freshCapFixed
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    (bounded : S.BoundedBy q) :
+    S.cap ⟨q.nextCap⟩ = .var ⟨q.nextCap⟩ :=
+  bounded.capFixedAbove ⟨q.nextCap⟩ (Nat.le_refl _)
+
+/-- Ordinary-variable counterpart of `freshCapFixed`. -/
+theorem Subst.BoundedBy.freshTargetFixed
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    (bounded : S.BoundedBy q) :
+    S.target q.nextTy = .var q.nextTy :=
+  bounded.targetFixedAbove q.nextTy (Nat.le_refl _)
 
 /-- Capability boundedness is monotone along supply extension. -/
 theorem Cap.BoundedBy.mono {q q' : InferenceBase.FreshSupply}

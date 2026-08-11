@@ -37,8 +37,11 @@ origin を追跡しない局所導出では，量化 producer capability を後�
 $\Any$ へ強化する $\mathit{capFreezeProgram}$ と，let-generalized capability を強化する
 $\mathit{letCapFreezeProgram}$ の問題が現れる．これらは現行 public
 $\mathsf{DDTyping}$ の正例ではない．該当する局所 delta が Origin-aware solve で拒否されることは
-証明済みである．プログラム全体の public negative proof は残作業である一方，or-pattern，
-delegating matcher，let-polymorphic producer の public positive Origin certificate は構成済みである．
+証明済みであり，プログラム全体についても
+$\neg\mathsf{DDTyping}(\mathit{capFreezeProgram})$ と
+$\neg\mathsf{DDTyping}(\mathit{letCapFreezeProgram})$ を閉じる negative regression を構成済みである．
+or-pattern，delegating matcher，let-polymorphic producer の public positive Origin certificate も
+構成済みである．
 
 \subsection{実行可能推論から内部 certificate へ}
 
@@ -81,11 +84,19 @@ machine について，typed state の一段保存，局所 progress，到達可
 \mathsf{RuntimeSafe}(\Sighat,e,\tau).
 \]
 第二の矢印は機械化済みである．第一の矢印に必要な ledger と intrinsic Origin derivation も
-DD family 全体へ統合済みである．未完成なのは，Origin derivation の各 constructor から
-$\mathsf{RuntimeTyping}$ constructor へ情報を写す相互帰納的な state erasure である．この射影は
-supply，prevailing substitution，ledger を消去しつつ，scheme instance の variable-only 条件，
-matcher final capability，terminal hole capability，let generalization を回収しなければならない．
-certificate の存在を DD rule の premise に置く循環的な定義は採らない．
+DD family 全体へ統合済みである．state erasure の基盤として，入力 cut より前の origin policy を
+保存する supply-scoped な残余 substitution と，終端 substitution の state factorization を定義し，
+合成，boundedness，ledger refinement，alignment の各分岐を証明済みである．expression，user
+pattern，primitive pattern，data pattern，arm，clause を含む全14 Origin family について，
+signature closure と入力 boundedness だけから factorization を得る無前提の相互定理がある．canonical
+scheme／dual-scheme instance には binder image だけを ledger から回収する局所 transport 補題がある．
+variable，literal，\texttt{something}，lambda，tuple には初期 erasure 補題がある．
+
+未完成なのは，Origin derivation の全 constructor から $\mathsf{RuntimeTyping}$ constructor へ情報を
+写す相互帰納的な state erasure である．この射影は supply，prevailing substitution，ledger
+を消去しつつ，scheme instance の variable-only 条件，matcher final capability，terminal hole
+capability，let generalization を回収しなければならない．certificate の存在を DD rule の premise に
+置く循環的な定義は採らない．
 
 \subsection{受理完全性}
 
@@ -105,5 +116,6 @@ Origin transition を executable trace および terminal validator に対応付
 全 expression／pattern／arm／clause の raw DD family，それらに対応する intrinsic Origin family，
 ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，公開 inference
 から $\mathsf{RuntimeTyping}$ への reconstruction，concrete dynamic safety は Lean~4 に機械化済みで
-ある．public freeze 回帰の閉包，DD state erasure，DD と infer の受理接続は未完成である．主定理と
-一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．
+ある．public freeze 回帰は閉じており，全14 Origin family の state factorization は実装済みである．
+全14 family の runtime erasure と DD／infer の受理接続は未完成である．
+主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

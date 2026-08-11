@@ -470,4 +470,113 @@ theorem DDClausesOrigin.ledgerEvolution
 
 end
 
+/-! ## Cut-local boundedness
+
+The global `DDSynth.boundedBy` theorem publishes the terminal bound of a
+derivation.  In inversion proofs one often needs the earlier application cut:
+after synthesizing the function and aligning it with the freshly allocated
+function skeleton, but before synthesizing the argument.  The following
+bundle keeps that intermediate supply explicit and exposes the key freshness
+consequence directly. -/
+
+/-- Origin-certified synthesis preserves substitution boundedness.  This is
+the raw boundedness theorem exposed without requiring clients to erase the
+certificate by hand. -/
+theorem DDSynthOrigin.outputBounded
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expression : Expr} {target : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDSynth signature q S context expression target q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    (origin : DDSynthOrigin signature raw ledger ledger')
+    (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context) :
+    S'.BoundedBy q' ∧ target.BoundedBy q' :=
+  origin.erase.boundedBy closed substBounded contextBounded
+
+/-- Origin-certified checking preserves boundedness at its output cut. -/
+theorem DDCheckOrigin.outputBounded
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expression : Expr} {expected : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDCheck signature q S context expression expected q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    (origin : DDCheckOrigin signature raw ledger ledger')
+    (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context)
+    (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q' :=
+  origin.erase.boundedBy closed substBounded contextBounded expectedBounded
+
+/-- Ledger-aware equality alignment preserves a supplied cut bound. -/
+theorem DDAlignTypesWithLedger.outputBounded
+    {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
+    {S : Subst} {left right : Ty} {S' : Subst}
+    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (substBounded : S.BoundedBy q) (leftBounded : left.BoundedBy q)
+    (rightBounded : right.BoundedBy q) : S'.BoundedBy q :=
+  aligned.erase.boundedBy substBounded leftBounded rightBounded
+
+/-- Ledger-aware checking alignment preserves a supplied cut bound. -/
+theorem DDAlignWithLedger.outputBounded
+    {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
+    {S : Subst} {raw expected : Ty} {S' : Subst}
+    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (substBounded : S.BoundedBy q) (rawBounded : raw.BoundedBy q)
+    (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q :=
+  aligned.erase.boundedBy substBounded rawBounded expectedBounded
+
+/-- Boundedness facts at the two internal cuts of an application rule. -/
+structure DDAppCutsBounded
+    (q₁ : InferenceBase.FreshSupply) (S₁ : Subst)
+    (functionTarget : Ty) (S₂ : Subst) : Prop where
+  functionSubst : S₁.BoundedBy q₁
+  functionType : functionTarget.BoundedBy q₁
+  argumentDomain : (Ty.var q₁.nextTy).BoundedBy
+    { q₁ with nextTy := q₁.nextTy + 2 }
+  applicationCodomain : (Ty.var (q₁.nextTy + 1)).BoundedBy
+    { q₁ with nextTy := q₁.nextTy + 2 }
+  alignedSubst : S₂.BoundedBy
+    { q₁ with nextTy := q₁.nextTy + 2 }
+  /-- The function-alignment post cannot anticipate the capability that the
+  argument traversal would allocate next. -/
+  argumentFreshCapFixed :
+    S₂.cap ⟨q₁.nextCap⟩ = .var ⟨q₁.nextCap⟩
+
+/-- Project boundedness of both internal application cuts from the
+origin-certified function child and the ledger-aware function alignment.
+
+Unlike a terminal boundedness theorem, this result retains `q₁` and `S₂`
+in its type, so dependent inversion clients do not need to normalize a large
+whole-program supply expression merely to show that the next capability is
+fresh. -/
+theorem DDSynthOrigin.appCutsBounded
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {function : Expr} {functionTarget : Ty}
+    {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger}
+    {functionRaw : DDSynth signature q S context function functionTarget q₁ S₁}
+    (functionOrigin : DDSynthOrigin signature functionRaw ledger ledger₁)
+    (aligned : DDAlignTypesWithLedger ledger₁ S₁ functionTarget
+      (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂)
+    (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context) :
+    DDAppCutsBounded q₁ S₁ functionTarget S₂ := by
+  obtain ⟨S₁b, functionTargetB⟩ :=
+    functionOrigin.erase.boundedBy closed substBounded contextBounded
+  let argumentSupply : InferenceBase.FreshSupply :=
+    { q₁ with nextTy := q₁.nextTy + 2 }
+  have extension : SupplyExtends q₁ argumentSupply :=
+    SupplyExtends.bumpTy q₁ 2
+  have domainB : Ty.BoundedBy argumentSupply (.var q₁.nextTy) :=
+    Ty.BoundedBy.varOf (show q₁.nextTy < q₁.nextTy + 2 by omega)
+  have codomainB : Ty.BoundedBy argumentSupply
+      (.var (q₁.nextTy + 1)) :=
+    Ty.BoundedBy.varOf
+      (show q₁.nextTy + 1 < q₁.nextTy + 2 by omega)
+  have S₂b : S₂.BoundedBy argumentSupply :=
+    aligned.erase.boundedBy (S₁b.mono extension)
+      (functionTargetB.mono extension) (Ty.BoundedBy.fnOf domainB codomainB)
+  exact ⟨S₁b, functionTargetB, domainB, codomainB, S₂b,
+    S₂b.freshCapFixed⟩
+
 end TypePM

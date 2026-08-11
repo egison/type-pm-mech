@@ -12,7 +12,7 @@ source program
      │
      ▼
  DDTyping                 唯一の source typing
-     │ state erasure      未完成：Origin derivation からの射影が未証明
+     │ state erasure      一部実装：全14 familyのstate factorization
      ▼
  RuntimeTyping            内部の state-free certificate
      │ preservation / progress
@@ -125,13 +125,14 @@ instance，producer export，matcher finalization，solve cut を追跡する．
 canonical initial supply，恒等置換，空 ledger から始まる raw derivationとその certificateの
 組だけを受理する．
 
-残っているのは，この Origin derivation を各 constructor に沿って `RuntimeTyping` へ射影する
-state-erasure 定理である．`capFreezeProgram` と `letCapFreezeProgram` については，origin を
-追跡しない局所 solve が capability を不正に強化できた箇所と，ledger-aware な局所 solve が
-それを拒否することを回帰で固定している．public `DDTyping` 全体としての導出不能性はまだ
-end-to-end 回帰として閉じていない．一方，既存正例の Origin certificate は public wrapper
-まで構成済みである．`RuntimeTyping` の存在を `DDTyping` の premise に埋め込む循環的な定義は
-採らない．
+残っているのは，この Origin derivation を全14 familyのconstructorに沿って
+`RuntimeTyping` へ射影する相互state-erasure定理である．supply-scopedな残余substitutionの
+admissibility，全14 familyの無前提state factorization，canonical scheme instanceの局所transport，
+variable／literal／`something`／lambda／tupleの初期erasure補題までは構成済みである．
+`capFreezeProgram` と `letCapFreezeProgram` については，originを追跡しない局所solveが
+capabilityを不正に強化できる一方，public `DDTyping` ではプログラム全体が導出不能であることを
+end-to-end回帰で固定している．既存正例のOrigin certificateもpublic wrapperまで構成済みで
+ある．`RuntimeTyping` の存在を `DDTyping` の premise に埋め込む循環的な定義は採らない．
 
 二つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
 raw type を使う箇所を cut-resolved view と一致させる必要がある．最終目標は追加 premise の
@@ -144,7 +145,7 @@ DDTyping signature [] e τ →
 
 `nestedCapProgram` と swapped 版は DD で型付かず，推論器も拒否する意図された負例である．
 一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は維持すべき正例で
-あり，public Origin certificate を伴う回帰を milestone 1 で完成させる．
+あり，public Origin certificate を伴う回帰で固定済みである．
 
 ## Roadmap
 
@@ -156,11 +157,11 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 現在の DDTyping／infer／runtime safety
               │
               ▼
-[~] 1. freeze provenance（core 完了／public 負回帰は未完了）
+[x] 1. freeze provenance と public 回帰
               │
         ┌─────┴──────────┐
         ▼                ▼
-[ ] 2. DD state erasure   [ ] 3. infer success → DDTyping
+[~] 2. DD state erasure   [ ] 3. infer success → DDTyping
         │                │
         ▼                ▼
 [ ] 4. DD の公開安全性    [ ] 5. DDTyping → infer success
@@ -182,7 +183,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 - `infer` の成功から reconstruction と `RuntimeTyping` を構成できる．
 - `RuntimeTyping`，`ValueTy`，matching-state judgment 上の動的安全性が証明されている．
 
-### [~] 1. Capability freeze provenance の public 回帰を完成する
+### [x] 1. Capability freeze provenance の public 回帰を完成する
 
 core 実装は完了している．全 DD family の raw derivation に構造を一致させた intrinsic Origin
 certificateがあり，`q; S; Ω` を状態として追跡する．scheme／dual instance は binder imageを
@@ -191,27 +192,37 @@ finalizationは外へ残るstructural leafだけを選択的にfreezeする．or
 cutのledgerに対してadmissibleなdeltaだけを受理する．`let` certificateは終端 substitution 後にも
 同じgeneralization schemeが得られる安定性を要求する．public wrapperも空ledgerから始める．
 
-未完了なのは，このcoreを公開境界で固定する負の回帰である．origin を追跡しない局所導出で
-現れた反例を，新しい public `DDTyping` の正例として扱ってはならない．
+originを追跡しない局所導出で現れた反例は，public `DDTyping` 全体の導出不能性まで閉じた
+negative regressionとして固定されている．
 
 完了条件：
 
 - [x] ledger の extension，freeze，substitution replay に関する基本補題が全 DD family で成り立つ
   （基本的な supply-scoped ledger 補題と transition 補題は実装済み）．
-- [ ] `capFreezeProgram` と `letCapFreezeProgram` が public `DDTyping` では導出不能であることを証明する
-  （問題となる局所導出と ledger-aware solve による拒否の回帰は実装済み）．
+- [x] `capFreezeProgram` と `letCapFreezeProgram` が public `DDTyping` では導出不能であることを証明する
+  （問題となる局所導出，ledger-aware solveによる拒否，program全体のnegative regressionを実装済み）．
 - [x] or-pattern，delegating matcher，let-polymorphic producer など既存の正例について public Origin
   certificate を構成する（実装済み）．
 - [x] `nestedCapProgram`，matcher-expected product application など既存の負例は導出不能なままである．
 - [x] public `DDTyping` は canonical initial ledger から開始し，外部の freeze premise を要求しない．
 
-### [ ] 2. DD state erasure を証明する
+### [~] 2. DD state erasure を証明する
 
 ledger-aware な DD derivation から，supply，prevailing substitution，origin ledger を消去して
 `RuntimeTyping` certificate を構成する．expression だけを個別に処理せず，expression list，
 user pattern，primitive pattern，data pattern，arm，clause の相互 family 全体について射影を
 証明する．`let` では一般化 scheme の binder-local value-flow instance，matcher literalでは
 共有 target と terminal hole capability の一致を回収する．
+
+現在は，入力cutより前のorigin policyだけを制約するsupply-scopedな
+`AdmissiblePostBetween` と，終端substitutionを安全なpostへ分解する`StateFactorization`を定義し，
+合成，boundedness，ledger refinement，alignmentの各分岐について基本補題を証明済みである．
+式のsynthesis／checkingとそれらのlistに加え，user pattern，primitive pattern，data pattern，arm，
+clauseを含む全14 familyのfactorizationを，`SchemesClosed`と入力boundednessだけから得る無前提の
+相互定理として構成済みである．canonical scheme／dual-scheme instanceのbinder imageをrename-only
+ledgerから局所的にtransportする補題と，variable／literal／`something`／lambda／tupleから
+`RuntimeTyping`を得る初期erasure補題もある．未完了なのは，canonical instanceのprovenanceを保った
+全constructorのruntime erasureである．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
@@ -311,7 +322,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | 層 | 主な module | 役割 |
 |---|---|---|
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，public source typingと回帰 |
+| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingErasure`, `DemandTypingErasurePatterns`, `DemandTypingErasureTransport`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，state-erasure基盤，public source typingと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |
