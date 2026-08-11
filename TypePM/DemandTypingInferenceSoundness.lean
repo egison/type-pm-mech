@@ -121,6 +121,66 @@ def DDAlignRun (raw expected : Ty) (initial final : InferState) : Prop :=
       DDAlignWithLedger initial.capabilityOrigins initial.prevailing raw
         expected final.prevailing
 
+/-- Exact-state certificate for one executable ordinary type alignment.
+Alignment preserves the fresh supply and origin ledger while advancing the
+prevailing substitution by the declarative ledger-aware equality rule. -/
+def DDAlignTypesRun (left right : Ty) (initial final : InferState) : Prop :=
+  final.supply = initial.supply ∧
+    final.capabilityOrigins = initial.capabilityOrigins ∧
+      DDAlignTypesWithLedger initial.capabilityOrigins initial.prevailing
+        left right final.prevailing
+
+/-- Dispatching a capability equality through the common resolved solver
+retains the exact origin-safe capability MGU carried by its result. -/
+theorem solveResolvedWithLedger_capEq_originSafeExactCapMGU
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : ConstraintOrigin} {left right : Cap} {step : SolveStep}
+    (success : solveResolvedWithLedger ledger solveCount origin
+      (.capEq left right) = some step) :
+    step.delta.target = TySubst.id ∧
+      OriginSafeExactCapMGU ledger left right step.delta.cap := by
+  exact solveCapEqWithLedger_originSafeExactCapMGU success
+
+/-- Dispatching a target equality through the common resolved solver retains
+the exact origin-safe paired MGU carried by its result. -/
+theorem solveResolvedWithLedger_targetEq_originSafeExactPairedMGU
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : ConstraintOrigin} {left right : Ty} {step : SolveStep}
+    (success : solveResolvedWithLedger ledger solveCount origin
+      (.targetEq left right) = some step) :
+    OriginSafeExactPairedMGU ledger left right step.delta := by
+  exact solveTargetEqWithLedger_originSafeExactPairedMGU success
+
+/-- Reconstruct the one-step ordinary branch of executable type alignment.
+The two annotated homogeneous branches are intentionally excluded here; each
+of those performs a capability solve before its target solve. -/
+theorem alignTypesCore_ordinary_ddAlignTypesRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (pairClass : alignPairClass (state.prevailing.apply left)
+      (state.prevailing.apply right) = .ordinary)
+    (success : alignTypesCore state origin left right = some final) :
+    DDAlignTypesRun left right state final := by
+  unfold alignTypesCore at success
+  simp only at success
+  split at success
+  · simp_all [alignPairClass]
+  · simp_all [alignPairClass]
+  · unfold runResolvedConstraint at success
+    cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+        state.trace.solves.length origin
+        (.targetEq (state.prevailing.apply left)
+          (state.prevailing.apply right)) with
+    | none => simp [stepEq] at success
+    | some step =>
+        simp only [stepEq] at success
+        have finalEq := Option.some.inj success
+        subst final
+        refine ⟨rfl, rfl, ?_⟩
+        rw [InferState.prevailing_recordSolve]
+        exact DDAlignTypesWithLedger.ordinary pairClass
+          (solveResolvedWithLedger_targetEq_originSafeExactPairedMGU stepEq)
+
 /-- The executable one-way solver returns exactly the origin-safe delta used
 by the DD matcher-to-slot rule. -/
 theorem solveResolvedWithLedger_originSafeOneWayDelta
