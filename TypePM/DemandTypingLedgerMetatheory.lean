@@ -232,11 +232,11 @@ theorem RefinesBelow.markCapRange
   rcases membership with ⟨offset, _, rfl⟩
   exact Nat.le_add_right _ _
 
-/-! ## Scheme-instance batches -/
+/-! ## NamedScheme-instance batches -/
 
 theorem LedgerBelow.markSchemeInstance
     {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}
-    (scheme : Scheme) (below : LedgerBelow q ledger) :
+    (scheme : NamedScheme) (below : LedgerBelow q ledger) :
     LedgerBelow (InferenceBase.instantiateScheme q scheme).supply
       (markSchemeInstance ledger q scheme) := by
   apply LedgerBelow.setOrigins below
@@ -247,7 +247,7 @@ theorem LedgerBelow.markSchemeInstance
 
 theorem RefinesBelow.markSchemeInstance
     (q : InferenceBase.FreshSupply) (ledger : CapabilityOriginLedger)
-    (scheme : Scheme) :
+    (scheme : NamedScheme) :
     RefinesBelow q ledger (markSchemeInstance ledger q scheme) := by
   exact refinesBelow_setFreshOrigins ledger
     (Inference.freshCapImages q scheme.capBinders) .renameOnly

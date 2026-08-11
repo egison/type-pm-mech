@@ -4,7 +4,7 @@ import TypePM.DemandTypingErasureTransport
 # Experimental no-capture boundary for scheme substitution
 
 This module isolates the range-hygiene condition under which the current
-identifier-based `Scheme.applySubst` really composes sequentially.  It is an
+identifier-based `NamedScheme.applySubst` really composes sequentially.  It is an
 experiment rather than a new public DD premise: arbitrary source contexts do
 not currently carry this provenance, and the DD solver does not preserve it.
 -/
@@ -15,7 +15,7 @@ namespace TypePM
 any of that scheme's locally quantified identifiers.  The target-image
 capability clause is essential because an ordinary type image may contain
 matcher or slot capabilities. -/
-structure Scheme.NoCapture (scheme : Scheme) (S : Subst) : Prop where
+structure NamedScheme.NoCapture (scheme : NamedScheme) (S : Subst) : Prop where
   capRange : ∀ ambient, ambient ∈ scheme.fcv →
     ∀ binder, binder ∈ scheme.capBinders → binder ∉ (S.cap ambient).fcv
   targetCapRange : ∀ ambient, ambient ∈ scheme.ftv →
@@ -26,7 +26,7 @@ structure Scheme.NoCapture (scheme : Scheme) (S : Subst) : Prop where
       binder ∉ (S.target ambient).ftv
 
 /-- Identity introduces no binder occurrence into an ambient image. -/
-theorem Scheme.NoCapture.id (scheme : Scheme) :
+theorem NamedScheme.NoCapture.id (scheme : NamedScheme) :
     scheme.NoCapture Subst.id := by
   constructor
   · intro ambient ambientFree binder binderMem binderImage
@@ -48,15 +48,15 @@ theorem Scheme.NoCapture.id (scheme : Scheme) :
 sequential extension.  No restriction on the later substitution's range is
 needed: only identifiers already present in the earlier images can be hidden
 by the later mask. -/
-theorem Scheme.applySubst_seq_of_noCapture
-    (scheme : Scheme) (earlier later : Subst)
+theorem NamedScheme.applySubst_seq_of_noCapture
+    (scheme : NamedScheme) (earlier later : Subst)
     (hygiene : scheme.NoCapture earlier) :
     scheme.applySubst (Subst.seq later earlier) =
       (scheme.applySubst earlier).applySubst later := by
   cases scheme with
   | mk capBinders tyBinders body =>
-      change Scheme.mk capBinders tyBinders _ =
-        Scheme.mk capBinders tyBinders _
+      change NamedScheme.mk capBinders tyBinders _ =
+        NamedScheme.mk capBinders tyBinders _
       congr 1
       change
         (Subst.mk ((Subst.seq later earlier).cap.mask capBinders)
@@ -75,7 +75,7 @@ theorem Scheme.applySubst_seq_of_noCapture
           apply Cap.apply_eq_of_fcv_agree
           intro image imageMem
           have ambientFree : ambient ∈
-              (Scheme.mk capBinders tyBinders body).fcv :=
+              (NamedScheme.mk capBinders tyBinders body).fcv :=
             List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
           have outside : image ∉ capBinders := by
             intro imageBound
@@ -89,7 +89,7 @@ theorem Scheme.applySubst_seq_of_noCapture
           apply Subst.apply_eq_of_free_agree
           · intro image imageMem
             have ambientFree : ambient ∈
-                (Scheme.mk capBinders tyBinders body).ftv :=
+                (NamedScheme.mk capBinders tyBinders body).ftv :=
               List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
             have outside : image ∉ capBinders := by
               intro imageBound
@@ -98,7 +98,7 @@ theorem Scheme.applySubst_seq_of_noCapture
             simp [CapSubst.mask, outside]
           · intro image imageMem
             have ambientFree : ambient ∈
-                (Scheme.mk capBinders tyBinders body).ftv :=
+                (NamedScheme.mk capBinders tyBinders body).ftv :=
               List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
             have outside : image ∉ tyBinders := by
               intro imageBound
@@ -116,7 +116,7 @@ def Context.NoCapture (context : Context) (S : Subst) : Prop :=
 theorem Context.NoCapture.id (context : Context) :
     context.NoCapture Subst.id := by
   intro entry membership
-  exact Scheme.NoCapture.id entry.2
+  exact NamedScheme.NoCapture.id entry.2
 
 /-- Entry-wise range hygiene restores the sequential substitution law for a
 whole polymorphic context. -/
@@ -135,7 +135,7 @@ theorem Context.applySubst_seq_of_noCapture
             Context.applySubst later (Context.applySubst earlier context)
       congr 1
       · congr 1
-        exact Scheme.applySubst_seq_of_noCapture entry.2 earlier later
+        exact NamedScheme.applySubst_seq_of_noCapture entry.2 earlier later
           (hygiene entry (by simp))
       · exact induction (by
         intro tailEntry tailMem
@@ -145,10 +145,10 @@ theorem Context.applySubst_seq_of_noCapture
 
 /-- Range hygiene allows an arbitrary binder-supported instance to commute
 past the external scheme substitution.  This is the body equation needed by
-value-flow transport; unlike `Scheme.post_apply`, ambient free variables may
+value-flow transport; unlike `NamedScheme.post_apply`, ambient free variables may
 change. -/
-theorem Scheme.post_apply_of_noCapture
-    {scheme : Scheme} {post : Subst}
+theorem NamedScheme.post_apply_of_noCapture
+    {scheme : NamedScheme} {post : Subst}
     {originalCap : CapSubst} {originalTarget : TySubst}
     (capSupport : originalCap.SupportWithin scheme.capBinders)
     (targetSupport : originalTarget.SupportWithin scheme.tyBinders)
@@ -167,35 +167,35 @@ theorem Scheme.post_apply_of_noCapture
   apply Subst.apply_eq_of_free_agree
   · intro ambient ambientMem
     by_cases bound : ambient ∈ scheme.capBinders
-    · simp [composed, maskedPost, Scheme.postCap, Subst.seq,
+    · simp [composed, maskedPost, NamedScheme.postCap, Subst.seq,
         CapSubst.comp, CapSubst.mask, bound, Cap.apply]
     · simp only [Subst.seq, CapSubst.comp, composed, maskedPost,
         CapSubst.mask, bound, if_false,
         capSupport ambient bound, Cap.apply]
       apply Cap.apply_eq_self_of_fcv_fixed
       intro image imageMem
-      apply Scheme.postCap_support post scheme originalCap image
+      apply NamedScheme.postCap_support post scheme originalCap image
       intro imageBound
       have ambientFree : ambient ∈ scheme.fcv :=
         List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
       exact hygiene.capRange ambient ambientFree image imageBound imageMem
   · intro ambient ambientMem
     by_cases bound : ambient ∈ scheme.tyBinders
-    · simp [composed, maskedPost, Scheme.postTarget, Subst.seq,
+    · simp [composed, maskedPost, NamedScheme.postTarget, Subst.seq,
         TySubst.mask, bound, Subst.apply, Ty.applyCapability, Ty.applyTarget]
     · simp only [Subst.seq, composed, maskedPost,
         TySubst.mask, bound, if_false, targetSupport ambient bound,
         Subst.apply, Ty.applyCapability, Ty.applyTarget]
       apply Subst.apply_eq_self_of_free_fixed composed (post.target ambient)
       · intro image imageMem
-        apply Scheme.postCap_support post scheme originalCap image
+        apply NamedScheme.postCap_support post scheme originalCap image
         intro imageBound
         have ambientFree : ambient ∈ scheme.ftv :=
           List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
         exact hygiene.targetCapRange ambient ambientFree image imageBound
           imageMem
       · intro image imageMem
-        apply Scheme.postTarget_support post scheme originalTarget image
+        apply NamedScheme.postTarget_support post scheme originalTarget image
         intro imageBound
         have ambientFree : ambient ∈ scheme.ftv :=
           List.mem_filter.mpr ⟨ambientMem, by simpa using bound⟩
@@ -204,26 +204,26 @@ theorem Scheme.post_apply_of_noCapture
 
 /-- The binder-local substitution used to replay one canonical instance
 through a later post. -/
-def Scheme.canonicalPostSubst
-    (q : InferenceBase.FreshSupply) (scheme : Scheme) (post : Subst) : Subst :=
+def NamedScheme.canonicalPostSubst
+    (q : InferenceBase.FreshSupply) (scheme : NamedScheme) (post : Subst) : Subst :=
   Subst.mk
     (scheme.postCap post
       (InferenceBase.instantiateScheme q scheme).subst.cap)
     (scheme.postTarget post
       (InferenceBase.instantiateScheme q scheme).subst.target)
 
-@[simp] theorem Scheme.canonicalPostSubst_cap_binder
-    {q : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+@[simp] theorem NamedScheme.canonicalPostSubst_cap_binder
+    {q : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     {binder : CapVar} (binderMem : binder ∈ scheme.capBinders) :
     (scheme.canonicalPostSubst q post).cap binder =
       ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
         post.cap := by
-  simp [Scheme.canonicalPostSubst, Scheme.postCap, binderMem]
+  simp [NamedScheme.canonicalPostSubst, NamedScheme.postCap, binderMem]
 
 /-- `NoCapture` supplies every field of the ordinary instantiation-
 composition certificate except its legacy `RangeFixed` field. -/
-def Scheme.instantiateCompositionAt_of_noCapture
-    {q : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+def NamedScheme.instantiateCompositionAt_of_noCapture
+    {q : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (hygiene : scheme.NoCapture post)
     (rangeFixed : (scheme.canonicalPostSubst q post).RangeFixed) :
     scheme.InstCompositionAt post
@@ -235,7 +235,7 @@ def Scheme.instantiateCompositionAt_of_noCapture
   targetSupport := scheme.postTarget_support post _
   rangeFixed := rangeFixed
   bodyEquation := by
-    exact Scheme.post_apply_of_noCapture
+    exact NamedScheme.post_apply_of_noCapture
       (InferenceBase.instantiateBinders_cap_support q
         scheme.capBinders scheme.tyBinders)
       (InferenceBase.instantiateBinders_ty_support q
@@ -245,9 +245,9 @@ def Scheme.instantiateCompositionAt_of_noCapture
 /-- Future range hygiene and the exact marked-ledger suffix are sufficient
 for canonical value-flow transport.  `RangeFixed` is absent because
 `ValueFlowInst` intentionally does not require it. -/
-theorem Scheme.instantiateAppliedValueFlowUnderNoCapture
+theorem NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     {ledger finalLedger : CapabilityOriginLedger}
-    {q final : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+    {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (hygiene : scheme.NoCapture post)
     (admissible : DDErasure.AdmissiblePostBetween
       (InferenceBase.instantiateScheme q scheme).supply final
@@ -266,12 +266,12 @@ theorem Scheme.instantiateAppliedValueFlowUnderNoCapture
     rcases admissible.schemeInstanceImageVariable binderMem' with
       ⟨finalImage, finalEquation⟩
     refine ⟨finalImage, ?_⟩
-    rw [Scheme.canonicalPostSubst_cap_binder
+    rw [NamedScheme.canonicalPostSubst_cap_binder
       (q := q) (scheme := scheme) (post := post) binderMem']
     simp [InferenceBase.instantiateScheme,
       InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
       binderMem', Cap.apply, finalEquation]
-  · exact Scheme.post_apply_of_noCapture
+  · exact NamedScheme.post_apply_of_noCapture
       (InferenceBase.instantiateBinders_cap_support q
         scheme.capBinders scheme.tyBinders)
       (InferenceBase.instantiateBinders_ty_support q
@@ -284,7 +284,7 @@ source scheme under the future suffix. -/
 theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
     {signature : FrozenSig} {q final : InferenceBase.FreshSupply}
     {S post S' : Subst} {context : Context} {name : String}
-    {rawScheme scheme : Scheme}
+    {rawScheme scheme : NamedScheme}
     {ledger finalLedger : CapabilityOriginLedger}
     (rawLookup : context.find? name = some rawScheme)
     (sourceSchemeEquation : rawScheme.applySubst S = scheme)
@@ -300,20 +300,20 @@ theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
   subst S'
   have terminalSchemeEquation :
       rawScheme.applySubst (Subst.seq post S) = scheme.applySubst post := by
-    rw [Scheme.applySubst_seq_of_noCapture rawScheme S post sourceHygiene,
+    rw [NamedScheme.applySubst_seq_of_noCapture rawScheme S post sourceHygiene,
       sourceSchemeEquation]
   have terminalLookup :
       (context.applySubst (Subst.seq post S)).find? name =
         some (scheme.applySubst post) := by
     rw [Context.find?_applySubst, rawLookup]
     simpa using congrArg some terminalSchemeEquation
-  have instanceTyping := Scheme.instantiateAppliedValueFlowUnderNoCapture
+  have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     futureHygiene admissible
   have sourceFixed : S.apply
       (InferenceBase.instantiateScheme q scheme).value =
         (InferenceBase.instantiateScheme q scheme).value := by
     rw [← sourceSchemeEquation]
-    exact Scheme.instantiate_applySubst_value_fixed rawScheme bounded idem
+    exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   have transported : RuntimeTyping signature
       (context.applySubst (Subst.seq post S)) (.var name)
       (post.apply (InferenceBase.instantiateScheme q scheme).value) :=

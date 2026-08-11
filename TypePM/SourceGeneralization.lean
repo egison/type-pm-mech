@@ -277,8 +277,8 @@ agrees with the surrounding action on the entry's genuinely free variables.
 This parametric form lets T-LET freshen its local binders without changing the
 action observed by the ambient context.
 -/
-def Scheme.FlowsUnder
-    (S : Subst) (source target : Scheme) : Prop :=
+def NamedScheme.FlowsUnder
+    (S : Subst) (source target : NamedScheme) : Prop :=
   ∀ {A : Subst}, VariablePost A →
     (∀ varId, varId ∈ source.fcv → A.cap varId = S.cap varId) →
     (∀ varId, varId ∈ source.ftv → A.target varId = S.target varId) →
@@ -302,7 +302,7 @@ inductive Context.FlowsUnder (S : Subst) : Context → Context → Prop where
 theorem Context.FlowsUnder.find?
     {S : Subst} {source target : Context}
     (flow : Context.FlowsUnder S source target)
-    {name : String} {scheme : Scheme}
+    {name : String} {scheme : NamedScheme}
     (lookup : source.find? name = some scheme) :
     ∃ targetScheme,
       target.find? name = some targetScheme ∧
@@ -325,8 +325,8 @@ theorem Context.FlowsUnder.find?
           foundFlow⟩
 
 /-- Monomorphic binders flow pointwise. -/
-theorem Scheme.mono_flowsUnder (S : Subst) (source : Ty) :
-    (Scheme.mono source).FlowsUnder S (Scheme.mono (S.apply source)) := by
+theorem NamedScheme.mono_flowsUnder (S : Subst) (source : Ty) :
+    (NamedScheme.mono source).FlowsUnder S (NamedScheme.mono (S.apply source)) := by
   intro A _ capAgreement tyAgreement actual instanceTyping
   have actualEq := instanceTyping.mono_eq
   subst actual
@@ -334,12 +334,12 @@ theorem Scheme.mono_flowsUnder (S : Subst) (source : Ty) :
     apply Subst.apply_eq_of_free_agree
     · intro varId membership
       exact capAgreement varId (by
-        simpa [Scheme.mono, Scheme.fcv] using membership)
+        simpa [NamedScheme.mono, NamedScheme.fcv] using membership)
     · intro varId membership
       exact tyAgreement varId (by
-        simpa [Scheme.mono, Scheme.ftv] using membership)
+        simpa [NamedScheme.mono, NamedScheme.ftv] using membership)
   rw [appliedEq]
-  exact Scheme.mono_valueFlowInst (S.apply source)
+  exact NamedScheme.mono_valueFlowInst (S.apply source)
 
 /-- Flowing contexts can be extended by a transformed monomorphic binder. -/
 theorem Context.FlowsUnder.consMono
@@ -347,9 +347,9 @@ theorem Context.FlowsUnder.consMono
     (flow : Context.FlowsUnder S source target)
     (name : String) (sourceTy : Ty) :
     Context.FlowsUnder S
-      ((name, Scheme.mono sourceTy) :: source)
-      ((name, Scheme.mono (S.apply sourceTy)) :: target) :=
-  .cons (Scheme.mono_flowsUnder S sourceTy) flow
+      ((name, NamedScheme.mono sourceTy) :: source)
+      ((name, NamedScheme.mono (S.apply sourceTy)) :: target) :=
+  .cons (NamedScheme.mono_flowsUnder S sourceTy) flow
 
 /-- Pointwise extension of a flowed context by transformed mono bindings. -/
 theorem Context.FlowsUnder.prependMono
@@ -364,8 +364,8 @@ theorem Context.FlowsUnder.prependMono
         (flow.prependMono bindings).consMono name bindingTy
 
 /-- Re-index one parametric scheme flow by an ambiently equal action. -/
-theorem Scheme.FlowsUnder.reindex
-    {S A : Subst} {source target : Scheme}
+theorem NamedScheme.FlowsUnder.reindex
+    {S A : Subst} {source target : NamedScheme}
     (flow : source.FlowsUnder S target)
     (capAgreement : ∀ varId, varId ∈ source.fcv →
       A.cap varId = S.cap varId)
@@ -411,8 +411,8 @@ theorem Context.FlowsUnder.reindex
           exact List.mem_append_right _ membership
 
 /-- A scheme flows to itself when the surrounding action fixes its frees. -/
-theorem Scheme.self_flowsUnder
-    {S : Subst} {scheme : Scheme}
+theorem NamedScheme.self_flowsUnder
+    {S : Subst} {scheme : NamedScheme}
     (capFixed : ∀ varId, varId ∈ scheme.fcv →
       S.cap varId = .var varId)
     (tyFixed : ∀ varId, varId ∈ scheme.ftv →
@@ -439,7 +439,7 @@ theorem Context.self_flowsUnder
   | cons entry context ih =>
       rcases entry with ⟨name, scheme⟩
       apply Context.FlowsUnder.cons
-      · apply Scheme.self_flowsUnder
+      · apply NamedScheme.self_flowsUnder
         · intro varId membership
           exact capFixed varId (by simp [Context.fcv, membership])
         · intro varId membership
@@ -500,7 +500,7 @@ Mask the surrounding post on one generalized binder batch, replacing those
 binders by a disjoint variable batch and retaining the post everywhere else.
 -/
 def maskedPost
-    (scheme : Scheme) (S : Subst) (capStart tyStart : Nat) : Subst :=
+    (scheme : NamedScheme) (S : Subst) (capStart tyStart : Nat) : Subst :=
   { cap := fun varId =>
       if varId ∈ scheme.capBinders then
         .var (capImage capStart varId)
@@ -514,7 +514,7 @@ def maskedPost
 
 /-- A masked local post keeps its capability component variable-valued. -/
 theorem maskedPost_variable
-    {scheme : Scheme} {S : Subst} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {S : Subst} {capStart tyStart : Nat}
     (postVariable : VariablePost S) :
     VariablePost (maskedPost scheme S capStart tyStart) := by
   constructor
@@ -525,27 +525,27 @@ theorem maskedPost_variable
     exact ⟨image, by simp [maskedPost, binder, equation]⟩
 
 @[simp] theorem maskedPost_cap_binder
-    {scheme : Scheme} {S : Subst} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {S : Subst} {capStart tyStart : Nat}
     {varId : CapVar} (binder : varId ∈ scheme.capBinders) :
     (maskedPost scheme S capStart tyStart).cap varId =
       .var (capImage capStart varId) := by
   simp [maskedPost, binder]
 
 @[simp] theorem maskedPost_target_binder
-    {scheme : Scheme} {S : Subst} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {S : Subst} {capStart tyStart : Nat}
     {varId : TypePM.TyVar} (binder : varId ∈ scheme.tyBinders) :
     (maskedPost scheme S capStart tyStart).target varId =
       .var (tyImage tyStart varId) := by
   simp [maskedPost, binder]
 
 @[simp] theorem maskedPost_cap_outside
-    {scheme : Scheme} {S : Subst} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {S : Subst} {capStart tyStart : Nat}
     {varId : CapVar} (outside : varId ∉ scheme.capBinders) :
     (maskedPost scheme S capStart tyStart).cap varId = S.cap varId := by
   simp [maskedPost, outside]
 
 @[simp] theorem maskedPost_target_outside
-    {scheme : Scheme} {S : Subst} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {S : Subst} {capStart tyStart : Nat}
     {varId : TypePM.TyVar} (outside : varId ∉ scheme.tyBinders) :
     (maskedPost scheme S capStart tyStart).target varId = S.target varId := by
   simp [maskedPost, outside]
@@ -556,7 +556,7 @@ outside that batch are fixed, so this post is suitable for target-side
 generalization.
 -/
 def replayPost
-    (scheme : Scheme) (capStart tyStart : Nat)
+    (scheme : NamedScheme) (capStart tyStart : Nat)
     (instancePost outer : Subst) : Subst :=
   { cap := fun freshVar =>
       let sourceVar : CapVar := ⟨freshVar.id - capStart⟩
@@ -572,7 +572,7 @@ def replayPost
         .var freshVar }
 
 @[simp] theorem replayPost_cap_image
-    {scheme : Scheme} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {capStart tyStart : Nat}
     {instancePost outer : Subst} {varId : CapVar}
     (binder : varId ∈ scheme.capBinders) :
     (replayPost scheme capStart tyStart instancePost outer).cap
@@ -581,7 +581,7 @@ def replayPost
   simp [replayPost, capImage, binder]
 
 @[simp] theorem replayPost_target_image
-    {scheme : Scheme} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {capStart tyStart : Nat}
     {instancePost outer : Subst} {varId : TypePM.TyVar}
     (binder : varId ∈ scheme.tyBinders) :
     (replayPost scheme capStart tyStart instancePost outer).target
@@ -591,7 +591,7 @@ def replayPost
 
 /-- A replay post fixes every capability identifier below its fresh region. -/
 theorem replayPost_cap_fixed_of_lt
-    {scheme : Scheme} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {capStart tyStart : Nat}
     {instancePost outer : Subst} {varId : CapVar}
     (below : varId.id < capStart) :
     (replayPost scheme capStart tyStart instancePost outer).cap varId =
@@ -601,7 +601,7 @@ theorem replayPost_cap_fixed_of_lt
 
 /-- A replay post fixes every ordinary identifier below its fresh region. -/
 theorem replayPost_target_fixed_of_lt
-    {scheme : Scheme} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {capStart tyStart : Nat}
     {instancePost outer : Subst} {varId : TypePM.TyVar}
     (below : varId < tyStart) :
     (replayPost scheme capStart tyStart instancePost outer).target varId =
@@ -631,7 +631,7 @@ theorem ty_lt_tyNext_of_mem
 theorem replayPost_cap_fixed_of_mem_avoid
     {signature : FrozenSig} {targetContext : Context}
     {source : Ty} {S : Subst} {postVariable : VariablePost S}
-    {scheme : Scheme} {instancePost outer : Subst}
+    {scheme : NamedScheme} {instancePost outer : Subst}
     {varId : CapVar}
     (membership : varId ∈ capAvoid signature targetContext source postVariable) :
     (replayPost scheme
@@ -644,7 +644,7 @@ theorem replayPost_cap_fixed_of_mem_avoid
 theorem replayPost_target_fixed_of_mem_avoid
     {signature : FrozenSig} {targetContext : Context}
     {source : Ty} {S : Subst} {postVariable : VariablePost S}
-    {scheme : Scheme} {instancePost outer : Subst}
+    {scheme : NamedScheme} {instancePost outer : Subst}
     {varId : TypePM.TyVar}
     (membership : varId ∈ tyAvoid signature targetContext source S) :
     (replayPost scheme
@@ -656,7 +656,7 @@ theorem replayPost_target_fixed_of_mem_avoid
 /-- Replaying capability-variable binder images through a capability-variable
 outer post again gives a capability-variable post. -/
 theorem replayPost_variable
-    {scheme : Scheme} {capStart tyStart : Nat}
+    {scheme : NamedScheme} {capStart tyStart : Nat}
     {instancePost outer : Subst}
     (instanceCapVariable : ∀ varId, varId ∈ scheme.capBinders →
       ∃ image, instancePost.cap varId = .var image)

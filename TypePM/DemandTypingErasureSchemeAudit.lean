@@ -17,7 +17,7 @@ produce different bodies.
 
 namespace TypePM.DemandTypingErasureSchemeAudit
 
-def rawScheme : Scheme :=
+def rawScheme : NamedScheme :=
   { capBinders := [⟨0⟩]
     tyBinders := []
     body := .prod
@@ -31,7 +31,7 @@ def prevailing : Subst :=
 def post : Subst :=
   ⟨Unification.CapSubst.single ⟨0⟩ (.var ⟨1⟩), TySubst.id⟩
 
-def sourceScheme : Scheme := rawScheme.applySubst prevailing
+def sourceScheme : NamedScheme := rawScheme.applySubst prevailing
 
 def lookupSupply : InferenceBase.FreshSupply :=
   (InferenceBase.instantiateScheme inputSupply sourceScheme).supply
@@ -57,12 +57,12 @@ theorem rawScheme_bounded : rawScheme.BoundedBy inputSupply := by
   constructor
   · intro varId membership
     have equality : varId = ⟨1⟩ := by
-      simpa [rawScheme, Scheme.fcv, Ty.fcv, Ty.fcvList, Cap.fcv] using
+      simpa [rawScheme, NamedScheme.fcv, Ty.fcv, Ty.fcvList, Cap.fcv] using
         membership
     subst varId
     decide
   · intro varId membership
-    simp [rawScheme, Scheme.ftv, Ty.ftv, Ty.ftvList] at membership
+    simp [rawScheme, NamedScheme.ftv, Ty.ftv, Ty.ftvList] at membership
 
 theorem inputContext_bounded :
     Context.BoundedBy inputSupply [("f", rawScheme)] := by

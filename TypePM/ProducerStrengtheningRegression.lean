@@ -27,12 +27,12 @@ def protectionSignature : FrozenSig where
   armExhaustive := basicArmExhaustive
 
 /-- Instantiation exposes a fresh producer capability leaf. -/
-def polymorphicProducer : Scheme :=
+def polymorphicProducer : NamedScheme :=
   ⟨[⟨0⟩], [], .matcher (.var ⟨0⟩) .int⟩
 
 /-- The control producer already has the capability required by the consumer. -/
-def concreteProducer : Scheme :=
-  Scheme.mono (.matcher (.con "List" [.any]) .int)
+def concreteProducer : NamedScheme :=
+  NamedScheme.mono (.matcher (.con "List" [.any]) .int)
 
 def consumerExpression : Expr :=
   .ctor "consumeProducer" [.var "producer"]

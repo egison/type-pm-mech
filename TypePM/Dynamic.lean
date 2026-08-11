@@ -77,11 +77,11 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         ValueTy signature value target) →
       (self = none →
         RuntimeTyping signature
-          ((parameter, Scheme.mono domain) :: context) body codomain) →
+          ((parameter, NamedScheme.mono domain) :: context) body codomain) →
       (∀ name, self = some name →
         RuntimeTyping signature
-          ((parameter, Scheme.mono domain) ::
-            (name, Scheme.mono (.fn domain codomain)) :: context)
+          ((parameter, NamedScheme.mono domain) ::
+            (name, NamedScheme.mono (.fn domain codomain)) :: context)
           body codomain) →
       ValueTy signature (.closure self environment parameter body)
         (.fn domain codomain)
@@ -257,7 +257,7 @@ theorem EnvTyped.domain
 theorem EnvTyped.lookup
     {signature : FrozenSig} {context : Context} {environment : Env}
     (typing : EnvTyped signature context environment)
-    {name : String} {value : Value} {scheme : Scheme} {target : Ty}
+    {name : String} {value : Value} {scheme : NamedScheme} {target : Ty}
     (hvalue : Env.find? environment name = some value)
     (hscheme : Context.find? context name = some scheme)
     (hinstance :
@@ -272,7 +272,7 @@ theorem EnvTyped.lookup
 /-- Extend a typed environment by a source scheme and all its safe instances. -/
 theorem EnvTyped.consScheme
     {signature : FrozenSig} {context : Context} {environment : Env}
-    {name : String} {value : Value} {scheme : Scheme}
+    {name : String} {value : Value} {scheme : NamedScheme}
     (valueInstances :
       ∀ target,
         scheme.ValueFlowInst target →
@@ -309,7 +309,7 @@ theorem EnvTyped.cons
     {name : String} {value : Value} {target : Ty}
     (valueTyping : ValueTy signature value target)
     (typing : EnvTyped signature context environment) :
-    EnvTyped signature ((name, Scheme.mono target) :: context)
+    EnvTyped signature ((name, NamedScheme.mono target) :: context)
       ((name, value) :: environment) :=
   typing.consScheme (fun actual hinstance => by
     rw [hinstance.mono_eq]
@@ -323,8 +323,8 @@ theorem selfClosure_typed
     {name parameter : String} {body : Expr} {domain codomain : Ty}
     (environmentTyping : EnvTyped signature context environment)
     (bodyTyping : RuntimeTyping signature
-      ((parameter, Scheme.mono domain) ::
-        (name, Scheme.mono (.fn domain codomain)) :: context)
+      ((parameter, NamedScheme.mono domain) ::
+        (name, NamedScheme.mono (.fn domain codomain)) :: context)
       body codomain) :
     ValueTy signature (selfClosure name environment parameter body)
       (.fn domain codomain) := by
@@ -363,7 +363,7 @@ theorem pushArg_typed
         envTyped_of_parts domainPart instancePart
       cases self with
       | none =>
-          refine ⟨(parameter, Scheme.mono domain) :: context,
+          refine ⟨(parameter, NamedScheme.mono domain) :: context,
             environmentTyping.cons argumentTyping, ?_⟩
           exact noneBody rfl
       | some name =>
@@ -374,8 +374,8 @@ theorem pushArg_typed
                 (.fn domain codomain) :=
             selfClosure_typed environmentTyping bodyTyping
           refine
-            ⟨(parameter, Scheme.mono domain) ::
-                (name, Scheme.mono (.fn domain codomain)) :: context,
+            ⟨(parameter, NamedScheme.mono domain) ::
+                (name, NamedScheme.mono (.fn domain codomain)) :: context,
               (environmentTyping.cons selfTyping).cons argumentTyping,
               bodyTyping⟩
 

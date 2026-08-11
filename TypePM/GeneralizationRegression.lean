@@ -54,7 +54,7 @@ theorem sourceTyping :
     RuntimeTyping collisionSignature [] (.ctor "C" []) sourceTy := by
   exact RuntimeTyping.ctor (by rfl) sourceCtorInstance ExprsTy.nil
 
-def generalized : Scheme := collisionSignature.generalize [] sourceTy
+def generalized : NamedScheme := collisionSignature.generalize [] sourceTy
 
 theorem generalized_shape :
     generalized = ⟨[1], [1], sourceTy⟩ := by
@@ -138,7 +138,7 @@ theorem mixedDualGeneralized_shape :
   rfl
 
 def ambientDualContext : Context :=
-  [("ambient", Scheme.mono (.matcher (.var 40) .int))]
+  [("ambient", NamedScheme.mono (.matcher (.var 40) .int))]
 
 def ambientDualGeneralized : DualScheme :=
   collisionSignature.generalizeDual ambientDualContext

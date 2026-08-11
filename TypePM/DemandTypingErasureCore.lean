@@ -648,7 +648,7 @@ def StateFactorization
 /-- Variable lookup performs only the scheme-instantiation allocation. -/
 theorem stateFactorization_var
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : Scheme)
+    (context : Context) (name : String) (scheme : NamedScheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme) :
     StateFactorization
@@ -684,7 +684,7 @@ theorem stateFactorization_lam_of_body
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyFactorization : StateFactorization bodyOrigin) :
     StateFactorization (DDSynthOrigin.lam bodyOrigin) := by
@@ -702,8 +702,8 @@ theorem stateFactorization_fix_of_body
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
       body bodyTarget q₁ S₁}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁)
@@ -935,8 +935,8 @@ theorem stateFactorization_fixMatcher_of_body
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q₀))
     {bodyRaw : DDSynth signature q₀ S
-      ((argument, Scheme.mono domain) ::
-        (self, Scheme.mono (.fn domain codomain)) :: context)
+      ((argument, NamedScheme.mono domain) ::
+        (self, NamedScheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q₁ S₁}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q₀) ledger₁)
@@ -995,12 +995,12 @@ theorem runtimeErasure_lam_of_body
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyErasure : RuntimeErasure bodyOrigin) :
     RuntimeErasure (DDSynthOrigin.lam bodyOrigin) := by
   simp only [RuntimeErasure, Context.applySubst, List.map_cons,
-    Scheme.applySubst, Scheme.mono, Subst.apply_fn] at bodyErasure ⊢
+    NamedScheme.applySubst, NamedScheme.mono, Subst.apply_fn] at bodyErasure ⊢
   exact RuntimeTyping.lam bodyErasure
 
 end DDSynthOrigin

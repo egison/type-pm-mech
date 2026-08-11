@@ -98,7 +98,7 @@ theorem InferState.admissibleTraceExtension_freshCap
 
 theorem instantiateSchemeInState_admissibleTraceExtension
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     state.AdmissibleTraceExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 := by
@@ -124,7 +124,7 @@ theorem instantiateDualInState_admissibleTraceExtension
 
 theorem instantiateSchemeInState_admissibleTraceExtension_of_eq
     {signature : FrozenSig} {rawContext normalizedContext : Context}
-    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
+    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     state.AdmissibleTraceExtension final := by

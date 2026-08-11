@@ -79,17 +79,17 @@ and consumes no solve. -/
 theorem identity_ddSynth :
     DDSynth emptySignature ⟨0, 0⟩ Subst.id [] identityExpr
       (.fn (.var 0) (.var 0)) ⟨0, 1⟩ Subst.id := by
-  exact .lam (DDSynth.var (scheme := Scheme.mono (.var 0)) rfl)
+  exact .lam (DDSynth.var (scheme := NamedScheme.mono (.var 0)) rfl)
 
 theorem identity_ddSynthOrigin :
     DDSynthOrigin emptySignature identity_ddSynth [] [] := by
   refine .lam (bodyRaw := DDSynth.var
-    (signature := emptySignature) (scheme := Scheme.mono (.var 0)) rfl) ?_
-  simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, Scheme.mono,
+    (signature := emptySignature) (scheme := NamedScheme.mono (.var 0)) rfl) ?_
+  simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, NamedScheme.mono,
     CapabilityOriginLedger.setOrigins]
     using (DDSynthOrigin.var (signature := emptySignature) (ledger := [])
       (q := ⟨0, 1⟩) (S := Subst.id) (context :=
-        [("x", Scheme.mono (.var 0))]) (scheme := Scheme.mono (.var 0)) rfl)
+        [("x", NamedScheme.mono (.var 0))]) (scheme := NamedScheme.mono (.var 0)) rfl)
 
 /-- The closed wrapper publishes the identity type unchanged. -/
 theorem identity_ddTyping :
@@ -316,7 +316,7 @@ def dmLetProgram : Expr :=
   .letE "id" identityExpr (.app (.app (.var "id") (.var "id")) (.lit 1))
 
 /-- The generalized scheme of `id` computed at the `let` cut. -/
-def dmIdScheme : Scheme := ⟨[], [0], .fn (.var 0) (.var 0)⟩
+def dmIdScheme : NamedScheme := ⟨[], [0], .fn (.var 0) (.var 0)⟩
 
 /-- Prevailing substitution after the inner function alignment
 `fn ?1 ?1 ≐ fn ?2 ?3`. -/
@@ -653,18 +653,18 @@ theorem nestedCapLetSecondApp_ddSynthOrigin :
 theorem nestedCapLetValue_ddSynth :
     DDSynth emptySignature ⟨0, 0⟩ Subst.id [] (.lam "m" (.var "m"))
       (.fn (.var 0) (.var 0)) ⟨0, 1⟩ Subst.id := by
-  exact .lam (DDSynth.var (scheme := Scheme.mono (.var 0)) rfl)
+  exact .lam (DDSynth.var (scheme := NamedScheme.mono (.var 0)) rfl)
 
 theorem nestedCapLetValue_ddSynthOrigin :
     DDSynthOrigin emptySignature nestedCapLetValue_ddSynth [] [] := by
   refine .lam (bodyRaw := DDSynth.var (signature := emptySignature)
-    (scheme := Scheme.mono (.var 0)) rfl) ?_
-  simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, Scheme.mono,
+    (scheme := NamedScheme.mono (.var 0)) rfl) ?_
+  simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, NamedScheme.mono,
     CapabilityOriginLedger.setOrigins] using
     (DDSynthOrigin.var (signature := emptySignature) (ledger := [])
       (q := ⟨0, 1⟩) (S := Subst.id)
-      (context := [("m", Scheme.mono (.var 0))])
-      (scheme := Scheme.mono (.var 0)) rfl)
+      (context := [("m", NamedScheme.mono (.var 0))])
+      (scheme := NamedScheme.mono (.var 0)) rfl)
 
 theorem nestedCapLetProgram_ddSynth :
     DDSynth emptySignature ⟨0, 0⟩ Subst.id []
@@ -728,7 +728,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   | var lookup =>
   rename_i scheme1
   have pinned1 : some scheme1 =
-      some ((Scheme.mono (Ty.var 0)).applySubst Subst.id) :=
+      some ((NamedScheme.mono (Ty.var 0)).applySubst Subst.id) :=
     lookup.symm.trans rfl
   injection pinned1 with pinnedScheme1
   subst pinnedScheme1
@@ -791,7 +791,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
   | var lookup2 =>
   rename_i scheme2
   have pinned2 : some scheme2 =
-      some ((Scheme.mono (Ty.var 0)).applySubst
+      some ((NamedScheme.mono (Ty.var 0)).applySubst
         (Subst.seq delta3 (Subst.seq delta1 Subst.id))) :=
     lookup2.symm.trans rfl
   injection pinned2 with pinnedScheme2
@@ -865,7 +865,7 @@ theorem nestedCapSwappedProgram_no_ddTyping (target : Ty) :
   | var lookup =>
   rename_i scheme1
   have pinned1 : some scheme1 =
-      some ((Scheme.mono (Ty.var 0)).applySubst Subst.id) :=
+      some ((NamedScheme.mono (Ty.var 0)).applySubst Subst.id) :=
     lookup.symm.trans rfl
   injection pinned1 with pinnedScheme1
   subst pinnedScheme1
@@ -943,7 +943,7 @@ theorem nestedCapSwappedProgram_no_ddTyping (target : Ty) :
   | var lookup2 =>
   rename_i scheme2
   have pinned2 : some scheme2 =
-      some ((Scheme.mono (Ty.var 0)).applySubst
+      some ((NamedScheme.mono (Ty.var 0)).applySubst
         (Subst.seq delta3 (Subst.seq delta1 Subst.id))) :=
     lookup2.symm.trans rfl
   injection pinned2 with pinnedScheme2
@@ -1037,7 +1037,7 @@ theorem swappingDelta_pairedMGU : PairedMGU (.var 1) .int swappingDelta := by
 
 /-- The partially generalized scheme `∀9. 9 → 3`: `?9` is quantified,
 `?3` is shared with the ambient context. -/
-def capturedScheme : Scheme := ⟨[], [9], .fn (.var 9) (.var 3)⟩
+def capturedScheme : NamedScheme := ⟨[], [9], .fn (.var 9) (.var 3)⟩
 
 /-- Before transport: `Int → ?3` is a value-flow instance. -/
 theorem capturedScheme_instance :
@@ -1256,7 +1256,7 @@ instance in its premise.  Unconditional forgetting from `DDTyping` to
 must gain the freeze ledger axis before unconditional state erasure is valid. -/
 
 /-- A quantified matcher producer: `∀κ α. Matcher κ α`. -/
-def producerScheme : Scheme := ⟨[⟨0⟩], [0], .matcher (.var ⟨0⟩) (.var 0)⟩
+def producerScheme : NamedScheme := ⟨[⟨0⟩], [0], .matcher (.var ⟨0⟩) (.var 0)⟩
 
 /-- The seeded context binding the producer. -/
 def producerContext : Context := [("m", producerScheme)]
@@ -1269,7 +1269,7 @@ def capFreezeProgram : Expr :=
 
 /-- The inner context of the consumer body. -/
 def capFreezeInnerContext : Context :=
-  ("h", Scheme.mono (.var 1)) :: producerContext
+  ("h", NamedScheme.mono (.var 1)) :: producerContext
 
 /-- Prevailing substitution after the first-use function alignment. -/
 def capFreezeAlign1 : Subst :=
@@ -1312,7 +1312,7 @@ theorem capFreezeFirstApp_ddSynth :
       (.app (.var "h") .something) (.var 3) ⟨1, 5⟩ capFreezeCheck1 := by
   exact DDSynth.app (q₁ := ⟨1, 2⟩) (S₁ := Subst.id) (S₂ := capFreezeAlign1)
     (functionTarget := .var 1)
-    (DDSynth.var (scheme := Scheme.mono (.var 1)) rfl)
+    (DDSynth.var (scheme := NamedScheme.mono (.var 1)) rfl)
     (.ordinary rfl (ExactPairedMGU.varLeft 1 (.fn (.var 2) (.var 3))
       (by decide)))
     (.mk .something (.ordinary rfl (.ordinary rfl
@@ -1328,7 +1328,7 @@ theorem capFreezeSecondApp_ddSynth :
     (S₂ := capFreezeAlign2)
     (functionTarget := .fn (.matcher .any (.var 4)) (.var 3))
     (DDSynth.var
-      (scheme := Scheme.mono (.fn (.matcher .any (.var 4)) (.var 3))) rfl)
+      (scheme := NamedScheme.mono (.fn (.matcher .any (.var 4)) (.var 3))) rfl)
     (.ordinary rfl (ExactPairedMGU.fnFresh (.matcher .any (.var 4))
       (.var 3) 5 6 (by decide) (by decide) (by decide) (by decide)
       (by decide)))
@@ -1412,7 +1412,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
   have producerStable : ∀ post : Subst,
       producerScheme.applySubst post = producerScheme := by
     intro post
-    apply Scheme.applySubst_eq_self_of_free_fixed
+    apply NamedScheme.applySubst_eq_self_of_free_fixed
     · intro varId mem
       nomatch producerCapFree ▸ mem
     · intro varId mem
@@ -1423,7 +1423,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
     simp only [capFreezeInnerContext, producerContext, List.mem_cons,
       List.not_mem_nil, or_false] at mem
     rcases mem with rfl | rfl
-    · exact Scheme.BoundedBy.ofMono (Ty.BoundedBy.varOf (by decide))
+    · exact NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.varOf (by decide))
     · exact ⟨
         (fun varId mem => nomatch producerCapFree ▸ mem),
         (fun varId mem => nomatch producerTyFree ▸ mem)⟩
@@ -1559,7 +1559,7 @@ theorem capFreezeProgram_not_runtimeTyping :
   cases hfun2 with
   | var hfind2 hinst2 =>
   rename_i outerDomain innerDomain scheme2
-  have pinned2 : some scheme2 = some (Scheme.mono outerDomain) :=
+  have pinned2 : some scheme2 = some (NamedScheme.mono outerDomain) :=
     hfind2.symm.trans rfl
   injection pinned2 with pinnedScheme2
   subst pinnedScheme2
@@ -1570,7 +1570,7 @@ theorem capFreezeProgram_not_runtimeTyping :
   cases hz with
   | var hfindz hinstz =>
   rename_i schemez
-  have pinnedz : some schemez = some (Scheme.mono _) :=
+  have pinnedz : some schemez = some (NamedScheme.mono _) :=
     hfindz.symm.trans rfl
   injection pinnedz with pinnedSchemez
   subst pinnedSchemez
@@ -1610,7 +1610,7 @@ open AcceptanceGapRegression (packSignature packScheme)
 
 /-- One monomorphic structurally-capped consumer seed. -/
 def letCapContext : Context :=
-  [("m2", Scheme.mono (.matcher (.con "c" []) .int))]
+  [("m2", NamedScheme.mono (.matcher (.con "c" []) .int))]
 
 /-- `let f = λx. Pack x in (f something, f m2)`. -/
 def letCapFreezeProgram : Expr :=
@@ -1625,7 +1625,7 @@ def letCapValueSubst : Subst :=
 
 /-- The mid-derivation generalization of the value type quantifies the
 still-unresolved instance capability. -/
-def letCapScheme : Scheme :=
+def letCapScheme : NamedScheme :=
   ⟨[⟨1⟩], [2], .fn (.matcher (.var ⟨1⟩) (.var 2)) (.data "Packed" [])⟩
 
 /-- The body context binding the generalized producer. -/
@@ -1664,7 +1664,7 @@ theorem letCapValue_ddSynth :
       (.fn (.var 1) (.data "Packed" [])) ⟨2, 3⟩ letCapValueSubst := by
   exact DDSynth.lam
     (DDSynth.ctor (scheme := packScheme) rfl
-      (.cons (.mk (DDSynth.var (scheme := Scheme.mono (.var 1)) rfl)
+      (.cons (.mk (DDSynth.var (scheme := NamedScheme.mono (.var 1)) rfl)
         (.ordinary rfl (.ordinary rfl
           (ExactPairedMGU.varLeft 1 (.matcher (.var ⟨1⟩) (.var 2))
             (by decide)))))
@@ -1826,10 +1826,10 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
           packScheme, CtorScheme.fcv, Ty.fcvList, Ty.fcv, Cap.fcv]
           at inSignature
       · change valueCap ∈
-          (Scheme.mono
+          (NamedScheme.mono
             (valueDelta.apply (.matcher (.con "c" []) .int))).fcv
           at inContext
-        simp [Scheme.fcv, Scheme.mono, Ty.fcv, Cap.apply, Cap.applyList,
+        simp [NamedScheme.fcv, NamedScheme.mono, Ty.fcv, Cap.apply, Cap.applyList,
           Cap.fcv, Cap.fcvList] at inContext
   cases bodyOrigin with
   | tuple componentsOrigin =>
@@ -1859,7 +1859,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
     DDLedger.freezeExport
       (DDLedger.markSchemeInstance
         (DDLedger.markCtorInstance [] ⟨1, 2⟩ packScheme)
-        ⟨2, 3⟩ (Scheme.mono (.var 1)))
+        ⟨2, 3⟩ (NamedScheme.mono (.var 1)))
       valueDelta
       (Inference.freshCapImages ⟨1, 2⟩ packScheme.capBinders)
       (InferenceBase.instantiateCtorScheme ⟨1, 2⟩ packScheme).value.2
@@ -1883,7 +1883,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
         ((Subst.mk (valueDelta.cap.mask generalized.capBinders)
           (valueDelta.target.mask generalized.tyBinders)).apply
             (.data "Packed" [])) := by
-    exact Scheme.applySubst_body_fnMatcherView_of_bound generalized
+    exact NamedScheme.applySubst_body_fnMatcherView_of_bound generalized
       valueDelta valueCapBinder' generalizedBody
   have instantiatedView :=
     instanceView.toSchemeInstanceCapView.value_fnMatcherView firstSchemeBody
@@ -1996,7 +1996,7 @@ theorem letCapUse2_ddSynth :
       (.data "Packed" []) 12 13 (by decide) (by decide) (by decide)
       (by decide) (by decide)))
     (.mk (DDSynth.var
-        (scheme := Scheme.mono (.matcher (.con "c" []) .int)) rfl)
+        (scheme := NamedScheme.mono (.matcher (.con "c" []) .int)) rfl)
       (.ordinary rfl (.matcherPair rfl rfl
         (ExactCapMGU.varRight (.con "c" []) ⟨5⟩ (by decide))
         (ExactPairedMGU.varRight .int 11 (by decide)))))
@@ -2019,7 +2019,7 @@ theorem something_matcher_cap {context : Context} {published : Ty}
 capability `con "c" []`. -/
 theorem m2var_matcher_cap {context : Context} {published : Ty}
     (contextFind :
-      context.find? "m2" = some (Scheme.mono (.matcher (.con "c" []) .int)))
+      context.find? "m2" = some (NamedScheme.mono (.matcher (.con "c" []) .int)))
     (typing : RuntimeTyping packSignature context (.var "m2") published)
     {capability : Cap} {target : Ty}
     (headEq : published = .matcher capability target) :
@@ -2028,7 +2028,7 @@ theorem m2var_matcher_cap {context : Context} {published : Ty}
   | var find inst =>
       rename_i scheme
       have pinned : some scheme =
-          some (Scheme.mono (.matcher (.con "c" []) .int)) :=
+          some (NamedScheme.mono (.matcher (.con "c" []) .int)) :=
         find.symm.trans contextFind
       injection pinned with pinned
       subst pinned
@@ -2040,7 +2040,7 @@ theorem m2var_matcher_cap {context : Context} {published : Ty}
       | var find inst =>
           rename_i scheme
           have pinned : some scheme =
-              some (Scheme.mono (.matcher (.con "c" []) .int)) :=
+              some (NamedScheme.mono (.matcher (.con "c" []) .int)) :=
             find.symm.trans contextFind
           injection pinned with pinned
           subst pinned
@@ -2055,7 +2055,7 @@ theorem packCtor_domain_shape {domain : Ty} :
     ∀ {context : Context} {expression : Expr} {published : Ty},
       RuntimeTyping packSignature context expression published →
       expression = .ctor "Pack" [.var "x"] →
-      context.find? "x" = some (Scheme.mono domain) →
+      context.find? "x" = some (NamedScheme.mono domain) →
       (∃ capability target, domain = .matcher capability target) ∨
         (∃ duals : List Dual,
           domain = .prod (duals.map fun dual =>
@@ -2079,7 +2079,7 @@ theorem packCtor_domain_shape {domain : Ty} :
       cases argTyping with
       | var findX instX =>
           rename_i schemeX
-          have pinnedX : some schemeX = some (Scheme.mono domain) :=
+          have pinnedX : some schemeX = some (NamedScheme.mono domain) :=
             findX.symm.trans contextFind
           injection pinnedX with pinnedX
           subst pinnedX
@@ -2088,7 +2088,7 @@ theorem packCtor_domain_shape {domain : Ty} :
           cases premise with
           | var findX instX =>
               rename_i schemeX
-              have pinnedX : some schemeX = some (Scheme.mono domain) :=
+              have pinnedX : some schemeX = some (NamedScheme.mono domain) :=
                 findX.symm.trans contextFind
               injection pinnedX with pinnedX
               subst pinnedX
@@ -2311,7 +2311,7 @@ theorem orProgram_ddSynth :
   · exact .mk .something (.matcherToSlot rfl rfl
       ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
         ExactTargetMGU.varLeft 2 .int (by decide)⟩)
-  · exact DDSynth.var (scheme := Scheme.mono .int) rfl
+  · exact DDSynth.var (scheme := NamedScheme.mono .int) rfl
 
 theorem orMatcher_ddCheck :
     DDCheck emptySignature ⟨2, 2⟩ orTargetAlign [] .something
@@ -2336,29 +2336,29 @@ theorem orMatcher_ddCheckOrigin :
 
 theorem orBody_ddSynth :
     DDSynth emptySignature ⟨2, 3⟩ orTerminal
-      [("x", Scheme.mono (.var 0))] (.var "x") .int ⟨2, 3⟩
+      [("x", NamedScheme.mono (.var 0))] (.var "x") .int ⟨2, 3⟩
       orTerminal := by
   simpa [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
-    Ty.applyTarget, Cap.apply, Scheme.mono] using
+    Ty.applyTarget, Cap.apply, NamedScheme.mono] using
     (DDSynth.var (signature := emptySignature) (q := ⟨2, 3⟩)
-      (S := orTerminal) (Γ := [("x", Scheme.mono (.var 0))])
-      (scheme := Scheme.mono .int) rfl)
+      (S := orTerminal) (Γ := [("x", NamedScheme.mono (.var 0))])
+      (scheme := NamedScheme.mono .int) rfl)
 
 theorem orBody_ddSynthOrigin :
     DDSynthOrigin emptySignature orBody_ddSynth orPatternLedger₂
       orPatternLedger₂ := by
   simpa [DDLedger.markSchemeInstance, Inference.freshCapImages,
-    Scheme.mono, CapabilityOriginLedger.setOrigins,
+    NamedScheme.mono, CapabilityOriginLedger.setOrigins,
     InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyTarget, Cap.apply] using
     (DDSynthOrigin.var (signature := emptySignature)
       (ledger := orPatternLedger₂) (q := ⟨2, 3⟩) (S := orTerminal)
-      (context := [("x", Scheme.mono (.var 0))])
-      (scheme := Scheme.mono .int) rfl)
+      (context := [("x", NamedScheme.mono (.var 0))])
+      (scheme := NamedScheme.mono .int) rfl)
 
 theorem orProgram_ddSynthOrigin :
     DDSynthOrigin emptySignature orProgram_ddSynth [] orPatternLedger₂ := by
@@ -2528,7 +2528,7 @@ theorem delegatingNext_ddChecksOrigin :
 
 theorem delegatingInnerPattern_ddPattern :
     DDPattern emptySignature ⟨1, 2⟩ delegatingCheck1
-      [("v", Scheme.mono (.var 0))] [] [] (.pvar "y")
+      [("v", NamedScheme.mono (.var 0))] [] [] (.pvar "y")
       ⟨.var ⟨1⟩, .var 2⟩ [("y", .var 2)] ⟨2, 3⟩
       delegatingCheck1 :=
   .pvar (by simp [MonoCtx.names])
@@ -2538,13 +2538,13 @@ theorem delegatingInnerPattern_ddPatternOrigin :
       delegatingLedger₀ delegatingLedger₁ :=
   DDPatternOrigin.pvar (signature := emptySignature) (q := ⟨1, 2⟩)
     (S := delegatingCheck1)
-    (context := [("v", Scheme.mono (.var 0))]) (parameters := [])
+    (context := [("v", NamedScheme.mono (.var 0))]) (parameters := [])
     (bindings := []) (ledger := delegatingLedger₀)
       (by simp [MonoCtx.names])
 
 theorem delegatingInnerMatcher_ddCheck :
     DDCheck emptySignature ⟨2, 3⟩ delegatingInner1
-      [("v", Scheme.mono (.var 0))] .something
+      [("v", NamedScheme.mono (.var 0))] .something
       (.slot (.var ⟨1⟩) .int) ⟨2, 4⟩ delegatingInner2 := by
   exact .mk .something (.matcherToSlot rfl rfl
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
@@ -2555,7 +2555,7 @@ theorem delegatingInnerMatcher_ddCheckOrigin :
       delegatingLedger₁ delegatingLedger₁ := by
   refine .mk (synthesized := DDSynth.something (signature := emptySignature)
     (q := ⟨2, 3⟩) (S := delegatingInner1)
-    (Γ := [("v", Scheme.mono (.var 0))])) .something ?_
+    (Γ := [("v", NamedScheme.mono (.var 0))])) .something ?_
   exact .matcherToSlot rfl rfl ⟨
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
       ExactTargetMGU.varLeft 3 .int (by decide)⟩,
@@ -2567,16 +2567,16 @@ theorem delegatingInnerMatcher_ddCheckOrigin :
 
 theorem delegatingInnerBodyVar_ddSynth :
     DDSynth emptySignature ⟨2, 4⟩ delegatingInner2
-      [("y", Scheme.mono (.var 2)), ("v", Scheme.mono (.var 0))]
+      [("y", NamedScheme.mono (.var 2)), ("v", NamedScheme.mono (.var 0))]
       (.var "y") .int ⟨2, 4⟩ delegatingInner2 := by
   simpa [InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
-    Ty.applyTarget, Cap.apply, Scheme.mono] using
+    Ty.applyTarget, Cap.apply, NamedScheme.mono] using
     (DDSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
       (S := delegatingInner2)
-      (Γ := [("y", Scheme.mono (.var 2)), ("v", Scheme.mono (.var 0))])
-      (scheme := Scheme.mono .int) rfl)
+      (Γ := [("y", NamedScheme.mono (.var 2)), ("v", NamedScheme.mono (.var 0))])
+      (scheme := NamedScheme.mono .int) rfl)
 
 theorem delegatingInnerBodyVar_ddSynthOrigin :
     DDSynthOrigin emptySignature delegatingInnerBodyVar_ddSynth
@@ -2585,17 +2585,17 @@ theorem delegatingInnerBodyVar_ddSynthOrigin :
     CapabilityOriginLedger.setOrigins, InferenceBase.instantiateScheme,
     InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
     InferenceBase.freshTySubst, InferenceBase.binderSpan, Subst.apply,
-    Ty.applyCapability, Ty.applyTarget, Cap.apply, Scheme.mono] using
+    Ty.applyCapability, Ty.applyTarget, Cap.apply, NamedScheme.mono] using
     (DDSynthOrigin.var (signature := emptySignature)
       (ledger := delegatingLedger₁) (q := ⟨2, 4⟩)
       (S := delegatingInner2)
-      (context := [("y", Scheme.mono (.var 2)),
-        ("v", Scheme.mono (.var 0))])
-      (scheme := Scheme.mono .int) rfl)
+      (context := [("y", NamedScheme.mono (.var 2)),
+        ("v", NamedScheme.mono (.var 0))])
+      (scheme := NamedScheme.mono .int) rfl)
 
 theorem delegatingBody_ddSynth :
     DDSynth emptySignature ⟨1, 2⟩ delegatingCheck1
-      [("v", Scheme.mono (.var 0))] delegatingBody (Ty.listT .int)
+      [("v", NamedScheme.mono (.var 0))] delegatingBody (Ty.listT .int)
       ⟨2, 4⟩ delegatingInner2 := by
   exact DDSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
     (S₄ := delegatingInner2) .lit delegatingInnerPattern_ddPattern
@@ -2614,7 +2614,7 @@ theorem delegatingBody_ddSynthOrigin :
 aligns with the decomposition-result type `List ?0`. -/
 theorem delegatingBody_ddCheck :
     DDCheck emptySignature ⟨1, 2⟩ delegatingCheck1
-      [("v", Scheme.mono (.var 0))] delegatingBody (Ty.listT (.var 0))
+      [("v", NamedScheme.mono (.var 0))] delegatingBody (Ty.listT (.var 0))
       ⟨2, 4⟩ delegatingTerminal := by
   refine .mk (raw := Ty.listT .int) (q₁ := ⟨2, 4⟩)
     (S₁ := delegatingInner2) ?_ ?_
@@ -2625,7 +2625,7 @@ theorem delegatingBody_ddCheck :
     · exact .mk .something (.matcherToSlot rfl rfl
         ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
           ExactTargetMGU.varLeft 3 .int (by decide)⟩)
-    · exact DDSynth.var (scheme := Scheme.mono .int) rfl
+    · exact DDSynth.var (scheme := NamedScheme.mono .int) rfl
   · exact .ordinary rfl (.ordinary rfl delegating_bodyMGU_exact)
 
 theorem delegatingBody_ddCheckOrigin :

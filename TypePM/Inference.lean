@@ -519,7 +519,7 @@ inductive TraceEvent where
       Ty -> List (List Dual) -> Ty -> List (List Cap) ->
       List Shape.Evidence -> Cap -> TraceEvent
   | letGeneralization : Nat -> String -> Context -> Ty -> Context -> Ty ->
-      Scheme -> TraceEvent
+      NamedScheme -> TraceEvent
   | capabilityFlow : FlowTag -> Shape.Evidence -> TraceEvent
   | inferredExpr : Expr -> Ty -> SyntaxPath -> TraceEvent
   | inferredPattern : Pattern -> Dual -> MonoCtx -> SyntaxPath -> TraceEvent
@@ -546,7 +546,7 @@ inductive TraceEvent where
   | typeAlignment : Nat -> Nat -> Ty -> Ty -> Ty -> Ty -> TraceEvent
   /-- Capability/target equality for the two components of a pattern dual. -/
   | dualAlignment : Nat -> Nat -> Dual -> Dual -> Dual -> Dual -> TraceEvent
-  | schemeInstantiation : Nat -> InferenceBase.FreshSupply -> Scheme ->
+  | schemeInstantiation : Nat -> InferenceBase.FreshSupply -> NamedScheme ->
       String -> Context -> Context ->
       List CapVar -> List TypePM.TyVar -> List CapVar -> List TypePM.TyVar ->
       Ty -> List CapVar -> List TypePM.TyVar -> TraceEvent
@@ -1767,7 +1767,7 @@ theorem initialSupply_capVarsBelow
     · right
       rcases contextMembership with ⟨entry, entryMember, variableMember⟩
       exact ⟨entry, entryMember,
-        Scheme.mem_allCapVars_of_mem_fcv entry.2 variableMember⟩
+        NamedScheme.mem_allCapVars_of_mem_fcv entry.2 variableMember⟩
   simpa only [initialSupply] using
     InferenceBase.mem_lt_binderSpan
       (List.mem_map.mpr ⟨varId, allMembership, rfl⟩)
@@ -1807,7 +1807,7 @@ theorem initialSupply_tyVarsBelow
     · right
       rcases contextMembership with ⟨entry, entryMember, variableMember⟩
       exact ⟨entry, entryMember,
-        Scheme.mem_allTyVars_of_mem_ftv entry.2 variableMember⟩
+        NamedScheme.mem_allTyVars_of_mem_ftv entry.2 variableMember⟩
   simpa only [initialSupply] using
     InferenceBase.mem_lt_binderSpan allMembership
 
@@ -2116,7 +2116,7 @@ def freshTyImages
 recorded by an expression-scheme `FreshInstAt` witness whenever the ambient
 variables precede the incoming supply. -/
 theorem instantiateScheme_freshInstAt
-    (supply : InferenceBase.FreshSupply) (scheme : Scheme)
+    (supply : InferenceBase.FreshSupply) (scheme : NamedScheme)
     (reservedCaps : List CapVar) (reservedTys : List TypePM.TyVar)
     (capNodup : scheme.capBinders.Nodup)
     (tyNodup : scheme.tyBinders.Nodup)
@@ -2260,7 +2260,7 @@ later structural strengthening, and retain the instance in the trace.
 -/
 def instantiateSchemeInState
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) : Ty × InferState :=
+    (name : String) (state : InferState) (scheme : NamedScheme) : Ty × InferState :=
   let incomingSupply := state.supply
   let instantiation := InferenceBase.instantiateScheme incomingSupply scheme
   let protectedIds := freshCapImages incomingSupply scheme.capBinders
@@ -2790,7 +2790,7 @@ def inferExprFuel :
           let (domain, state) :=
             state.freshTy (freshOrigin .expression path "lambda-domain")
           match inferExprFuel fuel signature
-              ((name, Scheme.mono domain) :: context)
+              ((name, NamedScheme.mono domain) :: context)
               (selfEnv.erase name) (0 :: path) body state with
           | none => none
           | some bodyResult =>
@@ -2809,8 +2809,8 @@ def inferExprFuel :
                 let shadowed := selfEnv.eraseMany [self, argument]
                 let insideSelf := (self, placeholder) :: shadowed
                 let insideContext :=
-                  (argument, Scheme.mono domain) ::
-                    (self, Scheme.mono placeholder) :: context
+                  (argument, NamedScheme.mono domain) ::
+                    (self, NamedScheme.mono placeholder) :: context
                 match inferExprFuel fuel signature insideContext insideSelf
                     (0 :: path) body state with
                 | none => none
@@ -3736,7 +3736,7 @@ theorem finishExpr_historyPrefix
 
 theorem instantiateSchemeInState_historyPrefix
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     state.HistoryPrefix
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 := by
@@ -3768,7 +3768,7 @@ theorem instantiateDualInState_historyPrefix
 
 theorem instantiateSchemeInState_historyPrefix_of_eq
     {signature : FrozenSig} {rawContext normalizedContext : Context}
-    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
+    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) : state.HistoryPrefix final := by
   exact InferState.HistoryPrefix.snd_of_eq
@@ -3820,7 +3820,7 @@ theorem instantiateCtorInState_event_mem_of_eq
 scope event in the returned state. -/
 theorem instantiateSchemeInState_event_mem_of_eq
     {signature : FrozenSig} {rawContext normalizedContext : Context}
-    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
+    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     ∃ solveCount supply fixedCaps fixedTys reservedCaps reservedTys capImages
@@ -4548,7 +4548,7 @@ private def protectionSignature : FrozenSig where
   constructorsByFormer := []
   armExhaustive := basicArmExhaustive
 
-private def polymorphicProducer : Scheme :=
+private def polymorphicProducer : NamedScheme :=
   ⟨[⟨0⟩], [], .matcher (.var ⟨0⟩) .int⟩
 
 /--

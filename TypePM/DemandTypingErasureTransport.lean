@@ -58,8 +58,8 @@ theorem Ty.mem_fcv_applyTarget_of_image
 
 /-- Free capability variables of a capture-avoiding image of a scheme are
 fixed by the solved-form substitution that produced that image. -/
-theorem Scheme.applySubst_fcv_fixed_of_idempotent
-    {S : Subst} (idem : S.Idempotent) (raw : Scheme) :
+theorem NamedScheme.applySubst_fcv_fixed_of_idempotent
+    {S : Subst} (idem : S.Idempotent) (raw : NamedScheme) :
     ∀ varId, varId ∈ (raw.applySubst S).fcv →
       S.cap varId = .var varId := by
   intro varId membership
@@ -98,8 +98,8 @@ theorem Scheme.applySubst_fcv_fixed_of_idempotent
         (Ty.mem_fcv_applyTarget_of_image _ _ sourceMem' imageMem')
 
 /-- Ordinary free variables satisfy the analogous solved-form property. -/
-theorem Scheme.applySubst_ftv_fixed_of_idempotent
-    {S : Subst} (idem : S.Idempotent) (raw : Scheme) :
+theorem NamedScheme.applySubst_ftv_fixed_of_idempotent
+    {S : Subst} (idem : S.Idempotent) (raw : NamedScheme) :
     ∀ varId, varId ∈ (raw.applySubst S).ftv →
       S.target varId = .var varId := by
   intro varId membership
@@ -135,12 +135,12 @@ theorem Scheme.applySubst_ftv_fixed_of_idempotent
 /-- A context lookup after capture-avoiding substitution has a unique source
 lookup witness.  No typing evidence is stored in this provenance fact. -/
 theorem Context.find?_applySubst_some_origin
-    (S : Subst) (context : Context) (name : String) (scheme : Scheme)
+    (S : Subst) (context : Context) (name : String) (scheme : NamedScheme)
     (lookup : (context.applySubst S).find? name = some scheme) :
     ∃ rawScheme,
       context.find? name = some rawScheme ∧
       rawScheme.applySubst S = scheme := by
-  have mapped : (context.find? name).map (Scheme.applySubst S) =
+  have mapped : (context.find? name).map (NamedScheme.applySubst S) =
       some scheme := by
     rw [← Context.find?_applySubst]
     exact lookup
@@ -156,8 +156,8 @@ prevailing substitution once that substitution fixes the scheme's free
 variables.  Boundedness fixes the newly allocated binder images; the two
 free-variable premises handle the already-zonked body.
 -/
-theorem Scheme.instantiate_value_fixed_of_free_fixed
-    {S : Subst} {q : InferenceBase.FreshSupply} {scheme : Scheme}
+theorem NamedScheme.instantiate_value_fixed_of_free_fixed
+    {S : Subst} {q : InferenceBase.FreshSupply} {scheme : NamedScheme}
     (bounded : S.BoundedBy q)
     (capFixed : ∀ varId, varId ∈ scheme.fcv →
       S.cap varId = .var varId)
@@ -174,9 +174,9 @@ theorem Scheme.instantiate_value_fixed_of_free_fixed
         simp [fresh, InferenceBase.instantiateScheme,
           InferenceBase.instantiateBinders,
           InferenceBase.freshCapSubst, binder]
-      simp only [Scheme.postCap, binder, if_true, freshEquation, Cap.apply]
+      simp only [NamedScheme.postCap, binder, if_true, freshEquation, Cap.apply]
       exact bounded.capFixedAbove _ (Nat.le_add_right _ _)
-    · simp [Scheme.postCap, fresh, InferenceBase.instantiateScheme,
+    · simp [NamedScheme.postCap, fresh, InferenceBase.instantiateScheme,
         InferenceBase.instantiateBinders,
         InferenceBase.freshCapSubst, binder]
   have targetEquation : scheme.postTarget S fresh.target = fresh.target := by
@@ -187,13 +187,13 @@ theorem Scheme.instantiate_value_fixed_of_free_fixed
         simp [fresh, InferenceBase.instantiateScheme,
           InferenceBase.instantiateBinders,
           InferenceBase.freshTySubst, binder]
-      simp only [Scheme.postTarget, binder, if_true, freshEquation,
+      simp only [NamedScheme.postTarget, binder, if_true, freshEquation,
         Subst.apply, Ty.applyCapability, Ty.applyTarget]
       exact bounded.targetFixedAbove _ (Nat.le_add_right _ _)
-    · simp [Scheme.postTarget, fresh, InferenceBase.instantiateScheme,
+    · simp [NamedScheme.postTarget, fresh, InferenceBase.instantiateScheme,
         InferenceBase.instantiateBinders,
         InferenceBase.freshTySubst, binder]
-  have composed := Scheme.post_apply
+  have composed := NamedScheme.post_apply
     (external := S) (scheme := scheme)
     (originalCap := fresh.cap) (originalTarget := fresh.target)
     (InferenceBase.instantiateBinders_cap_support q
@@ -210,27 +210,27 @@ theorem Scheme.instantiate_value_fixed_of_free_fixed
 
 /-- A solved and bounded substitution fixes the canonical instance of every
 scheme that it has itself produced by capture-avoiding application. -/
-theorem Scheme.instantiate_applySubst_value_fixed
-    {S : Subst} {q : InferenceBase.FreshSupply} (raw : Scheme)
+theorem NamedScheme.instantiate_applySubst_value_fixed
+    {S : Subst} {q : InferenceBase.FreshSupply} (raw : NamedScheme)
     (bounded : S.BoundedBy q) (idem : S.Idempotent) :
     S.apply
         (InferenceBase.instantiateScheme q (raw.applySubst S)).value =
       (InferenceBase.instantiateScheme q (raw.applySubst S)).value :=
-  Scheme.instantiate_value_fixed_of_free_fixed bounded
-    (Scheme.applySubst_fcv_fixed_of_idempotent idem raw)
-    (Scheme.applySubst_ftv_fixed_of_idempotent idem raw)
+  NamedScheme.instantiate_value_fixed_of_free_fixed bounded
+    (NamedScheme.applySubst_fcv_fixed_of_idempotent idem raw)
+    (NamedScheme.applySubst_ftv_fixed_of_idempotent idem raw)
 
 /-! ## Binder-image-local value-flow transport -/
 
 /--
 Transport one explicit expression-scheme instance through an external post.
 
-Unlike `Scheme.ValueFlowInst.transport`, variable-valuedness is required only
+Unlike `NamedScheme.ValueFlowInst.transport`, variable-valuedness is required only
 for the capability images selected by this instance.  This is the exact
 condition recorded by `markSchemeInstance` in an origin derivation.
 -/
-theorem Scheme.VariableInstAt.transportResult
-    {external : Subst} {scheme : Scheme} {target : Ty}
+theorem NamedScheme.VariableInstAt.transportResult
+    {external : Subst} {scheme : NamedScheme} {target : Ty}
     {C : CapSubst} {T : TySubst}
     (typing : scheme.VariableInstAt C T target)
     (externalCapFixed : ∀ varId, varId ∈ scheme.fcv →
@@ -253,9 +253,9 @@ theorem Scheme.VariableInstAt.transportResult
     rcases binderImagesVariable binder binderMem image imageEquation with
       ⟨finalImage, finalEquation⟩
     exact ⟨finalImage, by
-      simp [Scheme.postCap, binderMem, imageEquation, Cap.apply,
+      simp [NamedScheme.postCap, binderMem, imageEquation, Cap.apply,
         finalEquation]⟩
-  · rw [Scheme.post_apply typing.capSupport typing.tySupport
+  · rw [NamedScheme.post_apply typing.capSupport typing.tySupport
       externalCapFixed externalTargetFixed, typing.result]
 
 /-- Transport a variable-only instance to the externally transformed scheme.
@@ -263,8 +263,8 @@ Unlike `transportResult`, free variables need not be fixed: their action is
 recorded in `scheme.applySubst external`.  The caller supplies the ordinary
 instantiation-composition witness and only has to show that its composed
 capability binder images remain variables. -/
-theorem Scheme.VariableInstAt.transportApplied
-    {external : Subst} {scheme : Scheme} {target : Ty}
+theorem NamedScheme.VariableInstAt.transportApplied
+    {external : Subst} {scheme : NamedScheme} {target : Ty}
     {C : CapSubst} {T : TySubst}
     (typing : scheme.VariableInstAt C T target)
     (composition : scheme.InstCompositionAt external C T)
@@ -278,12 +278,12 @@ theorem Scheme.VariableInstAt.transportApplied
       tySupport := ?_
       capBinderVariable := ?_
       result := ?_ }
-  · simpa only [Scheme.applySubst_capBinders] using composition.capSupport
-  · simpa [Scheme.applySubst] using composition.targetSupport
-  · simpa only [Scheme.applySubst_capBinders] using binderImagesVariable
+  · simpa only [NamedScheme.applySubst_capBinders] using composition.capSupport
+  · simpa [NamedScheme.applySubst] using composition.targetSupport
+  · simpa only [NamedScheme.applySubst_capBinders] using binderImagesVariable
   · rw [composition.bodyEquation, typing.result]
 
-/-- Dual-scheme counterpart of `Scheme.VariableInstAt.transportResult`. -/
+/-- Dual-scheme counterpart of `NamedScheme.VariableInstAt.transportResult`. -/
 theorem DualScheme.VariableInstAt.transportResult
     {external : Subst} {scheme : DualScheme}
     {args : List Dual} {result : Dual}
@@ -336,8 +336,8 @@ theorem DualScheme.VariableInstAt.transportResult
 
 /-- The supply-indexed expression-scheme instance is a declarative
 variable-only capability instance, without any terminal-post assumption. -/
-def Scheme.instantiateVariableInstAt
-    (q : InferenceBase.FreshSupply) (scheme : Scheme) :
+def NamedScheme.instantiateVariableInstAt
+    (q : InferenceBase.FreshSupply) (scheme : NamedScheme) :
     scheme.VariableInstAt
       (InferenceBase.instantiateScheme q scheme).subst.cap
       (InferenceBase.instantiateScheme q scheme).subst.target
@@ -384,7 +384,7 @@ namespace DDErasure.AdmissiblePostBetween
 admissible suffix starting at its post-instantiation cut. -/
 theorem schemeInstanceImageVariable
     {ledger finalLedger : CapabilityOriginLedger}
-    {q final : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+    {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
       (InferenceBase.instantiateScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
@@ -446,9 +446,9 @@ end DDErasure.AdmissiblePostBetween
 /-- Transport the canonical expression-scheme instance when the external
 post fixes the scheme's free variables.  Origin admissibility discharges the
 only variable-only obligation, binder by binder. -/
-theorem Scheme.instantiateValueFlowUnderAdmissible
+theorem NamedScheme.instantiateValueFlowUnderAdmissible
     {ledger finalLedger : CapabilityOriginLedger}
-    {q final : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+    {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
       (InferenceBase.instantiateScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
@@ -458,7 +458,7 @@ theorem Scheme.instantiateValueFlowUnderAdmissible
       post.target varId = .var varId) :
     scheme.ValueFlowInst
       (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
-  apply (Scheme.instantiateVariableInstAt q scheme).transportResult
+  apply (NamedScheme.instantiateVariableInstAt q scheme).transportResult
       externalCapFixed externalTargetFixed
   intro binder binderMem image imageEquation
   have canonicalEquation :
@@ -480,9 +480,9 @@ algebra.  The additional equation identifies its binder component with the
 actual post-image of the fresh canonical binder.  Origin admissibility at the
 exact post-instantiation cut then proves that this component is variable-only;
 no context-wide flow assumption is involved. -/
-theorem Scheme.instantiateAppliedValueFlowUnderAdmissible
+theorem NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     {ledger finalLedger : CapabilityOriginLedger}
-    {q final : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+    {q final : InferenceBase.FreshSupply} {scheme : NamedScheme} {post : Subst}
     (admissible : DDErasure.AdmissiblePostBetween
       (InferenceBase.instantiateScheme q scheme).supply final
       (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
@@ -495,7 +495,7 @@ theorem Scheme.instantiateAppliedValueFlowUnderAdmissible
           post.cap) :
     (scheme.applySubst post).ValueFlowInst
       (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
-  apply (Scheme.instantiateVariableInstAt q scheme).transportApplied
+  apply (NamedScheme.instantiateVariableInstAt q scheme).transportApplied
       composition
   intro binder binderMem
   rcases admissible.schemeInstanceImageVariable binderMem with
@@ -547,7 +547,7 @@ is intentionally absent here; transporting the lookup through that suffix
 also has to transport the selected capture-avoiding context scheme. -/
 theorem runtimeErasure_var_of_instanceFixed
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : Scheme)
+    (context : Context) (name : String) (scheme : NamedScheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme)
     (instanceFixed : S.apply
@@ -559,7 +559,7 @@ theorem runtimeErasure_var_of_instanceFixed
   unfold RuntimeErasure
   rw [instanceFixed]
   exact RuntimeTyping.var lookup
-    ⟨_, _, Scheme.instantiateVariableInstAt q scheme⟩
+    ⟨_, _, NamedScheme.instantiateVariableInstAt q scheme⟩
 
 /-- The fixedness cut above follows from the two invariants maintained by a
 solved DD traversal: the prevailing substitution is bounded by its current
@@ -567,7 +567,7 @@ supply and is in solved (idempotent) form.  Lookup provenance is recovered
 algebraically from `Context.applySubst`; no terminal typing premise is used. -/
 theorem runtimeErasure_var_of_bounded_idempotent
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : Scheme)
+    (context : Context) (name : String) (scheme : NamedScheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme)
     (bounded : S.BoundedBy q) (idem : S.Idempotent) :
@@ -580,7 +580,7 @@ theorem runtimeErasure_var_of_bounded_idempotent
       (InferenceBase.instantiateScheme q scheme).value =
         (InferenceBase.instantiateScheme q scheme).value := by
     rw [← schemeEquation]
-    exact Scheme.instantiate_applySubst_value_fixed rawScheme bounded idem
+    exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   exact runtimeErasure_var_of_instanceFixed signature q S context name scheme
     ledger lookup fixed
 
@@ -596,7 +596,7 @@ requirement that canonical capability-binder images remain variables. -/
 theorem runtimeVar_afterPost_of_admissible
     {signature : FrozenSig} {q final : InferenceBase.FreshSupply}
     {S post S' : Subst} {context : Context} {name : String}
-    {rawScheme scheme : Scheme}
+    {rawScheme scheme : NamedScheme}
     {ledger finalLedger : CapabilityOriginLedger}
     (rawLookup : context.find? name = some rawScheme)
     (sourceSchemeEquation : rawScheme.applySubst S = scheme)
@@ -622,13 +622,13 @@ theorem runtimeVar_afterPost_of_admissible
       some (scheme.applySubst post) := by
     rw [Context.find?_applySubst, rawLookup]
     simpa using congrArg some terminalSchemeEquation
-  have instanceTyping := Scheme.instantiateAppliedValueFlowUnderAdmissible
+  have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     admissible composition composedCapEquation
   have sourceFixed : S.apply
       (InferenceBase.instantiateScheme q scheme).value =
         (InferenceBase.instantiateScheme q scheme).value := by
     rw [← sourceSchemeEquation]
-    exact Scheme.instantiate_applySubst_value_fixed rawScheme bounded idem
+    exact NamedScheme.instantiate_applySubst_value_fixed rawScheme bounded idem
   have transported : RuntimeTyping signature
       (context.applySubst (Subst.seq post S))
       (.var name)

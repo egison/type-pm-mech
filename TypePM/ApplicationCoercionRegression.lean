@@ -21,25 +21,25 @@ private theorem productMatcherConsumer_typed :
     RuntimeTyping emptySignature productMatcherConsumerContext (.var "consume")
       (.fn concretePairMatcherType .int) := by
   apply RuntimeTyping.var
-      (scheme := Scheme.mono (.fn concretePairMatcherType .int))
+      (scheme := NamedScheme.mono (.fn concretePairMatcherType .int))
   · simp [productMatcherConsumerContext, Context.find?]
-  · exact Scheme.mono_valueFlowInst _
+  · exact NamedScheme.mono_valueFlowInst _
 
 private theorem productSlotConsumer_typed :
     RuntimeTyping emptySignature productSlotConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
   apply RuntimeTyping.var
-      (scheme := Scheme.mono (.fn concretePairSlotType .int))
+      (scheme := NamedScheme.mono (.fn concretePairSlotType .int))
   · simp [productSlotConsumerContext, Context.find?]
-  · exact Scheme.mono_valueFlowInst _
+  · exact NamedScheme.mono_valueFlowInst _
 
 private theorem slotTupleConsumer_typed :
     RuntimeTyping emptySignature slotTupleConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
   apply RuntimeTyping.var
-      (scheme := Scheme.mono (.fn concretePairSlotType .int))
+      (scheme := NamedScheme.mono (.fn concretePairSlotType .int))
   · simp [slotTupleConsumerContext, Context.find?]
-  · exact Scheme.mono_valueFlowInst _
+  · exact NamedScheme.mono_valueFlowInst _
 
 private theorem pairOfMatchers_product_typed
     (context : Context) :
@@ -142,10 +142,10 @@ theorem productSlotArgumentApplication_runtimeCertified :
 private theorem slotVariable_typed
     (name : String)
     (lookup : slotTupleConsumerContext.find? name =
-      some (Scheme.mono (.slot .any .int))) :
+      some (NamedScheme.mono (.slot .any .int))) :
     RuntimeTyping emptySignature slotTupleConsumerContext (.var name)
       (.slot .any .int) :=
-  RuntimeTyping.var lookup (Scheme.mono_valueFlowInst _)
+  RuntimeTyping.var lookup (NamedScheme.mono_valueFlowInst _)
 
 private theorem pairOfSlots_product_typed :
     RuntimeTyping emptySignature slotTupleConsumerContext

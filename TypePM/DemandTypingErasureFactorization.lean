@@ -1115,7 +1115,7 @@ theorem DDSynthOrigin.factorize
           (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
       exact DDSynthOrigin.stateFactorization_lam_of_body bodyOrigin
         (DDSynthOrigin.factorize bodyOrigin closed (Sb.mono extension)
-          (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+          (Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
             (contextBounded.mono extension)))
   | @DDSynthOrigin.fix _ q S context self argument _ _ _ _ _ ledger _
       distinct direct nonMatcher _ bodyOrigin aligned => by
@@ -1128,13 +1128,13 @@ theorem DDSynthOrigin.factorize
         (show q.nextTy + 1 < q.nextTy + 2 by omega)
       have bodyContextB : Context.BoundedBy
           { q with nextTy := q.nextTy + 2 }
-          ((argument, Scheme.mono (.var q.nextTy)) ::
-            (self, Scheme.mono
+          ((argument, NamedScheme.mono (.var q.nextTy)) ::
+            (self, NamedScheme.mono
               (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context) :=
         Context.BoundedBy.cons
-        (Scheme.BoundedBy.ofMono domainB)
+        (NamedScheme.BoundedBy.ofMono domainB)
         (Context.BoundedBy.cons
-          (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+          (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
           (contextBounded.mono extension))
       obtain ⟨S₁b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
         (Sb.mono extension) bodyContextB
@@ -1242,12 +1242,12 @@ theorem DDSynthOrigin.factorize
         fixMatcherPlaceholderSupply_boundedBy placeholder
       have ext := SupplyExtends.fixMatcherPlaceholder placeholder
       have bodyContextB : Context.BoundedBy _
-          ((argument, Scheme.mono domain) ::
-            (self, Scheme.mono (.fn domain codomain)) :: context) :=
+          ((argument, NamedScheme.mono domain) ::
+            (self, NamedScheme.mono (.fn domain codomain)) :: context) :=
         Context.BoundedBy.cons
-        (Scheme.BoundedBy.ofMono domainB)
+        (NamedScheme.BoundedBy.ofMono domainB)
         (Context.BoundedBy.cons
-          (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+          (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
           (contextBounded.mono ext))
       obtain ⟨S₁b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
         (Sb.mono ext) bodyContextB

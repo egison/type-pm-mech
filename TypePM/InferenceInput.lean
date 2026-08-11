@@ -20,7 +20,7 @@ namespace TypePM
 /-! ## Binder hygiene -/
 
 /-- The two quantified binder lists of an expression scheme are set-like. -/
-def Scheme.BindersNodup (scheme : Scheme) : Prop :=
+def NamedScheme.BindersNodup (scheme : NamedScheme) : Prop :=
   scheme.capBinders.Nodup ∧ scheme.tyBinders.Nodup
 
 /-- The two quantified binder lists of a constructor scheme are set-like. -/
@@ -33,15 +33,15 @@ def DualScheme.BindersNodup (scheme : DualScheme) : Prop :=
 
 /-- Capture-avoiding substitution changes only a scheme body, so it preserves
 the binder-hygiene condition definitionally. -/
-theorem Scheme.BindersNodup.applySubst
-    {scheme : Scheme} (wf : scheme.BindersNodup) (S : Subst) :
+theorem NamedScheme.BindersNodup.applySubst
+    {scheme : NamedScheme} (wf : scheme.BindersNodup) (S : Subst) :
     (scheme.applySubst S).BindersNodup := by
-  simpa [Scheme.BindersNodup, Scheme.applySubst] using wf
+  simpa [NamedScheme.BindersNodup, NamedScheme.applySubst] using wf
 
 /-- A monomorphic scheme has no quantified binders. -/
-@[simp] theorem Scheme.mono_bindersNodup (target : Ty) :
-    (Scheme.mono target).BindersNodup := by
-  simp [Scheme.BindersNodup, Scheme.mono]
+@[simp] theorem NamedScheme.mono_bindersNodup (target : Ty) :
+    (NamedScheme.mono target).BindersNodup := by
+  simp [NamedScheme.BindersNodup, NamedScheme.mono]
 
 /-- Signature-aware expression generalization always produces set-like
 binder lists. -/
@@ -114,7 +114,7 @@ structure InferenceInputWF
 /-- Adding one hygienic scheme preserves context well-formedness. -/
 theorem ContextInferenceWF.cons
     {context : Context} (contextWF : ContextInferenceWF context)
-    {boundName : String} {scheme : Scheme}
+    {boundName : String} {scheme : NamedScheme}
     (schemeWF : scheme.BindersNodup) :
     ContextInferenceWF ((boundName, scheme) :: context) := by
   constructor
@@ -133,8 +133,8 @@ well-formed inference context. -/
 theorem ContextInferenceWF.consMono
     {context : Context} (contextWF : ContextInferenceWF context)
     (name : String) (target : Ty) :
-    ContextInferenceWF ((name, Scheme.mono target) :: context) :=
-  contextWF.cons (Scheme.mono_bindersNodup target)
+    ContextInferenceWF ((name, NamedScheme.mono target) :: context) :=
+  contextWF.cons (NamedScheme.mono_bindersNodup target)
 
 /-- A let-generalized scheme may always be added to a well-formed inference
 context. -/

@@ -195,7 +195,7 @@ namespace DDLedger
 /-- Fresh capability images of a value-flow scheme are exported immediately,
 so later solves may only rename them to another non-structural variable. -/
 def markSchemeInstance (ledger : CapabilityOriginLedger)
-    (q : InferenceBase.FreshSupply) (scheme : Scheme) :
+    (q : InferenceBase.FreshSupply) (scheme : NamedScheme) :
     CapabilityOriginLedger :=
   ledger.setOrigins (freshCapImages q scheme.capBinders) .renameOnly
 
@@ -309,7 +309,7 @@ theorem matcherProducerLeaves_origin
 
 theorem markSchemeInstance_origin_of_mem
     (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
-    (scheme : Scheme) (varId : CapVar)
+    (scheme : NamedScheme) (varId : CapVar)
     (membership : varId ∈ freshCapImages q scheme.capBinders) :
     (markSchemeInstance ledger q scheme).originOf varId = .renameOnly := by
   exact CapabilityOriginLedger.originOf_setOrigins_of_mem
@@ -2526,7 +2526,7 @@ allocated binder substitution has empty support. -/
 theorem instantiateScheme_monoApplySubst_value
     (q : InferenceBase.FreshSupply) (S : Subst) (body : Ty) :
     (InferenceBase.instantiateScheme q
-      ((Scheme.mono body).applySubst S)).value = S.apply body := by
+      ((NamedScheme.mono body).applySubst S)).value = S.apply body := by
   show (InferenceBase.instantiateBinders q [] []).subst.apply
       ((Subst.mk (S.cap.mask []) (S.target.mask [])).apply body) =
     S.apply body
@@ -2933,7 +2933,7 @@ inductive DDSynth (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → Expr → Ty →
       InferenceBase.FreshSupply → Subst → Prop where
   | var {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
-      {name : String} {scheme : Scheme} :
+      {name : String} {scheme : NamedScheme} :
       (Γ.applySubst S).find? name = some scheme →
       DDSynth signature q S Γ (.var name)
         (InferenceBase.instantiateScheme q scheme).value
@@ -2942,7 +2942,7 @@ inductive DDSynth (signature : FrozenSig) :
       {name : String} {body : Expr} {bodyTarget : Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       DDSynth signature { q with nextTy := q.nextTy + 1 } S
-        ((name, Scheme.mono (.var q.nextTy)) :: Γ) body bodyTarget q' S' →
+        ((name, NamedScheme.mono (.var q.nextTy)) :: Γ) body bodyTarget q' S' →
       DDSynth signature q S Γ (.lam name body)
         (.fn (.var q.nextTy) bodyTarget) q' S'
   | fix {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
@@ -2952,8 +2952,8 @@ inductive DDSynth (signature : FrozenSig) :
       DirectSelf.Holds self body →
       NonMatcherBody body →
       DDSynth signature { q with nextTy := q.nextTy + 2 } S
-        ((argument, Scheme.mono (.var q.nextTy)) ::
-          (self, Scheme.mono
+        ((argument, NamedScheme.mono (.var q.nextTy)) ::
+          (self, NamedScheme.mono
             (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: Γ)
         body bodyTarget q₁ S₁ →
       DDAlignTypes S₁ bodyTarget (.var (q.nextTy + 1)) S' →
@@ -3049,8 +3049,8 @@ inductive DDSynth (signature : FrozenSig) :
       fixMatcherPlaceholderSupply signature clauses q =
         some (domain, codomain, q₀) →
       DDSynth signature q₀ S
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: Γ)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: Γ)
         (.matcher clauses) bodyTarget q₁ S₁ →
       DDAlignTypes S₁ bodyTarget codomain S' →
       DDSynth signature q S Γ (.fix self argument (.matcher clauses))
@@ -3606,9 +3606,9 @@ theorem SupplyExtends.bumpTy (q : InferenceBase.FreshSupply) (count : Nat) :
     SupplyExtends q { q with nextTy := q.nextTy + count } :=
   ⟨Nat.le_refl _, Nat.le_add_right _ _⟩
 
-/-- Scheme instantiation only advances both counters. -/
+/-- NamedScheme instantiation only advances both counters. -/
 theorem SupplyExtends.instantiateScheme
-    (q : InferenceBase.FreshSupply) (scheme : Scheme) :
+    (q : InferenceBase.FreshSupply) (scheme : NamedScheme) :
     SupplyExtends q (InferenceBase.instantiateScheme q scheme).supply :=
   ⟨Nat.le_add_right _ _, Nat.le_add_right _ _⟩
 
@@ -4029,7 +4029,7 @@ theorem Ty.memList_fcvList_applyTargetList_of_mem :
 
 end
 
-/-! ### Scheme-instance capability views
+/-! ### NamedScheme-instance capability views
 
 These small certificates connect the three representations of one quantified
 capability at a context lookup: its scheme binder, the fresh variable placed
@@ -4040,7 +4040,7 @@ image arithmetic during derivation inversion. -/
 /-- The fresh capability image allocated for one expression-scheme binder,
 together with its origin at the post-lookup ledger cut. -/
 structure SchemeInstanceCapView (ledger : CapabilityOriginLedger)
-    (q : InferenceBase.FreshSupply) (scheme : Scheme)
+    (q : InferenceBase.FreshSupply) (scheme : NamedScheme)
     (binder image : CapVar) : Prop where
   binderMem : binder ∈ scheme.capBinders
   imageEquation :
@@ -4055,19 +4055,19 @@ scheme body.  The corresponding fresh image therefore occurs in the
 instantiated value as well. -/
 structure SchemeInstanceCapOccurrenceView
     (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
-    (scheme : Scheme) (binder image : CapVar) : Prop
+    (scheme : NamedScheme) (binder image : CapVar) : Prop
     extends SchemeInstanceCapView ledger q scheme binder image where
   bodyMem : binder ∈ scheme.body.fcv
   valueMem : image ∈ (InferenceBase.instantiateScheme q scheme).value.fcv
 
 /-- Capture-avoiding scheme substitution preserves the binder lists. -/
-@[simp] theorem Scheme.applySubst_capBinders (scheme : Scheme) (S : Subst) :
+@[simp] theorem NamedScheme.applySubst_capBinders (scheme : NamedScheme) (S : Subst) :
     (scheme.applySubst S).capBinders = scheme.capBinders := rfl
 
 /-- A bound capability occurrence in a scheme body survives every
 capture-avoiding external substitution because masking fixes the binder. -/
-theorem Scheme.mem_applySubst_body_fcv_of_bound
-    (scheme : Scheme) (S : Subst) {binder : CapVar}
+theorem NamedScheme.mem_applySubst_body_fcv_of_bound
+    (scheme : NamedScheme) (S : Subst) {binder : CapVar}
     (binderMem : binder ∈ scheme.capBinders)
     (bodyMem : binder ∈ scheme.body.fcv) :
     binder ∈ (scheme.applySubst S).body.fcv := by
@@ -4099,7 +4099,7 @@ theorem FrozenSig.generalize_capBinder_bodyMem
 the lookup cut. -/
 theorem SchemeInstanceCapView.ofBinder
     (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
-    (scheme : Scheme) {binder : CapVar}
+    (scheme : NamedScheme) {binder : CapVar}
     (binderMem : binder ∈ scheme.capBinders) :
     SchemeInstanceCapView ledger q scheme binder
       ⟨q.nextCap + binder.id⟩ := by
@@ -4120,7 +4120,7 @@ theorem SchemeInstanceCapView.ofBinder
 head, instantiation exposes its fresh image at that same head. -/
 theorem SchemeInstanceCapView.value_fnMatcherView
     {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
-    {scheme : Scheme} {binder image : CapVar}
+    {scheme : NamedScheme} {binder image : CapVar}
     (view : SchemeInstanceCapView ledger q scheme binder image)
     {domain codomain : Ty}
     (bodyView : scheme.body = .fn (.matcher (.var binder) domain) codomain) :
@@ -4139,8 +4139,8 @@ theorem SchemeInstanceCapView.value_fnMatcherView
 
 /-- Capture-avoiding substitution preserves a matcher-headed function domain
 whose capability variable is bound by the scheme. -/
-theorem Scheme.applySubst_body_fnMatcherView_of_bound
-    (scheme : Scheme) (external : Subst) {binder : CapVar}
+theorem NamedScheme.applySubst_body_fnMatcherView_of_bound
+    (scheme : NamedScheme) (external : Subst) {binder : CapVar}
     {domain codomain : Ty}
     (binderMem : binder ∈ scheme.capBinders)
     (bodyView : scheme.body = .fn (.matcher (.var binder) domain) codomain) :
@@ -4159,7 +4159,7 @@ theorem Scheme.applySubst_body_fnMatcherView_of_bound
 visible in the instantiated type. -/
 theorem SchemeInstanceCapOccurrenceView.ofBodyBinder
     (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
-    (scheme : Scheme) {binder : CapVar}
+    (scheme : NamedScheme) {binder : CapVar}
     (binderMem : binder ∈ scheme.capBinders)
     (bodyMem : binder ∈ scheme.body.fcv) :
     SchemeInstanceCapOccurrenceView ledger q scheme binder
@@ -4201,7 +4201,7 @@ theorem SchemeInstanceCapOccurrenceView.ofGeneralizedBinder
       ⟨q.nextCap + binder.id⟩ := by
   apply SchemeInstanceCapOccurrenceView.ofBodyBinder
   · simpa using binderMem
-  · exact Scheme.mem_applySubst_body_fcv_of_bound _ _ binderMem
+  · exact NamedScheme.mem_applySubst_body_fcv_of_bound _ _ binderMem
       (FrozenSig.generalize_capBinder_bodyMem _ _ _ binderMem)
 
 /-- The prevailing substitution fixes every image of an exact delta over a
@@ -5521,22 +5521,22 @@ makes them bounded at every supply.
 -/
 
 /-- All free variables of an expression scheme lie below the counters. -/
-structure Scheme.BoundedBy (q : InferenceBase.FreshSupply)
-    (scheme : Scheme) : Prop where
+structure NamedScheme.BoundedBy (q : InferenceBase.FreshSupply)
+    (scheme : NamedScheme) : Prop where
   caps : ∀ varId ∈ scheme.fcv, varId.id < q.nextCap
   targets : ∀ varId ∈ scheme.ftv, varId < q.nextTy
 
-/-- Scheme boundedness is monotone along supply extension. -/
-theorem Scheme.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
-    {scheme : Scheme} (extends_ : SupplyExtends q q')
+/-- NamedScheme boundedness is monotone along supply extension. -/
+theorem NamedScheme.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
+    {scheme : NamedScheme} (extends_ : SupplyExtends q q')
     (bounded : scheme.BoundedBy q) : scheme.BoundedBy q' :=
   ⟨fun varId mem => Nat.lt_of_lt_of_le (bounded.caps varId mem) extends_.1,
     fun varId mem =>
       Nat.lt_of_lt_of_le (bounded.targets varId mem) extends_.2⟩
 
 /-- A monomorphic scheme of a bounded type is bounded. -/
-theorem Scheme.BoundedBy.ofMono {q : InferenceBase.FreshSupply} {τ : Ty}
-    (bounded : Ty.BoundedBy q τ) : (Scheme.mono τ).BoundedBy q :=
+theorem NamedScheme.BoundedBy.ofMono {q : InferenceBase.FreshSupply} {τ : Ty}
+    (bounded : Ty.BoundedBy q τ) : (NamedScheme.mono τ).BoundedBy q :=
   ⟨fun varId mem => bounded.caps varId (List.mem_filter.mp mem).1,
     fun varId mem => bounded.targets varId (List.mem_filter.mp mem).1⟩
 
@@ -5649,7 +5649,7 @@ theorem instantiateBinders_apply_boundedBy
 
 /-- Instantiating a bounded expression scheme yields a bounded type. -/
 theorem instantiateScheme_boundedBy {q : InferenceBase.FreshSupply}
-    {scheme : Scheme} (bounded : Scheme.BoundedBy q scheme) :
+    {scheme : NamedScheme} (bounded : NamedScheme.BoundedBy q scheme) :
     Ty.BoundedBy (InferenceBase.instantiateScheme q scheme).supply
       (InferenceBase.instantiateScheme q scheme).value :=
   instantiateBinders_apply_boundedBy
@@ -5911,7 +5911,7 @@ theorem FrozenSig.SchemesClosed.of_entries {signature : FrozenSig}
 /-- All schemes of an expression context are bounded. -/
 def Context.BoundedBy (q : InferenceBase.FreshSupply) (Γ : Context) :
     Prop :=
-  ∀ entry ∈ Γ, Scheme.BoundedBy q entry.2
+  ∀ entry ∈ Γ, NamedScheme.BoundedBy q entry.2
 
 /-- Context boundedness is monotone along supply extension. -/
 theorem Context.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
@@ -5921,8 +5921,8 @@ theorem Context.BoundedBy.mono {q q' : InferenceBase.FreshSupply}
 
 /-- Extending a bounded context with a bounded scheme is bounded. -/
 theorem Context.BoundedBy.cons {q : InferenceBase.FreshSupply}
-    {entry : String × Scheme} {Γ : Context}
-    (entryBounded : Scheme.BoundedBy q entry.2)
+    {entry : String × NamedScheme} {Γ : Context}
+    (entryBounded : NamedScheme.BoundedBy q entry.2)
     (bounded : Context.BoundedBy q Γ) :
     Context.BoundedBy q (entry :: Γ) := by
   intro e mem
@@ -5942,10 +5942,10 @@ theorem Context.BoundedBy.append {q : InferenceBase.FreshSupply}
 
 /-- Lookup in a bounded context returns a bounded scheme. -/
 theorem Context.BoundedBy.find? {q : InferenceBase.FreshSupply}
-    {Γ : Context} {name : String} {scheme : Scheme}
+    {Γ : Context} {name : String} {scheme : NamedScheme}
     (bounded : Context.BoundedBy q Γ)
     (found : Context.find? Γ name = some scheme) :
-    Scheme.BoundedBy q scheme := by
+    NamedScheme.BoundedBy q scheme := by
   unfold Context.find? at found
   cases hfind : List.find? (fun entry => entry.1 == name) Γ with
   | none => rw [hfind] at found; exact nomatch found
@@ -5955,9 +5955,9 @@ theorem Context.BoundedBy.find? {q : InferenceBase.FreshSupply}
       exact bounded entry (List.mem_of_find?_eq_some hfind)
 
 /-- Applying a bounded substitution to a bounded scheme is bounded. -/
-theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
-    {S : Subst} {scheme : Scheme} (Sb : S.BoundedBy q)
-    (bounded : Scheme.BoundedBy q scheme) :
+theorem NamedScheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
+    {S : Subst} {scheme : NamedScheme} (Sb : S.BoundedBy q)
+    (bounded : NamedScheme.BoundedBy q scheme) :
     (scheme.applySubst S).BoundedBy q := by
   have maskedCap : ∀ original : CapVar,
       S.cap.mask scheme.capBinders original =
@@ -5969,7 +5969,7 @@ theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
           else S.target original) := fun _ => rfl
   constructor
   · intro varId mem
-    simp only [Scheme.applySubst, Scheme.fcv] at mem
+    simp only [NamedScheme.applySubst, NamedScheme.fcv] at mem
     obtain ⟨mem', hnotbinder⟩ := List.mem_filter.mp mem
     rcases Ty.mem_fcv_applyTarget _ _ varId mem' with own | image
     · rw [Unification.Ty.fcv_applyCapability] at own
@@ -5997,7 +5997,7 @@ theorem Scheme.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
           (List.mem_filter.mpr ⟨tyMem, by simpa using hbinder⟩))).caps
           varId imageMem'
   · intro varId mem
-    simp only [Scheme.applySubst, Scheme.ftv] at mem
+    simp only [NamedScheme.applySubst, NamedScheme.ftv] at mem
     obtain ⟨mem', hnotbinder⟩ := List.mem_filter.mp mem
     have mem'' : varId ∈ ((scheme.body.applyCapability
         (S.cap.mask scheme.capBinders)).applyTarget
@@ -6025,7 +6025,7 @@ theorem Context.BoundedBy.applySubst {q : InferenceBase.FreshSupply}
     Context.BoundedBy q (Context.applySubst S Γ) := by
   intro entry mem
   obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp mem
-  exact Scheme.BoundedBy.applySubst Sb (bounded original originalMem)
+  exact NamedScheme.BoundedBy.applySubst Sb (bounded original originalMem)
 
 /-- All types of a monomorphic context are bounded. -/
 def MonoCtx.BoundedBy (q : InferenceBase.FreshSupply) (Δ : MonoCtx) :
@@ -6065,7 +6065,7 @@ theorem MonoCtx.BoundedBy.toContext {q : InferenceBase.FreshSupply}
     Context.BoundedBy q (MonoCtx.toContext Δ) := by
   intro entry mem
   obtain ⟨original, originalMem, rfl⟩ := List.mem_map.mp mem
-  exact Scheme.BoundedBy.ofMono (bounded original originalMem)
+  exact NamedScheme.BoundedBy.ofMono (bounded original originalMem)
 
 /-- All duals of a pattern-parameter context are bounded. -/
 def PatternCtx.BoundedBy (q : InferenceBase.FreshSupply)
@@ -6099,7 +6099,7 @@ the generalized scheme's free variables are free variables of its body. -/
 theorem FrozenSig.generalize_boundedBy {q : InferenceBase.FreshSupply}
     {signature : FrozenSig} {Γ : Context} {τ : Ty}
     (bounded : Ty.BoundedBy q τ) :
-    Scheme.BoundedBy q (signature.generalize Γ τ) :=
+    NamedScheme.BoundedBy q (signature.generalize Γ τ) :=
   ⟨fun varId mem => bounded.caps varId (List.mem_filter.mp mem).1,
     fun varId mem => bounded.targets varId (List.mem_filter.mp mem).1⟩
 
@@ -6393,7 +6393,7 @@ theorem DDSynth.boundedBy {signature : FrozenSig} :
       have domB : Ty.BoundedBy { q with nextTy := q.nextTy + 1 }
           (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
       obtain ⟨S'b, bodyB⟩ := body.boundedBy closed (Sb.mono qb)
-        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+        (Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domB)
           (Γb.mono qb))
       exact ⟨S'b, Ty.BoundedBy.fnOf (domB.mono body.supplyExtends) bodyB⟩
   | q, _, _, _, _, _, _, .fix hne hself hnonmatcher body aligned, closed,
@@ -6406,9 +6406,9 @@ theorem DDSynth.boundedBy {signature : FrozenSig} :
           (.var (q.nextTy + 1)) :=
         Ty.BoundedBy.varOf (show q.nextTy + 1 < q.nextTy + 2 by omega)
       obtain ⟨S₁b, bodyB⟩ := body.boundedBy closed (Sb.mono qb)
-        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+        (Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domB)
           (Context.BoundedBy.cons
-            (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
+            (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
             (Γb.mono qb)))
       have ext := body.supplyExtends
       exact ⟨aligned.boundedBy S₁b bodyB (codB.mono ext),
@@ -6516,9 +6516,9 @@ theorem DDSynth.boundedBy {signature : FrozenSig} :
       obtain ⟨domB, codB⟩ := fixMatcherPlaceholderSupply_boundedBy built
       have ext₀ := SupplyExtends.fixMatcherPlaceholder built
       obtain ⟨S₁b, bodyB⟩ := body.boundedBy closed (Sb.mono ext₀)
-        (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domB)
+        (Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domB)
           (Context.BoundedBy.cons
-            (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
+            (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domB codB))
             (Γb.mono ext₀)))
       have ext₁ := body.supplyExtends
       exact ⟨aligned.boundedBy S₁b bodyB (codB.mono ext₁),

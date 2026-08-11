@@ -182,14 +182,14 @@ namespace RuntimeTyping
 inductive Terminal {signature : FrozenSig} :
     {context : Context} → {expression : Expr} → {target : Ty} →
     RuntimeTyping signature context expression target → Prop where
-  | var {context : Context} {name : String} {scheme : Scheme} {target : Ty}
+  | var {context : Context} {name : String} {scheme : NamedScheme} {target : Ty}
       (hfind : Context.find? context name = some scheme)
       (hinst : scheme.ValueFlowInst target) :
       Terminal (RuntimeTyping.var hfind hinst)
   | lam {context : Context} {name : String} {body : Expr}
       {domain codomain : Ty}
       (bodyTyping :
-        RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain) :
+        RuntimeTyping signature ((name, NamedScheme.mono domain) :: context) body codomain) :
       Terminal (RuntimeTyping.lam bodyTyping)
   | app {context : Context} {function argument : Expr}
       {domain codomain : Ty}
@@ -211,8 +211,8 @@ inductive Terminal {signature : FrozenSig} :
       (direct : DirectSelf.Holds self body)
       (bodyTyping :
         RuntimeTyping signature
-          ((argument, Scheme.mono domain) ::
-            (self, Scheme.mono (.fn domain codomain)) :: context)
+          ((argument, NamedScheme.mono domain) ::
+            (self, NamedScheme.mono (.fn domain codomain)) :: context)
           body codomain) :
       Terminal (RuntimeTyping.fixE distinct direct bodyTyping)
   | lit {context : Context} {value : Int} :

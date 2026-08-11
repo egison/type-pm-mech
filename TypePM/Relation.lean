@@ -14,19 +14,19 @@ an explicit consumer node; all other ground heads are rigid.
 namespace TypePM
 
 /-- Free capability variables of a scheme, excluding its capability binders. -/
-def Scheme.fcv (σ : Scheme) : List CapVar :=
+def NamedScheme.fcv (σ : NamedScheme) : List CapVar :=
   σ.body.fcv.filter fun a => a ∉ σ.capBinders
 
 /-- Free ordinary type variables of a scheme, excluding its type binders. -/
-def Scheme.ftv (σ : Scheme) : List TypePM.TyVar :=
+def NamedScheme.ftv (σ : NamedScheme) : List TypePM.TyVar :=
   σ.body.ftv.filter fun a => a ∉ σ.tyBinders
 
 /-- Every capability-variable name occurring in a scheme, including binders. -/
-def Scheme.allCapVars (σ : Scheme) : List CapVar :=
+def NamedScheme.allCapVars (σ : NamedScheme) : List CapVar :=
   σ.capBinders ++ σ.body.fcv
 
 /-- Every ordinary-variable name occurring in a scheme, including binders. -/
-def Scheme.allTyVars (σ : Scheme) : List TypePM.TyVar :=
+def NamedScheme.allTyVars (σ : NamedScheme) : List TypePM.TyVar :=
   σ.tyBinders ++ σ.body.ftv
 
 /-! ## Capability renaming -/
@@ -335,19 +335,19 @@ An explicit instantiation witness.  Capability and target substitutions have
 separate support conditions and separate binder lists.  The paired witness
 also satisfies the paper's range-fixed condition.
 -/
-def Scheme.InstAt (C : CapSubst) (T : TySubst)
-    (σ : Scheme) (τ : Ty) : Prop :=
+def NamedScheme.InstAt (C : CapSubst) (T : TySubst)
+    (σ : NamedScheme) (τ : Ty) : Prop :=
   C.SupportWithin σ.capBinders ∧
   T.SupportWithin σ.tyBinders ∧
   (Subst.mk C T).RangeFixed ∧
   (Subst.mk C T).apply σ.body = τ
 
 /-- Two-sorted scheme instantiation. -/
-def Scheme.Inst (σ : Scheme) (τ : Ty) : Prop :=
+def NamedScheme.Inst (σ : NamedScheme) (τ : Ty) : Prop :=
   ∃ C T, σ.InstAt C T τ
 
 /-- Every scheme instantiates to its body using identity substitutions. -/
-theorem Scheme.inst_refl (σ : Scheme) : σ.Inst σ.body := by
+theorem NamedScheme.inst_refl (σ : NamedScheme) : σ.Inst σ.body := by
   refine ⟨CapSubst.id, TySubst.id,
     CapSubst.id_supportWithin σ.capBinders,
     TySubst.id_supportWithin σ.tyBinders,
@@ -355,22 +355,22 @@ theorem Scheme.inst_refl (σ : Scheme) : σ.Inst σ.body := by
   exact Subst.apply_id σ.body
 
 /-- An instantiation cannot substitute an unbound capability variable. -/
-theorem Scheme.InstAt.cap_fixed {C : CapSubst} {T : TySubst}
-    {σ : Scheme} {τ : Ty} (h : σ.InstAt C T τ)
+theorem NamedScheme.InstAt.cap_fixed {C : CapSubst} {T : TySubst}
+    {σ : NamedScheme} {τ : Ty} (h : σ.InstAt C T τ)
     {a : CapVar} (ha : a ∉ σ.capBinders) :
     C a = .var a :=
   h.1 a ha
 
 /-- An instantiation cannot substitute an unbound ordinary type variable. -/
-theorem Scheme.InstAt.target_fixed {C : CapSubst} {T : TySubst}
-    {σ : Scheme} {τ : Ty} (h : σ.InstAt C T τ)
+theorem NamedScheme.InstAt.target_fixed {C : CapSubst} {T : TySubst}
+    {σ : NamedScheme} {τ : Ty} (h : σ.InstAt C T τ)
     {a : TypePM.TyVar} (ha : a ∉ σ.tyBinders) :
     T a = .var a :=
   h.2.1 a ha
 
 /-- Every explicit instantiation witness is range-fixed. -/
-theorem Scheme.InstAt.range_fixed {C : CapSubst} {T : TySubst}
-    {σ : Scheme} {τ : Ty} (h : σ.InstAt C T τ) :
+theorem NamedScheme.InstAt.range_fixed {C : CapSubst} {T : TySubst}
+    {σ : NamedScheme} {τ : Ty} (h : σ.InstAt C T τ) :
     (Subst.mk C T).RangeFixed :=
   h.2.2.1
 
@@ -378,8 +378,8 @@ theorem Scheme.InstAt.range_fixed {C : CapSubst} {T : TySubst}
 The two support facts exposed together make the sort separation of
 instantiation explicit.
 -/
-theorem Scheme.InstAt.separate_support {C : CapSubst} {T : TySubst}
-    {σ : Scheme} {τ : Ty} (h : σ.InstAt C T τ) :
+theorem NamedScheme.InstAt.separate_support {C : CapSubst} {T : TySubst}
+    {σ : NamedScheme} {τ : Ty} (h : σ.InstAt C T τ) :
     (∀ a, a ∉ σ.capBinders → C a = .var a) ∧
     (∀ a, a ∉ σ.tyBinders → T a = .var a) :=
   ⟨h.1, h.2.1⟩
@@ -394,7 +394,7 @@ theorem targetSubst_preserves_matcher_cap (T : TySubst)
   rfl
 
 /-- The principal scheme for `something`. -/
-def somethingScheme : Scheme :=
+def somethingScheme : NamedScheme :=
   ⟨[], [0], .matcher .any (.var 0)⟩
 
 /--
@@ -413,7 +413,7 @@ theorem somethingScheme_instance_retains_any {τ : Ty}
   exact hshape.symm
 
 /-- The shared-target-variable scheme `∀a. a -> Matcher Any a`. -/
-def sharedSomethingFunctionScheme : Scheme :=
+def sharedSomethingFunctionScheme : NamedScheme :=
   ⟨[], [0], .fn (.var 0) (.matcher .any (.var 0))⟩
 
 /--
@@ -432,7 +432,7 @@ theorem sharedSomethingFunctionScheme_instance_retains_any {τ : Ty}
   exact hshape.symm
 
 /-- A scheme binding only capability variable zero. -/
-def capOnlyExampleScheme : Scheme :=
+def capOnlyExampleScheme : NamedScheme :=
   ⟨[0], [], .matcher (.var 0) (.var 0)⟩
 
 /--
@@ -454,7 +454,7 @@ theorem capOnlyExampleScheme_preserves_target_var {τ : Ty}
   exact hshape.symm
 
 /-- A scheme binding only ordinary type variable zero. -/
-def targetOnlyExampleScheme : Scheme :=
+def targetOnlyExampleScheme : NamedScheme :=
   ⟨[], [0], .matcher (.var 0) (.var 0)⟩
 
 /--
@@ -483,7 +483,7 @@ Binder lists are duplicate-free, matching their set-like role in the paper and
 preventing annotation checking from allocating unused duplicate skolems.
 -/
 def generalize (envCaps : List CapVar) (envTypes : List TypePM.TyVar)
-    (τ : Ty) : Scheme :=
+    (τ : Ty) : NamedScheme :=
   ⟨uniqueVars (τ.fcv.filter (fun a => a ∉ envCaps)),
     uniqueVars (τ.ftv.filter (fun a => a ∉ envTypes)),
     τ⟩
@@ -537,7 +537,7 @@ If the environment already contains every free variable of the body,
 generalization is the monomorphic scheme.
 -/
 theorem generalize_all_free_is_mono (τ : Ty) :
-    generalize τ.fcv τ.ftv τ = Scheme.mono τ := by
+    generalize τ.fcv τ.ftv τ = NamedScheme.mono τ := by
   have hcap :
       uniqueVars (τ.fcv.filter (fun a => a ∉ τ.fcv)) = [] := by
     apply List.eq_nil_iff_forall_not_mem.mpr
@@ -550,7 +550,7 @@ theorem generalize_all_free_is_mono (τ : Ty) :
     intro a ha
     have hfiltered := mem_uniqueVars.mp ha
     simp at hfiltered
-  simp only [generalize, Scheme.mono]
+  simp only [generalize, NamedScheme.mono]
   rw [hcap, hty]
 
 end TypePM

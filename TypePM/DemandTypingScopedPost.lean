@@ -67,19 +67,19 @@ theorem totalize_apply_of_bounded
 /-- Binder-masking scheme application also agrees on an input-bounded scheme.
 Bound variables are masked by both sides; free variables lie below the cut. -/
 theorem totalize_applyScheme_of_bounded
-    {input : InferenceBase.FreshSupply} {post : Subst} {scheme : Scheme}
+    {input : InferenceBase.FreshSupply} {post : Subst} {scheme : NamedScheme}
     (bounded : scheme.BoundedBy input) :
     scheme.applySubst (totalize input post) = scheme.applySubst post := by
   cases scheme with
   | mk capBinders tyBinders body =>
-      simp only [Scheme.applySubst]
+      simp only [NamedScheme.applySubst]
       congr 1
       apply Subst.apply_eq_of_free_agree
       · intro varId membership
         by_cases binder : varId ∈ capBinders
         · simp [CapSubst.mask, binder]
         · have free : varId ∈
-              (Scheme.mk capBinders tyBinders body).fcv :=
+              (NamedScheme.mk capBinders tyBinders body).fcv :=
             List.mem_filter.mpr ⟨membership, by simpa using binder⟩
           simp [CapSubst.mask, binder, totalize_cap_of_below input post varId
             (bounded.caps varId free)]

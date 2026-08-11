@@ -361,13 +361,13 @@ theorem runtimeErasureUnder_lam
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+      ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
     (bodyUnder : RuntimeErasureUnder bodyOrigin) :
     RuntimeErasureUnder (DDSynthOrigin.lam bodyOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have bodyTyping := bodyUnder terminalEquation admissible
-  simp only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+  simp only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
     Subst.apply_fn] at bodyTyping ⊢
   exact RuntimeTyping.lam bodyTyping
 
@@ -461,8 +461,8 @@ theorem runtimeErasureUnder_fix
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
       body bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger1)
@@ -483,12 +483,12 @@ theorem runtimeErasureUnder_fix
     (show q.nextTy + 1 < q.nextTy + 2 by omega)
   have bodyContextB : Context.BoundedBy
       { q with nextTy := q.nextTy + 2 }
-      ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context) :=
-    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+    Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
       (Context.BoundedBy.cons
-        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+        (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
         (contextBounded.mono extension))
   obtain ⟨S1b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
     (Sb.mono extension) bodyContextB
@@ -507,20 +507,20 @@ theorem runtimeErasureUnder_fix
     exact congrArg post.apply aligned.output_equal
   have bodyExpected : RuntimeTyping signature
       (Context.applySubst finalSubst
-        ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono
+        ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context))
       body (finalSubst.apply (.var (q.nextTy + 1))) := by
     rw [← finalResultEquality]
     exact bodyTyping
   have bodyExpected' : RuntimeTyping signature
-      ((argument, Scheme.mono (finalSubst.apply (.var q.nextTy))) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (finalSubst.apply (.var q.nextTy))) ::
+        (self, NamedScheme.mono
           (.fn (finalSubst.apply (.var q.nextTy))
             (finalSubst.apply (.var (q.nextTy + 1))))) ::
         context.applySubst finalSubst)
       body (finalSubst.apply (.var (q.nextTy + 1))) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyExpected
   exact RuntimeTyping.fixE distinct direct bodyExpected'
 
@@ -824,8 +824,8 @@ theorem runtimeErasureUnder_fixMatcher
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q0))
     {bodyRaw : DDSynth signature q0 S
-      ((argument, Scheme.mono domain) ::
-        (self, Scheme.mono (.fn domain codomain)) :: context)
+      ((argument, NamedScheme.mono domain) ::
+        (self, NamedScheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q0) ledger1)
@@ -841,11 +841,11 @@ theorem runtimeErasureUnder_fixMatcher
     fixMatcherPlaceholderSupply_boundedBy placeholder
   have extension := SupplyExtends.fixMatcherPlaceholder placeholder
   have bodyContextB : Context.BoundedBy q0
-      ((argument, Scheme.mono domain) ::
-        (self, Scheme.mono (.fn domain codomain)) :: context) :=
-    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+      ((argument, NamedScheme.mono domain) ::
+        (self, NamedScheme.mono (.fn domain codomain)) :: context) :=
+    Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
       (Context.BoundedBy.cons
-        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+        (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
         (contextBounded.mono extension))
   obtain ⟨S1b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
     (Sb.mono extension) bodyContextB
@@ -864,18 +864,18 @@ theorem runtimeErasureUnder_fixMatcher
     exact congrArg post.apply aligned.output_equal
   have bodyExpected : RuntimeTyping signature
       (Context.applySubst finalSubst
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context))
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context))
       (.matcher clauses) (finalSubst.apply codomain) := by
     rw [← finalResultEquality]
     exact bodyTyping
   have bodyExpected' : RuntimeTyping signature
-      ((argument, Scheme.mono (finalSubst.apply domain)) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (finalSubst.apply domain)) ::
+        (self, NamedScheme.mono
           (.fn (finalSubst.apply domain) (finalSubst.apply codomain))) ::
         context.applySubst finalSubst)
       (.matcher clauses) (finalSubst.apply codomain) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyExpected
   exact RuntimeTyping.fixE distinct direct bodyExpected'
 
@@ -887,15 +887,15 @@ theorem runtimeErasure_fix_of_terminal_body
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-      ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
+      ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
         context) body bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger1)
     (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget
       (.var (q.nextTy + 1)) S')
     (bodyAtTerminal : RuntimeTyping signature
-      ((argument, Scheme.mono (S'.apply (.var q.nextTy))) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (S'.apply (.var q.nextTy))) ::
+        (self, NamedScheme.mono
           (.fn (S'.apply (.var q.nextTy))
             (S'.apply (.var (q.nextTy + 1))))) ::
         context.applySubst S') body (S'.apply bodyTarget)) :
@@ -904,25 +904,25 @@ theorem runtimeErasure_fix_of_terminal_body
   unfold RuntimeErasure
   simp only [Subst.apply_fn]
   have bodyAtRawContext : RuntimeTyping signature
-      (Context.applySubst S' ((argument, Scheme.mono (.var q.nextTy)) ::
-        (self, Scheme.mono
+      (Context.applySubst S' ((argument, NamedScheme.mono (.var q.nextTy)) ::
+        (self, NamedScheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context))
       body (S'.apply bodyTarget) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyAtTerminal
   have bodyExpectedRaw := aligned.transportRuntime
     (signature := signature)
-    (context := (argument, Scheme.mono (.var q.nextTy)) ::
-      (self, Scheme.mono
+    (context := (argument, NamedScheme.mono (.var q.nextTy)) ::
+      (self, NamedScheme.mono
         (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
     (expression := body) bodyAtRawContext
   have bodyExpected : RuntimeTyping signature
-      ((argument, Scheme.mono (S'.apply (.var q.nextTy))) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (S'.apply (.var q.nextTy))) ::
+        (self, NamedScheme.mono
           (.fn (S'.apply (.var q.nextTy))
             (S'.apply (.var (q.nextTy + 1))))) ::
         context.applySubst S') body (S'.apply (.var (q.nextTy + 1))) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyExpectedRaw
   exact RuntimeTyping.fixE distinct direct bodyExpected
 
@@ -1171,15 +1171,15 @@ theorem runtimeErasure_fixMatcher_of_terminal_body
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q0))
     {bodyRaw : DDSynth signature q0 S
-      ((argument, Scheme.mono domain) ::
-        (self, Scheme.mono (.fn domain codomain)) :: context)
+      ((argument, NamedScheme.mono domain) ::
+        (self, NamedScheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyTarget q1 S1}
     (bodyOrigin : DDSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q0) ledger1)
     (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget codomain S')
     (bodyAtTerminal : RuntimeTyping signature
-      ((argument, Scheme.mono (S'.apply domain)) ::
-        (self, Scheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
+      ((argument, NamedScheme.mono (S'.apply domain)) ::
+        (self, NamedScheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
         context.applySubst S') (.matcher clauses) (S'.apply bodyTarget)) :
     RuntimeErasure
       (DDSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin
@@ -1187,21 +1187,21 @@ theorem runtimeErasure_fixMatcher_of_terminal_body
   unfold RuntimeErasure
   simp only [Subst.apply_fn]
   have bodyAtRawContext : RuntimeTyping signature
-      (Context.applySubst S' ((argument, Scheme.mono domain) ::
-        (self, Scheme.mono (.fn domain codomain)) :: context))
+      (Context.applySubst S' ((argument, NamedScheme.mono domain) ::
+        (self, NamedScheme.mono (.fn domain codomain)) :: context))
       (.matcher clauses) (S'.apply bodyTarget) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyAtTerminal
   have bodyExpectedRaw := aligned.transportRuntime
     (signature := signature)
-    (context := (argument, Scheme.mono domain) ::
-      (self, Scheme.mono (.fn domain codomain)) :: context)
+    (context := (argument, NamedScheme.mono domain) ::
+      (self, NamedScheme.mono (.fn domain codomain)) :: context)
     (expression := .matcher clauses) bodyAtRawContext
   have bodyExpected : RuntimeTyping signature
-      ((argument, Scheme.mono (S'.apply domain)) ::
-        (self, Scheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
+      ((argument, NamedScheme.mono (S'.apply domain)) ::
+        (self, NamedScheme.mono (.fn (S'.apply domain) (S'.apply codomain))) ::
         context.applySubst S') (.matcher clauses) (S'.apply codomain) := by
-    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
       Subst.apply_fn] using bodyExpectedRaw
   exact RuntimeTyping.fixE distinct direct bodyExpected
 

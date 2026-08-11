@@ -420,7 +420,7 @@ def tupleMatcherType : Ty :=
   .slot (.prod []) (.prod [])
 
 def programContext : Context :=
-  [("tupleMatcher", Scheme.mono tupleMatcherType)]
+  [("tupleMatcher", NamedScheme.mono tupleMatcherType)]
 
 def programEnvironment : Env :=
   [("tupleMatcher", .tuple [])]

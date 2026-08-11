@@ -186,7 +186,7 @@ end
 /-! ## Embedding into the two-sort system -/
 
 /-- Embed a one-sorted scheme with an empty capability binder list. -/
-def SScheme.emb (scheme : SScheme) : Scheme :=
+def SScheme.emb (scheme : SScheme) : NamedScheme :=
   ⟨[], scheme.binders, scheme.body.emb⟩
 
 /-- Embed a one-sorted context. -/
@@ -344,7 +344,7 @@ theorem SCtx.emb_fcv (context : SCtx) : Context.fcv (SCtx.emb context) = [] := b
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
       have schemeFcv : entry.2.emb.fcv = [] := by
-        unfold Scheme.fcv SScheme.emb
+        unfold NamedScheme.fcv SScheme.emb
         rw [STy.emb_fcv]
         rfl
       rw [schemeFcv]
@@ -360,7 +360,7 @@ theorem SCtx.emb_ftv (context : SCtx) :
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
       have schemeFtv : entry.2.emb.ftv = entry.2.ftv := by
-        unfold Scheme.ftv SScheme.emb SScheme.ftv
+        unfold NamedScheme.ftv SScheme.emb SScheme.ftv
         rw [STy.emb_ftv]
       rw [schemeFtv]
 

@@ -66,21 +66,21 @@ namespace Inference
 
 @[simp] theorem instantiateSchemeInState_prevailing
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.prevailing = state.prevailing :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_target
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).1 = (InferenceBase.instantiateScheme state.supply scheme).value :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_supply
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.supply =
         (InferenceBase.instantiateScheme state.supply scheme).supply :=
@@ -88,7 +88,7 @@ namespace Inference
 
 @[simp] theorem instantiateSchemeInState_capabilityOrigins
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.capabilityOrigins =
         state.capabilityOrigins.setOrigins
@@ -1372,7 +1372,7 @@ theorem DDSynthRun.lam
     {signature : FrozenSig} {context : Context} {name : String} {body : Expr}
     {initial : InferState} {path : SyntaxPath} {bodyResult : ExprResult}
     (bodyRun : DDSynthRun signature
-      ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
+      ((name, NamedScheme.mono (lambdaDomain initial path)) :: context) body
       (lambdaEntryState initial path) bodyResult) :
     DDSynthRun signature context (.lam name body) initial
       (finishExpr (.lam name body) path
@@ -1382,7 +1382,7 @@ theorem DDSynthRun.lam
   change DDSynth signature
     { initial.supply with nextTy := initial.supply.nextTy + 1 }
     initial.prevailing
-    ((name, Scheme.mono (.var initial.supply.nextTy)) :: context) body
+    ((name, NamedScheme.mono (.var initial.supply.nextTy)) :: context) body
     bodyTarget bodyResult.state.supply bodyResult.state.prevailing at bodyDerived
   change DDSynthOrigin signature bodyDerived initial.capabilityOrigins
     bodyResult.state.capabilityOrigins at bodyOrigin
@@ -1402,8 +1402,8 @@ theorem DDSynthRun.fix
     (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     (bodyRun : DDSynthRun signature
-      ((argument, Scheme.mono (fixDomain initial path)) ::
-        (self, Scheme.mono
+      ((argument, NamedScheme.mono (fixDomain initial path)) ::
+        (self, NamedScheme.mono
           (.fn (fixDomain initial path) (fixCodomain initial path))) :: context)
       body (fixBodyEntryState initial path self argument) bodyResult)
     (alignRun : DDAlignTypesRun bodyResult.target (fixCodomain initial path)
@@ -1418,8 +1418,8 @@ theorem DDSynthRun.fix
   change DDSynth signature
     { initial.supply with nextTy := initial.supply.nextTy + 2 }
     initial.prevailing
-    ((argument, Scheme.mono (.var initial.supply.nextTy)) ::
-      (self, Scheme.mono
+    ((argument, NamedScheme.mono (.var initial.supply.nextTy)) ::
+      (self, NamedScheme.mono
         (.fn (.var initial.supply.nextTy)
           (.var (initial.supply.nextTy + 1)))) :: context)
     body bodyResult.target bodyResult.state.supply
@@ -1691,17 +1691,17 @@ theorem inferExprFuel_lam_ddSynthRun
     {initial : InferState} {result : ExprResult}
     (bodySound : ∀ bodyResult : ExprResult,
       inferExprFuel fuel signature
-        ((name, Scheme.mono (lambdaDomain initial path)) :: context)
+        ((name, NamedScheme.mono (lambdaDomain initial path)) :: context)
         (selfEnv.erase name) (0 :: path) body
         (lambdaEntryState initial path) = some bodyResult →
       DDSynthRun signature
-        ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
+        ((name, NamedScheme.mono (lambdaDomain initial path)) :: context) body
         (lambdaEntryState initial path) bodyResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.lam name body) initial = some result) :
     DDSynthRun signature context (.lam name body) initial result := by
   cases bodyEq : inferExprFuel fuel signature
-      ((name, Scheme.mono (lambdaDomain initial path)) :: context)
+      ((name, NamedScheme.mono (lambdaDomain initial path)) :: context)
       (selfEnv.erase name) (0 :: path) body
       (lambdaEntryState initial path) with
   | none =>
@@ -1744,8 +1744,8 @@ theorem inferExprFuel_fix_nonMatcher_ddSynthRun
       have placeholderEq := buildFixPlaceholder_nonMatcher signature initial
         path body nonMatcher
       cases bodyEq : inferExprFuel fuel signature
-          ((argument, Scheme.mono (fixDomain initial path)) ::
-            (self, Scheme.mono
+          ((argument, NamedScheme.mono (fixDomain initial path)) ::
+            (self, NamedScheme.mono
               (.fn (fixDomain initial path) (fixCodomain initial path))) ::
               context)
           ((self, .fn (fixDomain initial path) (fixCodomain initial path)) ::

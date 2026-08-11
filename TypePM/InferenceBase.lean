@@ -11,7 +11,7 @@ corresponding incoming counter, advances the counter past every allocated
 identifier, and leaves all variables outside the binder lists unchanged.
 
 The executable functions return their substitutions explicitly.  Their
-soundness theorems connect the results to `Scheme.InstAt`,
+soundness theorems connect the results to `NamedScheme.InstAt`,
 `DualScheme.Inst`, and `CtorScheme.Inst`, including support and the paper's
 range-fixed side condition.
 -/
@@ -354,7 +354,7 @@ structure InstanceResult (Payload : Type) where
 
 /-- Instantiate every binder of an expression scheme simultaneously. -/
 def instantiateScheme
-    (supply : FreshSupply) (scheme : Scheme) : InstanceResult Ty :=
+    (supply : FreshSupply) (scheme : NamedScheme) : InstanceResult Ty :=
   let assignment :=
     instantiateBinders supply scheme.capBinders scheme.tyBinders
   { subst := assignment.subst
@@ -386,9 +386,9 @@ def instantiateCtorScheme
         assignment.subst.apply scheme.result)
     supply := assignment.supply }
 
-/-- Executable expression-scheme instantiation satisfies `Scheme.InstAt`. -/
+/-- Executable expression-scheme instantiation satisfies `NamedScheme.InstAt`. -/
 theorem instantiateScheme_sound
-    (supply : FreshSupply) (scheme : Scheme) :
+    (supply : FreshSupply) (scheme : NamedScheme) :
     scheme.InstAt
       (instantiateScheme supply scheme).subst.cap
       (instantiateScheme supply scheme).subst.target
@@ -434,22 +434,22 @@ theorem instantiateCtorScheme_sound
 /-- Looking up a monomorphic scheme allocates no substitutions. -/
 @[simp] theorem instantiateScheme_mono_subst
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (Scheme.mono target)).subst = Subst.id := by
+    (instantiateScheme supply (NamedScheme.mono target)).subst = Subst.id := by
   rfl
 
 /-- Looking up a monomorphic scheme does not advance either fresh counter. -/
 @[simp] theorem instantiateScheme_mono_supply
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (Scheme.mono target)).supply = supply := by
+    (instantiateScheme supply (NamedScheme.mono target)).supply = supply := by
   cases supply
   rfl
 
 /-- Looking up a monomorphic scheme returns the identical body. -/
 @[simp] theorem instantiateScheme_mono_value
     (supply : FreshSupply) (target : Ty) :
-    (instantiateScheme supply (Scheme.mono target)).value = target := by
+    (instantiateScheme supply (NamedScheme.mono target)).value = target := by
   change
-    (instantiateScheme supply (Scheme.mono target)).subst.apply target = target
+    (instantiateScheme supply (NamedScheme.mono target)).subst.apply target = target
   rw [instantiateScheme_mono_subst]
   exact Subst.apply_id target
 

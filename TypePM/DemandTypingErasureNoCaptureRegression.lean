@@ -24,7 +24,7 @@ theorem prevailing_not_noCapture :
 /-- At the lookup cut, identity is perfectly capture-free for the raw
 scheme. -/
 theorem rawScheme_identity_noCapture : rawScheme.NoCapture Subst.id :=
-  Scheme.NoCapture.id rawScheme
+  NamedScheme.NoCapture.id rawScheme
 
 /-- Nevertheless, the later suffix `1 ↦ 0` is admitted after canonical
 instantiation: ambient identifiers `0` and `1` are structural, while the
@@ -66,7 +66,7 @@ not the obstruction. -/
 theorem suffixCapture_terminalSchemeEquation :
     rawScheme.applySubst (Subst.seq prevailing Subst.id) =
       (rawScheme.applySubst Subst.id).applySubst prevailing := by
-  rw [Subst.seq_id_right, Scheme.applySubst_id]
+  rw [Subst.seq_id_right, NamedScheme.applySubst_id]
 
 /-- The real obstruction is future capture.  The target scheme turns both
 occurrences into its one bound identifier, so every value-flow instance gives
@@ -78,7 +78,7 @@ theorem suffixCapture_not_valueFlowInst :
         (InferenceBase.instantiateScheme inputSupply rawScheme).value) := by
   rintro ⟨C, T, instantiation⟩
   have result := instantiation.result
-  simp [rawScheme, prevailing, inputSupply, Scheme.applySubst,
+  simp [rawScheme, prevailing, inputSupply, NamedScheme.applySubst,
     InferenceBase.instantiateScheme, InferenceBase.instantiateBinders,
     InferenceBase.binderSpan, Subst.apply, Ty.applyCapability,
     Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] at result

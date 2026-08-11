@@ -252,7 +252,7 @@ theorem InferState.factorizingTraceExtension_freshCap
 
 theorem instantiateSchemeInState_factorizingTraceExtension
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     state.FactorizingTraceExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 := by
@@ -278,7 +278,7 @@ theorem instantiateDualInState_factorizingTraceExtension
 
 theorem instantiateSchemeInState_factorizingTraceExtension_of_eq
     {signature : FrozenSig} {rawContext normalizedContext : Context}
-    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
+    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     state.FactorizingTraceExtension final := by

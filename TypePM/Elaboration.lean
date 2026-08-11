@@ -31,7 +31,7 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       scheme.ValueFlowInst target ->
       SynthHead signature context (.var name) target
   | lam {context name body domain codomain} :
-      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain ->
+      RuntimeTyping signature ((name, NamedScheme.mono domain) :: context) body codomain ->
       SynthHead signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
       RuntimeTyping signature context function (.fn domain codomain) ->
@@ -46,8 +46,8 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       self ≠ argument ->
       DirectSelf.Holds self body ->
       RuntimeTyping signature
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context)
         body codomain ->
       SynthHead signature context (.fix self argument body)
         (.fn domain codomain)

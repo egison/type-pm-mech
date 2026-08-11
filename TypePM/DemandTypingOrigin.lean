@@ -337,7 +337,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
     CapabilityOriginLedger -> CapabilityOriginLedger -> Prop where
   | var
       {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
-      {name : String} {scheme : Scheme} {ledger : CapabilityOriginLedger}
+      {name : String} {scheme : NamedScheme} {ledger : CapabilityOriginLedger}
       (lookup : (context.applySubst S).find? name = some scheme) :
       DDSynthOrigin signature (.var (q := q) lookup) ledger
         (DDLedger.markSchemeInstance ledger q scheme)
@@ -347,7 +347,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger' : CapabilityOriginLedger}
       {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
-        ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+        ((name, NamedScheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger') :
       DDSynthOrigin signature (.lam bodyRaw) ledger ledger'
   | fix
@@ -359,8 +359,8 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (direct : DirectSelf.Holds self body)
       (nonMatcher : NonMatcherBody body)
       {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
-        ((argument, Scheme.mono (.var q.nextTy)) ::
-          (self, Scheme.mono
+        ((argument, NamedScheme.mono (.var q.nextTy)) ::
+          (self, NamedScheme.mono
             (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
         body bodyTarget q₁ S₁}
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁)
@@ -511,8 +511,8 @@ inductive DDSynthOrigin (signature : FrozenSig) :
       (placeholder : fixMatcherPlaceholderSupply signature clauses q =
         some (domain, codomain, q₀))
       {bodyRaw : DDSynth signature q₀ S
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context)
         (.matcher clauses) bodyTarget q₁ S₁}
       (bodyOrigin : DDSynthOrigin signature bodyRaw
         (DDLedger.markCapRange ledger q q₀) ledger₁)

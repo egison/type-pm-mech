@@ -44,7 +44,7 @@ inductive CoreSynthHead (signature : FrozenSig) :
       scheme.ValueFlowInst target ->
       CoreSynthHead signature context (.var name) target
   | lam {context name body domain codomain} :
-      CoreTyping signature ((name, Scheme.mono domain) :: context) body codomain ->
+      CoreTyping signature ((name, NamedScheme.mono domain) :: context) body codomain ->
       CoreSynthHead signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
       CoreTyping signature context function (.fn domain codomain) ->
@@ -59,8 +59,8 @@ inductive CoreSynthHead (signature : FrozenSig) :
       self ≠ argument ->
       DirectSelf.Holds self body ->
       CoreTyping signature
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context)
         body codomain ->
       CoreSynthHead signature context (.fix self argument body)
         (.fn domain codomain)

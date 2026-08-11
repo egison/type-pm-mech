@@ -804,7 +804,7 @@ theorem MonoCtx.find_toContext_of_mem
     {bindings : MonoCtx} {name : String} {target : Ty}
     (nodup : bindings.names.Nodup)
     (membership : (name, target) ∈ bindings) :
-    Context.find? bindings.toContext name = some (Scheme.mono target) := by
+    Context.find? bindings.toContext name = some (NamedScheme.mono target) := by
   induction bindings with
   | nil => contradiction
   | cons head tail induction =>
@@ -875,7 +875,7 @@ theorem MatchSubstTyped.toEnvTyped
   have valueEquality : typedValue = value :=
     Option.some.inj (valueFind.symm.trans found)
   subst typedValue
-  refine ⟨Scheme.mono target, contextFind, ?_⟩
+  refine ⟨NamedScheme.mono target, contextFind, ?_⟩
   intro actual hinstance
   have targetEquality := hinstance.mono_eq
   subst actual
@@ -964,7 +964,7 @@ theorem Env.find?_append_of_none
 
 /-- A successful prefix context lookup survives context concatenation. -/
 theorem Context.find?_append_left
-    {left right : Context} {name : String} {scheme : Scheme}
+    {left right : Context} {name : String} {scheme : NamedScheme}
     (found : Context.find? left name = some scheme) :
     Context.find? (left ++ right) name = some scheme := by
   unfold Context.find? at found ⊢
@@ -978,7 +978,7 @@ theorem Context.find?_append_left
 
 /-- A missing prefix context delegates lookup to its suffix. -/
 theorem Context.find?_append_right
-    {left right : Context} {name : String} {scheme : Scheme}
+    {left right : Context} {name : String} {scheme : NamedScheme}
     (missing : Context.find? left name = none)
     (found : Context.find? right name = some scheme) :
     Context.find? (left ++ right) name = some scheme := by
@@ -1052,7 +1052,7 @@ theorem MatchSubstTyped.envTyped_append
     have sourceFind := MonoCtx.find_toContext_of_mem nodup entryMember
     have contextFind := Context.find?_append_left
       (right := context) sourceFind
-    refine ⟨Scheme.mono target, contextFind, ?_⟩
+    refine ⟨NamedScheme.mono target, contextFind, ?_⟩
     intro actual hinstance
     have targetEquality := hinstance.mono_eq
     subst actual

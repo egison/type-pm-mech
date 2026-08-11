@@ -149,7 +149,7 @@ theorem InferState.stateExtension_freezeCapabilityExport
 
 theorem instantiateSchemeInState_stateExtension
     (signature : FrozenSig) (rawContext normalizedContext : Context)
-    (name : String) (state : InferState) (scheme : Scheme) :
+    (name : String) (state : InferState) (scheme : NamedScheme) :
     state.StateExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
         state scheme).2 where
@@ -203,7 +203,7 @@ theorem instantiateDualInState_stateExtension
 
 theorem instantiateSchemeInState_stateExtension_of_eq
     {signature : FrozenSig} {rawContext normalizedContext : Context}
-    {name : String} {state final : InferState} {scheme : Scheme} {target : Ty}
+    {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
     state.StateExtension final := by

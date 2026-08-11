@@ -27,7 +27,7 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       scheme.ValueFlowInst target ->
       ExprDeriv signature context (.var name) target
   | lam {context name body domain codomain} :
-      ExprDeriv signature ((name, Scheme.mono domain) :: context) body codomain ->
+      ExprDeriv signature ((name, NamedScheme.mono domain) :: context) body codomain ->
       ExprDeriv signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
       ExprDeriv signature context function (.fn domain codomain) ->
@@ -42,8 +42,8 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
       self ≠ argument ->
       DirectSelf.Holds self body ->
       ExprDeriv signature
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context)
         body codomain ->
       ExprDeriv signature context (.fix self argument body) (.fn domain codomain)
   | lit {context value} :
@@ -1182,7 +1182,7 @@ theorem TraceInstanceSuffixConditions.scheme_final
     {signature : FrozenSig} {state : InferState}
     (conditions : TraceInstanceSuffixConditions signature state)
     {solveCount : Nat} {supply : InferenceBase.FreshSupply}
-    {scheme : Scheme} {name : String} {rawContext context : Context}
+    {scheme : NamedScheme} {name : String} {rawContext context : Context}
     {fixedCaps : List CapVar} {fixedTys : List TypePM.TyVar}
     {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
     {fresh : Ty} {capImages : List CapVar} {tyImages : List TypePM.TyVar}
@@ -2090,7 +2090,7 @@ theorem inferExprFuel_reconstructAt
         (.fn domain bodyResult.target) bodyResult.state).trans terminalHistory
     have bodyDeriv := bodyIH bodyResult rfl terminal bridge' bodyHistory
     simpa [finishExpr, Subst.apply_fn, Context.applySubst,
-      Scheme.applySubst, Scheme.mono] using ExprDeriv.lam bodyDeriv
+      NamedScheme.applySubst, NamedScheme.mono] using ExprDeriv.lam bodyDeriv
   case case9 =>
     rename_i fuel' signature' context' selfEnv' path' initial self argument body
       direct domain codomain builtState placeholder recordedState shadowed
@@ -2108,13 +2108,13 @@ theorem inferExprFuel_reconstructAt
     have finalAlignment := alignedHistory.event_mem localAlignment
     have aligned := bridge'.typeAlignments.final_eq finalAlignment
     have bodyDeriv' : ExprDeriv signature'
-        (((argument, Scheme.mono (terminal.prevailing.apply domain)) ::
-          (self, Scheme.mono
+        (((argument, NamedScheme.mono (terminal.prevailing.apply domain)) ::
+          (self, NamedScheme.mono
             (.fn (terminal.prevailing.apply domain)
               (terminal.prevailing.apply codomain))) ::
           context'.applySubst terminal.prevailing))
         body (terminal.prevailing.apply codomain) := by
-      simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+      simpa only [Context.applySubst, List.map_cons, NamedScheme.applySubst_mono,
         Subst.apply_fn, aligned] using bodyDeriv
     have directParts :
         self ≠ argument ∧ DirectSelf.Holds self body := by

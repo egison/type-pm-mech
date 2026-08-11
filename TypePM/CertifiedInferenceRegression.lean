@@ -96,7 +96,7 @@ def inferenceHasAlignment
           | _ => false
 
 def productMatcherConsumerContext : Context :=
-  [("consume", Scheme.mono (.fn concretePairMatcherType .int))]
+  [("consume", NamedScheme.mono (.fn concretePairMatcherType .int))]
 
 def productMatcherArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
@@ -111,7 +111,7 @@ def productMatcherArgumentApplicationSucceeds : Bool :=
 #guard !productMatcherArgumentApplicationSucceeds
 
 def productSlotConsumerContext : Context :=
-  [("consume", Scheme.mono (.fn concretePairSlotType .int))]
+  [("consume", NamedScheme.mono (.fn concretePairSlotType .int))]
 
 def productSlotArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.something, .something])
@@ -129,9 +129,9 @@ def productSlotArgumentApplicationSucceeds : Bool :=
   concretePairSlotType .int
 
 def slotTupleConsumerContext : Context :=
-  [("consume", Scheme.mono (.fn concretePairSlotType .int)),
-   ("left", Scheme.mono (.slot .any .int)),
-   ("right", Scheme.mono (.slot .any .int))]
+  [("consume", NamedScheme.mono (.fn concretePairSlotType .int)),
+   ("left", NamedScheme.mono (.slot .any .int)),
+   ("right", NamedScheme.mono (.slot .any .int))]
 
 def slotTupleArgumentApplication : Expr :=
   .app (.var "consume") (.tuple [.var "left", .var "right"])
@@ -151,7 +151,7 @@ def slotTupleArgumentApplicationSucceeds : Bool :=
 coercions.  Only the explicit whole-product routes above are accepted. -/
 
 def componentSlotConsumerContext : Context :=
-  [("consume", Scheme.mono
+  [("consume", NamedScheme.mono
     (.fn (.prod [.slot .any .int, .slot .any .int]) .int))]
 
 def componentSlotArgumentApplication : Expr :=
@@ -186,7 +186,7 @@ theorem terminalLet_typed :
 
 /-! ## Expression-scheme instantiation in both variable sorts -/
 
-def quantifiedProducerScheme : Scheme where
+def quantifiedProducerScheme : NamedScheme where
   capBinders := [0]
   tyBinders := [0]
   body := .matcher (.var 0) (.var 0)
@@ -256,7 +256,7 @@ theorem quantifiedPApp_typed :
 /-! ## Slot-to-slot expected-type alignment -/
 
 def slotContext : Context :=
-  [("slot", Scheme.mono (.slot .any .int))]
+  [("slot", NamedScheme.mono (.slot .any .int))]
 
 def slotToSlotExpression : Expr :=
   .matchAll (.lit 0) (.var "slot") .wild (.lit 1)

@@ -186,7 +186,7 @@ def Ty.listT (τ : Ty) : Ty :=
 
 /-! ## Capture-free scheme payload syntax
 
-Runtime and solver types contain metavariables only.  Scheme payloads use a
+Runtime and solver types contain metavariables only.  NamedScheme payloads use a
 separate syntax whose bound variables are finite de Bruijn indices.  Thus a
 bound variable cannot be passed to a unification substitution, and every
 payload is already in a canonical alpha-normal form. -/
@@ -221,14 +221,14 @@ inductive PolyTy (capArity tyArity : Nat) where
 deriving Repr
 
 /-- Type schemes quantify capability and ordinary type variables separately. -/
-structure Scheme where
+structure NamedScheme where
   capBinders : List CapVar
   tyBinders  : List TypePM.TyVar
   body       : Ty
 deriving Repr, DecidableEq, BEq
 
 /-- A monomorphic scheme. -/
-def Scheme.mono (τ : Ty) : Scheme :=
+def NamedScheme.mono (τ : Ty) : NamedScheme :=
   ⟨[], [], τ⟩
 
 end TypePM

@@ -30,7 +30,7 @@ structure Dual where
 deriving Repr, DecidableEq, BEq
 
 /-- Expression scheme context `Γ`.  The newest binding is stored first. -/
-abbrev Context := List (String × Scheme)
+abbrev Context := List (String × NamedScheme)
 
 /-- Monomorphic pattern-variable context `Δ`. -/
 abbrev MonoCtx := List (String × Ty)
@@ -39,7 +39,7 @@ abbrev MonoCtx := List (String × Ty)
 abbrev PatternCtx := List (String × Dual)
 
 /-- Look up an expression scheme. -/
-def Context.find? (Γ : Context) (name : String) : Option Scheme :=
+def Context.find? (Γ : Context) (name : String) : Option NamedScheme :=
   (List.find? (fun entry => entry.1 == name) Γ).map Prod.snd
 
 /-- Look up a pattern-parameter dual. -/
@@ -48,7 +48,7 @@ def PatternCtx.find? (Φ : PatternCtx) (name : String) : Option Dual :=
 
 /-- Put monomorphic pattern bindings into an expression context. -/
 def MonoCtx.toContext (Δ : MonoCtx) : Context :=
-  Δ.map fun entry => (entry.1, Scheme.mono entry.2)
+  Δ.map fun entry => (entry.1, NamedScheme.mono entry.2)
 
 /-- Names in a monomorphic context. -/
 def MonoCtx.names (Δ : MonoCtx) : List String :=
@@ -118,7 +118,7 @@ def Dual.ftv (dual : Dual) : List TypePM.TyVar :=
 Capture-avoiding paired substitution on a scheme body.  Variables quantified
 by the scheme are masked before traversing the body.
 -/
-def Scheme.applySubst (S : Subst) (scheme : Scheme) : Scheme :=
+def NamedScheme.applySubst (S : Subst) (scheme : NamedScheme) : NamedScheme :=
   { scheme with
     body :=
       (Subst.mk
@@ -138,7 +138,7 @@ def PatternCtx.applySubst (S : Subst) (context : PatternCtx) : PatternCtx :=
   context.map fun entry => (entry.1, entry.2.applySubst S)
 
 /-- Identity substitution changes no scheme. -/
-@[simp] theorem Scheme.applySubst_id (scheme : Scheme) :
+@[simp] theorem NamedScheme.applySubst_id (scheme : NamedScheme) :
     scheme.applySubst Subst.id = scheme := by
   cases scheme with
   | mk capBinders tyBinders body =>
@@ -152,10 +152,10 @@ def PatternCtx.applySubst (S : Subst) (context : PatternCtx) : PatternCtx :=
         rw [hcap, htarget]
         rfl
       change
-        Scheme.mk capBinders tyBinders
+        NamedScheme.mk capBinders tyBinders
             ((Subst.mk (Subst.id.cap.mask capBinders)
               (Subst.id.target.mask tyBinders)).apply body) =
-          Scheme.mk capBinders tyBinders body
+          NamedScheme.mk capBinders tyBinders body
       rw [hsubst, Subst.apply_id]
 
 /-- Identity substitution changes no expression context. -/
@@ -393,7 +393,7 @@ Generalize a normalized type relative to both the frozen global signature and
 the local expression context.  Global free variables are never quantified.
 -/
 def FrozenSig.generalize
-    (signature : FrozenSig) (context : Context) (target : Ty) : Scheme :=
+    (signature : FrozenSig) (context : Context) (target : Ty) : NamedScheme :=
   TypePM.generalize
     (signature.fcv ++ context.fcv) (signature.ftv ++ context.ftv) target
 
@@ -492,7 +492,7 @@ def PatternCtx.ftv (context : PatternCtx) : List TypePM.TyVar :=
 /-! ## Safe fresh instantiation and value flow -/
 
 /-
-The broad algebraic `Scheme.Inst` relation in `Relation` is useful for
+The broad algebraic `NamedScheme.Inst` relation in `Relation` is useful for
 constructor calculations, but it is not the source T-VAR relation.  In
 particular, it would permit a generalized capability variable to be replaced
 directly by a constructor capability, which can strengthen the coverage claim
@@ -508,11 +508,11 @@ step for capability variables.
 -/
 
 /-- One explicit fresh expression-scheme instance and its allocated images. -/
-structure Scheme.FreshInstAt
+structure NamedScheme.FreshInstAt
     (reservedCaps : List CapVar) (reservedTys : List TypePM.TyVar)
     (C : CapSubst) (T : TySubst)
     (capImages : List CapVar) (tyImages : List TypePM.TyVar)
-    (scheme : Scheme) (fresh : Ty) : Prop where
+    (scheme : NamedScheme) (fresh : Ty) : Prop where
   capSupport : C.SupportWithin scheme.capBinders
   tySupport : T.SupportWithin scheme.tyBinders
   capImageVars : scheme.capBinders.map C = capImages.map Cap.var
@@ -535,8 +535,8 @@ capability can only be mapped to a flexible capability variable, never to a
 structured capability.  The target substitution is binder-supported but may
 map quantified target variables to structural types.
 -/
-structure Scheme.VariableInstAt
-    (C : CapSubst) (T : TySubst) (scheme : Scheme) (target : Ty) : Prop where
+structure NamedScheme.VariableInstAt
+    (C : CapSubst) (T : TySubst) (scheme : NamedScheme) (target : Ty) : Prop where
   capSupport : C.SupportWithin scheme.capBinders
   tySupport : T.SupportWithin scheme.tyBinders
   capBinderVariable :
@@ -544,11 +544,11 @@ structure Scheme.VariableInstAt
   result : (Subst.mk C T).apply scheme.body = target
 
 /-- Forget Algorithm W's allocation facts at the declarative boundary. -/
-def Scheme.FreshInstAt.toVariableInstAt
+def NamedScheme.FreshInstAt.toVariableInstAt
     {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
     {C : CapSubst} {T : TySubst}
     {capImages : List CapVar} {tyImages : List TypePM.TyVar}
-    {scheme : Scheme} {fresh : Ty}
+    {scheme : NamedScheme} {fresh : Ty}
     (freshInstance : scheme.FreshInstAt reservedCaps reservedTys
       C T capImages tyImages fresh) :
     scheme.VariableInstAt C T fresh := by
@@ -565,9 +565,9 @@ def Scheme.FreshInstAt.toVariableInstAt
   exact ⟨image, equality.symm⟩
 
 /-- Existential paper-style fresh instantiation. -/
-def Scheme.FreshInst
+def NamedScheme.FreshInst
     (reservedCaps : List CapVar) (reservedTys : List TypePM.TyVar)
-    (scheme : Scheme) (fresh : Ty) : Prop :=
+    (scheme : NamedScheme) (fresh : Ty) : Prop :=
   ∃ C T capImages tyImages,
     scheme.FreshInstAt reservedCaps reservedTys C T capImages tyImages fresh
 
@@ -580,12 +580,12 @@ binder-supported and may specialize quantified target variables structurally.
 Ambient freshness, injectivity, and allocation uniqueness are intentionally
 absent here; `FreshInstAt` retains them for Algorithm W.
 -/
-def Scheme.ValueFlowInst (scheme : Scheme) (target : Ty) : Prop :=
+def NamedScheme.ValueFlowInst (scheme : NamedScheme) (target : Ty) : Prop :=
   ∃ C T, scheme.VariableInstAt C T target
 
 /-- A declarative instance's capability substitution is variable-only globally. -/
-theorem Scheme.VariableInstAt.capVariable
-    {C : CapSubst} {T : TySubst} {scheme : Scheme} {target : Ty}
+theorem NamedScheme.VariableInstAt.capVariable
+    {C : CapSubst} {T : TySubst} {scheme : NamedScheme} {target : Ty}
     (instanceTyping : scheme.VariableInstAt C T target)
     (varId : CapVar) : ∃ image, C varId = .var image := by
   by_cases membership : varId ∈ scheme.capBinders
@@ -593,11 +593,11 @@ theorem Scheme.VariableInstAt.capVariable
   · exact ⟨varId, instanceTyping.capSupport varId membership⟩
 
 /-- A fresh scheme instance is already a safe value-flow instance. -/
-theorem Scheme.FreshInstAt.toValueFlowInst
+theorem NamedScheme.FreshInstAt.toValueFlowInst
     {reservedCaps : List CapVar} {reservedTys : List TypePM.TyVar}
     {C : CapSubst} {T : TySubst}
     {capImages : List CapVar} {tyImages : List TypePM.TyVar}
-    {scheme : Scheme} {fresh : Ty}
+    {scheme : NamedScheme} {fresh : Ty}
     (freshInstance : scheme.FreshInstAt reservedCaps reservedTys
       C T capImages tyImages fresh) :
     scheme.ValueFlowInst fresh :=
@@ -2410,8 +2410,8 @@ theorem CoverageOK.applyRen
         Cap.applyRenList_length] using coverage
 
 /-- A monomorphic scheme has exactly its declared value-flow instance. -/
-theorem Scheme.mono_valueFlowInst (target : Ty) :
-    (Scheme.mono target).ValueFlowInst target := by
+theorem NamedScheme.mono_valueFlowInst (target : Ty) :
+    (NamedScheme.mono target).ValueFlowInst target := by
   refine ⟨CapSubst.id, TySubst.id, ?_⟩
   exact
     { capSupport := CapSubst.id_supportWithin []
@@ -2420,30 +2420,30 @@ theorem Scheme.mono_valueFlowInst (target : Ty) :
       result := Subst.apply_id target }
 
 /-- No safe specialization can change a monomorphic scheme. -/
-theorem Scheme.ValueFlowInst.mono_eq
+theorem NamedScheme.ValueFlowInst.mono_eq
     {declared actual : Ty}
-    (instantiation : (Scheme.mono declared).ValueFlowInst actual) :
+    (instantiation : (NamedScheme.mono declared).ValueFlowInst actual) :
     actual = declared := by
   rcases instantiation with
     ⟨C, T, witness⟩
   have capIdentity : C = CapSubst.id := by
     funext varId
-    exact witness.capSupport varId (by simp [Scheme.mono])
+    exact witness.capSupport varId (by simp [NamedScheme.mono])
   have tyIdentity : T = TySubst.id := by
     funext varId
-    exact witness.tySupport varId (by simp [Scheme.mono])
+    exact witness.tySupport varId (by simp [NamedScheme.mono])
   subst C
   subst T
   have pairIdentity : Subst.mk CapSubst.id TySubst.id = Subst.id := rfl
-  simpa [Scheme.mono, pairIdentity, Subst.apply_id] using witness.result.symm
+  simpa [NamedScheme.mono, pairIdentity, Subst.apply_id] using witness.result.symm
 
 /-- Freshness remains valid when the reserved ambient sets are weakened. -/
-theorem Scheme.FreshInstAt.weakenReserved
+theorem NamedScheme.FreshInstAt.weakenReserved
     {smallCaps largeCaps : List CapVar}
     {smallTys largeTys : List TypePM.TyVar}
     {C : CapSubst} {T : TySubst}
     {capImages : List CapVar} {tyImages : List TypePM.TyVar}
-    {scheme : Scheme} {fresh : Ty}
+    {scheme : NamedScheme} {fresh : Ty}
     (capSubset : ∀ varId, varId ∈ smallCaps → varId ∈ largeCaps)
     (tySubset : ∀ varId, varId ∈ smallTys → varId ∈ largeTys)
     (instantiation :
@@ -3263,7 +3263,7 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
       RuntimeTyping signature context (.var name) target
   /-- T-LAM. -/
   | lam {context name body domain codomain} :
-      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain →
+      RuntimeTyping signature ((name, NamedScheme.mono domain) :: context) body codomain →
       RuntimeTyping signature context (.lam name body) (.fn domain codomain)
   /-- T-APP. -/
   | app {context function argument domain codomain} :
@@ -3281,8 +3281,8 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
       self ≠ argument →
       DirectSelf.Holds self body →
       RuntimeTyping signature
-        ((argument, Scheme.mono domain) ::
-          (self, Scheme.mono (.fn domain codomain)) :: context)
+        ((argument, NamedScheme.mono domain) ::
+          (self, NamedScheme.mono (.fn domain codomain)) :: context)
         body codomain →
       RuntimeTyping signature context (.fix self argument body) (.fn domain codomain)
   /-- T-LIT. -/

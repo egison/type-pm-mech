@@ -111,7 +111,7 @@ theorem orProgram_typed :
     RuntimeTyping emptySignature [] orProgram (Ty.listT .int) :=
   RuntimeTyping.matchAll (prevailing := orPrevailing)
     RuntimeTyping.lit orPattern_resolved something_slot_typed
-    (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _))
+    (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _))
 
 /-! ## Nested matcher capability: DD rejection boundary -/
 
@@ -138,7 +138,7 @@ def sharedSlot : Ty := .slot .any (.prod [.int, .int])
 
 /-- The context binding the consumer at its monomorphic slot type. -/
 def consumerContext : Context :=
-  [("f", Scheme.mono (.fn sharedSlot sharedSlot))]
+  [("f", NamedScheme.mono (.fn sharedSlot sharedSlot))]
 
 /-- `something` fills the wildcard slot at the product target. -/
 private theorem something_sharedSlot_typed :
@@ -165,7 +165,7 @@ private theorem tuple_sharedSlot_typed :
 private theorem consumer_var_typed :
     RuntimeTyping emptySignature consumerContext (.var "f")
       (.fn sharedSlot sharedSlot) :=
-  RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)
+  RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)
 
 /-- Declaratively the program is typed: both producers coerce into the same
 wildcard slot domain. -/
@@ -178,7 +178,7 @@ theorem nestedCapProgram_typed :
         (ExprsTy.cons
           (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)))
 
 /-- The swapped order is typed by the same pieces. -/
 theorem nestedCapSwappedProgram_typed :
@@ -190,7 +190,7 @@ theorem nestedCapSwappedProgram_typed :
         (ExprsTy.cons
           (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (NamedScheme.mono_valueFlowInst _)))
 
 /-- Consuming the same producer twice is accepted: the shared domain
 resolves to one raw matcher type and the second use aligns rigidly. -/

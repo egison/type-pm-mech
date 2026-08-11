@@ -127,7 +127,7 @@ inference problem is a side condition of the caller, exactly as in the usual
 declarative presentation of skolemization.
 -/
 def skolemizeScheme
-    (scheme : Scheme) (capBase targetBase : Nat) : Ty :=
+    (scheme : NamedScheme) (capBase targetBase : Nat) : Ty :=
   (Subst.mk
       (capSkolemSubst scheme.capBinders capBase)
       (targetSkolemSubst scheme.tyBinders targetBase)).apply scheme.body
@@ -164,7 +164,7 @@ rules out accidental acceptance caused by reusing an outer skolem ID.
 -/
 def FreshSkolemsFor
     (scope : CheckScope) (inferred : Ty)
-    (scheme : Scheme) (capBase targetBase : Nat) : Prop :=
+    (scheme : NamedScheme) (capBase targetBase : Nat) : Prop :=
   ListsDisjoint
       (generatedSkolemIds capBase scheme.capBinders.length)
       (scope.capabilitySkolems ++ typeCapSkolemIds inferred ++
@@ -186,7 +186,7 @@ def ChecksScheme
     (scope : CheckScope)
     (localCaps : List CapVar)
     (localTargets : List TypePM.TyVar)
-    (inferred : Ty) (scheme : Scheme)
+    (inferred : Ty) (scheme : NamedScheme)
     (capBase targetBase : Nat) : Prop :=
   ListsDisjoint localCaps scope.environmentCaps ∧
     ListsDisjoint localTargets scope.environmentTargets ∧
@@ -199,7 +199,7 @@ theorem ChecksScheme.rigid
     {scope : CheckScope}
     {localCaps : List CapVar}
     {localTargets : List TypePM.TyVar}
-    {inferred : Ty} {scheme : Scheme}
+    {inferred : Ty} {scheme : NamedScheme}
     {capBase targetBase : Nat}
     (h :
       ChecksScheme scope localCaps localTargets inferred scheme
@@ -213,7 +213,7 @@ theorem ChecksScheme.fresh
     {scope : CheckScope}
     {localCaps : List CapVar}
     {localTargets : List TypePM.TyVar}
-    {inferred : Ty} {scheme : Scheme}
+    {inferred : Ty} {scheme : NamedScheme}
     {capBase targetBase : Nat}
     (h :
       ChecksScheme scope localCaps localTargets inferred scheme
@@ -314,7 +314,7 @@ theorem environment_capability_meta_rejects_skolem
   cases impossible
 
 /-- The annotation rejected by the two-sorted core: `forall p a. Matcher p a`. -/
-def badCapabilityScheme : Scheme :=
+def badCapabilityScheme : NamedScheme :=
   ⟨[0], [0], .matcher (.var 0) (.var 0)⟩
 
 @[simp] theorem badCapabilityScheme_skolemize :
@@ -352,7 +352,7 @@ def producerIdentityTy : Ty :=
     (.matcher (.var 0) (.var 0))
 
 /-- Its explicit two-sort annotation. -/
-def producerIdentityScheme : Scheme :=
+def producerIdentityScheme : NamedScheme :=
   ⟨[0], [0],
     .fn
       (.matcher (.var 0) (.var 0))
@@ -402,7 +402,7 @@ theorem producerIdentity_checks_annotation :
 /-! ## Freshness-collision regression -/
 
 /-- An explicit capability-polymorphic annotation used to expose ID collision. -/
-def collidingCapabilityScheme : Scheme :=
+def collidingCapabilityScheme : NamedScheme :=
   ⟨[0], [], .matcher (.var 0) .int⟩
 
 @[simp] theorem collidingCapabilityScheme_skolemize :
