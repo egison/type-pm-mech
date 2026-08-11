@@ -298,6 +298,72 @@ theorem freshenSkeletonMasked_ddRun
 
 end
 
+/-- Public exact-state surface of skeleton freshening.  Downstream
+soundness slices need only agreement with the pure supply twin and the two
+state components consumed by DD origin certificates; the internal extension
+representation remains private to this module. -/
+theorem freshenSkeleton_supplyExact
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidence : Shape.Evidence} {initial final : InferState}
+    {capability : Cap}
+    (success : freshenSkeleton observable origin evidence initial =
+      some (capability, final)) :
+    freshenSkeletonSupply observable evidence initial.supply =
+        some (capability, final.supply) ∧
+      final.prevailing = initial.prevailing ∧
+      final.capabilityOrigins =
+        DDLedger.markCapRange initial.capabilityOrigins initial.supply
+          final.supply := by
+  rcases freshenSkeleton_ddRun observable origin evidence initial capability
+      final success with ⟨pure, extension⟩
+  exact ⟨pure, extension.prevailing, extension.toRange⟩
+
+/-- Internal exact extension for the stateful shared-result assignment
+allocator used by pattern constructors. -/
+private theorem freshPatternCtorAssignments_extension
+    (origin : ConstraintOrigin) :
+    ∀ (variables : List TypePM.TyVar) (initial : InferState),
+      let allocated := freshPatternCtorAssignments origin variables initial
+      allocated.1 =
+          (patternCtorAssignmentsSupply variables initial.supply).1 ∧
+        allocated.2.supply =
+          (patternCtorAssignmentsSupply variables initial.supply).2 ∧
+        FreshCapExtension initial allocated.2
+  | [], initial => by
+      exact ⟨rfl, rfl, FreshCapExtension.refl initial⟩
+  | varId :: variables, initial => by
+      let middle := (initial.freshCap origin).2
+      rcases freshPatternCtorAssignments_extension origin variables middle with
+        ⟨assignments, supply, extension⟩
+      have middleSupply : middle.supply =
+          { initial.supply with
+            nextCap := initial.supply.nextCap + 1 } := by
+        simp [middle, InferState.freshCap, InferenceBase.freshCapMeta,
+          InferState.recordEvent]
+      simp only [freshPatternCtorAssignments,
+        patternCtorAssignmentsSupply]
+      rw [assignments, supply, middleSupply]
+      exact ⟨rfl, rfl,
+        (FreshCapExtension.freshCap initial origin).trans extension⟩
+
+/-- Public exact-state surface of the pattern-constructor shared-result
+assignment allocator. -/
+theorem freshPatternCtorAssignments_supplyExact
+    (origin : ConstraintOrigin) (variables : List TypePM.TyVar)
+    (initial : InferState) :
+    let allocated := freshPatternCtorAssignments origin variables initial
+    allocated.1 =
+        (patternCtorAssignmentsSupply variables initial.supply).1 ∧
+      allocated.2.supply =
+        (patternCtorAssignmentsSupply variables initial.supply).2 ∧
+      allocated.2.prevailing = initial.prevailing ∧
+      allocated.2.capabilityOrigins =
+        DDLedger.markCapRange initial.capabilityOrigins initial.supply
+          allocated.2.supply := by
+  rcases freshPatternCtorAssignments_extension origin variables initial with
+    ⟨assignments, supply, extension⟩
+  exact ⟨assignments, supply, extension.prevailing, extension.toRange⟩
+
 private def recursiveMatcherTemplateSupply (signature : FrozenSig)
     (clauses : List Clause) (q : InferenceBase.FreshSupply) :
     Option (Cap × InferenceBase.FreshSupply) := do
