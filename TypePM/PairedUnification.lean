@@ -1163,6 +1163,7 @@ structure PairedResult
   targetRange : Unification.TyRange subst.target (left.ftv ++ right.ftv)
   targetCapRange : Unification.TyCapRange subst.target
     (left.fcv ++ right.fcv)
+  idempotent : subst.Idempotent
   sound : subst.apply left = subst.apply right
   /-- Every paired competitor, independently of the origin ledger, factors
   through the returned substitution. -/
@@ -1192,6 +1193,7 @@ structure PairedListResult
     (Ty.ftvList left ++ Ty.ftvList right)
   targetCapRange : Unification.TyCapRange subst.target
     (Ty.fcvList left ++ Ty.fcvList right)
+  idempotent : subst.Idempotent
   sound : left.map subst.apply = right.map subst.apply
   globalUniversal : ∀ U : Subst,
     left.map U.apply = right.map U.apply →
@@ -1395,6 +1397,94 @@ private theorem seq_supportInput
   rcases List.mem_append.mp membership with earlierMem | laterMem
   · exact earlierInput varId earlierMem
   · exact outerWithin varId (laterInput varId laterMem)
+
+/-- The support-elimination certificate of the oriented capability kernel is
+its pointwise solved-form certificate. -/
+private theorem orientedCapResult_idempotent
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : OrientedCapResult ledger left right) :
+    result.subst.Idempotent := by
+  apply CapSubst.idempotent_of_pointwise
+  intro source
+  apply Cap.apply_eq_self_of_fcv_fixed
+  intro image imageMem
+  exact result.capSupport image fun supportMem =>
+    result.supportElim image supportMem source imageMem
+
+private theorem orientedCapPhase_idempotent
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : OrientedCapResult ledger left right) :
+    (Subst.mk result.subst TySubst.id).Idempotent :=
+  Subst.idempotent_of_targetId (orientedCapResult_idempotent result)
+
+private theorem orientedCapPhase_zonkedCapsFixed
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : OrientedCapResult ledger left right)
+    (leftTarget rightTarget : Ty) :
+    ∀ varId,
+      varId ∈ (leftTarget.applyCapability result.subst).fcv ++
+        (rightTarget.applyCapability result.subst).fcv →
+      result.subst varId = .var varId := by
+  intro varId membership
+  have phaseIdem := orientedCapPhase_idempotent result
+  rcases List.mem_append.mp membership with leftMem | rightMem
+  · apply phaseIdem.image_cap_fixed leftTarget varId
+    simpa only [capOnly_apply] using leftMem
+  · apply phaseIdem.image_cap_fixed rightTarget varId
+    simpa only [capOnly_apply] using rightMem
+
+private theorem idempotent_target_fixed_map
+    {S : Subst} (idem : S.Idempotent) :
+    ∀ (targets : List Ty) varId,
+      varId ∈ Ty.ftvList (targets.map S.apply) →
+      S.target varId = .var varId
+  | [], _, membership => nomatch membership
+  | target :: targets, varId, membership => by
+      simp only [List.map_cons, Ty.ftvList, List.mem_append] at membership
+      rcases membership with headMem | tailMem
+      · exact idem.image_target_fixed target varId headMem
+      · exact idempotent_target_fixed_map idem targets varId tailMem
+
+private theorem idempotent_cap_fixed_map
+    {S : Subst} (idem : S.Idempotent) :
+    ∀ (targets : List Ty) varId,
+      varId ∈ Ty.fcvList (targets.map S.apply) →
+      S.cap varId = .var varId
+  | [], _, membership => nomatch membership
+  | target :: targets, varId, membership => by
+      simp only [List.map_cons, Ty.fcvList, List.mem_append] at membership
+      rcases membership with headMem | tailMem
+      · exact idem.image_cap_fixed target varId headMem
+      · exact idempotent_cap_fixed_map idem targets varId tailMem
+
+/-- Sequential solver phases stay solved when the earlier solved phase fixes
+the finite input ranges of the later phase. -/
+private theorem pairedSeq_idempotent
+    {earlier later : Subst}
+    {outerCaps : List CapVar} {outerTargets : List TypePM.TyVar}
+    (earlierIdem : earlier.Idempotent) (laterIdem : later.Idempotent)
+    (laterCapRange : Unification.CapRange later.cap outerCaps)
+    (laterTargetRange : Unification.TyRange later.target outerTargets)
+    (laterTargetCapRange :
+      Unification.TyCapRange later.target outerCaps)
+    (outerTargetsFixed : ∀ varId, varId ∈ outerTargets →
+      earlier.target varId = .var varId)
+    (outerCapsFixed : ∀ varId, varId ∈ outerCaps →
+      earlier.cap varId = .var varId) :
+    (Subst.seq later earlier).Idempotent := by
+  apply Subst.seq_idempotent laterIdem
+  intro target
+  apply Subst.apply_eq_self_of_fixed
+  · intro varId membership
+    rcases pairedTyRange_apply_mem laterTargetRange membership with
+      imageMem | outerMem
+    · exact earlierIdem.image_target_fixed target varId imageMem
+    · exact outerTargetsFixed varId outerMem
+  · intro varId membership
+    rcases pairedCapRange_apply_mem laterCapRange laterTargetCapRange
+        membership with imageMem | outerMem
+    · exact earlierIdem.image_cap_fixed target varId imageMem
+    · exact outerCapsFixed varId outerMem
 
 private theorem fn_domainCapWithin
     {leftDomain leftCodomain rightDomain rightCodomain : Ty} :
@@ -1715,6 +1805,7 @@ def solvePairedTy :
           capRange := pairedCapRange_id _
           targetRange := pairedTyRange_id _
           targetCapRange := pairedTyCapRange_id _
+          idempotent := Subst.id_idempotent
           sound := by subst right; rfl
           globalUniversal := by
             intro U _
@@ -1756,6 +1847,8 @@ def solvePairedTy :
                 targetCapRange := pairedTyCapRange_single varId right _ (by
                   intro image imageMem
                   exact List.mem_append.mpr (Or.inr imageMem))
+                idempotent := Subst.idempotent_of_capId
+                  (Unification.tySingle_idempotent hoccurs)
                 sound := by
                   rw [targetOnly_apply, targetOnly_apply]
                   simp only [Ty.applyTarget, Unification.TySubst.single,
@@ -1814,6 +1907,8 @@ def solvePairedTy :
                 targetCapRange := pairedTyCapRange_single varId left _ (by
                   intro image imageMem
                   exact List.mem_append.mpr (Or.inl imageMem))
+                idempotent := Subst.idempotent_of_capId
+                  (Unification.tySingle_idempotent hoccurs)
                 sound := by
                   rw [targetOnly_apply, targetOnly_apply]
                   simp only [Ty.applyTarget, Unification.TySubst.single,
@@ -1870,6 +1965,7 @@ def solvePairedTy :
                     targetRange := by simpa [Ty.ftv] using result.targetRange
                     targetCapRange := by
                       simpa [Ty.fcv] using result.targetCapRange
+                    idempotent := result.idempotent
                     sound := by
                       rw [subst_apply_data, subst_apply_data, hname,
                         result.sound]
@@ -1906,6 +2002,7 @@ def solvePairedTy :
                   targetRange := by simpa [Ty.ftv] using result.targetRange
                   targetCapRange := by
                     simpa [Ty.fcv] using result.targetCapRange
+                  idempotent := result.idempotent
                   sound := by
                     rw [subst_apply_prod, subst_apply_prod, result.sound]
                   globalUniversal := by
@@ -1977,6 +2074,26 @@ def solvePairedTy :
                           codomainResult.capRange
                           codomainResult.targetCapRange
                           (fn_codomainCapWithin domainResult)
+                      idempotent := pairedSeq_idempotent
+                        domainResult.idempotent codomainResult.idempotent
+                        codomainResult.capRange codomainResult.targetRange
+                        codomainResult.targetCapRange
+                        (by
+                          intro varId membership
+                          rcases List.mem_append.mp membership with
+                            leftMem | rightMem
+                          · exact domainResult.idempotent.image_target_fixed
+                              leftCodomain varId leftMem
+                          · exact domainResult.idempotent.image_target_fixed
+                              rightCodomain varId rightMem)
+                        (by
+                          intro varId membership
+                          rcases List.mem_append.mp membership with
+                            leftMem | rightMem
+                          · exact domainResult.idempotent.image_cap_fixed
+                              leftCodomain varId leftMem
+                          · exact domainResult.idempotent.image_cap_fixed
+                              rightCodomain varId rightMem)
                       sound := by
                         rw [subst_apply_fn, subst_apply_fn, Subst.seq_apply,
                           Subst.seq_apply, Subst.seq_apply, Subst.seq_apply,
@@ -2099,6 +2216,13 @@ def solvePairedTy :
                           targetResult.capRange
                           targetResult.targetCapRange
                           (annotated_zonkedCapWithin capResult)
+                      idempotent := pairedSeq_idempotent
+                        (orientedCapPhase_idempotent capResult)
+                        targetResult.idempotent targetResult.capRange
+                        targetResult.targetRange targetResult.targetCapRange
+                        (by intro varId _; rfl)
+                        (orientedCapPhase_zonkedCapsFixed capResult
+                          leftTarget rightTarget)
                       sound := by
                         rw [subst_apply_matcher, subst_apply_matcher]
                         have hcap :
@@ -2260,6 +2384,13 @@ def solvePairedTy :
                           targetResult.capRange
                           targetResult.targetCapRange
                           (annotated_zonkedCapWithin capResult)
+                      idempotent := pairedSeq_idempotent
+                        (orientedCapPhase_idempotent capResult)
+                        targetResult.idempotent targetResult.capRange
+                        targetResult.targetRange targetResult.targetCapRange
+                        (by intro varId _; rfl)
+                        (orientedCapPhase_zonkedCapsFixed capResult
+                          leftTarget rightTarget)
                       sound := by
                         rw [subst_apply_slot, subst_apply_slot]
                         have hcap :
@@ -2370,6 +2501,7 @@ def solvePairedTyList :
         capRange := pairedCapRange_id _
         targetRange := pairedTyRange_id _
         targetCapRange := pairedTyCapRange_id _
+        idempotent := Subst.id_idempotent
         sound := rfl
         globalUniversal := by
           intro U _
@@ -2439,6 +2571,26 @@ def solvePairedTyList :
                       list_headCapWithin)
                     tailResult.capRange tailResult.targetCapRange
                     (list_tailCapWithin headResult)
+                idempotent := pairedSeq_idempotent
+                  headResult.idempotent tailResult.idempotent
+                  tailResult.capRange tailResult.targetRange
+                  tailResult.targetCapRange
+                  (by
+                    intro varId membership
+                    rcases List.mem_append.mp membership with
+                      leftMem | rightMem
+                    · exact idempotent_target_fixed_map
+                        headResult.idempotent leftTail varId leftMem
+                    · exact idempotent_target_fixed_map
+                        headResult.idempotent rightTail varId rightMem)
+                  (by
+                    intro varId membership
+                    rcases List.mem_append.mp membership with
+                      leftMem | rightMem
+                    · exact idempotent_cap_fixed_map
+                        headResult.idempotent leftTail varId leftMem
+                    · exact idempotent_cap_fixed_map
+                        headResult.idempotent rightTail varId rightMem)
                 sound := by
                   have hfun : (Subst.seq tailResult.subst
                         headResult.subst).apply =
@@ -3207,6 +3359,19 @@ theorem mguPairedTy_targetCapRange
       have heq : result.subst = S := by simpa [hsolve] using hsuccess
       subst S
       exact result.targetCapRange
+
+/-- Every substitution returned by paired unification is in solved form. -/
+theorem mguPairedTy_idempotent
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (hsuccess : mguPairedTy ledger left right = some S) : S.Idempotent := by
+  unfold mguPairedTy at hsuccess
+  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+      right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by simpa [hsolve] using hsuccess
+      subst S
+      exact result.idempotent
 
 /-! ## Executable regression checks
 

@@ -575,6 +575,16 @@ theorem Subst.idempotent_of_capId {T : TySubst} (idem : T.Idempotent) :
   rw [Ty.applyCapability_id, Ty.applyCapability_id]
   exact idem target
 
+/-- A target-identity pair is idempotent when its capability component is. -/
+theorem Subst.idempotent_of_targetId {C : CapSubst} (idem : C.Idempotent) :
+    Subst.Idempotent ⟨C, TySubst.id⟩ := by
+  intro target
+  simp only [Subst.apply, Ty.applyTarget_id]
+  rw [← Ty.applyCapability_comp]
+  congr 1
+  funext varId
+  simpa [CapSubst.comp, Cap.apply] using idem (.var varId)
+
 /--
 Semantic composition for combined substitutions.
 
