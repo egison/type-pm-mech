@@ -318,8 +318,10 @@ range，support elimination，global universalityを保持させ，ledger admiss
 経由するglobal universalityに加え，capability／target両sortの入力内support，capability image
 range，target imageのtarget-variable／capability-variable rangeを全構造分岐で証明済みである．
 これらのrangeから前段substitutionによる後段imageのfixednessを導き，paired idempotenceも
-全構造分岐で証明した．次はこれらを束ねる`ExactPairedMGU` bridgeを完成して，slot-tuple lift，
-slot-to-slot，ordinary equalityの残り3分岐を閉じる．
+全構造分岐で証明した．soundness，global universality，support，range，idempotenceを同じkernel
+resultから束ねる`ExactPairedMGU`／`OriginSafeExactPairedMGU` bridgeも完成し，public paired solveと
+raw target-equality stepの双方へ公開した．次はslot-tuple lift，slot-to-slot，ordinary equalityの
+残り3分岐を閉じる．
 
 中心定理：
 

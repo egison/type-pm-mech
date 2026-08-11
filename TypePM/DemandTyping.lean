@@ -690,6 +690,31 @@ theorem PairedUnification.OrientedCapResult.exactCapMGU
     exact result.capSupport image fun supportMem =>
       result.supportElim image supportMem source imageMem
 
+/-- The proof-carrying paired kernel result satisfies the complete exact MGU
+contract used by demand-directed equality alignment. -/
+theorem PairedUnification.PairedResult.exactPairedMGU
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    (result : PairedUnification.PairedResult ledger left right) :
+    ExactPairedMGU left right result.subst := by
+  refine ⟨⟨result.sound, result.globalUniversal⟩, ?_, ?_, ?_, ?_, ?_,
+    result.idempotent⟩
+  · intro varId outside
+    exact result.capSupport varId fun supportMem =>
+      outside (result.capSupportInput varId supportMem)
+  · intro varId outside
+    exact result.targetSupport varId fun supportMem =>
+      outside (result.targetSupportInput varId supportMem)
+  · intro source sourceMem image imageMem
+    rcases result.capRange source image imageMem with rfl | inputMem
+    · exact sourceMem
+    · exact inputMem
+  · intro source sourceMem image imageMem
+    rcases result.targetRange source image imageMem with rfl | inputMem
+    · exact sourceMem
+    · exact inputMem
+  · intro source _ image imageMem
+    exact result.targetCapRange source image imageMem
+
 /-- Exactness plus the kernel's ledger admissibility is precisely the
 origin-safe capability MGU premise used by ledger-aware DD rules. -/
 theorem PairedUnification.OrientedCapResult.originSafeExactCapMGU
@@ -697,6 +722,30 @@ theorem PairedUnification.OrientedCapResult.originSafeExactCapMGU
     (result : PairedUnification.OrientedCapResult ledger left right) :
     OriginSafeExactCapMGU ledger left right result.subst :=
   ⟨result.exactCapMGU, result.admissible⟩
+
+/-- Exact paired MGU facts and ledger admissibility are carried by the same
+successful kernel result. -/
+theorem PairedUnification.PairedResult.originSafeExactPairedMGU
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    (result : PairedUnification.PairedResult ledger left right) :
+    OriginSafeExactPairedMGU ledger left right result.subst :=
+  ⟨result.exactPairedMGU, result.admissible⟩
+
+/-- A successful public paired solve exposes its complete origin-safe exact
+certificate without weakening global most-generality. -/
+theorem PairedUnification.mguPairedTy_originSafeExactPairedMGU
+    {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
+    (success : PairedUnification.mguPairedTy ledger left right = some S) :
+    OriginSafeExactPairedMGU ledger left right S := by
+  unfold PairedUnification.mguPairedTy at success
+  cases solved : PairedUnification.solvePairedTy
+      (Unification.tyFuel left right) ledger left right with
+  | none => simp [solved] at success
+  | some result =>
+      have resultEq : result.subst = S := by
+        simpa [solved] using success
+      subst S
+      exact result.originSafeExactPairedMGU
 
 /-- A successful executable capability-equality solve exposes the exact
 origin-safe capability MGU stored in its emitted solver step. -/
@@ -715,6 +764,23 @@ theorem Inference.solveCapEqWithLedger_originSafeExactCapMGU
     have stepEq := Option.some.inj success
     subst step
     exact ⟨rfl, result.originSafeExactCapMGU⟩
+
+/-- A successful executable target-equality solve exposes the exact
+origin-safe paired MGU stored in its emitted solver step. -/
+theorem Inference.solveTargetEqWithLedger_originSafeExactPairedMGU
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : Inference.ConstraintOrigin} {left right : Ty}
+    {step : Inference.SolveStep}
+    (success : Inference.solveTargetEqWithLedger ledger solveCount origin
+      left right = some step) :
+    OriginSafeExactPairedMGU ledger left right step.delta := by
+  unfold Inference.solveTargetEqWithLedger at success
+  split at success
+  · contradiction
+  · rename_i result solved
+    have stepEq := Option.some.inj success
+    subst step
+    exact result.originSafeExactPairedMGU
 
 /-- Identity is an exact most general unifier of equal capabilities. -/
 theorem ExactCapMGU.refl (capability : Cap) :
