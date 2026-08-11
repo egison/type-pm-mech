@@ -240,6 +240,9 @@ ambient substitution transportは，選択済みcapability opening像が後続�
 `ValueOpening.Post`だけを要求する．poly payload上の構造帰納により，substituted schemeのopeningと
 opened ordinary typeへの作用が一致することを証明済みであり，binder support，`RangeFixed`，
 `NoCapture`はこの定理に現れない．
+poly payloadへのambient substitutionはidentityを無条件に保ち，逐次作用は既存の
+`Subst.comp`と一致する．後者に必要なのは，先行target rangeを後続capability substitutionが
+書き換えないという二sort固有のcross-range固定だけであり，binder captureに関する条件はない．
 旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
 後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
 payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．

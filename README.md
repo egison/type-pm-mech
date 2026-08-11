@@ -267,6 +267,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
   subtractionを使わないscheme free-variable traversalを構成する．
 - [x] 実際のcapability opening像が後続作用でもvariableに留まるという局所条件だけで，
   openingとambient substitutionのtransportを構成する．
+- [x] binder capture条件なしでpoly scheme substitutionのidentity／composition則を構成する．
+  compositionに残る仮定は二sort substitution固有のcross-range固定だけである．
 - [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
 - [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
 - [ ] matcher／clauseを終端cutで相互に再構成する．

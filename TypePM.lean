@@ -7,6 +7,7 @@ import TypePM.PolyFreeVars
 import TypePM.PolyGeneralization
 import TypePM.PolyInstantiation
 import TypePM.PolyInstantiationTransport
+import TypePM.PolySubstitutionLaws
 import TypePM.PolyFreshInstantiation
 import TypePM.Relation
 import TypePM.Annotation
