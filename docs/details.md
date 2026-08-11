@@ -226,6 +226,10 @@ expression schemeの宣言的具体化は`ValueOpening`，inference用のdistinc
 `FreshOpening`，ambient scopeからのfreshnessは`FreshFor`に分離した．capability像のcodomainは
 `CapVar`なのでvariable-only性は命題fieldではなく型で保証され，openingを通常`Subst`として
 solverへ渡す経路はない．
+canonical fresh allocatorはbound index `i`をincoming supplyの`next + i`へ写し，binderの旧数値名に
+実行結果を依存させない．結果の通常型はrecord fieldとして任意に与えられず，記録したopeningから
+計算される．successor supplyの範囲，割当のinjectivity，ambient reserved variableからのfreshnessを
+それぞれ証明済みである．
 旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
 後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
 payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．
