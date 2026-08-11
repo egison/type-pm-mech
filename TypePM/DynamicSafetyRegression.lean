@@ -57,7 +57,7 @@ theorem signature_wf : FrozenSigWF signature :=
 def runtimeSignature : RuntimeSigF := []
 
 /-- Empty source and runtime pattern-function tables agree in every context. -/
-theorem runtime_agrees (context : Context) :
+theorem runtime_agrees (context : NamedContext) :
     RuntimeSigAgrees signature context runtimeSignature where
   runtimeTyped := by
     intro entry member
@@ -203,7 +203,7 @@ theorem program_typed :
     RuntimeTyping signature [] program (Ty.listT .int) := by
   have typing := Inference.infer_success_runtimeTyping inference_success
   rw [inferenceResult_target] at typing
-  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
 
 theorem evaluation_mirror :
     EvalRuntimeSigAgrees signature runtimeSignature program_evaluation :=

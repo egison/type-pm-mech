@@ -190,7 +190,7 @@ def SScheme.emb (scheme : SScheme) : NamedScheme :=
   ⟨[], scheme.binders, scheme.body.emb⟩
 
 /-- Embed a one-sorted context. -/
-def SCtx.emb (context : SCtx) : Context :=
+def SCtx.emb (context : SCtx) : NamedContext :=
   context.map fun entry => (entry.1, entry.2.emb)
 
 /-- Embed a one-sorted substitution as a target substitution. -/
@@ -316,15 +316,15 @@ theorem SScheme.emb_valueFlowInst {scheme : SScheme} {target : STy}
       (SSubst.emb S) = target.emb
   rw [STy.emb_applyCapability, STy.emb_applyTarget, result]
 
-/-- Context lookup commutes with the embedding. -/
+/-- NamedContext lookup commutes with the embedding. -/
 theorem SCtx.find?_emb {context : SCtx} {name : String} {scheme : SScheme}
     (found : SCtx.find? context name = some scheme) :
-    Context.find? (SCtx.emb context) name = some scheme.emb := by
+    NamedContext.find? (SCtx.emb context) name = some scheme.emb := by
   induction context with
   | nil => cases found
   | cons entry rest induction =>
       unfold SCtx.find? at found
-      unfold Context.find? SCtx.emb
+      unfold NamedContext.find? SCtx.emb
       simp only [List.map_cons, List.find?_cons] at found ⊢
       cases nameEq : (entry.1 == name) with
       | true =>
@@ -336,11 +336,11 @@ theorem SCtx.find?_emb {context : SCtx} {name : String} {scheme : SScheme}
           exact induction found
 
 /-- Embedded contexts have no free capability variables. -/
-theorem SCtx.emb_fcv (context : SCtx) : Context.fcv (SCtx.emb context) = [] := by
+theorem SCtx.emb_fcv (context : SCtx) : NamedContext.fcv (SCtx.emb context) = [] := by
   induction context with
   | nil => rfl
   | cons entry rest induction =>
-      unfold SCtx.emb Context.fcv at induction ⊢
+      unfold SCtx.emb NamedContext.fcv at induction ⊢
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
       have schemeFcv : entry.2.emb.fcv = [] := by
@@ -352,11 +352,11 @@ theorem SCtx.emb_fcv (context : SCtx) : Context.fcv (SCtx.emb context) = [] := b
 
 /-- Embedding preserves context free variables. -/
 theorem SCtx.emb_ftv (context : SCtx) :
-    Context.ftv (SCtx.emb context) = SCtx.ftv context := by
+    NamedContext.ftv (SCtx.emb context) = SCtx.ftv context := by
   induction context with
   | nil => rfl
   | cons entry rest induction =>
-      unfold SCtx.emb Context.ftv SCtx.ftv at induction ⊢
+      unfold SCtx.emb NamedContext.ftv SCtx.ftv at induction ⊢
       simp only [List.map_cons, List.flatMap_cons]
       rw [induction]
       have schemeFtv : entry.2.emb.ftv = entry.2.ftv := by

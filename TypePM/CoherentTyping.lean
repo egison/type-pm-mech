@@ -78,7 +78,7 @@ theorem CoherentExpr.toRuntimeTyping
 
 /-- Successful public inference lands in the coherent judgment. -/
 theorem infer_success_coherent
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
     CoherentExpr signature

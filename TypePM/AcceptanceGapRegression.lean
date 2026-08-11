@@ -137,7 +137,7 @@ def nestedCapSwappedProgram : Expr :=
 def sharedSlot : Ty := .slot .any (.prod [.int, .int])
 
 /-- The context binding the consumer at its monomorphic slot type. -/
-def consumerContext : Context :=
+def consumerContext : NamedContext :=
   [("f", NamedScheme.mono (.fn sharedSlot sharedSlot))]
 
 /-- `something` fills the wildcard slot at the product target. -/
@@ -369,7 +369,7 @@ theorem packProgram_result_type :
 theorem packProgram_coherent :
     Coherent.CoherentExpr packSignature [] packProgram
       packResult.resolvedTarget := by
-  simpa [Inference.ResolvedContext, Context.applySubst] using
+  simpa [Inference.ResolvedContext, NamedContext.applySubst] using
     Coherent.infer_success_coherent packProgram_result
 
 /-- Public inference independently reconstructs the advertised runtime
@@ -378,7 +378,7 @@ theorem packProgram_typed_by_inference :
     RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
   have typing := Inference.infer_success_runtimeTyping packProgram_result
   rw [packProgram_result_type] at typing
-  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
 
 /-- The local `κ = Any` solve observes `κ` as structurally flexible at that
 exact chronological cut. -/

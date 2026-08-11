@@ -80,7 +80,7 @@ The certificates remain propositions, while the constructor choice is data in
 `Type` and can therefore be inspected by an elaborator or a normalization
 proof.
 -/
-inductive Step (signature : FrozenSig) (context : Context) (expression : Expr) :
+inductive Step (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
     Ty -> Ty -> Type where
   | matcherToSlot
       {producerCap producerTarget consumerCap consumerTarget bindings C T post} :
@@ -106,7 +106,7 @@ inductive Step (signature : FrozenSig) (context : Context) (expression : Expr) :
 
 /-- The observable rule name of one primitive step. -/
 def Step.kind
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target) : Kind :=
   match step with
@@ -122,7 +122,7 @@ private def endpointKind? : Ty -> Ty -> Option Kind
   | _, _ => none
 
 private theorem Step.endpointKind?_eq
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target) :
     endpointKind? source target = some step.kind := by
@@ -131,7 +131,7 @@ private theorem Step.endpointKind?_eq
 /-- Primitive steps with the same indexed endpoints have the same observable
 rule name, even when their hidden raw certificates differ. -/
 theorem Step.kind_unique
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (first second : Step signature context expression source target) :
     first.kind = second.kind := by
@@ -141,7 +141,7 @@ theorem Step.kind_unique
 
 /-- Forget one observable step into the existing surface coercion relation. -/
 def Step.toCoercionPlan
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
@@ -152,7 +152,7 @@ def Step.toCoercionPlan
 
 /-- Every observable primitive step changes its indexed type. -/
 theorem Step.source_ne_target
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target) :
     source ≠ target := by
@@ -165,7 +165,7 @@ There is no constructor for identity and no general `cons`/`trans`.  The only
 two-step form is the canonical aggregate matcher-to-slot path.  Its indices
 force the second step to be matcher-to-slot.
 -/
-inductive Spine (signature : FrozenSig) (context : Context) (expression : Expr) :
+inductive Spine (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
     Ty -> Ty -> Type where
   | one {source target} :
       Step signature context expression source target ->
@@ -182,7 +182,7 @@ inductive Spine (signature : FrozenSig) (context : Context) (expression : Expr) 
 
 /-- The observable primitive-rule sequence of a canonical spine. -/
 def Spine.kinds
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) : List Kind :=
   match spine with
@@ -212,7 +212,7 @@ private def SlotHead : Ty -> Prop
 
 /-- A primitive step whose source is a matcher must be matcher-to-slot. -/
 private theorem Step.kind_eq_matcherToSlot_of_source
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target)
     (sourceMatcher : MatcherHead source) :
@@ -221,7 +221,7 @@ private theorem Step.kind_eq_matcherToSlot_of_source
 
 /-- Observable primitive steps never start at a slot. -/
 private theorem Step.source_not_slot
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target) :
     ¬ SlotHead source := by
@@ -229,7 +229,7 @@ private theorem Step.source_not_slot
 
 /-- A primitive step starting at a matcher necessarily ends at a slot. -/
 private theorem Step.target_slot_of_source_matcher
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (step : Step signature context expression source target)
     (sourceMatcher : MatcherHead source) :
@@ -240,7 +240,7 @@ private theorem Step.target_slot_of_source_matcher
 two intended primitive rules.  The endpoints of `alignment` rule out every
 `Step` constructor except matcher-to-slot. -/
 @[simp] theorem Spine.productMatcherToSlot_kinds
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {duals : List Dual} {target : Ty}
     (alignment : Step signature context expression
       (.matcher (.prod (duals.map Dual.cap))
@@ -253,7 +253,7 @@ two intended primitive rules.  The endpoints of `alignment` rule out every
   rw [Step.kind_eq_matcherToSlot_of_source alignment (by trivial)]
 
 private theorem Spine.kinds_eq_endpointSpineKinds
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     spine.kinds = endpointSpineKinds source target := by
@@ -275,7 +275,7 @@ private theorem Spine.kinds_eq_endpointSpineKinds
 /-- Canonical spines with the same endpoints have the same observable rule
 sequence, although their hidden certificates need not be equal. -/
 theorem Spine.kinds_unique
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (first second : Spine signature context expression source target) :
     first.kinds = second.kinds := by
@@ -284,7 +284,7 @@ theorem Spine.kinds_unique
 
 /-- Canonical spines contain no zero-step identity representation. -/
 theorem Spine.kinds_ne_nil
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     spine.kinds ≠ [] := by
@@ -292,7 +292,7 @@ theorem Spine.kinds_ne_nil
 
 /-- Canonical spines contain at most the one required aggregate composition. -/
 theorem Spine.kinds_length_le_two
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     spine.kinds.length <= 2 := by
@@ -300,7 +300,7 @@ theorem Spine.kinds_length_le_two
 
 /-- Canonical nonempty spines never start at a slot. -/
 private theorem Spine.source_not_slot
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     ¬ SlotHead source := by
@@ -310,7 +310,7 @@ private theorem Spine.source_not_slot
 
 /-- Every observable nonempty spine changes its indexed type. -/
 theorem Spine.source_ne_target
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     source ≠ target := by
@@ -328,13 +328,13 @@ Because `Spine` is indexed, a spine satisfying this predicate necessarily
 starts at a product of matcher types and first constructs their product matcher.
 -/
 def Spine.WholeProductFirst
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) : Prop :=
   spine.kinds.head? = some .productMatcher
 
 @[simp] theorem Spine.productMatcher_wholeProductFirst
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {duals : List Dual} :
     Spine.WholeProductFirst
       (Spine.one
@@ -343,7 +343,7 @@ def Spine.WholeProductFirst
   rfl
 
 @[simp] theorem Spine.productMatcherToSlot_wholeProductFirst
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {duals : List Dual} {target : Ty}
     (alignment : Step signature context expression
       (.matcher (.prod (duals.map Dual.cap))
@@ -354,7 +354,7 @@ def Spine.WholeProductFirst
 
 /-- Interpret a canonical spine in the existing propositional relation. -/
 def Spine.toCoercionPlan
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
@@ -365,7 +365,7 @@ def Spine.toCoercionPlan
 
 /-- Soundness of the observable spine for surface coercion replay. -/
 theorem Spine.sound
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (spine : Spine signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
@@ -380,7 +380,7 @@ endpoints are unique.  There is deliberately no constructor corresponding to
 `CoercionPlan.trans`.
 -/
 inductive NormalPlan
-    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
     Ty -> Ty -> Type where
   | refl {target} :
       NormalPlan signature context expression target target
@@ -391,7 +391,7 @@ inductive NormalPlan
 /-- At equal endpoints the dedicated identity constructor is the only
 possible candidate normal plan. -/
 theorem NormalPlan.eq_refl
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {target : Ty}
     (plan : NormalPlan signature context expression target target) :
     plan = .refl := by
@@ -406,7 +406,7 @@ certificate proves that the two fully substituted endpoints coincide;
 evidence carried by `Elaboration.CoercionPlan.checkSlotToSlot`.
 -/
 def NormalPlan.ofSurfaceSlotToSlot
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {sourceCap sourceTarget requestedCap requestedTarget C T post}
     (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
       requestedTarget C T)
@@ -423,7 +423,7 @@ def NormalPlan.ofSurfaceSlotToSlot
 shapes leave exactly one composable pair: a whole-product matcher lift followed
 by matcher-to-slot alignment. -/
 def NormalPlan.comp
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source middle target : Ty}
     (first : NormalPlan signature context expression source middle)
     (second : NormalPlan signature context expression middle target) :
@@ -464,7 +464,7 @@ theorem emptyProductMatcherToSlotRaw :
 /-- The empty slot-product surface rule normalizes through the matcher-first
 two-step policy, because observable `slotTuple` steps are nonempty. -/
 def NormalPlan.emptySlotTuple
-    {signature : FrozenSig} {context : Context} {expression : Expr} :
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr} :
     NormalPlan signature context expression (.prod [])
       (.slot (.prod []) (.prod [])) := by
   apply NormalPlan.coerce
@@ -475,7 +475,7 @@ def NormalPlan.emptySlotTuple
 
 /-- Observable rule sequence, with identity represented by the empty list. -/
 def NormalPlan.kinds
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target) : List Kind :=
   match plan with
@@ -486,7 +486,7 @@ private def endpointNormalKinds (source target : Ty) : List Kind :=
   if source = target then [] else endpointSpineKinds source target
 
 private theorem NormalPlan.kinds_eq_endpointNormalKinds
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target) :
     plan.kinds = endpointNormalKinds source target := by
@@ -499,7 +499,7 @@ private theorem NormalPlan.kinds_eq_endpointNormalKinds
 /-- Normal plans with the same endpoints have one observable rule sequence.
 The plans themselves may still differ in hidden raw certificates. -/
 theorem NormalPlan.kinds_unique
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (first second : NormalPlan signature context expression source target) :
     first.kinds = second.kinds := by
@@ -508,7 +508,7 @@ theorem NormalPlan.kinds_unique
 
 /-- Forget a normal plan into the existing propositional coercion relation. -/
 def NormalPlan.toCoercionPlan
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
@@ -518,7 +518,7 @@ def NormalPlan.toCoercionPlan
 
 /-- Soundness of the candidate normal-plan syntax for the existing coercion relation. -/
 theorem NormalPlan.sound
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
@@ -527,7 +527,7 @@ theorem NormalPlan.sound
 /-- Replaying a normal plan over a runtime certificate yields the target
 runtime certificate. -/
 theorem NormalPlan.toRuntimeTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target)
     (typing : RuntimeTyping signature context expression source) :
@@ -544,7 +544,7 @@ open CanonicalCoercion
 `Nonempty` is necessary because a proof in `Prop` cannot computationally return
 observable `NormalPlan` data in `Type`. -/
 theorem CoercionPlan.normalizable
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : CoercionPlan signature context expression source target) :
     Nonempty (NormalPlan signature context expression source target) := by
@@ -569,7 +569,7 @@ theorem CoercionPlan.normalizable
 /-- The candidate normal syntax is sound and complete for propositional outer
 coercion reachability. -/
 theorem coercionPlan_iff_nonempty_normalPlan
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty} :
     CoercionPlan signature context expression source target ↔
       Nonempty (NormalPlan signature context expression source target) := by

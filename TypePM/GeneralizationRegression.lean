@@ -137,7 +137,7 @@ theorem mixedDualGeneralized_shape :
         result := ⟨.var 30, .int⟩ } := by
   rfl
 
-def ambientDualContext : Context :=
+def ambientDualContext : NamedContext :=
   [("ambient", NamedScheme.mono (.matcher (.var 40) .int))]
 
 def ambientDualGeneralized : DualScheme :=

@@ -216,7 +216,7 @@ mutual
 
 theorem DDSynthOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {target : Ty}
+    {context : NamedContext} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -311,7 +311,7 @@ theorem DDSynthOrigin.ledgerEvolution
 
 theorem DDSynthsOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expressions : List Expr} {targets : List Ty}
+    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -326,7 +326,7 @@ theorem DDSynthsOrigin.ledgerEvolution
 
 theorem DDCheckOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {expected : Ty}
+    {context : NamedContext} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -337,7 +337,7 @@ theorem DDCheckOrigin.ledgerEvolution
 
 theorem DDChecksOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expressions : List Expr} {expecteds : List Ty}
+    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -352,7 +352,7 @@ theorem DDChecksOrigin.ledgerEvolution
 
 theorem DDPatternOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPattern signature q S context parameters bindingsIn pattern dual
@@ -413,7 +413,7 @@ theorem DDPatternOrigin.ledgerEvolution
 
 theorem DDPatternsOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPatterns signature q S context parameters bindingsIn patterns
@@ -429,7 +429,7 @@ theorem DDPatternsOrigin.ledgerEvolution
 
 theorem DDArmsOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
+    {context : NamedContext} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDArms signature q S context ppBindings arms clauseTarget
@@ -450,7 +450,7 @@ theorem DDArmsOrigin.ledgerEvolution
 
 theorem DDClauseOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clause : Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDClause signature q S context clause sharedTarget holes q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -469,7 +469,7 @@ theorem DDClauseOrigin.ledgerEvolution
 
 theorem DDClausesOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDClauses signature q S context clauses sharedTarget holeLists q'
@@ -499,26 +499,26 @@ the raw boundedness theorem exposed without requiring clients to erase the
 certificate by hand. -/
 theorem DDSynthOrigin.outputBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {target : Ty}
+    {context : NamedContext} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDSynthOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context) :
+    (contextBounded : NamedContext.BoundedBy q context) :
     S'.BoundedBy q' ∧ target.BoundedBy q' :=
   origin.erase.boundedBy closed substBounded contextBounded
 
 /-- Origin-certified checking preserves boundedness at its output cut. -/
 theorem DDCheckOrigin.outputBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {expected : Ty}
+    {context : NamedContext} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDCheckOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q' :=
   origin.erase.boundedBy closed substBounded contextBounded expectedBounded
 
@@ -566,7 +566,7 @@ whole-program supply expression merely to show that the next capability is
 fresh. -/
 theorem DDSynthOrigin.appCutsBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {function : Expr} {functionTarget : Ty}
+    {context : NamedContext} {function : Expr} {functionTarget : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
     {functionRaw : DDSynth signature q S context function functionTarget q₁ S₁}
@@ -574,7 +574,7 @@ theorem DDSynthOrigin.appCutsBounded
     (aligned : DDAlignTypesWithLedger ledger₁ S₁ functionTarget
       (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂)
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context) :
+    (contextBounded : NamedContext.BoundedBy q context) :
     DDAppCutsBounded q₁ S₁ functionTarget S₂ := by
   obtain ⟨S₁b, functionTargetB⟩ :=
     functionOrigin.erase.boundedBy closed substBounded contextBounded

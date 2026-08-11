@@ -27,7 +27,7 @@ private def enforceWBridgeResult
 
 /-- Public executable Algorithm W with terminal certification. -/
 def infer
-    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
     Option ExprResult :=
   (inferRaw signature context expression).bind
     (enforceWBridgeResult signature)
@@ -48,7 +48,7 @@ private theorem enforceWBridgeResult_sound
 
 /-- Public success contains both the raw W result and its successful audit. -/
 private theorem infer_success_raw_and_checked
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     inferRaw signature context expression = some result ∧
@@ -69,7 +69,7 @@ the direct `infer -> DDTyping` reconstruction.  The terminal bridge remains a
 separate, internal audit; reconstructing DD follows the traversal itself and
 therefore needs no runtime-typing oracle. -/
 theorem infer_success_inferRaw
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     inferRaw signature context expression = some result :=
@@ -77,7 +77,7 @@ theorem infer_success_inferRaw
 
 /-- Every successful public run preserves all protected producer variables. -/
 theorem infer_protected
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     ProtectedProducerTrace result.state :=
@@ -86,7 +86,7 @@ theorem infer_protected
 /-- A successful public run constructs the complete algebraic bridge checked by
 the terminal validator. -/
 private theorem infer_success_bridge
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     Reconstruction.WBridgeWF signature result.state :=
@@ -95,7 +95,7 @@ private theorem infer_success_bridge
 
 /-- Successful executable inference reconstructs a structured source-typing certificate. -/
 theorem infer_success_reconstruct
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     Reconstruction.ExprDeriv signature
@@ -111,7 +111,7 @@ The theorem is stronger than the intended well-formed-input interface: the
 public terminal validator fails closed, so no separate caller premise is
 needed to construct the internal runtime certificate. -/
 theorem infer_success_runtimeTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
     RuntimeTyping signature (ResolvedContext result.state.prevailing context)
@@ -120,14 +120,14 @@ theorem infer_success_runtimeTyping
 
 /-- Public result type after certified replay. -/
 def inferType
-    (signature : FrozenSig) (context : Context) (expression : Expr) :
+    (signature : FrozenSig) (context : NamedContext) (expression : Expr) :
     Option Ty := do
   let result <- infer signature context expression
   pure result.resolvedTarget
 
 /-- Executable success/failure of certified inference. -/
 def inferenceSucceeds
-    (signature : FrozenSig) (context : Context) (expression : Expr) : Bool :=
+    (signature : FrozenSig) (context : NamedContext) (expression : Expr) : Bool :=
   (infer signature context expression).isSome
 
 /-- Recover the exact `some` equation witnessed by an executable `isSome`

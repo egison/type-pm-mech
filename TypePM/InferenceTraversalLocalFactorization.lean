@@ -251,7 +251,7 @@ theorem InferState.factorizingTraceExtension_freshCap
   rfl
 
 theorem instantiateSchemeInState_factorizingTraceExtension
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     state.FactorizingTraceExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
@@ -267,8 +267,8 @@ theorem instantiateCtorInState_factorizingTraceExtension
 
 theorem instantiateDualInState_factorizingTraceExtension
     (signature : FrozenSig)
-    (rawContext : Context) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : Context) (parameters : PatternCtx)
+    (rawContext : NamedContext) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : NamedContext) (parameters : PatternCtx)
     (bindings : MonoCtx) (state : InferState) (scheme : DualScheme) :
     state.FactorizingTraceExtension
       (instantiateDualInState signature rawContext rawParameters rawBindings
@@ -277,7 +277,7 @@ theorem instantiateDualInState_factorizingTraceExtension
   rfl
 
 theorem instantiateSchemeInState_factorizingTraceExtension_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
     {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
@@ -296,8 +296,8 @@ theorem instantiateCtorInState_factorizingTraceExtension_of_eq
     (instantiateCtorInState_factorizingTraceExtension state scheme) success
 
 theorem instantiateDualInState_factorizingTraceExtension_of_eq
-    {signature : FrozenSig} {rawContext : Context}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
+    {signature : FrozenSig} {rawContext : NamedContext}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}
@@ -1594,7 +1594,7 @@ theorem enforceProtectedResult_factorizingTraceExtension
     (congrArg ExprResult.state equality)
 
 theorem inferRaw_factorizingTraceExtension
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     (initialState signature context).FactorizingTraceExtension result.state := by
@@ -1611,7 +1611,7 @@ theorem inferRaw_factorizingTraceExtension
 /-- Every complete successful raw inference run has local factorization at
 each solve cut. -/
 theorem inferRaw_factorizingTrace
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     result.state.FactorizingTrace := by

@@ -65,21 +65,21 @@ namespace Inference
   rfl
 
 @[simp] theorem instantiateSchemeInState_prevailing
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.prevailing = state.prevailing :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_target
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).1 = (InferenceBase.instantiateNamedScheme state.supply scheme).value :=
   rfl
 
 @[simp] theorem instantiateSchemeInState_supply
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.supply =
@@ -87,7 +87,7 @@ namespace Inference
   rfl
 
 @[simp] theorem instantiateSchemeInState_capabilityOrigins
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     (instantiateSchemeInState signature rawContext normalizedContext name state
       scheme).2.capabilityOrigins =
@@ -154,7 +154,7 @@ theorem capabilityExportLeaves_eq_exportLeaves
 /-- The DD certificate reconstructed from one successful executable
 expression traversal.  This is an internal induction package for proving
 `infer` sound with respect to `DDTyping`; it is not a second typing judgment. -/
-def DDSynthRun (signature : FrozenSig) (context : Context)
+def DDSynthRun (signature : FrozenSig) (context : NamedContext)
     (expression : Expr) (initial : InferState) (result : ExprResult) : Prop :=
   ∃ rawTarget,
     ∃ derived : DDSynth signature initial.supply initial.prevailing context
@@ -165,7 +165,7 @@ def DDSynthRun (signature : FrozenSig) (context : Context)
 
 /-- List form of `DDSynthRun`, retaining the executable raw target list and
 the exact terminal state indices. -/
-def DDSynthsRun (signature : FrozenSig) (context : Context)
+def DDSynthsRun (signature : FrozenSig) (context : NamedContext)
     (expressions : List Expr) (initial : InferState)
     (result : ExprsResult) : Prop :=
   ∃ rawTargets,
@@ -176,7 +176,7 @@ def DDSynthsRun (signature : FrozenSig) (context : Context)
           result.state.capabilityOrigins
 
 /-- Exact-state certificate for one checking traversal. -/
-def DDCheckRun (signature : FrozenSig) (context : Context)
+def DDCheckRun (signature : FrozenSig) (context : NamedContext)
     (expression : Expr) (expected : Ty) (initial final : InferState) : Prop :=
   ∃ derived : DDCheck signature initial.supply initial.prevailing context
       expression expected final.supply final.prevailing,
@@ -184,7 +184,7 @@ def DDCheckRun (signature : FrozenSig) (context : Context)
       final.capabilityOrigins
 
 /-- Exact-state certificate for pointwise checking of expression/type lists. -/
-def DDChecksRun (signature : FrozenSig) (context : Context)
+def DDChecksRun (signature : FrozenSig) (context : NamedContext)
     (expressions : List Expr) (expecteds : List Ty)
     (initial final : InferState) : Prop :=
   ∃ derived : DDChecks signature initial.supply initial.prevailing context
@@ -193,7 +193,7 @@ def DDChecksRun (signature : FrozenSig) (context : Context)
       final.capabilityOrigins
 
 /-- Exact-state certificate for one executable user-pattern traversal. -/
-def DDPatternRun (signature : FrozenSig) (context : Context)
+def DDPatternRun (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) (pattern : Pattern)
     (initial : InferState) (result : PatternResult) : Prop :=
   ∃ derived : DDPattern signature initial.supply initial.prevailing context
@@ -204,7 +204,7 @@ def DDPatternRun (signature : FrozenSig) (context : Context)
 
 /-- List form of `DDPatternRun`, retaining the exact output bindings and
 state indices of the executable left-to-right traversal. -/
-def DDPatternsRun (signature : FrozenSig) (context : Context)
+def DDPatternsRun (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) (patterns : List Pattern)
     (initial : InferState) (result : PatternsResult) : Prop :=
   ∃ derived : DDPatterns signature initial.supply initial.prevailing context
@@ -1053,7 +1053,7 @@ theorem alignExprResultAtExpected_ddAlignRun
 /-- Compose synthesis and expected-type alignment into the single public DD
 checking rule. -/
 theorem DDSynthRun.check
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {expected : Ty} {initial : InferState} {synthesized : ExprResult}
     {final : InferState}
     (synthRun : DDSynthRun signature context expression initial synthesized)
@@ -1070,7 +1070,7 @@ theorem DDSynthRun.check
 /-- Any successful checking traversal composes its synthesis run with the
 generic expected-alignment reconstruction. -/
 theorem checkExprFuel_ddCheckRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
     {expected : Ty} {initial final : InferState}
     {synthesized : ExprResult}
@@ -1089,7 +1089,7 @@ theorem checkExprFuel_ddCheckRun
 /-- The matcher-to-slot branch of executable checking reconstructs the single
 DD checking rule from its synthesis induction hypothesis. -/
 theorem checkExprFuel_matcherToSlot_ddCheckRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
     {expected : Ty} {initial final : InferState}
     {synthesized : ExprResult} {producerCap consumerCap : Cap}
@@ -1114,7 +1114,7 @@ theorem checkExprFuel_matcherToSlot_ddCheckRun
 /-- The raw product-matcher branch reconstructs the explicit DD product lift
 before composing it with checking. -/
 theorem checkExprFuel_productMatcherLift_ddCheckRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
     {expected : Ty} {initial final : InferState}
     {synthesized : ExprResult} {duals : List Dual}
@@ -1301,20 +1301,20 @@ theorem buildFixPlaceholder_nonMatcher
 
 /-- The empty executable expression-list result is the empty DD derivation. -/
 theorem DDSynthsRun.nil
-    (signature : FrozenSig) (context : Context) (initial : InferState) :
+    (signature : FrozenSig) (context : NamedContext) (initial : InferState) :
     DDSynthsRun signature context [] initial ⟨[], initial⟩ := by
   refine ⟨[], DDSynths.nil, rfl, ?_⟩
   exact DDSynthsOrigin.nil
 
 /-- Empty pointwise checking preserves the exact executable state. -/
 theorem DDChecksRun.nil
-    (signature : FrozenSig) (context : Context) (initial : InferState) :
+    (signature : FrozenSig) (context : NamedContext) (initial : InferState) :
     DDChecksRun signature context [] [] initial initial := by
   exact ⟨DDChecks.nil, DDChecksOrigin.nil⟩
 
 /-- Empty user-pattern-list synthesis preserves bindings and state exactly. -/
 theorem DDPatternsRun.nil
-    (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
+    (signature : FrozenSig) (context : NamedContext) (parameters : PatternCtx)
     (bindings : MonoCtx) (initial : InferState) :
     DDPatternsRun signature context parameters bindings [] initial
       ⟨[], bindings, initial⟩ := by
@@ -1322,7 +1322,7 @@ theorem DDPatternsRun.nil
 
 /-- Compose exact head and tail run certificates in source order. -/
 theorem DDSynthsRun.cons
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {expressions : List Expr} {initial : InferState} {head : ExprResult}
     {tail : ExprsResult}
     (headRun : DDSynthRun signature context expression initial head)
@@ -1338,7 +1338,7 @@ theorem DDSynthsRun.cons
 
 /-- Compose exact head checking with the tail run in source order. -/
 theorem DDChecksRun.cons
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {expressions : List Expr} {expected : Ty} {expecteds : List Ty}
     {initial middle final : InferState}
     (headRun : DDCheckRun signature context expression expected initial middle)
@@ -1353,7 +1353,7 @@ theorem DDChecksRun.cons
 /-- Compose exact head and tail user-pattern runs while threading the binding
 context and inference state left to right. -/
 theorem DDPatternsRun.cons
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {patterns : List Pattern}
     {initial : InferState} {head : PatternResult} {tail : PatternsResult}
     (headRun : DDPatternRun signature context parameters bindings pattern
@@ -1369,7 +1369,7 @@ theorem DDPatternsRun.cons
 
 /-- Reconstruct lambda synthesis from the exact body-entry run. -/
 theorem DDSynthRun.lam
-    {signature : FrozenSig} {context : Context} {name : String} {body : Expr}
+    {signature : FrozenSig} {context : NamedContext} {name : String} {body : Expr}
     {initial : InferState} {path : SyntaxPath} {bodyResult : ExprResult}
     (bodyRun : DDSynthRun signature
       ((name, NamedScheme.mono (lambdaDomain initial path)) :: context) body
@@ -1395,7 +1395,7 @@ theorem DDSynthRun.lam
 two acceptance events at body entry affect neither DD state index nor the
 origin ledger. -/
 theorem DDSynthRun.fix
-    {signature : FrozenSig} {context : Context} {self argument : String}
+    {signature : FrozenSig} {context : NamedContext} {self argument : String}
     {body : Expr} {initial : InferState} {path : SyntaxPath}
     {bodyResult : ExprResult} {alignedState : InferState}
     (distinct : self ≠ argument)
@@ -1448,7 +1448,7 @@ theorem DDSynthRun.fix
 /-- Reconstruct tuple synthesis from the exact expression-list run after the
 tuple visit event. -/
 theorem DDSynthRun.tuple
-    {signature : FrozenSig} {context : Context} {expressions : List Expr}
+    {signature : FrozenSig} {context : NamedContext} {expressions : List Expr}
     {initial : InferState} {path : SyntaxPath} {children : ExprsResult}
     (childrenRun : DDSynthsRun signature context expressions
       (visit initial .exprTuple path) children) :
@@ -1469,7 +1469,7 @@ theorem DDSynthRun.tuple
 /-- Compose function synthesis, exact function-shape alignment, and generic
 argument checking into an application synthesis run. -/
 theorem DDSynthRun.app
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {function argument : Expr} {initial : InferState} {path : SyntaxPath}
     {functionResult : ExprResult} {functionAligned argumentFinal : InferState}
     (functionRun : DDSynthRun signature context function
@@ -1511,7 +1511,7 @@ theorem DDSynthRun.app
 /-- Reconstruct a data-constructor result from exact pointwise argument
 checking and the executable export freeze. -/
 theorem DDSynthRun.ctor
-    {signature : FrozenSig} {context : Context} {name : String}
+    {signature : FrozenSig} {context : NamedContext} {name : String}
     {expressions : List Expr} {scheme : CtorScheme}
     {initial childrenFinal : InferState} {path : SyntaxPath}
     (lookup : signature.findDataCtor name = some scheme)
@@ -1539,7 +1539,7 @@ theorem DDSynthRun.ctor
 /-- Primitive application has the same instantiation, checking, and export
 freeze boundary as a data constructor. -/
 theorem DDSynthRun.prim
-    {signature : FrozenSig} {context : Context} {op : PrimOp}
+    {signature : FrozenSig} {context : NamedContext} {op : PrimOp}
     {expressions : List Expr} {scheme : CtorScheme}
     {initial childrenFinal : InferState} {path : SyntaxPath}
     (lookup : signature.findPrimitive op = some scheme)
@@ -1567,7 +1567,7 @@ theorem DDSynthRun.prim
 /-- The empty branch of the executable expression-list traversal reconstructs
 the empty DD list certificate. -/
 theorem inferExprsFuel_nil_ddSynthsRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {initial : InferState} {result : ExprsResult}
     (success : inferExprsFuel (fuel + 1) signature context selfEnv parent index
@@ -1583,7 +1583,7 @@ left-to-right state boundary.  The two functional premises are precisely the
 head and tail induction hypotheses that the eventual mutual traversal theorem
 will supply; no typing or runtime certificate is assumed. -/
 theorem inferExprsFuel_cons_ddSynthsRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {expression : Expr} {expressions : List Expr}
     {initial : InferState} {result : ExprsResult}
@@ -1614,7 +1614,7 @@ theorem inferExprsFuel_cons_ddSynthsRun
 
 /-- Successful empty checking-list traversal is the exact empty DD run. -/
 theorem checkExprsFuel_nil_ddChecksRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {initial final : InferState}
     (success : checkExprsFuel (fuel + 1) signature context selfEnv parent index
@@ -1628,7 +1628,7 @@ theorem checkExprsFuel_nil_ddChecksRun
 /-- The cons branch checks its synthesized head through the generic checking
 bridge, then threads that exact terminal state into the tail list run. -/
 theorem checkExprsFuel_cons_ddChecksRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {expression : Expr} {expressions : List Expr}
     {expected : Ty} {expecteds : List Ty}
@@ -1666,7 +1666,7 @@ theorem checkExprsFuel_cons_ddChecksRun
 /-- A reconstructed run from the executable initial state is already a
 public `DDTyping` derivation at the run's resolved result type. -/
 theorem DDSynthRun.toDDTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (run : DDSynthRun signature context expression
       (initialState signature context) result) :
@@ -1686,7 +1686,7 @@ theorem DDSynthRun.toDDTyping
 the functional premise is the expression induction hypothesis at the fresh
 domain state. -/
 theorem inferExprFuel_lam_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String} {body : Expr}
     {initial : InferState} {result : ExprResult}
     (bodySound : ∀ bodyResult : ExprResult,
@@ -1724,11 +1724,11 @@ theorem inferExprFuel_lam_ddSynthRun
 declarative gate, its two-fresh monomorphic placeholder, the exact recursive
 body run, and the trailing codomain alignment. -/
 theorem inferExprFuel_fix_nonMatcher_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {self argument : String}
     {body : Expr} {initial : InferState} {result : ExprResult}
     (nonMatcher : NonMatcherBody body)
-    (bodySound : ∀ (bodyContext : Context) (bodySelfEnv : SelfEnv)
+    (bodySound : ∀ (bodyContext : NamedContext) (bodySelfEnv : SelfEnv)
         (bodyInitial : InferState) (bodyResult : ExprResult),
       inferExprFuel fuel signature bodyContext bodySelfEnv (0 :: path) body
         bodyInitial = some bodyResult →
@@ -1792,7 +1792,7 @@ theorem inferExprFuel_fix_nonMatcher_ddSynthRun
 /-- The tuple branch delegates to the expression-list induction hypothesis
 after recording its syntax visit. -/
 theorem inferExprFuel_tuple_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expressions : List Expr}
     {initial : InferState} {result : ExprResult}
     (childrenSound : ∀ children : ExprsResult,
@@ -1819,7 +1819,7 @@ theorem inferExprFuel_tuple_ddSynthRun
 with the two freshly allocated arrow indices, and checks the argument through
 the generic expected-alignment theorem. -/
 theorem inferExprFuel_app_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {function argument : Expr}
     {initial : InferState} {result : ExprResult}
     (functionSound : ∀ functionResult : ExprResult,
@@ -1894,7 +1894,7 @@ theorem inferExprFuel_app_ddSynthRun
 /-- A successful constructor branch instantiates its scheme, checks all
 arguments, freezes the exported result leaves, and reconstructs `DDSynth.ctor`. -/
 theorem inferExprFuel_ctor_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
     {expressions : List Expr} {initial : InferState} {result : ExprResult}
     (childrenSound : ∀ (scheme : CtorScheme) (childrenFinal : InferState),
@@ -1938,7 +1938,7 @@ theorem inferExprFuel_ctor_ddSynthRun
 /-- Primitive synthesis shares the constructor instantiation/check/freeze
 pipeline and reconstructs `DDSynth.prim`. -/
 theorem inferExprFuel_prim_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {op : PrimOp}
     {expressions : List Expr} {initial : InferState} {result : ExprResult}
     (childrenSound : ∀ (scheme : CtorScheme) (childrenFinal : InferState),
@@ -1979,11 +1979,11 @@ theorem inferExprFuel_prim_ddSynthRun
           exact DDSynthRun.prim lookup
             (childrenSound scheme childrenFinal childrenEq)
 
-/-- Context lookup uses the executable scheme-instantiation helper and
+/-- NamedContext lookup uses the executable scheme-instantiation helper and
 reconstructs the matching rename-only origin transition.  A direct-self hit
 adds only trace/source evidence and therefore does not change any DD index. -/
 theorem inferExprFuel_var_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
@@ -2035,7 +2035,7 @@ theorem inferExprFuel_var_ddSynthRun
 /-- A successful literal traversal directly reconstructs the corresponding
 DD synthesis and its unchanged origin ledger. -/
 theorem inferExprFuel_lit_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {value : Int}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
@@ -2050,7 +2050,7 @@ theorem inferExprFuel_lit_ddSynthRun
 /-- A successful `something` traversal reconstructs the same one-target-meta
 allocation as the DD rule, while leaving the origin ledger unchanged. -/
 theorem inferExprFuel_something_ddSynthRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
@@ -2067,7 +2067,7 @@ theorem inferExprFuel_something_ddSynthRun
 
 /-- The empty executable pattern-list traversal is the exact nil DD run. -/
 theorem inferPatternsFuel_nil_ddPatternsRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {parent : SyntaxPath} {index : Nat} {initial : InferState}
     {result : PatternsResult}
@@ -2081,7 +2081,7 @@ theorem inferPatternsFuel_nil_ddPatternsRun
 /-- The executable pattern-list cons branch is exactly the left-to-right DD
 composition of its head and tail induction hypotheses. -/
 theorem inferPatternsFuel_cons_ddPatternsRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {parent : SyntaxPath} {index : Nat} {pattern : Pattern}
     {patterns : List Pattern} {initial : InferState}
@@ -2117,7 +2117,7 @@ theorem inferPatternsFuel_cons_ddPatternsRun
 /-- A successful pattern-variable leaf reconstructs its two fresh indices,
 binding extension, and single structural capability-origin update exactly. -/
 theorem inferPatternFuel_pvar_ddPatternRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {name : String} {initial : InferState}
     {result : PatternResult}
@@ -2152,7 +2152,7 @@ theorem inferPatternFuel_pvar_ddPatternRun
 /-- A successful wildcard leaf has the same exact fresh-state transition as
 `pvar`, without extending the binding context. -/
 theorem inferPatternFuel_wild_ddPatternRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {initial : InferState} {result : PatternResult}
     (success : inferPatternFuel (fuel + 1) signature context parameters
@@ -2174,7 +2174,7 @@ theorem inferPatternFuel_wild_ddPatternRun
 /-- Value-pattern synthesis reuses the exact expression run and records the
 single fresh consumer capability at the expression's output cut. -/
 theorem inferPatternFuel_pval_ddPatternRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {expression : Expr} {initial : InferState}
     {result : PatternResult}
@@ -2217,7 +2217,7 @@ theorem inferPatternFuel_pval_ddPatternRun
 /-- A successful parameter embedding performs no allocation or solve, so its
 lookup directly gives the exact DD pattern and origin certificates. -/
 theorem inferPatternFuel_embed_ddPatternRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {name : String} {initial : InferState}
     {result : PatternResult}
@@ -2244,7 +2244,7 @@ theorem inferPatternFuel_embed_ddPatternRun
 /-- Tuple-pattern synthesis is the direct image of its exact list traversal;
 the trailing trace event changes none of the DD indices. -/
 theorem inferPatternFuel_ptuple_ddPatternRun
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {patterns : List Pattern} {initial : InferState}
     {result : PatternResult}

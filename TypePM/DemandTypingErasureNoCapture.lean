@@ -106,22 +106,22 @@ theorem NamedScheme.applySubst_seq_of_noCapture
                 imageBound imageMem
             simp [TySubst.mask, outside]
 
-/-! ## Context lifting -/
+/-! ## NamedContext lifting -/
 
 /-- Every selected context scheme is capture-free under the same prevailing
 substitution. -/
-def Context.NoCapture (context : Context) (S : Subst) : Prop :=
+def NamedContext.NoCapture (context : NamedContext) (S : Subst) : Prop :=
   ∀ entry, entry ∈ context → entry.2.NoCapture S
 
-theorem Context.NoCapture.id (context : Context) :
+theorem NamedContext.NoCapture.id (context : NamedContext) :
     context.NoCapture Subst.id := by
   intro entry membership
   exact NamedScheme.NoCapture.id entry.2
 
 /-- Entry-wise range hygiene restores the sequential substitution law for a
 whole polymorphic context. -/
-theorem Context.applySubst_seq_of_noCapture
-    (context : Context) (earlier later : Subst)
+theorem NamedContext.applySubst_seq_of_noCapture
+    (context : NamedContext) (earlier later : Subst)
     (hygiene : context.NoCapture earlier) :
     context.applySubst (Subst.seq later earlier) =
       (context.applySubst earlier).applySubst later := by
@@ -130,9 +130,9 @@ theorem Context.applySubst_seq_of_noCapture
   | cons entry context induction =>
       change
         (entry.1, entry.2.applySubst (Subst.seq later earlier)) ::
-            Context.applySubst (Subst.seq later earlier) context =
+            NamedContext.applySubst (Subst.seq later earlier) context =
           (entry.1, (entry.2.applySubst earlier).applySubst later) ::
-            Context.applySubst later (Context.applySubst earlier context)
+            NamedContext.applySubst later (NamedContext.applySubst earlier context)
       congr 1
       · congr 1
         exact NamedScheme.applySubst_seq_of_noCapture entry.2 earlier later
@@ -283,7 +283,7 @@ cuts: the raw scheme under the prevailing substitution, and the selected
 source scheme under the future suffix. -/
 theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
     {signature : FrozenSig} {q final : InferenceBase.FreshSupply}
-    {S post S' : Subst} {context : Context} {name : String}
+    {S post S' : Subst} {context : NamedContext} {name : String}
     {rawScheme scheme : NamedScheme}
     {ledger finalLedger : CapabilityOriginLedger}
     (rawLookup : context.find? name = some rawScheme)
@@ -305,7 +305,7 @@ theorem DDSynthOrigin.runtimeVar_afterPost_of_noCapture
   have terminalLookup :
       (context.applySubst (Subst.seq post S)).find? name =
         some (scheme.applySubst post) := by
-    rw [Context.find?_applySubst, rawLookup]
+    rw [NamedContext.find?_applySubst, rawLookup]
     simpa using congrArg some terminalSchemeEquation
   have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderNoCapture
     futureHygiene admissible

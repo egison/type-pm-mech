@@ -162,7 +162,7 @@ def patternParameterDuals
 definition being checked is removed before generalization, and singleton
 local capabilities are defaulted by `FrozenSig.generalizeDual`. -/
 def PatternDef.coreScheme
-    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (definition : PatternDef) (signature : FrozenSig) (context : NamedContext)
     (capabilities : List Cap) (result : Dual) : DualScheme :=
   ({ signature with
       patternFuns := signature.patternFuns.filter
@@ -173,7 +173,7 @@ def PatternDef.coreScheme
 indices into the canonical core payload.  It is not identified with the
 prevailing substitution stored by `ResolvedPatternTy`. -/
 def PatternDef.coreCapSubst
-    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (definition : PatternDef) (signature : FrozenSig) (context : NamedContext)
     (capabilities : List Cap) (result : Dual) : CapSubst :=
   singletonDefaultSubst
     (({ signature with
@@ -185,7 +185,7 @@ def PatternDef.coreCapSubst
 single canonical defaulting action; no later value-flow instance performs
 this structural `Any` replacement. -/
 theorem PatternDef.coreScheme_payload
-    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (definition : PatternDef) (signature : FrozenSig) (context : NamedContext)
     (capabilities : List Cap) (result : Dual) :
     let C := definition.coreCapSubst signature context capabilities result
     (definition.coreScheme signature context capabilities result).args =
@@ -199,7 +199,7 @@ theorem PatternDef.coreScheme_payload
 
 /-- Fixed parameter context of the normalized pattern-function core. -/
 def PatternDef.coreParameters
-    (definition : PatternDef) (signature : FrozenSig) (context : Context)
+    (definition : PatternDef) (signature : FrozenSig) (context : NamedContext)
     (capabilities : List Cap) (result : Dual) : PatternCtx :=
   definition.parameterNames.zip
     (definition.coreScheme signature context capabilities result).args
@@ -226,7 +226,7 @@ theorem DualScheme.ValueFlowEquivalent.refl (scheme : DualScheme) :
   exact ⟨fun _ _ => Iff.rfl, rfl, rfl⟩
 
 /-- PATFUN-DEF for the concrete two-sorted source calculus. -/
-inductive PatternDefTy (signature : FrozenSig) (context : Context) :
+inductive PatternDefTy (signature : FrozenSig) (context : NamedContext) :
     PatternDef → DualScheme → Prop where
   | mk
       {definition capabilities result resultBindings scheme bodyPrevailing} :
@@ -255,7 +255,7 @@ def PatternDef.runtime (definition : PatternDef) : PatFunRuntimeSig :=
 
 /-- A runtime signature entry is the erasure of a checked source definition. -/
 def RuntimeEntryTyped
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (entry : String × PatFunRuntimeSig) : Prop :=
   ∃ definition scheme,
     entry = (definition.name, definition.runtime) ∧
@@ -263,7 +263,7 @@ def RuntimeEntryTyped
 
 /-- Every runtime pattern function is backed by a checked source definition. -/
 def RuntimeSigTyped
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (runtime : RuntimeSigF) : Prop :=
   ∀ entry ∈ runtime, RuntimeEntryTyped signature context entry
 

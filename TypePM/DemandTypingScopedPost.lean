@@ -90,18 +90,18 @@ theorem totalize_applyScheme_of_bounded
 
 /-- Pointwise context application agrees on an input-bounded context. -/
 theorem totalize_applyContext_of_bounded
-    {input : InferenceBase.FreshSupply} {post : Subst} {context : Context}
-    (bounded : Context.BoundedBy input context) :
+    {input : InferenceBase.FreshSupply} {post : Subst} {context : NamedContext}
+    (bounded : NamedContext.BoundedBy input context) :
     context.applySubst (totalize input post) = context.applySubst post := by
   induction context with
   | nil => rfl
   | cons entry context induction =>
       rcases entry with ⟨name, scheme⟩
       have headBounded := bounded (name, scheme) (by simp)
-      have tailBounded : Context.BoundedBy input context := by
+      have tailBounded : NamedContext.BoundedBy input context := by
         intro entry membership
         exact bounded entry (by simp [membership])
-      simp only [Context.applySubst, List.map_cons]
+      simp only [NamedContext.applySubst, List.map_cons]
       congr 1
       · exact congrArg (fun item => (name, item))
           (totalize_applyScheme_of_bounded headBounded)

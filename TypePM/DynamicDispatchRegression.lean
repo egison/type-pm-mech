@@ -778,9 +778,9 @@ theorem program_typed :
     RuntimeTyping signature [] program programResult := by
   have typing := Inference.infer_success_runtimeTyping inference_success
   rw [inference_result_type] at typing
-  simpa [Inference.ResolvedContext, Context.applySubst] using typing
+  simpa [Inference.ResolvedContext, NamedContext.applySubst] using typing
 
-theorem runtime_agrees (context : Context) :
+theorem runtime_agrees (context : NamedContext) :
     RuntimeSigAgrees signature context runtimeSignature where
   runtimeTyped := by
     intro entry member

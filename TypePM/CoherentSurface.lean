@@ -33,7 +33,7 @@ mutual
 /-- Terminal pattern resolution with the raw/actual context connection fixed
 definitionally at every leaf. -/
 inductive CoherentTerminalPatternResolution (signature : FrozenSig) :
-    Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
+    Subst -> NamedContext -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
   | pvar {rawContext rawParameters rawBindings name capVar tyVar} :
       name ∉ rawBindings.names ->
@@ -71,7 +71,7 @@ inductive CoherentTerminalPatternResolution (signature : FrozenSig) :
         ((Cap.var capVar).apply prevailing.cap)
         (prevailing.apply rawTarget)
         (rawBindings.applySubst prevailing)
-  | embed {rawContext : Context} {rawParameters : PatternCtx}
+  | embed {rawContext : NamedContext} {rawParameters : PatternCtx}
       {rawBindings : MonoCtx} {name : String} {rawDual : Dual} :
       rawParameters.find? name = some rawDual ->
       (rawParameters.applySubst prevailing).find? name =
@@ -125,7 +125,7 @@ inductive CoherentTerminalPatternResolution (signature : FrozenSig) :
 
 /-- Left-to-right list form of coherent terminal pattern resolution. -/
 inductive CoherentTerminalPatternResolutions (signature : FrozenSig) :
-    Subst -> Context -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
+    Subst -> NamedContext -> PatternCtx -> MonoCtx -> List Pattern -> List Dual ->
       MonoCtx -> Prop where
   | nil {context parameters bindings} :
       CoherentTerminalPatternResolutions signature prevailing context parameters
@@ -154,7 +154,7 @@ targets, and constructor certificates stay at their terminal indices.
 -/
 inductive ThreadedPatternResolution
     (signature : FrozenSig) (prevailing : Subst)
-    (rawContext : Context) (rawParameters : PatternCtx) :
+    (rawContext : NamedContext) (rawParameters : PatternCtx) :
     MonoCtx -> Pattern -> Cap -> Ty -> MonoCtx -> Prop where
   | pvar {rawBindings name capVar tyVar} :
       name ∉ rawBindings.names ->
@@ -237,7 +237,7 @@ inductive ThreadedPatternResolution
 /-- Left-to-right list form of top-level raw pattern provenance. -/
 inductive ThreadedPatternResolutions
     (signature : FrozenSig) (prevailing : Subst)
-    (rawContext : Context) (rawParameters : PatternCtx) :
+    (rawContext : NamedContext) (rawParameters : PatternCtx) :
     MonoCtx -> List Pattern -> List Dual -> MonoCtx -> Prop where
   | nil {rawBindings} :
       ThreadedPatternResolutions signature prevailing rawContext rawParameters
@@ -313,7 +313,7 @@ end
 already context coherent; terminal evidence must use the stricter judgment
 above. -/
 inductive CoherentResolvedPatternTy (signature : FrozenSig) :
-    Subst -> Context -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
+    Subst -> NamedContext -> PatternCtx -> MonoCtx -> Pattern -> Cap -> Ty ->
       MonoCtx -> Prop where
   | ofAligned
       {rawContext rawParameters rawBindings pattern rawCap rawTarget

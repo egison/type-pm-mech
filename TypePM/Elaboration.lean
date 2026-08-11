@@ -25,7 +25,7 @@ namespace Elaboration
 /-- A runtime certificate whose root rule synthesizes a type rather than
 applying an implicit matcher/slot coercion.  Recursive premises remain
 `RuntimeTyping`; later core reconstruction can refine them independently. -/
-inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop where
+inductive SynthHead (signature : FrozenSig) : NamedContext -> Expr -> Ty -> Prop where
   | var {context name scheme target} :
       context.find? name = some scheme ->
       scheme.ValueFlowInst target ->
@@ -92,7 +92,7 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
 /-- Forget the root synthesis boundary and recover the existing surface
 typing judgment. -/
 theorem SynthHead.toRuntimeTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {target : Ty}
     (typing : SynthHead signature context expression target) :
     RuntimeTyping signature context expression target := by
@@ -121,7 +121,7 @@ theorem SynthHead.toRuntimeTyping
 pre-coercion and post-coercion types, so head-changing conversions are no
 longer confused with ordinary substitution instances. -/
 inductive CoercionPlan (signature : FrozenSig) :
-    Context -> Expr -> Ty -> Ty -> Prop where
+    NamedContext -> Expr -> Ty -> Ty -> Prop where
   | refl {context expression target} :
       CoercionPlan signature context expression target target
   | matcherToSlot
@@ -164,7 +164,7 @@ inductive CoercionPlan (signature : FrozenSig) :
 /-- Bidirectional checking at the surface/core boundary: first synthesize a
 pre-coercion root type, then check the requested surface view by an explicit
 coercion plan. -/
-def CheckHead (signature : FrozenSig) (context : Context)
+def CheckHead (signature : FrozenSig) (context : NamedContext)
     (expression : Expr) (target : Ty) : Prop :=
   ∃ source,
     SynthHead signature context expression source ∧
@@ -172,7 +172,7 @@ def CheckHead (signature : FrozenSig) (context : Context)
 
 /-- Replay explicit coercion evidence on top of a pre-coercion typing. -/
 theorem CoercionPlan.toRuntimeTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {source target : Ty}
     (plan : CoercionPlan signature context expression source target)
     (typing : RuntimeTyping signature context expression source) :
@@ -198,7 +198,7 @@ theorem CoercionPlan.toRuntimeTyping
 
 /-- Checking evidence erases to the existing surface judgment. -/
 theorem CheckHead.toRuntimeTyping
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {target : Ty}
     (checking : CheckHead signature context expression target) :
     RuntimeTyping signature context expression target := by
@@ -208,7 +208,7 @@ theorem CheckHead.toRuntimeTyping
 /-- Explicit checking evidence soundly erases to the semantic runtime
 certificate. -/
 theorem checkHead_sound
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {target : Ty} (checking : CheckHead signature context expression target) :
     RuntimeTyping signature context expression target :=
   checking.toRuntimeTyping

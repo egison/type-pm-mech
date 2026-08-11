@@ -83,7 +83,7 @@ theorem emptyProduct_prefers_productMatcher
 /-- Check both the terminal type and the exact expected-type alignment
 observed in a successful public run. -/
 def inferenceHasAlignment
-    (context : Context) (expression : Expr)
+    (context : NamedContext) (expression : Expr)
     (inferred requested resultTarget : Ty) : Bool :=
   match Inference.infer emptySignature context expression with
   | none => false
@@ -95,7 +95,7 @@ def inferenceHasAlignment
                 decide (result.state.prevailing.apply actualRequested = requested)
           | _ => false
 
-def productMatcherConsumerContext : Context :=
+def productMatcherConsumerContext : NamedContext :=
   [("consume", NamedScheme.mono (.fn concretePairMatcherType .int))]
 
 def productMatcherArgumentApplication : Expr :=
@@ -110,7 +110,7 @@ def productMatcherArgumentApplicationSucceeds : Bool :=
 
 #guard !productMatcherArgumentApplicationSucceeds
 
-def productSlotConsumerContext : Context :=
+def productSlotConsumerContext : NamedContext :=
   [("consume", NamedScheme.mono (.fn concretePairSlotType .int))]
 
 def productSlotArgumentApplication : Expr :=
@@ -128,7 +128,7 @@ def productSlotArgumentApplicationSucceeds : Bool :=
   productSlotArgumentApplication concretePairMatcherType
   concretePairSlotType .int
 
-def slotTupleConsumerContext : Context :=
+def slotTupleConsumerContext : NamedContext :=
   [("consume", NamedScheme.mono (.fn concretePairSlotType .int)),
    ("left", NamedScheme.mono (.slot .any .int)),
    ("right", NamedScheme.mono (.slot .any .int))]
@@ -150,7 +150,7 @@ def slotTupleArgumentApplicationSucceeds : Bool :=
 /-! A product expectation does not trigger componentwise matcher-to-slot
 coercions.  Only the explicit whole-product routes above are accepted. -/
 
-def componentSlotConsumerContext : Context :=
+def componentSlotConsumerContext : NamedContext :=
   [("consume", NamedScheme.mono
     (.fn (.prod [.slot .any .int, .slot .any .int]) .int))]
 
@@ -191,7 +191,7 @@ def quantifiedProducerScheme : NamedScheme where
   tyBinders := [0]
   body := .matcher (.var 0) (.var 0)
 
-def quantifiedContext : Context :=
+def quantifiedContext : NamedContext :=
   [("producer", quantifiedProducerScheme)]
 
 def quantifiedExpression : Expr :=
@@ -255,7 +255,7 @@ theorem quantifiedPApp_typed :
 
 /-! ## Slot-to-slot expected-type alignment -/
 
-def slotContext : Context :=
+def slotContext : NamedContext :=
   [("slot", NamedScheme.mono (.slot .any .int))]
 
 def slotToSlotExpression : Expr :=

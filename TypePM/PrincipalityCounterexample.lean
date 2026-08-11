@@ -45,7 +45,7 @@ theorem pair_matcher_typing {signature : FrozenSig} :
     pair_prod_typing
 
 /-- Every derivable type of a tuple has a `prod`, `matcher`, or `slot` head. -/
-theorem tuple_ty_head {signature : FrozenSig} {context : Context}
+theorem tuple_ty_head {signature : FrozenSig} {context : NamedContext}
     {expressions : List Expr} {target : Ty}
     (typing : RuntimeTyping signature context (.tuple expressions) target) :
     (∃ components, target = .prod components) ∨

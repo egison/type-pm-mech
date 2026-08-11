@@ -65,7 +65,7 @@ theorem rawScheme_bounded : rawScheme.BoundedBy inputSupply := by
     simp [rawScheme, NamedScheme.ftv, Ty.ftv, Ty.ftvList] at membership
 
 theorem inputContext_bounded :
-    Context.BoundedBy inputSupply [("f", rawScheme)] := by
+    NamedContext.BoundedBy inputSupply [("f", rawScheme)] := by
   intro entry membership
   simp only [List.mem_singleton] at membership
   subst entry

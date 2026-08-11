@@ -21,7 +21,7 @@ generalization.  Fixing the ambient free variables makes this restriction
 agree with the original action on the generalized body.
 -/
 theorem FrozenSig.generalize_valueFlowInst
-    {signature : FrozenSig} {context : Context} {source : Ty} {S : Subst}
+    {signature : FrozenSig} {context : NamedContext} {source : Ty} {S : Subst}
     (capFixed : ∀ varId,
       varId ∈ signature.fcv ++ context.fcv → S.cap varId = .var varId)
     (tyFixed : ∀ varId,
@@ -75,7 +75,7 @@ theorem FrozenSig.generalize_valueFlowInst
 
 /-- Dual counterpart of `FrozenSig.generalize_valueFlowInst`. -/
 theorem FrozenSig.generalizeDual_valueFlowInst
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {rawArgs : List Dual} {rawResult : Dual} {S : Subst}
     (capFixed : ∀ varId,
       varId ∈ signature.fcv ++ context.fcv → S.cap varId = .var varId)
@@ -290,38 +290,38 @@ Aligned source contexts preserve names and transport each scheme use.  This
 is an internal induction invariant; the public generalization theorem
 constructs it from binder-local algebra and exposes no extra premise.
 -/
-inductive Context.FlowsUnder (S : Subst) : Context → Context → Prop where
-  | nil : Context.FlowsUnder S [] []
+inductive NamedContext.FlowsUnder (S : Subst) : NamedContext → NamedContext → Prop where
+  | nil : NamedContext.FlowsUnder S [] []
   | cons {name sourceScheme targetScheme source target} :
       sourceScheme.FlowsUnder S targetScheme →
-      Context.FlowsUnder S source target →
-      Context.FlowsUnder S
+      NamedContext.FlowsUnder S source target →
+      NamedContext.FlowsUnder S
         ((name, sourceScheme) :: source) ((name, targetScheme) :: target)
 
 /-- A flowed context lookup produces a flowed target entry. -/
-theorem Context.FlowsUnder.find?
-    {S : Subst} {source target : Context}
-    (flow : Context.FlowsUnder S source target)
+theorem NamedContext.FlowsUnder.find?
+    {S : Subst} {source target : NamedContext}
+    (flow : NamedContext.FlowsUnder S source target)
     {name : String} {scheme : NamedScheme}
     (lookup : source.find? name = some scheme) :
     ∃ targetScheme,
       target.find? name = some targetScheme ∧
       scheme.FlowsUnder S targetScheme := by
   induction flow with
-  | nil => simp [Context.find?] at lookup
+  | nil => simp [NamedContext.find?] at lookup
   | @cons headName sourceScheme targetScheme source target headFlow tailFlow ih =>
       by_cases equal : headName = name
       · subst headName
         have schemeEq : scheme = sourceScheme := by
           have lookup' : some sourceScheme = some scheme := by
-            simpa [Context.find?] using lookup
+            simpa [NamedContext.find?] using lookup
           exact (Option.some.inj lookup').symm
         subst scheme
-        exact ⟨targetScheme, by simp [Context.find?], headFlow⟩
+        exact ⟨targetScheme, by simp [NamedContext.find?], headFlow⟩
       · have tailLookup : source.find? name = some scheme := by
-          simpa [Context.find?, equal] using lookup
+          simpa [NamedContext.find?, equal] using lookup
         rcases ih tailLookup with ⟨found, foundLookup, foundFlow⟩
-        exact ⟨found, by simpa [Context.find?, equal] using foundLookup,
+        exact ⟨found, by simpa [NamedContext.find?, equal] using foundLookup,
           foundFlow⟩
 
 /-- Monomorphic binders flow pointwise. -/
@@ -342,21 +342,21 @@ theorem NamedScheme.mono_flowsUnder (S : Subst) (source : Ty) :
   exact NamedScheme.mono_valueFlowInst (S.apply source)
 
 /-- Flowing contexts can be extended by a transformed monomorphic binder. -/
-theorem Context.FlowsUnder.consMono
-    {S : Subst} {source target : Context}
-    (flow : Context.FlowsUnder S source target)
+theorem NamedContext.FlowsUnder.consMono
+    {S : Subst} {source target : NamedContext}
+    (flow : NamedContext.FlowsUnder S source target)
     (name : String) (sourceTy : Ty) :
-    Context.FlowsUnder S
+    NamedContext.FlowsUnder S
       ((name, NamedScheme.mono sourceTy) :: source)
       ((name, NamedScheme.mono (S.apply sourceTy)) :: target) :=
   .cons (NamedScheme.mono_flowsUnder S sourceTy) flow
 
 /-- Pointwise extension of a flowed context by transformed mono bindings. -/
-theorem Context.FlowsUnder.prependMono
-    {S : Subst} {source target : Context}
-    (flow : Context.FlowsUnder S source target) :
+theorem NamedContext.FlowsUnder.prependMono
+    {S : Subst} {source target : NamedContext}
+    (flow : NamedContext.FlowsUnder S source target) :
     ∀ bindings : MonoCtx,
-      Context.FlowsUnder S (bindings.toContext ++ source)
+      NamedContext.FlowsUnder S (bindings.toContext ++ source)
         ((bindings.applySubst S).toContext ++ target)
   | [] => flow
   | (name, bindingTy) :: bindings => by
@@ -381,25 +381,25 @@ theorem NamedScheme.FlowsUnder.reindex
   · exact instanceTyping
 
 /-- Re-index an aligned context by an action equal on all context frees. -/
-theorem Context.FlowsUnder.reindex
-    {S A : Subst} {source target : Context}
-    (flow : Context.FlowsUnder S source target)
+theorem NamedContext.FlowsUnder.reindex
+    {S A : Subst} {source target : NamedContext}
+    (flow : NamedContext.FlowsUnder S source target)
     (capAgreement : ∀ varId, varId ∈ source.fcv →
       A.cap varId = S.cap varId)
     (tyAgreement : ∀ varId, varId ∈ source.ftv →
       A.target varId = S.target varId) :
-    Context.FlowsUnder A source target := by
+    NamedContext.FlowsUnder A source target := by
   induction flow with
   | nil => exact .nil
   | @cons name sourceScheme targetScheme source target head tail ih =>
-      apply Context.FlowsUnder.cons
+      apply NamedContext.FlowsUnder.cons
       · apply head.reindex
         · intro varId membership
           exact capAgreement varId (by
-            simp [Context.fcv, membership])
+            simp [NamedContext.fcv, membership])
         · intro varId membership
           exact tyAgreement varId (by
-            simp [Context.ftv, membership])
+            simp [NamedContext.ftv, membership])
       · apply ih
         · intro varId membership
           apply capAgreement varId
@@ -427,31 +427,31 @@ theorem NamedScheme.self_flowsUnder
   · exact postVariable.capVariable
 
 /-- A context flows to itself when the surrounding action fixes its frees. -/
-theorem Context.self_flowsUnder
-    {S : Subst} (context : Context)
+theorem NamedContext.self_flowsUnder
+    {S : Subst} (context : NamedContext)
     (capFixed : ∀ varId, varId ∈ context.fcv →
       S.cap varId = .var varId)
     (tyFixed : ∀ varId, varId ∈ context.ftv →
       S.target varId = .var varId) :
-    Context.FlowsUnder S context context := by
+    NamedContext.FlowsUnder S context context := by
   induction context with
   | nil => exact .nil
   | cons entry context ih =>
       rcases entry with ⟨name, scheme⟩
-      apply Context.FlowsUnder.cons
+      apply NamedContext.FlowsUnder.cons
       · apply NamedScheme.self_flowsUnder
         · intro varId membership
-          exact capFixed varId (by simp [Context.fcv, membership])
+          exact capFixed varId (by simp [NamedContext.fcv, membership])
         · intro varId membership
-          exact tyFixed varId (by simp [Context.ftv, membership])
+          exact tyFixed varId (by simp [NamedContext.ftv, membership])
       · apply ih
         · intro varId membership
           apply capFixed varId
-          change varId ∈ scheme.fcv ++ Context.fcv context
+          change varId ∈ scheme.fcv ++ NamedContext.fcv context
           exact List.mem_append_right _ membership
         · intro varId membership
           apply tyFixed varId
-          change varId ∈ scheme.ftv ++ Context.ftv context
+          change varId ∈ scheme.ftv ++ NamedContext.ftv context
           exact List.mem_append_right _ membership
 
 /-! ## Capture-avoiding local freshening for T-LET -/
@@ -460,7 +460,7 @@ namespace LocalFreshening
 
 /-- The capability variables that a local fresh batch must avoid. -/
 noncomputable def capAvoid
-    (signature : FrozenSig) (targetContext : Context)
+    (signature : FrozenSig) (targetContext : NamedContext)
     (source : Ty) {S : Subst} (postVariable : VariablePost S) :
     List CapVar :=
   signature.fcv ++ targetContext.fcv ++
@@ -469,21 +469,21 @@ noncomputable def capAvoid
 
 /-- The ordinary variables that a local fresh batch must avoid. -/
 def tyAvoid
-    (signature : FrozenSig) (targetContext : Context)
+    (signature : FrozenSig) (targetContext : NamedContext)
     (source : Ty) (S : Subst) : List TypePM.TyVar :=
   signature.ftv ++ targetContext.ftv ++
     source.ftv.flatMap fun varId => (S.target varId).ftv
 
 /-- First capability identifier outside the finite local avoidance set. -/
 noncomputable def capNext
-    (signature : FrozenSig) (targetContext : Context)
+    (signature : FrozenSig) (targetContext : NamedContext)
     (source : Ty) {S : Subst} (postVariable : VariablePost S) : Nat :=
   InferenceBase.binderSpan
     ((capAvoid signature targetContext source postVariable).map CapVar.id)
 
 /-- First ordinary identifier outside the finite local avoidance set. -/
 def tyNext
-    (signature : FrozenSig) (targetContext : Context)
+    (signature : FrozenSig) (targetContext : NamedContext)
     (source : Ty) (S : Subst) : Nat :=
   InferenceBase.binderSpan (tyAvoid signature targetContext source S)
 
@@ -611,7 +611,7 @@ theorem replayPost_target_fixed_of_lt
 
 /-- Every capability in the finite avoidance set lies below its fresh region. -/
 theorem cap_lt_capNext_of_mem
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} {postVariable : VariablePost S}
     {varId : CapVar}
     (membership : varId ∈ capAvoid signature targetContext source postVariable) :
@@ -621,7 +621,7 @@ theorem cap_lt_capNext_of_mem
 
 /-- Every ordinary variable in the avoidance set lies below its fresh region. -/
 theorem ty_lt_tyNext_of_mem
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} {varId : TypePM.TyVar}
     (membership : varId ∈ tyAvoid signature targetContext source S) :
     varId < tyNext signature targetContext source S := by
@@ -629,7 +629,7 @@ theorem ty_lt_tyNext_of_mem
 
 /-- Replay fixes the complete finite capability avoidance set. -/
 theorem replayPost_cap_fixed_of_mem_avoid
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} {postVariable : VariablePost S}
     {scheme : NamedScheme} {instancePost outer : Subst}
     {varId : CapVar}
@@ -642,7 +642,7 @@ theorem replayPost_cap_fixed_of_mem_avoid
 
 /-- Replay fixes the complete finite ordinary avoidance set. -/
 theorem replayPost_target_fixed_of_mem_avoid
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} {postVariable : VariablePost S}
     {scheme : NamedScheme} {instancePost outer : Subst}
     {varId : TypePM.TyVar}
@@ -677,7 +677,7 @@ theorem replayPost_variable
 
 /-- Concrete capture-avoiding post selected for one T-LET value. -/
 noncomputable def localPost
-    (signature : FrozenSig) (sourceContext targetContext : Context)
+    (signature : FrozenSig) (sourceContext targetContext : NamedContext)
     (source : Ty) {S : Subst} (postVariable : VariablePost S) : Subst :=
   maskedPost (signature.generalize sourceContext source) S
     (capNext signature targetContext source postVariable)
@@ -685,7 +685,7 @@ noncomputable def localPost
 
 /-- The selected T-LET post keeps its capability component variable-valued. -/
 theorem localPost_variable
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S) :
     VariablePost
       (localPost signature sourceContext targetContext source postVariable) :=
@@ -693,7 +693,7 @@ theorem localPost_variable
 
 /-- Local freshening is invisible on the source context's capability frees. -/
 theorem localPost_cap_agrees_context
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {varId : CapVar} (membership : varId ∈ sourceContext.fcv) :
     (localPost signature sourceContext targetContext source postVariable).cap
@@ -705,7 +705,7 @@ theorem localPost_cap_agrees_context
 
 /-- Local freshening is invisible on the source context's ordinary frees. -/
 theorem localPost_target_agrees_context
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {varId : TypePM.TyVar} (membership : varId ∈ sourceContext.ftv) :
     (localPost signature sourceContext targetContext source postVariable).target
@@ -717,7 +717,7 @@ theorem localPost_target_agrees_context
 
 /-- Local freshening is likewise invisible on frozen-signature frees. -/
 theorem localPost_cap_agrees_signature
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {varId : CapVar} (membership : varId ∈ signature.fcv) :
     (localPost signature sourceContext targetContext source postVariable).cap
@@ -729,7 +729,7 @@ theorem localPost_cap_agrees_signature
 
 /-- Ordinary frozen-signature frees are unaffected by local freshening. -/
 theorem localPost_target_agrees_signature
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {varId : TypePM.TyVar} (membership : varId ∈ signature.ftv) :
     (localPost signature sourceContext targetContext source postVariable).target
@@ -741,7 +741,7 @@ theorem localPost_target_agrees_signature
 
 /-- The surrounding image of a source capability free is explicitly avoided. -/
 theorem capRen_mem_capAvoid
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {varId : CapVar} (membership : varId ∈ source.fcv) :
     postVariable.capRen varId ∈
@@ -756,7 +756,7 @@ theorem capRen_mem_capAvoid
 
 /-- Capability frees in surrounding target images are explicitly avoided. -/
 theorem target_fcv_mem_capAvoid
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S)
     {sourceVar : TypePM.TyVar} (sourceMembership : sourceVar ∈ source.ftv)
     {varId : CapVar} (membership : varId ∈ (S.target sourceVar).fcv) :
@@ -771,7 +771,7 @@ theorem target_fcv_mem_capAvoid
 
 /-- Ordinary frees in surrounding target images are explicitly avoided. -/
 theorem target_ftv_mem_tyAvoid
-    {signature : FrozenSig} {targetContext : Context}
+    {signature : FrozenSig} {targetContext : NamedContext}
     {source : Ty} {S : Subst}
     {sourceVar : TypePM.TyVar} (sourceMembership : sourceVar ∈ source.ftv)
     {varId : TypePM.TyVar} (membership : varId ∈ (S.target sourceVar).ftv) :
@@ -789,7 +789,7 @@ as applying an arbitrary old local instance and then the surrounding post.
 This is the algebraic core of the T-LET case.
 -/
 theorem replay_localPost_apply
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source sourceInstance : Ty} {S outer : Subst}
     (postVariable : VariablePost S)
     (outerCapAgreement : ∀ varId,
@@ -921,7 +921,7 @@ replayed through that fresh batch, so no numerical binder collision with the
 surrounding post can monomorphize the binding.
 -/
 theorem FrozenSig.generalize_flowsUnder
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst} (postVariable : VariablePost S) :
     (signature.generalize sourceContext source).FlowsUnder S
       (signature.generalize targetContext
@@ -979,12 +979,12 @@ theorem FrozenSig.generalize_flowsUnder
   exact replayed
 
 /-- Extend a flowed context by one capture-avoiding generalized T-LET head. -/
-theorem Context.FlowsUnder.consGeneralizedFresh
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+theorem NamedContext.FlowsUnder.consGeneralizedFresh
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst}
-    (flow : Context.FlowsUnder S sourceContext targetContext)
+    (flow : NamedContext.FlowsUnder S sourceContext targetContext)
     (postVariable : VariablePost S) (name : String) :
-    Context.FlowsUnder S
+    NamedContext.FlowsUnder S
       ((name, signature.generalize sourceContext source) :: sourceContext)
       ((name, signature.generalize targetContext
         ((LocalFreshening.localPost signature sourceContext targetContext
@@ -992,12 +992,12 @@ theorem Context.FlowsUnder.consGeneralizedFresh
   .cons (signature.generalize_flowsUnder postVariable) flow
 
 /-- Re-index a flowed context by the locally masked T-LET post. -/
-theorem Context.FlowsUnder.reindexLocal
-    {signature : FrozenSig} {sourceContext targetContext : Context}
+theorem NamedContext.FlowsUnder.reindexLocal
+    {signature : FrozenSig} {sourceContext targetContext : NamedContext}
     {source : Ty} {S : Subst}
-    (flow : Context.FlowsUnder S sourceContext targetContext)
+    (flow : NamedContext.FlowsUnder S sourceContext targetContext)
     (postVariable : VariablePost S) :
-    Context.FlowsUnder
+    NamedContext.FlowsUnder
       (LocalFreshening.localPost signature sourceContext targetContext
         source postVariable)
       sourceContext targetContext := by
@@ -1028,7 +1028,7 @@ theorem PatternTy.resolveUnderPost
     {signature : FrozenSig} {S : Subst}
     (postVariable : VariablePost S)
     (expressionFlow :
-      ∀ {context : Context} {bindings : MonoCtx}
+      ∀ {context : NamedContext} {bindings : MonoCtx}
         {expression : Expr} {target : Ty},
         RuntimeTyping signature (bindings.toContext ++ context) expression target →
         RuntimeTyping signature
@@ -1040,7 +1040,7 @@ theorem PatternTy.resolveUnderPost
         scheme.ValueFlowInst
           (args.map (Dual.applySubst S)) (result.applySubst S))
     (constructorInstances : signature.PatternCtorInstCompositionAdm S) :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {pattern : Pattern} →
       {capability : Cap} → {target : Ty} → {result : MonoCtx} →
       PatternTy signature context parameters bindings pattern capability target
@@ -1108,7 +1108,7 @@ theorem PatternTys.resolveUnderPost
     {signature : FrozenSig} {S : Subst}
     (postVariable : VariablePost S)
     (expressionFlow :
-      ∀ {context : Context} {bindings : MonoCtx}
+      ∀ {context : NamedContext} {bindings : MonoCtx}
         {expression : Expr} {target : Ty},
         RuntimeTyping signature (bindings.toContext ++ context) expression target →
         RuntimeTyping signature
@@ -1120,7 +1120,7 @@ theorem PatternTys.resolveUnderPost
         scheme.ValueFlowInst
           (args.map (Dual.applySubst S)) (result.applySubst S))
     (constructorInstances : signature.PatternCtorInstCompositionAdm S) :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {patterns : List Pattern} →
       {duals : List Dual} → {result : MonoCtx} →
       PatternTys signature context parameters bindings patterns duals result →
@@ -1151,7 +1151,7 @@ mutual
 /--
 Append one capability-variable/structural-target post to a terminal
 user-pattern resolution while
-allowing the actual expression context to follow `Context.FlowsUnder`.  Raw
+allowing the actual expression context to follow `NamedContext.FlowsUnder`.  Raw
 freshness and provenance are unchanged; only the explicit actual context and
 the concrete `pval` typing premise move.
 -/
@@ -1159,9 +1159,9 @@ theorem TerminalPatternResolution.transportUnderPost
     {signature : FrozenSig} {prevailing S : Subst}
     (postVariable : VariablePost S)
     (expressionFlow :
-      ∀ {sourceContext targetContext : Context}
+      ∀ {sourceContext targetContext : NamedContext}
         {expression : Expr} {target : Ty},
-        Context.FlowsUnder S sourceContext targetContext →
+        NamedContext.FlowsUnder S sourceContext targetContext →
         RuntimeTyping signature sourceContext expression target →
         RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
@@ -1170,11 +1170,11 @@ theorem TerminalPatternResolution.transportUnderPost
         scheme.ValueFlowInst
           (args.map (Dual.applySubst S)) (result.applySubst S))
     (constructorInstances : signature.PatternCtorInstCompositionAdm S) :
-    {sourceContext targetContext : Context} →
+    {sourceContext targetContext : NamedContext} →
       {parameters : PatternCtx} → {bindings : MonoCtx} →
       {pattern : Pattern} → {capability : Cap} → {target : Ty} →
       {resultBindings : MonoCtx} →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolution signature prevailing sourceContext parameters
         bindings pattern capability target resultBindings →
       TerminalPatternResolution signature (Subst.seq S prevailing)
@@ -1279,9 +1279,9 @@ theorem TerminalPatternResolutions.transportUnderPost
     {signature : FrozenSig} {prevailing S : Subst}
     (postVariable : VariablePost S)
     (expressionFlow :
-      ∀ {sourceContext targetContext : Context}
+      ∀ {sourceContext targetContext : NamedContext}
         {expression : Expr} {target : Ty},
-        Context.FlowsUnder S sourceContext targetContext →
+        NamedContext.FlowsUnder S sourceContext targetContext →
         RuntimeTyping signature sourceContext expression target →
         RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
@@ -1290,11 +1290,11 @@ theorem TerminalPatternResolutions.transportUnderPost
         scheme.ValueFlowInst
           (args.map (Dual.applySubst S)) (result.applySubst S))
     (constructorInstances : signature.PatternCtorInstCompositionAdm S) :
-    {sourceContext targetContext : Context} →
+    {sourceContext targetContext : NamedContext} →
       {parameters : PatternCtx} → {bindings : MonoCtx} →
       {patterns : List Pattern} → {duals : List Dual} →
       {resultBindings : MonoCtx} →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolutions signature prevailing sourceContext parameters
         bindings patterns duals resultBindings →
       TerminalPatternResolutions signature (Subst.seq S prevailing)
@@ -1318,9 +1318,9 @@ theorem ResolvedPatternTy.transportUnderPost
     {signature : FrozenSig} {prevailing S : Subst}
     (postVariable : VariablePost S)
     (expressionFlow :
-      ∀ {sourceContext targetContext : Context}
+      ∀ {sourceContext targetContext : NamedContext}
         {expression : Expr} {target : Ty},
-        Context.FlowsUnder S sourceContext targetContext →
+        NamedContext.FlowsUnder S sourceContext targetContext →
         RuntimeTyping signature sourceContext expression target →
         RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
@@ -1329,10 +1329,10 @@ theorem ResolvedPatternTy.transportUnderPost
         scheme.ValueFlowInst
           (args.map (Dual.applySubst S)) (result.applySubst S))
     (constructorInstances : signature.PatternCtorInstCompositionAdm S)
-    {sourceContext targetContext : Context}
+    {sourceContext targetContext : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {pattern : Pattern}
     {capability : Cap} {target : Ty} {resultBindings : MonoCtx}
-    (contextFlow : Context.FlowsUnder S sourceContext targetContext)
+    (contextFlow : NamedContext.FlowsUnder S sourceContext targetContext)
     (typing : ResolvedPatternTy signature prevailing sourceContext parameters
       bindings pattern capability target resultBindings) :
     ResolvedPatternTy signature (Subst.seq S prevailing) targetContext
@@ -1357,13 +1357,13 @@ mutual
 theorem RuntimeTyping.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {expression : Expr} {source : Ty}
+    {sourceContext : NamedContext} {expression : Expr} {source : Ty}
     (typing : RuntimeTyping signature sourceContext expression source) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       RuntimeTyping signature targetContext expression (S.apply source) := by
   intro S targetContext postVariable capFixed targetFixed contextFlow
   exact match typing with
@@ -1491,13 +1491,13 @@ termination_by structural typing
 theorem ExprsTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {expressions : List Expr} {sources : List Ty}
+    {sourceContext : NamedContext} {expressions : List Expr} {sources : List Ty}
     (typing : ExprsTy signature sourceContext expressions sources) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ExprsTy signature targetContext expressions (sources.map S.apply) := by
   intro S targetContext postVariable capFixed targetFixed contextFlow
   exact match typing with
@@ -1514,16 +1514,16 @@ termination_by structural typing
 theorem PatternTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {parameters : PatternCtx}
+    {sourceContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {source : Ty} {resultBindings : MonoCtx}
     (typing : PatternTy signature sourceContext parameters bindings pattern
       capability source resultBindings) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolution signature S targetContext
         (parameters.applySubst S) (bindings.applySubst S) pattern
         (capability.apply S.cap) (S.apply source)
@@ -1591,16 +1591,16 @@ termination_by structural typing
 theorem PatternTys.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {parameters : PatternCtx}
+    {sourceContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {patterns : List Pattern} {duals : List Dual}
     {resultBindings : MonoCtx}
     (typing : PatternTys signature sourceContext parameters bindings patterns
       duals resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolutions signature S targetContext
         (parameters.applySubst S) (bindings.applySubst S) patterns
         (duals.map (Dual.applySubst S))
@@ -1621,16 +1621,16 @@ termination_by structural typing
 theorem PatternResolution.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {rawContext : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {rawContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {source : Ty} {resultBindings : MonoCtx}
     (typing : PatternResolution signature prevailing rawContext parameters
       bindings pattern capability source resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S (rawContext.applySubst prevailing) targetContext →
+      NamedContext.FlowsUnder S (rawContext.applySubst prevailing) targetContext →
       TerminalPatternResolution signature (Subst.seq S prevailing)
         targetContext
         ((parameters.applySubst prevailing).applySubst S)
@@ -1735,16 +1735,16 @@ termination_by structural typing
 theorem PatternResolutions.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {rawContext : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {rawContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {patterns : List Pattern} {duals : List Dual}
     {resultBindings : MonoCtx}
     (typing : PatternResolutions signature prevailing rawContext parameters
       bindings patterns duals resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S (rawContext.applySubst prevailing) targetContext →
+      NamedContext.FlowsUnder S (rawContext.applySubst prevailing) targetContext →
       TerminalPatternResolutions signature (Subst.seq S prevailing)
         targetContext
         ((parameters.applySubst prevailing).applySubst S)
@@ -1772,16 +1772,16 @@ termination_by structural typing
 theorem TerminalPatternResolution.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {sourceContext : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {sourceContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {source : Ty} {resultBindings : MonoCtx}
     (typing : TerminalPatternResolution signature prevailing sourceContext
       parameters bindings pattern capability source resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolution signature (Subst.seq S prevailing)
         targetContext (parameters.applySubst S) (bindings.applySubst S)
         pattern (capability.apply S.cap) (S.apply source)
@@ -1879,16 +1879,16 @@ termination_by structural typing
 theorem TerminalPatternResolutions.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {sourceContext : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {sourceContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {patterns : List Pattern} {duals : List Dual}
     {resultBindings : MonoCtx}
     (typing : TerminalPatternResolutions signature prevailing sourceContext
       parameters bindings patterns duals resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       TerminalPatternResolutions signature (Subst.seq S prevailing)
         targetContext (parameters.applySubst S) (bindings.applySubst S)
         patterns (duals.map (Dual.applySubst S))
@@ -1909,16 +1909,16 @@ termination_by structural typing
 theorem ResolvedPatternTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {sourceContext : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {sourceContext : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {source : Ty} {resultBindings : MonoCtx}
     (typing : ResolvedPatternTy signature prevailing sourceContext parameters
       bindings pattern capability source resultBindings) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ResolvedPatternTy signature (Subst.seq S prevailing) targetContext
         (parameters.applySubst S) (bindings.applySubst S) pattern
         (capability.apply S.cap) (S.apply source)
@@ -1940,21 +1940,21 @@ termination_by structural typing
 theorem ArmTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {source : Ty} {ppBindings : MonoCtx}
+    {sourceContext : NamedContext} {source : Ty} {ppBindings : MonoCtx}
     {result : Ty} {arm : Arm}
     (typing : ArmTy signature sourceContext source ppBindings result arm) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ArmTy signature targetContext (S.apply source)
         (ppBindings.applySubst S) (S.apply result) arm := by
   intro S targetContext postVariable capFixed targetFixed contextFlow
   exact match typing with
   | @ArmTy.mk _ context target ppBindings result pattern body armBindings
       patternTyping bodyTyping => by
-      have extendedFlow : Context.FlowsUnder S
+      have extendedFlow : NamedContext.FlowsUnder S
           (armBindings.toContext ++ ppBindings.toContext ++ context)
           ((armBindings.applySubst S).toContext ++
             (ppBindings.applySubst S).toContext ++ targetContext) := by
@@ -1974,14 +1974,14 @@ termination_by structural typing
 theorem ArmsTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {source : Ty} {ppBindings : MonoCtx}
+    {sourceContext : NamedContext} {source : Ty} {ppBindings : MonoCtx}
     {result : Ty} {arms : List Arm}
     (typing : ArmsTy signature sourceContext source ppBindings result arms) :
-    ∀ {S : Subst} {targetContext : Context},
+    ∀ {S : Subst} {targetContext : NamedContext},
       VariablePost S →
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ArmsTy signature targetContext (S.apply source)
         (ppBindings.applySubst S) (S.apply result) arms := by
   intro S targetContext postVariable capFixed targetFixed contextFlow
@@ -1999,15 +1999,15 @@ termination_by structural typing
 theorem ClauseTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {sourceContext : Context} {clause : Clause}
+    {prevailing : Subst} {sourceContext : NamedContext} {clause : Clause}
     {capability : Cap} {source : Ty} {evidence : Shape.Evidence}
     (typing : ClauseTy signature prevailing sourceContext clause capability
       source evidence) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ClauseTy signature (Subst.seq S prevailing) targetContext clause
         (capability.apply S.cap) (S.apply source)
         (evidence.applyRen postVariable.capRen) := by
@@ -2042,15 +2042,15 @@ termination_by structural typing
 theorem ClausesTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {prevailing : Subst} {sourceContext : Context} {clauses : List Clause}
+    {prevailing : Subst} {sourceContext : NamedContext} {clauses : List Clause}
     {capability : Cap} {source : Ty} {evidence : List Shape.Evidence}
     (typing : ClausesTy signature prevailing sourceContext clauses capability
       source evidence) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ClausesTy signature (Subst.seq S prevailing) targetContext clauses
         (capability.apply S.cap) (S.apply source)
         (Shape.Evidence.applyRenList postVariable.capRen evidence) := by
@@ -2070,15 +2070,15 @@ termination_by structural typing
 theorem ResolvedClausesTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
-    {sourceContext : Context} {clauses : List Clause}
+    {sourceContext : NamedContext} {clauses : List Clause}
     {capability : Cap} {source : Ty} {evidence : List Shape.Evidence}
     (typing : ResolvedClausesTy signature sourceContext clauses capability
       source evidence) :
-    ∀ {S : Subst} {targetContext : Context}
+    ∀ {S : Subst} {targetContext : NamedContext}
       (postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
-      Context.FlowsUnder S sourceContext targetContext →
+      NamedContext.FlowsUnder S sourceContext targetContext →
       ResolvedClausesTy signature targetContext clauses
         (capability.apply S.cap) (S.apply source)
         (Shape.Evidence.applyRenList postVariable.capRen evidence) := by
@@ -2099,7 +2099,7 @@ set_option maxHeartbeats 200000
 
 /-- The exact source-level conclusion needed by let-bound runtime values. -/
 def RuntimeTyping.GeneralizedValueFlow
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {expression : Expr} {source : Ty}
     (_typing : RuntimeTyping signature context expression source) : Prop :=
   ∀ {target : Ty},
@@ -2108,7 +2108,7 @@ def RuntimeTyping.GeneralizedValueFlow
 
 /-- Replay any binder-local instance of a generalized value derivation. -/
 theorem RuntimeTyping.generalizedValueFlow
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {expression : Expr} {source : Ty}
     (typing : RuntimeTyping signature context expression source)
     (basic : signature.armExhaustive = basicArmExhaustive) :
@@ -2132,8 +2132,8 @@ theorem RuntimeTyping.generalizedValueFlow
     apply instanceTyping.tySupport varId
     intro binder
     exact (mem_generalize_tyBinders_not_env binder) membership
-  have contextFlow : Context.FlowsUnder S context context :=
-    Context.self_flowsUnder context
+  have contextFlow : NamedContext.FlowsUnder S context context :=
+    NamedContext.self_flowsUnder context
       (fun varId membership => capFixedEnvironment varId
         (List.mem_append_right _ membership))
       (fun varId membership => targetFixedEnvironment varId
@@ -2190,7 +2190,7 @@ theorem FrozenSig.findPatternFun_entry
 
 /-- Every free capability of a dual generalization comes from its environment. -/
 theorem FrozenSig.generalizeDual_fcv_mem_environment
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) {varId : CapVar}
     (membership :
       varId ∈ (signature.generalizeDual context args result).fcv) :
@@ -2213,7 +2213,7 @@ theorem FrozenSig.generalizeDual_fcv_mem_environment
 
 /-- Every free target variable of a dual generalization comes from its environment. -/
 theorem FrozenSig.generalizeDual_ftv_mem_environment
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) {varId : TypePM.TyVar}
     (membership :
       varId ∈ (signature.generalizeDual context args result).ftv) :
@@ -2236,7 +2236,7 @@ theorem FrozenSig.generalizeDual_ftv_mem_environment
 
 /-- A generalized dual capability binder is disjoint from its environment. -/
 theorem FrozenSig.mem_generalizeDual_capBinders_not_environment
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) {varId : CapVar}
     (membership :
       varId ∈ (signature.generalizeDual context args result).capBinders) :
@@ -2252,7 +2252,7 @@ theorem FrozenSig.mem_generalizeDual_capBinders_not_environment
 
 /-- A generalized dual target binder is disjoint from its environment. -/
 theorem FrozenSig.mem_generalizeDual_tyBinders_not_environment
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) {varId : TypePM.TyVar}
     (membership :
       varId ∈ (signature.generalizeDual context args result).tyBinders) :
@@ -2320,7 +2320,7 @@ theorem patternCoreParameters_applySubst
 
 /-- A full-signature capability free remains ambient after self filtering. -/
 theorem FrozenSig.fcv_mem_filtered_or_context
-    (signature : FrozenSig) (context : Context) (removed : String)
+    (signature : FrozenSig) (context : NamedContext) (removed : String)
     (scheme : DualScheme) (args : List Dual) (result : Dual)
     (namesNodup : (signature.patternFuns.map Prod.fst).Nodup)
     (lookup : signature.findPatternFun removed = some scheme)
@@ -2371,7 +2371,7 @@ theorem FrozenSig.fcv_mem_filtered_or_context
 
 /-- A full-signature target free remains ambient after self filtering. -/
 theorem FrozenSig.ftv_mem_filtered_or_context
-    (signature : FrozenSig) (context : Context) (removed : String)
+    (signature : FrozenSig) (context : NamedContext) (removed : String)
     (scheme : DualScheme) (args : List Dual) (result : Dual)
     (namesNodup : (signature.patternFuns.map Prod.fst).Nodup)
     (lookup : signature.findPatternFun removed = some scheme)
@@ -2426,7 +2426,7 @@ The output binding context remains existential because checking a definition
 body may introduce ordinary pattern bindings.
 -/
 def PatternDefTy.InstantiatedBody
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {definition : PatternDef} {scheme : DualScheme}
     (_typing : PatternDefTy signature context definition scheme) : Prop :=
   ∀ {actualArgs : List Dual} {actualResult : Dual},
@@ -2438,7 +2438,7 @@ def PatternDefTy.InstantiatedBody
 
 /-- Instantiate a checked full-signature pattern-function body at any safe use. -/
 theorem PatternDefTy.instantiatedBody
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {definition : PatternDef} {scheme : DualScheme}
     (typing : PatternDefTy signature context definition scheme)
     (basic : signature.armExhaustive = basicArmExhaustive)
@@ -2501,8 +2501,8 @@ theorem PatternDefTy.instantiatedBody
         exact signature.ftv_mem_filtered_or_context context definition.name
           scheme sourceArgs result patternFunNamesNodup lookup
           schemeEquation.freeTargets membership
-      have contextFlow : Context.FlowsUnder S context context :=
-        Context.self_flowsUnder context
+      have contextFlow : NamedContext.FlowsUnder S context context :=
+        NamedContext.self_flowsUnder context
           (fun varId membership => capFixedFilteredEnvironment varId
             (List.mem_append_right _ membership))
           (fun varId membership => targetFixedFilteredEnvironment varId

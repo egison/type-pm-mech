@@ -66,7 +66,7 @@ theorem let_bound_pair_checks_as_product_matcher {signature : FrozenSig} :
         (.var "pairMatcher") pairProductType := by
     apply RuntimeTyping.var
       (scheme := signature.generalize [] pairProductType)
-    · simp [Context.find?, pairScheme]
+    · simp [NamedContext.find?, pairScheme]
     · rw [pairScheme]
       exact NamedScheme.mono_valueFlowInst pairProductType
   simpa [letPairProgram, pairProductType, pairMatcherType] using

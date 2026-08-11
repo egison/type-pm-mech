@@ -631,8 +631,8 @@ theorem NamedScheme.applySubst_eq_self_of_free_fixed
           exact List.mem_filter.mpr ⟨membership, by simp [bound]⟩
 
 /-- Fixing all free variables of a context fixes the entire context. -/
-theorem Context.applySubst_eq_self_of_free_fixed
-    (post : Subst) (context : Context)
+theorem NamedContext.applySubst_eq_self_of_free_fixed
+    (post : Subst) (context : NamedContext)
     (capFixed : ∀ varId, varId ∈ context.fcv →
       post.cap varId = .var varId)
     (tyFixed : ∀ varId, varId ∈ context.ftv →
@@ -643,26 +643,26 @@ theorem Context.applySubst_eq_self_of_free_fixed
   | cons entry context induction =>
       cases entry with
       | mk name scheme =>
-          simp only [Context.applySubst, List.map_cons]
+          simp only [NamedContext.applySubst, List.map_cons]
           rw [NamedScheme.applySubst_eq_self_of_free_fixed post scheme]
           · congr 1
             apply induction
             · intro varId membership
               apply capFixed varId
-              simp only [Context.fcv, List.flatMap_cons,
+              simp only [NamedContext.fcv, List.flatMap_cons,
                 List.mem_append]
               exact Or.inr membership
             · intro varId membership
               apply tyFixed varId
-              simp only [Context.ftv, List.flatMap_cons,
+              simp only [NamedContext.ftv, List.flatMap_cons,
                 List.mem_append]
               exact Or.inr membership
           · intro varId membership
             exact capFixed varId (by
-              simp [Context.fcv, membership])
+              simp [NamedContext.fcv, membership])
           · intro varId membership
             exact tyFixed varId (by
-              simp [Context.ftv, membership])
+              simp [NamedContext.ftv, membership])
 
 /-! ## Signature-aware generalized value instances -/
 
@@ -882,11 +882,11 @@ theorem FrozenSig.primitive_ftv_mem
       exact Or.inr ⟨entry, entryMember, membership⟩
 
 /-- Lookup after context substitution returns the substituted lookup result. -/
-theorem Context.find?_applySubst
-    (S : Subst) (context : Context) (name : String) :
+theorem NamedContext.find?_applySubst
+    (S : Subst) (context : NamedContext) (name : String) :
     (context.applySubst S).find? name =
       (context.find? name).map (NamedScheme.applySubst S) := by
-  simp [Context.applySubst, Context.find?, Function.comp_def,
+  simp [NamedContext.applySubst, NamedContext.find?, Function.comp_def,
     Option.map_map]
 
 /-! ## Algebraic composition of instantiation witnesses -/
@@ -2043,11 +2043,11 @@ theorem PatternCtx.find?_applySubst
     Option.map_map]
 
 /-- Pointwise source-context substitution distributes over concatenation. -/
-theorem Context.applySubst_append
-    (S : Subst) (left right : Context) :
+theorem NamedContext.applySubst_append
+    (S : Subst) (left right : NamedContext) :
     (left ++ right).applySubst S =
       left.applySubst S ++ right.applySubst S := by
-  simp [Context.applySubst, List.map_append]
+  simp [NamedContext.applySubst, List.map_append]
 
 /-- Monomorphic bindings commute with their embedding as mono schemes. -/
 theorem MonoCtx.toContext_applySubst
@@ -2060,7 +2060,7 @@ theorem MonoCtx.toContext_applySubst
       cases entry with
       | mk name target =>
           simp [MonoCtx.applySubst, MonoCtx.toContext,
-            Context.applySubst, NamedScheme.mono, NamedScheme.applySubst]
+            NamedContext.applySubst, NamedScheme.mono, NamedScheme.applySubst]
 
 /-- Slot targets built from duals commute with paired substitution. -/
 theorem Dual.map_slot_applySubst
@@ -2116,7 +2116,7 @@ theorem Subst.apply_prodTy (S : Subst) :
 
 /-- Resolution packaging exposes the one shared substitution, not one per clause. -/
 theorem ResolvedClausesTy.exists_shared
-    {signature : FrozenSig} {context : Context} {clauses : List Clause}
+    {signature : FrozenSig} {context : NamedContext} {clauses : List Clause}
     {capability : Cap} {target : Ty} {evidence : List Shape.Evidence}
     (typing :
       ResolvedClausesTy signature context clauses capability target evidence) :

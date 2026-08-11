@@ -15,7 +15,7 @@ namespace Inference
 /-- Pattern-constructor field alignment starts from the state returned by the
 entire child traversal. -/
 theorem inferPatternFuel_pctor_threads_child_state
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
     {path : SyntaxPath} {name : String} {patterns : List Pattern}
     {state : InferState}
@@ -70,7 +70,7 @@ theorem inferPatternFuel_pctor_threads_child_state
 matcher-slot check; `checkExprFuel` performs prevailing normalization exactly
 once. -/
 theorem inferExprFuel_matchAll_checks_raw_target_once
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath}
     {target matcher body : Expr} {pattern : Pattern} {state : InferState}
     {targetResult : ExprResult} {patternResult : PatternResult}
@@ -99,7 +99,7 @@ theorem inferExprFuel_matchAll_checks_raw_target_once
 /-- Clause next-matcher checks receive raw hole duals.  Their prevailing
 substitution is applied exactly once inside `checkExprFuel`. -/
 theorem inferClauseFuel_checks_raw_holes_once
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig} {context : NamedContext}
     {selfEnv : SelfEnv} {path : SyntaxPath} {primitivePattern : PPat}
     {next : Expr} {arms : List Arm} {sharedTarget : Ty}
     {state : InferState} {ppResult : PPatResult}

@@ -1259,7 +1259,7 @@ must gain the freeze ledger axis before unconditional state erasure is valid. -/
 def producerScheme : NamedScheme := ⟨[⟨0⟩], [0], .matcher (.var ⟨0⟩) (.var 0)⟩
 
 /-- The seeded context binding the producer. -/
-def producerContext : Context := [("m", producerScheme)]
+def producerContext : NamedContext := [("m", producerScheme)]
 
 /-- One monomorphic consumer shared between `something` and the producer. -/
 def capFreezeProgram : Expr :=
@@ -1268,7 +1268,7 @@ def capFreezeProgram : Expr :=
     (.lam "z" (.var "z"))
 
 /-- The inner context of the consumer body. -/
-def capFreezeInnerContext : Context :=
+def capFreezeInnerContext : NamedContext :=
   ("h", NamedScheme.mono (.var 1)) :: producerContext
 
 /-- Prevailing substitution after the first-use function alignment. -/
@@ -1338,7 +1338,7 @@ theorem capFreezeSecondApp_ddSynth :
           (ExactPairedMGU.varLeft 7 (.var 4) (by decide)))))
 
 /-! The ledger-aware alignment kernel closes the acceptance gap at the exact
-failing cut.  Context lookup instantiates the quantified capability binder as
+failing cut.  NamedContext lookup instantiates the quantified capability binder as
 fresh variable `⟨1⟩` and marks it rename-only, so the otherwise exact
 solution `⟨1⟩ := Any` is not origin-admissible. -/
 
@@ -1417,7 +1417,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
       nomatch producerCapFree ▸ mem
     · intro varId mem
       nomatch producerTyFree ▸ mem
-  have innerContextBounded : Context.BoundedBy ⟨1, 2⟩
+  have innerContextBounded : NamedContext.BoundedBy ⟨1, 2⟩
       capFreezeInnerContext := by
     intro entry mem
     simp only [capFreezeInnerContext, producerContext, List.mem_cons,
@@ -1438,7 +1438,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
   have firstArgumentRaw := firstArgumentOrigin.erase
   cases firstFunctionOrigin with
   | var lookup1 =>
-  simp [Context.applySubst, Context.find?] at lookup1
+  simp [NamedContext.applySubst, NamedContext.find?] at lookup1
   subst_vars
   change DDAlignTypesWithLedger [] Subst.id (.var 1)
     (.fn (.var 2) (.var 3)) _ at firstAligned
@@ -1474,7 +1474,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
     firstArgumentSubstBounded secondContextBounded
   cases secondFunctionOrigin with
   | var lookup2 =>
-  simp [Context.applySubst, Context.find?] at lookup2
+  simp [NamedContext.applySubst, NamedContext.find?] at lookup2
   subst_vars
   rw [InferenceBase.instantiateNamedScheme_mono_value] at secondAligned
   have initialTy :
@@ -1495,7 +1495,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
   | mk producerOrigin producerAligned =>
   cases producerOrigin with
   | var lookupProducer =>
-  simp [Context.applySubst, Context.find?, producerContext, producerStable]
+  simp [NamedContext.applySubst, NamedContext.find?, producerContext, producerStable]
     at lookupProducer
   subst_vars
   have initialCap :
@@ -1609,7 +1609,7 @@ ambient context alone — it must constrain
 open AcceptanceGapRegression (packSignature packScheme)
 
 /-- One monomorphic structurally-capped consumer seed. -/
-def letCapContext : Context :=
+def letCapContext : NamedContext :=
   [("m2", NamedScheme.mono (.matcher (.con "c" []) .int))]
 
 /-- `let f = λx. Pack x in (f something, f m2)`. -/
@@ -1629,7 +1629,7 @@ def letCapScheme : NamedScheme :=
   ⟨[⟨1⟩], [2], .fn (.matcher (.var ⟨1⟩) (.var 2)) (.data "Packed" [])⟩
 
 /-- The body context binding the generalized producer. -/
-def letCapBodyContext : Context := ("f", letCapScheme) :: letCapContext
+def letCapBodyContext : NamedContext := ("f", letCapScheme) :: letCapContext
 
 /-- Prevailing substitution after the first-use function alignment. -/
 def letCapFn1 : Subst :=
@@ -1759,7 +1759,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   | mk xOrigin valueAligned =>
   cases xOrigin with
   | var xLookup =>
-  simp [initial, Context.find?] at xLookup
+  simp [initial, NamedContext.find?] at xLookup
   subst_vars
   cases packArgsNil with
   | nil =>
@@ -1809,7 +1809,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
       Cap.apply, valueCapImage] using valueEquation
   have valueCapBinder : valueCap ∈
       (packSignature.generalize
-        (Context.applySubst (Subst.seq valueDelta Subst.id) letCapContext)
+        (NamedContext.applySubst (Subst.seq valueDelta Subst.id) letCapContext)
         ((Subst.seq valueDelta Subst.id).apply
           (.fn (.var 1) (.data "Packed" [])))).capBinders := by
     apply mem_generalize_capBinders
@@ -1842,14 +1842,14 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   cases firstFunctionOrigin with
   | @var firstQ firstS firstContext firstName firstScheme firstLedger
       firstLookup =>
-  simp [Context.applySubst, Context.find?] at firstLookup
+  simp [NamedContext.applySubst, NamedContext.find?] at firstLookup
   subst_vars
   have valueCapBinder' : valueCap ∈
-      (packSignature.generalize (Context.applySubst valueDelta letCapContext)
+      (packSignature.generalize (NamedContext.applySubst valueDelta letCapContext)
         (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))).capBinders := by
     simpa [Subst.seq_apply] using valueCapBinder
   let generalized := packSignature.generalize
-    (Context.applySubst valueDelta letCapContext)
+    (NamedContext.applySubst valueDelta letCapContext)
     (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))
   let firstScheme := generalized.applySubst valueDelta
   let firstSupply : InferenceBase.FreshSupply := ⟨2, 3⟩
@@ -1866,7 +1866,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   have instanceView :=
     SchemeInstanceCapOccurrenceView.ofGeneralizedBinder
       preLookupLedger firstSupply packSignature
-      (Context.applySubst valueDelta letCapContext)
+      (NamedContext.applySubst valueDelta letCapContext)
       (valueDelta.apply (.fn (.var 1) (.data "Packed" [])))
       valueDelta valueCapBinder'
   have generalizedBody : generalized.body =
@@ -2002,7 +2002,7 @@ theorem letCapUse2_ddSynth :
         (ExactPairedMGU.varRight .int 11 (by decide)))))
 
 /-- `something` typed at any matcher-headed type has capability `Any`. -/
-theorem something_matcher_cap {context : Context} {published : Ty}
+theorem something_matcher_cap {context : NamedContext} {published : Ty}
     (typing : RuntimeTyping packSignature context .something published)
     {capability : Cap} {target : Ty}
     (headEq : published = .matcher capability target) :
@@ -2017,7 +2017,7 @@ theorem something_matcher_cap {context : Context} {published : Ty}
 
 /-- The seeded monomorphic consumer typed at any matcher-headed type has
 capability `con "c" []`. -/
-theorem m2var_matcher_cap {context : Context} {published : Ty}
+theorem m2var_matcher_cap {context : NamedContext} {published : Ty}
     (contextFind :
       context.find? "m2" = some (NamedScheme.mono (.matcher (.con "c" []) .int)))
     (typing : RuntimeTyping packSignature context (.var "m2") published)
@@ -2052,7 +2052,7 @@ theorem m2var_matcher_cap {context : Context} {published : Ty}
 to be matcher-headed or a product of matchers: coercion wrappers only move
 the published head, never the domain constraint. -/
 theorem packCtor_domain_shape {domain : Ty} :
-    ∀ {context : Context} {expression : Expr} {published : Ty},
+    ∀ {context : NamedContext} {expression : Expr} {published : Ty},
       RuntimeTyping packSignature context expression published →
       expression = .ctor "Pack" [.var "x"] →
       context.find? "x" = some (NamedScheme.mono domain) →

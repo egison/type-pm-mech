@@ -533,7 +533,7 @@ open DDErasure
 
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPattern signature q S context parameters bindingsIn pattern dual
@@ -543,7 +543,7 @@ def StateFactorization
 
 theorem stateFactorization_pvar
     {_signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {_context : Context} {_parameters : PatternCtx} {bindings : MonoCtx}
+    {_context : NamedContext} {_parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {ledger : CapabilityOriginLedger}
     (_freshName : name ∉ bindings.names) :
     DDErasure.StateFactorization q S ledger
@@ -555,7 +555,7 @@ theorem stateFactorization_pvar
 
 theorem stateFactorization_wild
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
+    (context : NamedContext) (parameters : PatternCtx) (bindings : MonoCtx)
     (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDPatternOrigin.wild (signature := signature) (q := q) (S := S)
@@ -567,7 +567,7 @@ theorem stateFactorization_wild
 
 theorem stateFactorization_pval_of_expression
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {_parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {_parameters : PatternCtx} {bindings : MonoCtx}
     {expression : Expr} {target : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
@@ -586,7 +586,7 @@ theorem stateFactorization_pval_of_expression
 
 theorem stateFactorization_embed
     {_signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {_context : Context} {parameters : PatternCtx} {_bindings : MonoCtx}
+    {_context : NamedContext} {parameters : PatternCtx} {_bindings : MonoCtx}
     {name : String} {dual : Dual} {ledger : CapabilityOriginLedger}
     (_lookup : parameters.find? name = some dual) :
     DDErasure.StateFactorization q S ledger q S ledger :=
@@ -594,7 +594,7 @@ theorem stateFactorization_embed
 
 theorem stateFactorization_ptuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
@@ -610,7 +610,7 @@ theorem stateFactorization_ptuple_of_children
 children, target alignment, capability projection, then export freeze. -/
 theorem stateFactorization_pctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern}
     {entry : PatternCtorScheme signature.observability}
     {duals : List Dual} {bindings' : MonoCtx}
@@ -656,7 +656,7 @@ theorem stateFactorization_pctor_of_children
 
 theorem stateFactorization_pand_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {rightDual : Dual} {bindings' : MonoCtx}
@@ -679,7 +679,7 @@ theorem stateFactorization_pand_of_children
 
 theorem stateFactorization_por_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
     {rightDual : Dual} {rightBindings : MonoCtx}
@@ -709,7 +709,7 @@ theorem stateFactorization_por_of_children
 
 theorem stateFactorization_papp_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern} {scheme : DualScheme}
     {duals : List Dual} {bindings' : MonoCtx}
     {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -742,7 +742,7 @@ open DDErasure
 
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPatterns signature q S context parameters bindingsIn patterns
@@ -752,7 +752,7 @@ def StateFactorization
 
 theorem stateFactorization_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
+    (context : NamedContext) (parameters : PatternCtx) (bindings : MonoCtx)
     (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDPatternsOrigin.nil (signature := signature) (q := q) (S := S)
@@ -762,7 +762,7 @@ theorem stateFactorization_nil
 
 theorem stateFactorization_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {dual : Dual}
     {duals : List Dual} {bindings₁ bindings' : MonoCtx}
     {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -786,7 +786,7 @@ open DDErasure
 
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
+    {context : NamedContext} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDArms signature q S context ppBindings arms clauseTarget
@@ -796,7 +796,7 @@ def StateFactorization
 
 theorem stateFactorization_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (bindings : MonoCtx) (clauseTarget bodyTarget : Ty)
+    (context : NamedContext) (bindings : MonoCtx) (clauseTarget bodyTarget : Ty)
     (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDArmsOrigin.nil (signature := signature) (q := q) (S := S)
@@ -808,7 +808,7 @@ theorem stateFactorization_nil
 /-- An arm-list node is exactly data-pattern, body check, then tail. -/
 theorem stateFactorization_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {ppBindings : MonoCtx} {dataPattern : DPat}
+    {context : NamedContext} {ppBindings : MonoCtx} {dataPattern : DPat}
     {body : Expr} {arms : List Arm} {clauseTarget bodyTarget : Ty}
     {armBindings : MonoCtx} {q₁ q₂ q' : InferenceBase.FreshSupply}
     {S₁ S₂ S' : Subst}
@@ -840,7 +840,7 @@ open DDErasure
 
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clause : Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDClause signature q S context clause sharedTarget holes q' S'}
     {ledger ledger' : CapabilityOriginLedger}
@@ -851,7 +851,7 @@ def StateFactorization
 matchers at their slot demands, then arm traversal. -/
 theorem stateFactorization_mk
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {pp : PPat} {next : Expr} {arms : List Arm}
+    {context : NamedContext} {pp : PPat} {next : Expr} {arms : List Arm}
     {sharedTarget : Ty} {holes : List Dual} {ppBindings : MonoCtx}
     {nextMatchers : List Expr}
     {q₁ q₂ q' : InferenceBase.FreshSupply} {S₁ S₂ S' : Subst}
@@ -880,7 +880,7 @@ open DDErasure
 
 def StateFactorization
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDClauses signature q S context clauses sharedTarget holeLists q'
@@ -890,7 +890,7 @@ def StateFactorization
 
 theorem stateFactorization_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (sharedTarget : Ty)
+    (context : NamedContext) (sharedTarget : Ty)
     (ledger : CapabilityOriginLedger) :
     StateFactorization
       (DDClausesOrigin.nil (signature := signature) (q := q) (S := S)
@@ -900,7 +900,7 @@ theorem stateFactorization_nil
 
 theorem stateFactorization_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clause : Clause} {clauses : List Clause}
+    {context : NamedContext} {clause : Clause} {clauses : List Clause}
     {sharedTarget : Ty} {holes : List Dual}
     {holeLists : List (List Dual)}
     {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
@@ -1097,13 +1097,13 @@ mutual
 
 theorem DDSynthOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {target : Ty}
+    {context : NamedContext} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDSynthOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context) :
+    (contextBounded : NamedContext.BoundedBy q context) :
     DDSynthOrigin.StateFactorization origin :=
   match origin with
   | @DDSynthOrigin.var _ q S context name scheme ledger lookup =>
@@ -1115,7 +1115,7 @@ theorem DDSynthOrigin.factorize
           (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
       exact DDSynthOrigin.stateFactorization_lam_of_body bodyOrigin
         (DDSynthOrigin.factorize bodyOrigin closed (Sb.mono extension)
-          (Context.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
+          (NamedContext.BoundedBy.cons (NamedScheme.BoundedBy.ofMono domainB)
             (contextBounded.mono extension)))
   | @DDSynthOrigin.fix _ q S context self argument _ _ _ _ _ ledger _
       distinct direct nonMatcher _ bodyOrigin aligned => by
@@ -1126,14 +1126,14 @@ theorem DDSynthOrigin.factorize
       have codomainB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
           (.var (q.nextTy + 1)) := Ty.BoundedBy.varOf
         (show q.nextTy + 1 < q.nextTy + 2 by omega)
-      have bodyContextB : Context.BoundedBy
+      have bodyContextB : NamedContext.BoundedBy
           { q with nextTy := q.nextTy + 2 }
           ((argument, NamedScheme.mono (.var q.nextTy)) ::
             (self, NamedScheme.mono
               (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context) :=
-        Context.BoundedBy.cons
+        NamedContext.BoundedBy.cons
         (NamedScheme.BoundedBy.ofMono domainB)
-        (Context.BoundedBy.cons
+        (NamedContext.BoundedBy.cons
           (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
           (contextBounded.mono extension))
       obtain ⟨S₁b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
@@ -1190,9 +1190,9 @@ theorem DDSynthOrigin.factorize
       valueOrigin _ bodyOrigin stable => by
       obtain ⟨S₁b, valueB⟩ := valueOrigin.erase.boundedBy closed Sb
         contextBounded
-      have bodyContextB : Context.BoundedBy q₁
+      have bodyContextB : NamedContext.BoundedBy q₁
           ((name, signature.generalize (context.applySubst S₁)
-            (S₁.apply valueTarget)) :: context) := Context.BoundedBy.cons
+            (S₁.apply valueTarget)) :: context) := NamedContext.BoundedBy.cons
         (FrozenSig.generalize_boundedBy (S₁b.apply valueB))
         (contextBounded.mono valueOrigin.erase.supplyExtends)
       exact DDSynthOrigin.stateFactorization_let_of_children valueOrigin
@@ -1233,7 +1233,7 @@ theorem DDSynthOrigin.factorize
         (DDCheckOrigin.factorize matcherOrigin closed S₃b
           (contextBounded.mono (ext₁.trans ext₂)) matcherExpectedB)
         (DDSynthOrigin.factorize bodyOrigin closed S₄b
-          (Context.BoundedBy.append ((bindingsB.mono ext₃).toContext)
+          (NamedContext.BoundedBy.append ((bindingsB.mono ext₃).toContext)
             (contextBounded.mono ((ext₁.trans ext₂).trans ext₃))))
         S₂b dualB.2 (targetB.mono ext₂)
   | @DDSynthOrigin.fixMatcher _ q S context self argument _ domain codomain _
@@ -1241,12 +1241,12 @@ theorem DDSynthOrigin.factorize
       obtain ⟨domainB, codomainB⟩ :=
         fixMatcherPlaceholderSupply_boundedBy placeholder
       have ext := SupplyExtends.fixMatcherPlaceholder placeholder
-      have bodyContextB : Context.BoundedBy _
+      have bodyContextB : NamedContext.BoundedBy _
           ((argument, NamedScheme.mono domain) ::
             (self, NamedScheme.mono (.fn domain codomain)) :: context) :=
-        Context.BoundedBy.cons
+        NamedContext.BoundedBy.cons
         (NamedScheme.BoundedBy.ofMono domainB)
-        (Context.BoundedBy.cons
+        (NamedContext.BoundedBy.cons
           (NamedScheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
           (contextBounded.mono ext))
       obtain ⟨S₁b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
@@ -1258,13 +1258,13 @@ theorem DDSynthOrigin.factorize
 
 theorem DDSynthsOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expressions : List Expr} {targets : List Ty}
+    {context : NamedContext} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDSynthsOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context) :
+    (contextBounded : NamedContext.BoundedBy q context) :
     DDSynthsOrigin.StateFactorization origin :=
   match origin with
   | .nil => DDErasure.StateFactorization.refl _ _ _
@@ -1278,13 +1278,13 @@ theorem DDSynthsOrigin.factorize
 
 theorem DDCheckOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expression : Expr} {expected : Ty}
+    {context : NamedContext} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDCheckOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) :
     DDCheckOrigin.StateFactorization origin :=
   match origin with
@@ -1295,13 +1295,13 @@ theorem DDCheckOrigin.factorize
 
 theorem DDChecksOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {expressions : List Expr} {expecteds : List Ty}
+    {context : NamedContext} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDChecksOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (expectedsBounded : ∀ expected ∈ expecteds, expected.BoundedBy q) :
     DDChecksOrigin.StateFactorization origin :=
   match origin with
@@ -1320,14 +1320,14 @@ theorem DDChecksOrigin.factorize
 
 theorem DDPatternOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPattern signature q S context parameters bindingsIn pattern dual
       bindingsOut q' S'} {ledger ledger' : CapabilityOriginLedger}
     (origin : DDPatternOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (parametersBounded : PatternCtx.BoundedBy q parameters)
     (bindingsBounded : MonoCtx.BoundedBy q bindingsIn) :
     DDPatternOrigin.StateFactorization origin :=
@@ -1339,7 +1339,7 @@ theorem DDPatternOrigin.factorize
   | .wild => DDPatternOrigin.stateFactorization_wild _ _ _ _ _ _ _
   | .pval expressionOrigin => by
       have expressionFactor := DDSynthOrigin.factorize expressionOrigin closed
-        Sb (Context.BoundedBy.append bindingsBounded.toContext contextBounded)
+        Sb (NamedContext.BoundedBy.append bindingsBounded.toContext contextBounded)
       exact expressionFactor.trans
         (DDErasure.StateFactorization.ofTransition
           (SupplyExtends.bumpCap _ 1)
@@ -1442,14 +1442,14 @@ theorem DDPatternOrigin.factorize
 
 theorem DDPatternsOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPatterns signature q S context parameters bindingsIn patterns
       duals bindingsOut q' S'} {ledger ledger' : CapabilityOriginLedger}
     (origin : DDPatternsOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (parametersBounded : PatternCtx.BoundedBy q parameters)
     (bindingsBounded : MonoCtx.BoundedBy q bindingsIn) :
     DDPatternsOrigin.StateFactorization origin :=
@@ -1467,14 +1467,14 @@ theorem DDPatternsOrigin.factorize
 
 theorem DDArmsOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
+    {context : NamedContext} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDArms signature q S context ppBindings arms clauseTarget
       bodyTarget q' S'} {ledger ledger' : CapabilityOriginLedger}
     (origin : DDArmsOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (bindingsBounded : MonoCtx.BoundedBy q ppBindings)
     (clauseBounded : clauseTarget.BoundedBy q)
     (bodyBounded : bodyTarget.BoundedBy q) :
@@ -1485,8 +1485,8 @@ theorem DDArmsOrigin.factorize
       obtain ⟨S₁b, armBindingsB⟩ := patternOrigin.erase.boundedBy closed
         Sb clauseBounded
       have ext₁ := patternOrigin.erase.supplyExtends
-      have bodyContextB := Context.BoundedBy.append
-        (Context.BoundedBy.append armBindingsB.toContext
+      have bodyContextB := NamedContext.BoundedBy.append
+        (NamedContext.BoundedBy.append armBindingsB.toContext
           ((bindingsBounded.mono ext₁).toContext))
         (contextBounded.mono ext₁)
       have S₂b := bodyOrigin.erase.boundedBy closed S₁b bodyContextB
@@ -1505,13 +1505,13 @@ theorem DDArmsOrigin.factorize
 
 theorem DDClauseOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clause : Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDClause signature q S context clause sharedTarget holes q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     (origin : DDClauseOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (sharedBounded : sharedTarget.BoundedBy q) :
     DDClauseOrigin.StateFactorization origin :=
   match origin with
@@ -1544,14 +1544,14 @@ theorem DDClauseOrigin.factorize
 
 theorem DDClausesOrigin.factorize
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
-    {context : Context} {clauses : List Clause} {sharedTarget : Ty}
+    {context : NamedContext} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
     {S' : Subst}
     {raw : DDClauses signature q S context clauses sharedTarget holeLists q'
       S'} {ledger ledger' : CapabilityOriginLedger}
     (origin : DDClausesOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
-    (contextBounded : Context.BoundedBy q context)
+    (contextBounded : NamedContext.BoundedBy q context)
     (sharedBounded : sharedTarget.BoundedBy q) :
     DDClausesOrigin.StateFactorization origin :=
   match origin with

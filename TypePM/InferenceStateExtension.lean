@@ -148,7 +148,7 @@ theorem InferState.stateExtension_freezeCapabilityExport
 /-! ## Batch instantiation -/
 
 theorem instantiateSchemeInState_stateExtension
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     state.StateExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
@@ -182,8 +182,8 @@ theorem instantiateCtorInState_stateExtension
 
 theorem instantiateDualInState_stateExtension
     (signature : FrozenSig)
-    (rawContext : Context) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : Context) (parameters : PatternCtx)
+    (rawContext : NamedContext) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : NamedContext) (parameters : PatternCtx)
     (bindings : MonoCtx) (state : InferState) (scheme : DualScheme) :
     state.StateExtension
       (instantiateDualInState signature rawContext rawParameters rawBindings
@@ -202,7 +202,7 @@ theorem instantiateDualInState_stateExtension
     exact List.mem_append_left _ membership
 
 theorem instantiateSchemeInState_stateExtension_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
     {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
@@ -221,8 +221,8 @@ theorem instantiateCtorInState_stateExtension_of_eq
     (instantiateCtorInState_stateExtension state scheme) success
 
 theorem instantiateDualInState_stateExtension_of_eq
-    {signature : FrozenSig} {rawContext : Context}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
+    {signature : FrozenSig} {rawContext : NamedContext}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}

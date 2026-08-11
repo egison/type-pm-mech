@@ -267,7 +267,7 @@ theorem DispatchTrace.pctor_not_finalCatchAll
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {prevailing : Subst} {SF : RuntimeSigF} {environment : Env}
     {value : Value} {original : List Clause} {next : Expr}
-    {catchName : String} {catchBody : Expr} {context : Context}
+    {catchName : String} {catchBody : Expr} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {name : String} {patterns : List Pattern} {capability : Cap} {target : Ty}
     (resolution : TerminalPatternResolution signature prevailing context
@@ -299,7 +299,7 @@ theorem DispatchTrace.ptuple_not_finalCatchAll
     {signature : FrozenSig} {prevailing : Subst}
     {SF : RuntimeSigF} {environment : Env} {value : Value}
     {original : List Clause} {next : Expr} {catchName : String}
-    {catchBody : Expr} {context : Context} {parameters : PatternCtx}
+    {catchBody : Expr} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patterns : List Pattern}
     {capability : Cap} {target : Ty}
     (resolution : TerminalPatternResolution signature prevailing context
@@ -323,7 +323,7 @@ theorem DispatchTrace.nonCatchAll_or_primitive
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {prevailing : Subst} {SF : RuntimeSigF} {environment : Env}
     {value : Value} {original clauses : List Clause} {next body : Expr}
-    {dp : DPat} {arms : List Arm} {context : Context}
+    {dp : DPat} {arms : List Arm} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {pattern : Pattern} {capability : Cap} {target : Ty}
     {pp : PPat}
@@ -854,7 +854,7 @@ context.  In particular, it cannot depend on variables merely captured by an
 earlier PP hole in the same compound pattern.
 -/
 inductive CaptureAdm (signature : FrozenSig)
-    (context : Context) (input : MonoCtx) :
+    (context : NamedContext) (input : MonoCtx) :
     PPat → Pattern → Ty → MonoCtx → Prop where
   | hole {pattern target} :
       CaptureAdm signature context input .hole pattern target []
@@ -877,7 +877,7 @@ inductive CaptureAdm (signature : FrozenSig)
 
 /-- Pointwise capture admissibility at one fixed atom-input context. -/
 inductive CaptureAdms (signature : FrozenSig)
-    (context : Context) (input : MonoCtx) :
+    (context : NamedContext) (input : MonoCtx) :
     List PPat → List Pattern → List Ty → MonoCtx → Prop where
   | nil : CaptureAdms signature context input [] [] [] []
   | cons {pp pattern target bindings pps patterns targets restBindings} :
@@ -891,7 +891,7 @@ end
 
 /-- Terminal value patterns retain their expression typing and input. -/
 theorem TerminalPatternResolution.pval_parts
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
     {target : Ty} {expression : Expr}
     (typing : TerminalPatternResolution signature prevailing context parameters
@@ -903,7 +903,7 @@ theorem TerminalPatternResolution.pval_parts
 
 /-- Inversion of a terminal constructor pattern at its actual indices. -/
 theorem TerminalPatternResolution.ctor_parts
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
     {target : Ty} {name : String} {patterns : List Pattern}
     (typing : TerminalPatternResolution signature prevailing context parameters
@@ -919,7 +919,7 @@ theorem TerminalPatternResolution.ctor_parts
 
 /-- Inversion of a terminal tuple pattern at its actual indices. -/
 theorem TerminalPatternResolution.tuple_parts
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx} {capability : Cap}
     {target : Ty} {patterns : List Pattern}
     (typing : TerminalPatternResolution signature prevailing context parameters
@@ -934,7 +934,7 @@ theorem TerminalPatternResolution.tuple_parts
 
 /-- Empty terminal pattern lists expose their exact endpoint indices. -/
 theorem TerminalPatternResolutions.nil_parts
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx} {duals : List Dual}
     (typing : TerminalPatternResolutions signature prevailing context parameters
       input [] duals output) : duals = [] ∧ output = input := by
@@ -943,7 +943,7 @@ theorem TerminalPatternResolutions.nil_parts
 
 /-- Nonempty terminal pattern lists expose their threaded head and tail. -/
 theorem TerminalPatternResolutions.cons_parts
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {duals : List Dual}
     (typing : TerminalPatternResolutions signature prevailing context parameters
@@ -1051,7 +1051,7 @@ theorem captureAdm_of_order_at
     (ppTyping : TerminalPPatResolution signature prevailing pp target holes
       ppBindings) :
     ∀ {atRoot : Bool} {holeCapabilities : List Cap}
-      {patternPrevailing : Subst} {context : Context}
+      {patternPrevailing : Subst} {context : NamedContext}
       {parameters : PatternCtx} {rootInput current output : MonoCtx}
       {pattern : Pattern}
       {producerCapability patternCapability : Cap}
@@ -1068,7 +1068,7 @@ theorem captureAdm_of_order_at
   refine TerminalPPatResolution.rec
     (motive_1 := fun pp target holes ppBindings _ =>
       ∀ {atRoot : Bool} {holeCapabilities : List Cap}
-        {patternPrevailing : Subst} {context : Context}
+        {patternPrevailing : Subst} {context : NamedContext}
         {parameters : PatternCtx} {rootInput current output : MonoCtx}
         {pattern : Pattern}
         {producerCapability patternCapability : Cap}
@@ -1084,7 +1084,7 @@ theorem captureAdm_of_order_at
           (finished = false → output = rootInput))
     (motive_2 := fun pps targets holes ppBindings _ =>
       ∀ {holeCapabilities childCapabilities : List Cap}
-        {patternPrevailing : Subst} {context : Context}
+        {patternPrevailing : Subst} {context : NamedContext}
         {parameters : PatternCtx} {rootInput current output : MonoCtx}
         {patterns : List Pattern} {patternDuals : List Dual}
         {seen finished : Bool},
@@ -1231,7 +1231,7 @@ theorem captureAdm_of_order_at
 theorem captureAdm_of_coreOrder
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF} {environment : Env}
-    {ppPrevailing patternPrevailing : Subst} {context : Context}
+    {ppPrevailing patternPrevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {pp : PPat} {pattern : Pattern}
     {producerCapability patternCapability : Cap} {target : Ty}
@@ -1262,7 +1262,7 @@ it is not exposed by the public safety theorem.
 -/
 theorem ppm_environment_typed
     {signature : FrozenSig} {SF : RuntimeSigF}
-    {context : Context} {input : MonoCtx} {environment : Env}
+    {context : NamedContext} {input : MonoCtx} {environment : Env}
     (evalPreserve :
       ∀ {expression value target},
         Eval SF environment expression value →
@@ -1419,7 +1419,7 @@ variable {signature : FrozenSig}
 mutual
 
 theorem TerminalPatternResolution.embedVars_bound
-    : ∀ {prevailing : Subst} {context : Context}
+    : ∀ {prevailing : Subst} {context : NamedContext}
         {parameters : PatternCtx} {bindings : MonoCtx} {pattern : Pattern}
         {capability : Cap} {target : Ty} {output : MonoCtx},
       TerminalPatternResolution signature prevailing context parameters
@@ -1465,7 +1465,7 @@ termination_by prevailing context parameters bindings pattern capability target
   output _typing => sizeOf pattern
 
 theorem TerminalPatternResolutions.embedVarsList_bound
-    (scope : Subst × Context × PatternCtx) : ∀ {bindings : MonoCtx}
+    (scope : Subst × NamedContext × PatternCtx) : ∀ {bindings : MonoCtx}
         {patterns : List Pattern} {duals : List Dual} {output : MonoCtx},
       TerminalPatternResolutions signature scope.1 scope.2.1 scope.2.2
           bindings patterns duals output →
@@ -1491,7 +1491,7 @@ end
 /-- With no fixed pattern parameters, actual resolution rules out every
 embedded occurrence. -/
 theorem TerminalPatternResolution.embedVars_nil_of_parameters_nil
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {target : Ty} {output : MonoCtx}
     (typing : TerminalPatternResolution signature prevailing context []
@@ -1507,7 +1507,7 @@ theorem TerminalPatternResolution.embedVars_nil_of_parameters_nil
 
 /-- A top-level resolved pattern satisfies the state no-embedding invariant. -/
 theorem ResolvedPatternTy.noEmbedInOr_of_parameters_nil
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {target : Ty} {output : MonoCtx}
     (typing : ResolvedPatternTy signature prevailing context [] bindings
@@ -1669,7 +1669,7 @@ def RuntimePatternLinear (SF : RuntimeSigF) : Prop :=
 
 /-- Bidirectional source/runtime agreement supplies the erased linear shape. -/
 theorem RuntimeSigAgrees.runtimePatternLinear
-    {signature : FrozenSig} {context : Context} {SF : RuntimeSigF}
+    {signature : FrozenSig} {context : NamedContext} {SF : RuntimeSigF}
     (agreement : RuntimeSigAgrees signature context SF) :
     RuntimePatternLinear SF := by
   intro name runtime found
@@ -2440,7 +2440,7 @@ theorem Step.embedOccs
 /-- A resolved variable pattern appends exactly its actual target binding. -/
 theorem ResolvedPatternTy.pvar_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {name : String} {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.pvar name) capability target output) :
@@ -2454,7 +2454,7 @@ theorem ResolvedPatternTy.pvar_inversion
 /-- A resolved wildcard leaves the binding context unchanged. -/
 theorem ResolvedPatternTy.wild_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       .wild capability target output) : output = input := by
@@ -2465,7 +2465,7 @@ theorem ResolvedPatternTy.wild_inversion
 expression typing used by `MS-SOME-VAL`. -/
 theorem ResolvedPatternTy.pval_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {expression : Expr} {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.pval expression) capability target output) :
@@ -2478,7 +2478,7 @@ theorem ResolvedPatternTy.pval_inversion
 /-- Conjunction resolution exposes its two source-threaded actual children. -/
 theorem ResolvedPatternTy.and_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {left right : Pattern} {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.pand left right) capability target output) :
@@ -2494,7 +2494,7 @@ theorem ResolvedPatternTy.and_inversion
 /-- Disjunction resolution exposes both alternatives at the same indices. -/
 theorem ResolvedPatternTy.or_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {left right : Pattern} {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.por left right) capability target output) :
@@ -2510,7 +2510,7 @@ theorem ResolvedPatternTy.or_inversion
 parameter context and does not add a source binding. -/
 theorem ResolvedPatternTy.embed_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {name : String} {capability : Cap} {target : Ty}
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.embed name) capability target output) :
@@ -2522,7 +2522,7 @@ theorem ResolvedPatternTy.embed_inversion
 /-- Inversion of the leading actual argument retained by a pattern-function
 node. -/
 theorem PiEnvTyped.cons_inversion
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {name : String} {pattern : Pattern}
     {rest : PiEnv} {dual : Dual} {duals : List Dual}
     (typing : PiEnvTyped signature context parameters input
@@ -2563,7 +2563,7 @@ theorem PiEnv.find?_eq_some_of_mem
 
 /-- Pair actual terminal resolutions with any same-length formal-name list. -/
 theorem TerminalPatternResolutions.piEnvTyped
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {patterns : List Pattern} {duals : List Dual}
     (typing : TerminalPatternResolutions signature prevailing context
@@ -2631,7 +2631,7 @@ theorem RemInParameters.aligned_zip
 prefix types a new source input, and every continuation consumes that input
 to the original atom output. -/
 def MAtomTypedOutput
-    (signature : FrozenSig) (context : Context) (parameters : PatternCtx)
+    (signature : FrozenSig) (context : NamedContext) (parameters : PatternCtx)
     (input output : MonoCtx) (continuations : List (List Atom))
     (newSubstitution : MatchSubst) : Prop :=
   ∀ {substitution : MatchSubst},
@@ -2653,7 +2653,7 @@ theorem MatcherAtTarget.something
 /-- A resolved tuple atom decomposes into the exactly typed component stack. -/
 theorem ResolvedPatternTy.tuple_atomStack
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    {prevailing : Subst} {context : Context} {parameters : PatternCtx}
+    {prevailing : Subst} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patterns : List Pattern}
     {capability : Cap} {target : Ty} {matchers values : List Value}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2674,7 +2674,7 @@ theorem ResolvedPatternTy.tuple_atomStack
 
 /-- `MS-SOME-WC` preserves the source input and has one empty continuation. -/
 theorem matom_someWC_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {value : Value}
     {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2693,7 +2693,7 @@ theorem matom_someWC_typed
 /-- `MS-SOME-VAR` extends the reversed runtime substitution by one exactly
 typed source binding. -/
 theorem matom_someVar_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {name : String}
     {value : Value} {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2713,7 +2713,7 @@ theorem matom_someVar_typed
 
 /-- A successful `something` value comparison consumes no bindings. -/
 theorem matom_someValEq_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {expression : Expr}
     {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2731,7 +2731,7 @@ theorem matom_someValEq_typed
 /-- A failed value comparison has no continuation, hence is type safe
 vacuously. -/
 theorem matom_someValNeq_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {expression : Expr}
     {capability : Cap} {target : Ty}
     (_resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2743,7 +2743,7 @@ theorem matom_someValNeq_typed
 
 /-- `MS-AND` exposes the two threaded child atoms. -/
 theorem matom_and_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {left right : Pattern}
     {matcher value : Value} {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2763,7 +2763,7 @@ theorem matom_and_typed
 
 /-- `MS-OR` gives two independently typed alternatives. -/
 theorem matom_or_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {left right : Pattern}
     {matcher value : Value} {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2784,7 +2784,7 @@ theorem matom_or_typed
 /-- `MS-TUPLE` is the component-stack theorem packaged as an atom output. -/
 theorem matom_tuple_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {prevailing : Subst} {patterns : List Pattern}
     {matchers values : List Value} {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2806,7 +2806,7 @@ theorem matom_tuple_typed
 /-- `MS-PROD-SOME` reuses the same resolved primitive pattern with the
 target-polymorphic `something` matcher. -/
 theorem matom_prodSome_typed
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {prevailing : Subst} {pattern : Pattern}
     {value : Value} {capability : Cap} {target : Ty}
     (resolution : ResolvedPatternTy signature prevailing context parameters
@@ -2836,7 +2836,7 @@ theorem matcher_success_continuations_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF} {environment : Env}
     {patternPrevailing ppPrevailing : Subst}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {pattern : Pattern}
     {producerCapability patternCapability : Cap} {target : Ty}
     {pp : PPat} {holes : List Dual} {ppBindings : MonoCtx}
@@ -2903,7 +2903,7 @@ returns the empty continuation. -/
 theorem matcher_success_primitive_continuations_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF} {environment : Env}
-    {prevailing clausePrevailing : Subst} {context : Context}
+    {prevailing clausePrevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx} {pattern : Pattern}
     {patternCapability : Cap} {target : Ty} {pp : PPat}
     {holes : List Dual} {ppBindings : MonoCtx} {captures : List Pattern}
@@ -2965,7 +2965,7 @@ narrow capture fact: a successful PPM can only be a hole, wildcard, or value
 pattern at these indices. -/
 theorem captureAdm_of_primitive_success
     {signature : FrozenSig} {SF : RuntimeSigF} {environment : Env}
-    {ppPrevailing patternPrevailing : Subst} {context : Context}
+    {ppPrevailing patternPrevailing : Subst} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {pp : PPat} {pattern : Pattern} {patternCapability : Cap} {target : Ty}
     {holes : List Dual} {ppBindings : MonoCtx}
@@ -3000,7 +3000,7 @@ very `MAtom.matcher` constructor. -/
 theorem matom_matcher_success_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF} {environment matcherEnvironment : Env}
-    {original clauses : List Clause} {context : Context}
+    {original clauses : List Clause} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {prevailing : Subst} {pattern : Pattern} {capability : Cap}
     {target : Ty} {value : Value} {pp : PPat} {next : Expr}
@@ -3035,7 +3035,7 @@ theorem matom_matcher_success_typed
           clauseBindings →
         MonoEnvTys signature clauseBindings ppEnvironment)
     (bodyPreserve :
-      ∀ {bodyContext : Context} {bodyTarget : Ty},
+      ∀ {bodyContext : NamedContext} {bodyTarget : Ty},
         Eval SF (dataEnvironment ++ ppEnvironment ++ matcherEnvironment)
           body decomposition →
         EnvTyped signature bodyContext
@@ -3043,7 +3043,7 @@ theorem matom_matcher_success_typed
         RuntimeTyping signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
-      ∀ {nextContext : Context} {nextTarget : Ty},
+      ∀ {nextContext : NamedContext} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
         RuntimeTyping signature nextContext next nextTarget →
@@ -3151,7 +3151,7 @@ independent capability. -/
 theorem matom_matcher_success_primitive_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF} {environment matcherEnvironment : Env}
-    {original clauses : List Clause} {context : Context}
+    {original clauses : List Clause} {context : NamedContext}
     {parameters : PatternCtx} {input output : MonoCtx}
     {prevailing : Subst} {pattern : Pattern} {patternCapability : Cap}
     {target : Ty} {value : Value} {pp : PPat} {next : Expr}
@@ -3184,7 +3184,7 @@ theorem matom_matcher_success_primitive_typed
           clauseBindings →
         MonoEnvTys signature clauseBindings ppEnvironment)
     (bodyPreserve :
-      ∀ {bodyContext : Context} {bodyTarget : Ty},
+      ∀ {bodyContext : NamedContext} {bodyTarget : Ty},
         Eval SF (dataEnvironment ++ ppEnvironment ++ matcherEnvironment)
           body decomposition →
         EnvTyped signature bodyContext
@@ -3192,7 +3192,7 @@ theorem matom_matcher_success_primitive_typed
         RuntimeTyping signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
-      ∀ {nextContext : Context} {nextTarget : Ty},
+      ∀ {nextContext : NamedContext} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
         RuntimeTyping signature nextContext next nextTarget →
@@ -3337,7 +3337,7 @@ theorem MatcherAtTarget.matcher_nextArm
 
 /-- Atom typing follows the private suffix cursor after one PP failure. -/
 theorem AtomTy.matcher_nextClause
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {pattern : Pattern} {environment : Env}
     {original : List Clause} {pp : PPat} {next : Expr} {arms : List Arm}
     {clauses : List Clause} {value : Value}
@@ -3355,7 +3355,7 @@ theorem AtomTy.matcher_nextClause
 
 /-- Atom typing follows the private suffix cursor after one data-arm failure. -/
 theorem AtomTy.matcher_nextArm
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {pattern : Pattern} {environment : Env}
     {original : List Clause} {pp : PPat} {next : Expr} {dp : DPat}
     {body : Expr} {arms : List Arm} {clauses : List Clause} {value : Value}
@@ -3475,7 +3475,7 @@ inductive EvalRuntimeSigAgrees
       {lengths : substitutions.length = values.length}
       {evaluations : ∀ pair ∈ substitutions.zip values,
         Eval SF (pair.1 ++ environment) body pair.2} :
-      (∀ {context : Context} {result : Ty},
+      (∀ {context : NamedContext} {result : Ty},
         EnvTyped signature context environment →
         RuntimeTyping signature context (.matchAll target matcher pattern body) result →
         RuntimeSigAgrees signature context SF) →
@@ -3711,7 +3711,7 @@ theorem MAtomDispatchTrace.pristine
 concrete failure trace before invoking its exact recursive `MAtom` IH. -/
 theorem matom_matcherPPFail_typed
     {signature : FrozenSig} {SF : RuntimeSigF} {environment : Env}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {matcherEnvironment : Env} {original : List Clause}
     {pattern : Pattern} {value : Value} {pp : PPat} {next : Expr}
     {arms : List Arm} {clauses : List Clause}
@@ -3742,7 +3742,7 @@ theorem matom_matcherPPFail_typed
 certified matcher type and the concrete failure trace. -/
 theorem matom_matcherDPFail_typed
     {signature : FrozenSig} {SF : RuntimeSigF} {environment : Env}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {matcherEnvironment : Env} {original : List Clause}
     {pattern : Pattern} {value : Value} {pp : PPat} {next : Expr}
     {dp : DPat} {body : Expr} {arms : List Arm} {clauses : List Clause}
@@ -3782,7 +3782,7 @@ private abbrev EvalPreservationKernel
   ∀ {environment : Env} {expression : Expr} {value : Value}
       {evaluation : Eval SF environment expression value},
     EvalRuntimeSigAgrees signature SF evaluation →
-    ∀ {context : Context} {target : Ty},
+    ∀ {context : NamedContext} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
       RuntimeTyping signature context expression target →
@@ -3805,7 +3805,7 @@ private abbrev PPMPreservationKernel
       {matching : PPM SF environment pp pattern
         (some (captures, ppEnvironment))},
     PPMRuntimeSigAgrees signature SF matching →
-    ∀ {context : Context} {input : MonoCtx} {target : Ty}
+    ∀ {context : NamedContext} {input : MonoCtx} {target : Ty}
       {bindings : MonoCtx},
       EnvPristine environment →
       EnvTyped signature (input.toContext ++ context) environment →
@@ -3876,7 +3876,7 @@ private theorem PPMRuntimeSigAgrees.pristine_with
 capture derivation. -/
 private theorem CaptureAdms.ppm_environments_typed
     {signature : FrozenSig} {_SF : RuntimeSigF}
-    {context : Context} {input : MonoCtx}
+    {context : NamedContext} {input : MonoCtx}
     {pps : List PPat} {patterns : List Pattern} {targets : List Ty}
     {bindings : MonoCtx}
     (admissible : CaptureAdms signature context input pps patterns targets
@@ -3928,7 +3928,7 @@ private theorem PPMRuntimeSigAgrees.preserve_with
     (agreement : PPMRuntimeSigAgrees signature SF matching)
     {captures : List Pattern} {ppEnvironment : Env}
     (resultEquality : result = some (captures, ppEnvironment))
-    {context : Context} {input : MonoCtx} {target : Ty}
+    {context : NamedContext} {input : MonoCtx} {target : Ty}
     {bindings : MonoCtx}
     (environmentPristine : EnvPristine environment)
     (environmentTyping :
@@ -3942,7 +3942,7 @@ private theorem PPMRuntimeSigAgrees.preserve_with
         {runtimeResult} _ _ =>
       ∀ {actualCaptures : List Pattern} {actualEnvironment : Env},
         runtimeResult = some (actualCaptures, actualEnvironment) →
-        ∀ {sourceContext : Context} {sourceInput : MonoCtx}
+        ∀ {sourceContext : NamedContext} {sourceInput : MonoCtx}
           {sourceTarget : Ty} {sourceBindings : MonoCtx},
           EnvPristine runtimeEnvironment →
           EnvTyped signature (sourceInput.toContext ++ sourceContext)
@@ -4029,7 +4029,7 @@ private theorem MAtomRuntimeSigAgrees.preserve_with
     {continuations : List (List Atom)} {new : MatchSubst}
     {reduction : MAtom SF environment pattern matcher value continuations new}
     (agreement : MAtomRuntimeSigAgrees signature SF reduction)
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx}
     (environmentPristine : EnvPristine environment)
     (valuePristine : ValuePristine value)
@@ -4236,7 +4236,7 @@ theorem MAtomReady.progress
     {SF : RuntimeSigF} {environment : Env} {pattern : Pattern}
     {matcher value : Value}
     (ready : MAtomReady SF environment pattern matcher value) :
-    ∀ {context : Context} {parameters : PatternCtx}
+    ∀ {context : NamedContext} {parameters : PatternCtx}
       {input output : MonoCtx},
       AtomTy signature context parameters input ⟨pattern, matcher, value⟩
         output →
@@ -4351,7 +4351,7 @@ inductive StepReady (SF : RuntimeSigF) : MState → Prop where
 
 /-- The isolated inner state retained by a typed pattern-function node. -/
 theorem TreeTy.mnode_inner
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {trees : List Tree} {environment : Env}
     {substitution : MatchSubst} {piE : PiEnv}
     (typing : TreeTy signature context parameters input
@@ -4371,7 +4371,7 @@ theorem TreeTy.mnode_inner
 /-- Full inversion data for rebuilding an isolated node after one inner
 transition. -/
 theorem TreeTy.mnode_inversion
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {trees : List Tree} {environment : Env}
     {substitution : MatchSubst} {piE : PiEnv}
     (typing : TreeTy signature context parameters input
@@ -4439,7 +4439,7 @@ theorem PiEnv.leading_suffix
 /-- Rebuild the public stack after one typed atom reduction. -/
 theorem Step.reduce_preservation
     {signature : FrozenSig} {SF : RuntimeSigF}
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     {stack : List Tree} {environment : Env} {substitution : MatchSubst}
     {pattern : Pattern} {matcher value : Value}
     {continuations : List (List Atom)} {new : MatchSubst}
@@ -4484,7 +4484,7 @@ theorem Step.reduce_preservation
 state. -/
 theorem Step.mnodeStep_preservation
     {signature : FrozenSig} {SF : RuntimeSigF}
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     {stack : List Tree} {environment : Env} {substitution : MatchSubst}
     {tree : Tree} {innerStack : List Tree} {innerEnvironment : Env}
     {innerSubstitution : MatchSubst} {piE : PiEnv}
@@ -4570,7 +4570,7 @@ theorem Step.mnodeStep_preservation
 typed actual pattern and advances the retained actual-argument suffix. -/
 theorem Step.mnodeVarpat_preservation
     {signature : FrozenSig} {SF : RuntimeSigF}
-    {context : Context} {outerParameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {outerParameters : PatternCtx} {goal : MonoCtx}
     {stack : List Tree} {environment : Env} {substitution : MatchSubst}
     {name : String} {pattern : Pattern} {matcher value : Value}
     {innerStack : List Tree} {innerEnvironment : Env}
@@ -4658,7 +4658,7 @@ theorem Step.mnodeVarpat_preservation
 its outer binding cursor is already the input cursor of the tail stack. -/
 theorem Step.mnodeDone_preservation
     {signature : FrozenSig} {SF : RuntimeSigF}
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     {stack : List Tree} {environment : Env} {substitution : MatchSubst}
     {innerEnvironment : Env} {innerSubstitution : MatchSubst}
     {piE : PiEnv}
@@ -4722,7 +4722,7 @@ private def PatfunPreservationKernel
       {_found : List.find? (fun entry => entry.1 == name) SF =
         some (name, runtime)}
       {_length : runtime.params.length = arguments.length}
-      {context : Context} {parameters : PatternCtx} {goal : MonoCtx},
+      {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx},
     RuntimeSigAgrees signature context SF →
     MStateTyAt signature context parameters
       ⟨.atom ⟨.papp name arguments, matcher, value⟩ :: stack,
@@ -4737,7 +4737,7 @@ checked source definition and its concrete value-flow instance. -/
 private theorem PatfunPreservationKernel.of_instantiatedBody
     {signature : FrozenSig} {SF : RuntimeSigF}
     (instantiate :
-      ∀ {context : Context} {definition : PatternDef} {scheme : DualScheme}
+      ∀ {context : NamedContext} {definition : PatternDef} {scheme : DualScheme}
         (typing : PatternDefTy signature context definition scheme),
         typing.InstantiatedBody) :
     PatfunPreservationKernel signature SF := by
@@ -4919,7 +4919,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
     (generalizedValueFlow :
-      ∀ {context : Context} {expression : Expr} {source : Ty}
+      ∀ {context : NamedContext} {expression : Expr} {source : Ty}
         (typing : RuntimeTyping signature context expression source),
         typing.GeneralizedValueFlow)
     (patfunPreserve : PatfunPreservationKernel signature SF)
@@ -4927,7 +4927,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     {evaluation : Eval SF environment expression value}
     (agreement : EvalRuntimeSigAgrees signature SF evaluation) :
     (EnvPristine environment → ValuePristine value) ∧
-    (∀ {context : Context} {target : Ty},
+    (∀ {context : NamedContext} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
       RuntimeTyping signature context expression target →
@@ -4935,7 +4935,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   refine EvalRuntimeSigAgrees.rec
     (motive_1 := fun {runtimeEnvironment} {sourceExpression} {result} _ _ =>
       (EnvPristine runtimeEnvironment → ValuePristine result) ∧
-      (∀ {sourceContext : Context} {sourceTarget : Ty},
+      (∀ {sourceContext : NamedContext} {sourceTarget : Ty},
         EnvPristine runtimeEnvironment →
         EnvTyped signature sourceContext runtimeEnvironment →
         RuntimeTyping signature sourceContext sourceExpression sourceTarget →
@@ -4945,7 +4945,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       (EnvPristine runtimeEnvironment → PPMOutputPristine runtimeResult) ∧
       (∀ {actualCaptures : List Pattern} {actualEnvironment : Env},
         runtimeResult = some (actualCaptures, actualEnvironment) →
-        ∀ {sourceContext : Context} {sourceInput : MonoCtx}
+        ∀ {sourceContext : NamedContext} {sourceInput : MonoCtx}
           {sourceTarget : Ty} {sourceBindings : MonoCtx},
           EnvPristine runtimeEnvironment →
           EnvTyped signature (sourceInput.toContext ++ sourceContext)
@@ -4955,7 +4955,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           MonoEnvTys signature sourceBindings actualEnvironment))
     (motive_3 := fun {runtimeEnvironment} {userPattern} {runtimeMatcher}
         {runtimeValue} {continuations} {newSubstitution} _ _ =>
-      ∀ {sourceContext : Context} {sourceParameters : PatternCtx}
+      ∀ {sourceContext : NamedContext} {sourceParameters : PatternCtx}
         {sourceInput sourceOutput : MonoCtx},
         EnvPristine runtimeEnvironment →
         ValuePristine runtimeValue →
@@ -4969,7 +4969,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
         MAtomTypedOutput signature sourceContext sourceParameters sourceInput
           sourceOutput continuations newSubstitution)
     (motive_4 := fun {state} {states} _ _ =>
-      ∀ {sourceContext : Context} {sourceParameters : PatternCtx}
+      ∀ {sourceContext : NamedContext} {sourceParameters : PatternCtx}
         {goal : MonoCtx},
         RuntimeSigAgrees signature sourceContext SF →
         MStateTyAt signature sourceContext sourceParameters state goal →
@@ -4977,7 +4977,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           MStateTyAt signature sourceContext sourceParameters next goal)
     (motive_5 := fun {state} {substitutions} _ _ =>
       (MStatePristine state → SearchOutputPristine substitutions) ∧
-      (∀ {sourceContext : Context} {sourceParameters : PatternCtx}
+      (∀ {sourceContext : NamedContext} {sourceParameters : PatternCtx}
           {goal : MonoCtx},
         RuntimeSigAgrees signature sourceContext SF →
         MStateTyAt signature sourceContext sourceParameters state goal →
@@ -5202,7 +5202,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
               (List.fst_mem_of_mem_zip member)).append runtimePristine)))
     · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
       exact preserveSourceCoercions signatureWF typing runtimeTyping
-        (fun {terminalContext : Context} {terminalTarget : Ty}
+        (fun {terminalContext : NamedContext} {terminalTarget : Ty}
             (terminalTyping : RuntimeTyping signature terminalContext
               (.matchAll targetExpression matcherExpression pattern body)
               terminalTarget)
@@ -5593,7 +5593,7 @@ theorem EvalRuntimeSigAgrees.preservation
     {environment : Env} {expression : Expr} {value : Value}
     {evaluation : Eval SF environment expression value}
     (agreement : EvalRuntimeSigAgrees signature SF evaluation)
-    {context : Context} {target : Ty}
+    {context : NamedContext} {target : Ty}
     (environmentPristine : EnvPristine environment)
     (environmentTyping : EnvTyped signature context environment)
     (sourceTyping : RuntimeTyping signature context expression target) :
@@ -5613,7 +5613,7 @@ private theorem MAtomRuntimeSigAgrees.preservation
     {continuations : List (List Atom)} {new : MatchSubst}
     {reduction : MAtom SF environment pattern matcher value continuations new}
     (agreement : MAtomRuntimeSigAgrees signature SF reduction)
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     (environmentPristine : EnvPristine environment)
     (valuePristine : ValuePristine value)
     (matcherPristine : MAtomInputPristine pattern matcher)
@@ -5658,7 +5658,7 @@ theorem StepRuntimeSigAgrees.preservation
     {state : MState} {states : List MState}
     {reduction : Step SF state states}
     (derivationAgreement : StepRuntimeSigAgrees signature SF reduction)
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     (runtimeAgreement : RuntimeSigAgrees signature context SF)
     (stateTyping : MStateTyAt signature context parameters state goal) :
     ∀ next ∈ states,
@@ -5668,7 +5668,7 @@ theorem StepRuntimeSigAgrees.preservation
     (motive_2 := fun _ _ => True)
     (motive_3 := fun _ _ => True)
     (motive_4 := fun {runtimeState} {runtimeStates} _ _ =>
-      ∀ {sourceContext : Context} {sourceParameters : PatternCtx}
+      ∀ {sourceContext : NamedContext} {sourceParameters : PatternCtx}
         {sourceGoal : MonoCtx},
         RuntimeSigAgrees signature sourceContext SF →
         MStateTyAt signature sourceContext sourceParameters runtimeState
@@ -5778,7 +5778,7 @@ theorem ReachesRuntimeSigAgrees.typed
     {SF : RuntimeSigF}
     {start finish : MState} {reachable : Reaches SF start finish}
     (pathAgreement : ReachesRuntimeSigAgrees signature SF reachable)
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     (runtimeAgreement : RuntimeSigAgrees signature context SF)
     (initialTyping : MStateTyAt signature context parameters start goal) :
     MStateTyAt signature context parameters finish goal := by
@@ -5797,7 +5797,7 @@ theorem SearchRuntimeSigAgrees.substitutions_typed
     {state : MState} {substitutions : List MatchSubst}
     {search : Search SF state substitutions}
     (searchAgreement : SearchRuntimeSigAgrees signature SF search)
-    {context : Context} {parameters : PatternCtx} {goal : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {goal : MonoCtx}
     (runtimeAgreement : RuntimeSigAgrees signature context SF)
     (initialTyping : MStateTyAt signature context parameters state goal) :
     ∀ substitution ∈ substitutions,
@@ -5808,7 +5808,7 @@ theorem SearchRuntimeSigAgrees.substitutions_typed
     (motive_3 := fun _ _ => True)
     (motive_4 := fun _ _ => True)
     (motive_5 := fun {runtimeState} {runtimeSubstitutions} _ _ =>
-      ∀ {sourceContext : Context} {sourceParameters : PatternCtx}
+      ∀ {sourceContext : NamedContext} {sourceParameters : PatternCtx}
         {sourceGoal : MonoCtx},
         RuntimeSigAgrees signature sourceContext SF →
         MStateTyAt signature sourceContext sourceParameters runtimeState
@@ -5848,7 +5848,7 @@ theorem SearchRuntimeSigAgrees.substitutions_typed
 /-- A top-level atom and the empty initial substitution form the concrete
 typed state used by matcher consistency. -/
 theorem AtomTy.initialState_typed
-    {signature : FrozenSig} {context : Context} {goal : MonoCtx}
+    {signature : FrozenSig} {context : NamedContext} {goal : MonoCtx}
     {environment : Env}
     {pattern : Pattern} {matcher value : Value}
     (environmentPristine : EnvPristine environment)
@@ -5877,7 +5877,7 @@ well-typed pristine initial atom has exactly its source binding context. -/
 theorem matcher_consistency
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     {SF : RuntimeSigF}
-    {context : Context} {goal : MonoCtx} {environment : Env}
+    {context : NamedContext} {goal : MonoCtx} {environment : Env}
     {pattern : Pattern} {matcher value : Value}
     {substitutions : List MatchSubst}
     {search : Search SF
@@ -5906,7 +5906,7 @@ theorem StepReady.stack_ne_nil
 /-- Every locally ready, well-typed nonterminal state takes one concrete step. -/
 theorem StepReady.progress
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    {SF : RuntimeSigF} {context : Context} {parameters : PatternCtx}
+    {SF : RuntimeSigF} {context : NamedContext} {parameters : PatternCtx}
     {state : MState} {goal : MonoCtx}
     (agreement : RuntimeSigAgrees signature context SF)
     (ready : StepReady SF state)

@@ -37,10 +37,10 @@ def concreteProducer : NamedScheme :=
 def consumerExpression : Expr :=
   .ctor "consumeProducer" [.var "producer"]
 
-def polymorphicContext : Context :=
+def polymorphicContext : NamedContext :=
   [("producer", polymorphicProducer)]
 
-def concreteContext : Context :=
+def concreteContext : NamedContext :=
   [("producer", concreteProducer)]
 
 /-- The public, terminally certified entry point rejects producer strengthening. -/

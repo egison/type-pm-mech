@@ -16,7 +16,7 @@ namespace TypePM
 /-- Pointwise expression typing preserves list arity. -/
 theorem ExprsTy.length
     {signature : FrozenSig} :
-    ∀ {context : Context} {expressions : List Expr} {targets : List Ty},
+    ∀ {context : NamedContext} {expressions : List Expr} {targets : List Ty},
     ExprsTy signature context expressions targets →
     expressions.length = targets.length := by
   intro context expressions targets typing
@@ -31,7 +31,7 @@ theorem ExprsTy.length
 /-- Pointwise pattern typing preserves list arity. -/
 theorem PatternTys.length
     {signature : FrozenSig} :
-    ∀ {context : Context} {parameters : PatternCtx}
+    ∀ {context : NamedContext} {parameters : PatternCtx}
       {bindings resultBindings : MonoCtx}
       {patterns : List Pattern} {duals : List Dual},
     PatternTys signature context parameters bindings
@@ -49,7 +49,7 @@ theorem PatternTys.length
 /-- A typed clause list contains exactly one evidence tree per clause. -/
 theorem ClausesTy.length
     {signature : FrozenSig} :
-    ∀ {prevailing : Subst} {context : Context}
+    ∀ {prevailing : Subst} {context : NamedContext}
       {clauses : List Clause} {capability : Cap} {target : Ty}
       {evidence : List Shape.Evidence},
     ClausesTy signature prevailing context clauses capability target evidence →
@@ -65,7 +65,7 @@ theorem ClausesTy.length
 
 /-- Resolution packaging does not change the clause/evidence arity. -/
 theorem ResolvedClausesTy.length
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     {evidence : List Shape.Evidence}
     (typing :
@@ -78,7 +78,7 @@ theorem ResolvedClausesTy.length
 
 /-- Every runtime-certified matcher clause satisfies the core PP order. -/
 theorem ClauseTy.coreOrder
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {clause : Clause} {capability : Cap} {target : Ty}
     {evidence : Shape.Evidence}
     (typing :
@@ -89,7 +89,7 @@ theorem ClauseTy.coreOrder
 
 /-- A typed clause's evidence is the result of the concrete checker. -/
 theorem ClauseTy.checked
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {clause : Clause} {capability : Cap} {target : Ty}
     {evidence : Shape.Evidence}
     (typing :
@@ -113,7 +113,7 @@ theorem ClauseTy.checked
 
 /-- The evidence checker consumes exactly the holes exposed by clause typing. -/
 theorem ClauseTy.evidence_holeCount
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {clause : Clause} {capability : Cap} {target : Ty}
     {evidence : Shape.Evidence}
     (typing :
@@ -129,7 +129,7 @@ theorem ClauseTy.evidence_holeCount
 
 /-- A source-typed matcher literal exposes coverage of its actual clauses. -/
 theorem RuntimeTyping.matcher_coverage
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
       RuntimeTyping signature context (.matcher clauses)
@@ -139,7 +139,7 @@ theorem RuntimeTyping.matcher_coverage
 
 /-- A source-typed matcher literal has a final catch-all. -/
 theorem RuntimeTyping.matcher_catchAllLast
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
       RuntimeTyping signature context (.matcher clauses)
@@ -149,7 +149,7 @@ theorem RuntimeTyping.matcher_catchAllLast
 
 /-- Every source-typed matcher dispatches all required general clauses first. -/
 theorem RuntimeTyping.matcher_dispatchOK
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
       RuntimeTyping signature context (.matcher clauses)
@@ -160,7 +160,7 @@ theorem RuntimeTyping.matcher_dispatchOK
 
 /-- Missing concrete coverage rules out a matcher-literal derivation. -/
 theorem noMatcherTyping_of_not_coverage
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (missing : ¬ CoverageOK signature.toMatcherSig clauses capability) :
     ¬ RuntimeTyping signature context (.matcher clauses)
@@ -170,7 +170,7 @@ theorem noMatcherTyping_of_not_coverage
 
 /-- The actual evidence list retained by T-MATCHER has source-clause arity. -/
 theorem RuntimeTyping.matcher_evidence_length
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
       RuntimeTyping signature context (.matcher clauses)

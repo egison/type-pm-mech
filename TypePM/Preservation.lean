@@ -180,24 +180,24 @@ into data.  Its constructors are exactly the terminal source rules.
 namespace RuntimeTyping
 
 inductive Terminal {signature : FrozenSig} :
-    {context : Context} → {expression : Expr} → {target : Ty} →
+    {context : NamedContext} → {expression : Expr} → {target : Ty} →
     RuntimeTyping signature context expression target → Prop where
-  | var {context : Context} {name : String} {scheme : NamedScheme} {target : Ty}
-      (hfind : Context.find? context name = some scheme)
+  | var {context : NamedContext} {name : String} {scheme : NamedScheme} {target : Ty}
+      (hfind : NamedContext.find? context name = some scheme)
       (hinst : scheme.ValueFlowInst target) :
       Terminal (RuntimeTyping.var hfind hinst)
-  | lam {context : Context} {name : String} {body : Expr}
+  | lam {context : NamedContext} {name : String} {body : Expr}
       {domain codomain : Ty}
       (bodyTyping :
         RuntimeTyping signature ((name, NamedScheme.mono domain) :: context) body codomain) :
       Terminal (RuntimeTyping.lam bodyTyping)
-  | app {context : Context} {function argument : Expr}
+  | app {context : NamedContext} {function argument : Expr}
       {domain codomain : Ty}
       (functionTyping :
         RuntimeTyping signature context function (.fn domain codomain))
       (argumentTyping : RuntimeTyping signature context argument domain) :
       Terminal (RuntimeTyping.app functionTyping argumentTyping)
-  | letE {context : Context} {name : String} {value body : Expr}
+  | letE {context : NamedContext} {name : String} {value body : Expr}
       {valueTy bodyTy : Ty}
       (valueTyping : RuntimeTyping signature context value valueTy)
       (bodyTyping :
@@ -205,7 +205,7 @@ inductive Terminal {signature : FrozenSig} :
           ((name, signature.generalize context valueTy) :: context)
           body bodyTy) :
       Terminal (RuntimeTyping.letE valueTyping bodyTyping)
-  | fixE {context : Context} {self argument : String} {body : Expr}
+  | fixE {context : NamedContext} {self argument : String} {body : Expr}
       {domain codomain : Ty}
       (distinct : self ≠ argument)
       (direct : DirectSelf.Holds self body)
@@ -215,30 +215,30 @@ inductive Terminal {signature : FrozenSig} :
             (self, NamedScheme.mono (.fn domain codomain)) :: context)
           body codomain) :
       Terminal (RuntimeTyping.fixE distinct direct bodyTyping)
-  | lit {context : Context} {value : Int} :
+  | lit {context : NamedContext} {value : Int} :
       Terminal (@RuntimeTyping.lit signature context value)
-  | tuple {context : Context} {expressions : List Expr} {targets : List Ty}
+  | tuple {context : NamedContext} {expressions : List Expr} {targets : List Ty}
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
       Terminal (RuntimeTyping.tuple expressionsTyping)
-  | ctor {context : Context} {name : String} {expressions : List Expr}
+  | ctor {context : NamedContext} {name : String} {expressions : List Expr}
       {targets : List Ty} {result : Ty} {scheme : CtorScheme}
       (hfind : signature.findDataCtor name = some scheme)
       (hinst : scheme.Inst targets result)
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
       Terminal (RuntimeTyping.ctor hfind hinst expressionsTyping)
-  | prim {context : Context} {op : PrimOp} {expressions : List Expr}
+  | prim {context : NamedContext} {op : PrimOp} {expressions : List Expr}
       {targets : List Ty} {result : Ty} {scheme : CtorScheme}
       (hfind : signature.findPrimitive op = some scheme)
       (hinst : scheme.Inst targets result)
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
       Terminal (RuntimeTyping.prim hfind hinst expressionsTyping)
-  | something {context : Context} {target : Ty} :
+  | something {context : NamedContext} {target : Ty} :
       Terminal (@RuntimeTyping.something signature context target)
   | matchAll
-      {prevailing : Subst} {context : Context} {target matcher body : Expr}
+      {prevailing : Subst} {context : NamedContext} {target matcher body : Expr}
       {pattern : Pattern} {targetTy result : Ty} {patternCap : Cap}
       {bindings : MonoCtx}
       (targetTyping : RuntimeTyping signature context target targetTy)
@@ -251,7 +251,7 @@ inductive Terminal {signature : FrozenSig} :
         RuntimeTyping signature (bindings.toContext ++ context) body result) :
       Terminal
         (RuntimeTyping.matchAll targetTyping patternTyping matcherTyping bodyTyping)
-  | matcher {context : Context} {clauses : List Clause} {target : Ty}
+  | matcher {context : NamedContext} {clauses : List Clause} {target : Ty}
       {capability : Cap} {evidence : List Shape.Evidence}
       (clausesTyping :
         ResolvedClausesTy signature context clauses capability target evidence)
@@ -278,7 +278,7 @@ def preserveSourceCoercions
     {signature : FrozenSig}
     (signatureWF : FrozenSigWF signature)
     {environment : Env} {expression : Expr} {value : Value}
-    {context : Context} {target : Ty}
+    {context : NamedContext} {target : Ty}
     (typing : RuntimeTyping signature context expression target)
     (environmentTyping : EnvTyped signature context environment)
     (terminal :
@@ -349,7 +349,7 @@ Turn source list typing into runtime list typing using the pointwise induction
 hypotheses supplied by `Eval.rec`.
 -/
 def valueTys_of_evalZip
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {expressions : List Expr} {targets : List Ty}
     (sourceTyping : ExprsTy signature context expressions targets) :
     ∀ {values : List Value},

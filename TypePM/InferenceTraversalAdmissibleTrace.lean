@@ -97,7 +97,7 @@ theorem InferState.admissibleTraceExtension_freshCap
   rfl
 
 theorem instantiateSchemeInState_admissibleTraceExtension
-    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (signature : FrozenSig) (rawContext normalizedContext : NamedContext)
     (name : String) (state : InferState) (scheme : NamedScheme) :
     state.AdmissibleTraceExtension
       (instantiateSchemeInState signature rawContext normalizedContext name
@@ -113,8 +113,8 @@ theorem instantiateCtorInState_admissibleTraceExtension
 
 theorem instantiateDualInState_admissibleTraceExtension
     (signature : FrozenSig)
-    (rawContext : Context) (rawParameters : PatternCtx)
-    (rawBindings : MonoCtx) (context : Context) (parameters : PatternCtx)
+    (rawContext : NamedContext) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : NamedContext) (parameters : PatternCtx)
     (bindings : MonoCtx) (state : InferState) (scheme : DualScheme) :
     state.AdmissibleTraceExtension
       (instantiateDualInState signature rawContext rawParameters rawBindings
@@ -123,7 +123,7 @@ theorem instantiateDualInState_admissibleTraceExtension
   rfl
 
 theorem instantiateSchemeInState_admissibleTraceExtension_of_eq
-    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {signature : FrozenSig} {rawContext normalizedContext : NamedContext}
     {name : String} {state final : InferState} {scheme : NamedScheme} {target : Ty}
     (success : instantiateSchemeInState signature rawContext normalizedContext
       name state scheme = (target, final)) :
@@ -142,8 +142,8 @@ theorem instantiateCtorInState_admissibleTraceExtension_of_eq
     (instantiateCtorInState_admissibleTraceExtension state scheme) success
 
 theorem instantiateDualInState_admissibleTraceExtension_of_eq
-    {signature : FrozenSig} {rawContext : Context}
-    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
+    {signature : FrozenSig} {rawContext : NamedContext}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : NamedContext}
     {parameters : PatternCtx} {bindings : MonoCtx}
     {state final : InferState} {scheme : DualScheme}
     {arguments : List Dual} {target : Dual}
@@ -1440,7 +1440,7 @@ theorem enforceProtectedResult_admissibleTraceExtension
     (congrArg ExprResult.state equality)
 
 theorem inferRaw_admissibleTraceExtension
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     (initialState signature context).AdmissibleTraceExtension result.state := by
@@ -1457,7 +1457,7 @@ theorem inferRaw_admissibleTraceExtension
 /-- Every complete successful raw inference run has a per-solve
 origin-admissible trace. -/
 theorem inferRaw_admissibleTrace
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     result.state.AdmissibleTrace := by

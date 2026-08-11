@@ -1324,7 +1324,7 @@ theorem enforceProtectedResult_stateExtension
     (congrArg ExprResult.state equality)
 
 theorem inferRaw_stateExtension
-    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {signature : FrozenSig} {context : NamedContext} {expression : Expr}
     {result : ExprResult}
     (success : inferRaw signature context expression = some result) :
     (initialState signature context).StateExtension result.state := by

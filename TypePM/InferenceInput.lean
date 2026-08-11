@@ -46,14 +46,14 @@ theorem NamedScheme.BindersNodup.applySubst
 /-- Signature-aware expression generalization always produces set-like
 binder lists. -/
 theorem FrozenSig.generalize_bindersNodup
-    (signature : FrozenSig) (context : Context) (target : Ty) :
+    (signature : FrozenSig) (context : NamedContext) (target : Ty) :
     (signature.generalize context target).BindersNodup := by
   exact ⟨generalize_capBinders_nodup _ _ _,
     generalize_tyBinders_nodup _ _ _⟩
 
 /-- Signature-aware dual generalization also removes duplicate binders. -/
 theorem FrozenSig.generalizeDual_bindersNodup
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (arguments : List Dual) (result : Dual) :
     (signature.generalizeDual context arguments result).BindersNodup := by
   constructor
@@ -94,14 +94,14 @@ structure FrozenSigInferenceWF (signature : FrozenSig) : Prop where
 
 /-- Every expression scheme selectable from the source context has unique
 capability and ordinary binders. -/
-structure ContextInferenceWF (context : Context) : Prop where
+structure ContextInferenceWF (context : NamedContext) : Prop where
   lookupBinders :
     ∀ {name scheme}, context.find? name = some scheme →
       scheme.BindersNodup
 
 /-- Public static boundary for one executable inference run. -/
 structure InferenceInputWF
-    (signature : FrozenSig) (context : Context) : Prop where
+    (signature : FrozenSig) (context : NamedContext) : Prop where
   signature : FrozenSigInferenceWF signature
   context : ContextInferenceWF context
 
@@ -109,11 +109,11 @@ structure InferenceInputWF
 @[simp] theorem ContextInferenceWF.nil : ContextInferenceWF [] := by
   constructor
   intro name scheme lookup
-  simp [Context.find?] at lookup
+  simp [NamedContext.find?] at lookup
 
 /-- Adding one hygienic scheme preserves context well-formedness. -/
 theorem ContextInferenceWF.cons
-    {context : Context} (contextWF : ContextInferenceWF context)
+    {context : NamedContext} (contextWF : ContextInferenceWF context)
     {boundName : String} {scheme : NamedScheme}
     (schemeWF : scheme.BindersNodup) :
     ContextInferenceWF ((boundName, scheme) :: context) := by
@@ -122,16 +122,16 @@ theorem ContextInferenceWF.cons
   by_cases same : boundName = name
   · subst name
     have equality : scheme = found := by
-      simpa [Context.find?] using lookup
+      simpa [NamedContext.find?] using lookup
     subst found
     exact schemeWF
   · apply contextWF.lookupBinders
-    simpa [Context.find?, same] using lookup
+    simpa [NamedContext.find?, same] using lookup
 
 /-- A monomorphic lambda, fix, or pattern binding may always be added to a
 well-formed inference context. -/
 theorem ContextInferenceWF.consMono
-    {context : Context} (contextWF : ContextInferenceWF context)
+    {context : NamedContext} (contextWF : ContextInferenceWF context)
     (name : String) (target : Ty) :
     ContextInferenceWF ((name, NamedScheme.mono target) :: context) :=
   contextWF.cons (NamedScheme.mono_bindersNodup target)
@@ -139,19 +139,19 @@ theorem ContextInferenceWF.consMono
 /-- A let-generalized scheme may always be added to a well-formed inference
 context. -/
 theorem ContextInferenceWF.consGeneralize
-    {context : Context} (contextWF : ContextInferenceWF context)
+    {context : NamedContext} (contextWF : ContextInferenceWF context)
     (signature : FrozenSig) (name : String) (target : Ty) :
     ContextInferenceWF
       ((name, signature.generalize context target) :: context) :=
   contextWF.cons (signature.generalize_bindersNodup context target)
 
-/-- Context substitution preserves lookup binder hygiene. -/
+/-- NamedContext substitution preserves lookup binder hygiene. -/
 theorem ContextInferenceWF.applySubst
-    {context : Context} (contextWF : ContextInferenceWF context)
+    {context : NamedContext} (contextWF : ContextInferenceWF context)
     (S : Subst) : ContextInferenceWF (context.applySubst S) := by
   constructor
   intro name found lookup
-  rw [Context.find?_applySubst] at lookup
+  rw [NamedContext.find?_applySubst] at lookup
   cases originalLookup : context.find? name with
   | none => simp [originalLookup] at lookup
   | some original =>
@@ -164,25 +164,25 @@ theorem ContextInferenceWF.applySubst
 /-- Concatenating two well-formed lookup contexts preserves well-formedness.
 The left context keeps its usual shadowing priority. -/
 theorem ContextInferenceWF.append
-    {left right : Context}
+    {left right : NamedContext}
     (leftWF : ContextInferenceWF left)
     (rightWF : ContextInferenceWF right) :
     ContextInferenceWF (left ++ right) := by
   constructor
   intro name scheme lookup
-  unfold Context.find? at lookup
+  unfold NamedContext.find? at lookup
   rw [List.find?_append] at lookup
   cases selected : List.find? (fun entry => entry.1 == name) left with
   | none =>
       apply rightWF.lookupBinders
-      unfold Context.find?
+      unfold NamedContext.find?
       simpa [selected] using lookup
   | some entry =>
       have resultEquality : entry.2 = scheme := by
         simpa [selected] using lookup
       subst scheme
       exact leftWF.lookupBinders (name := name) (scheme := entry.2) (by
-        unfold Context.find?
+        unfold NamedContext.find?
         simp [selected])
 
 /-- A context obtained from monomorphic pattern bindings is well formed. -/
@@ -196,7 +196,7 @@ theorem MonoCtx.toContext_inferenceWF (bindings : MonoCtx) :
 
 /-- Pattern bindings may be prefixed to any well-formed expression context. -/
 theorem ContextInferenceWF.monoCtxAppend
-    {context : Context} (contextWF : ContextInferenceWF context)
+    {context : NamedContext} (contextWF : ContextInferenceWF context)
     (bindings : MonoCtx) :
     ContextInferenceWF (bindings.toContext ++ context) :=
   (MonoCtx.toContext_inferenceWF bindings).append contextWF

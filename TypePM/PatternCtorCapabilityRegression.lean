@@ -121,7 +121,7 @@ def publicSignature : FrozenSig :=
 
 /-- A concrete matcher slot keeps these regressions independent of recursive
 matcher inference. -/
-def publicContext : Context :=
+def publicContext : NamedContext :=
   [("list-slot", NamedScheme.mono
     (.slot (.con "List" [.any]) (Ty.listT .int)))]
 

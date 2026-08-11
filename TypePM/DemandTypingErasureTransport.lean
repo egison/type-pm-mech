@@ -134,15 +134,15 @@ theorem NamedScheme.applySubst_ftv_fixed_of_idempotent
 
 /-- A context lookup after capture-avoiding substitution has a unique source
 lookup witness.  No typing evidence is stored in this provenance fact. -/
-theorem Context.find?_applySubst_some_origin
-    (S : Subst) (context : Context) (name : String) (scheme : NamedScheme)
+theorem NamedContext.find?_applySubst_some_origin
+    (S : Subst) (context : NamedContext) (name : String) (scheme : NamedScheme)
     (lookup : (context.applySubst S).find? name = some scheme) :
     ∃ rawScheme,
       context.find? name = some rawScheme ∧
       rawScheme.applySubst S = scheme := by
   have mapped : (context.find? name).map (NamedScheme.applySubst S) =
       some scheme := by
-    rw [← Context.find?_applySubst]
+    rw [← NamedContext.find?_applySubst]
     exact lookup
   cases sourceLookup : context.find? name with
   | none => simp [sourceLookup] at mapped
@@ -547,7 +547,7 @@ is intentionally absent here; transporting the lookup through that suffix
 also has to transport the selected capture-avoiding context scheme. -/
 theorem runtimeErasure_var_of_instanceFixed
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : NamedScheme)
+    (context : NamedContext) (name : String) (scheme : NamedScheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme)
     (instanceFixed : S.apply
@@ -564,17 +564,17 @@ theorem runtimeErasure_var_of_instanceFixed
 /-- The fixedness cut above follows from the two invariants maintained by a
 solved DD traversal: the prevailing substitution is bounded by its current
 supply and is in solved (idempotent) form.  Lookup provenance is recovered
-algebraically from `Context.applySubst`; no terminal typing premise is used. -/
+algebraically from `NamedContext.applySubst`; no terminal typing premise is used. -/
 theorem runtimeErasure_var_of_bounded_idempotent
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : NamedScheme)
+    (context : NamedContext) (name : String) (scheme : NamedScheme)
     (ledger : CapabilityOriginLedger)
     (lookup : (context.applySubst S).find? name = some scheme)
     (bounded : S.BoundedBy q) (idem : S.Idempotent) :
     RuntimeErasure
       (DDSynthOrigin.var (signature := signature) (q := q)
         (ledger := ledger) lookup) := by
-  rcases Context.find?_applySubst_some_origin S context name scheme lookup with
+  rcases NamedContext.find?_applySubst_some_origin S context name scheme lookup with
     ⟨rawScheme, _rawLookup, schemeEquation⟩
   have fixed : S.apply
       (InferenceBase.instantiateNamedScheme q scheme).value =
@@ -595,7 +595,7 @@ origin ledger, rather than a context-wide flow oracle, discharges the semantic
 requirement that canonical capability-binder images remain variables. -/
 theorem runtimeVar_afterPost_of_admissible
     {signature : FrozenSig} {q final : InferenceBase.FreshSupply}
-    {S post S' : Subst} {context : Context} {name : String}
+    {S post S' : Subst} {context : NamedContext} {name : String}
     {rawScheme scheme : NamedScheme}
     {ledger finalLedger : CapabilityOriginLedger}
     (rawLookup : context.find? name = some rawScheme)
@@ -620,7 +620,7 @@ theorem runtimeVar_afterPost_of_admissible
   have terminalLookup :
       (context.applySubst (Subst.seq post S)).find? name =
       some (scheme.applySubst post) := by
-    rw [Context.find?_applySubst, rawLookup]
+    rw [NamedContext.find?_applySubst, rawLookup]
     simpa using congrArg some terminalSchemeEquation
   have instanceTyping := NamedScheme.instantiateAppliedValueFlowUnderAdmissible
     admissible composition composedCapEquation
@@ -645,7 +645,7 @@ namespace DDTyping
 judgment starts from identity, so boundedness and solved-form are discharged
 without any caller premise. -/
 theorem var_toRuntimeTyping
-    {signature : FrozenSig} {context : Context} {name : String} {target : Ty}
+    {signature : FrozenSig} {context : NamedContext} {name : String} {target : Ty}
     (typing : DDTyping signature context (.var name) target) :
     RuntimeTyping signature context (.var name) target := by
   rcases typing with
@@ -657,7 +657,7 @@ theorem var_toRuntimeTyping
         context name _ [] lookup
         (Subst.boundedBy_id _)
         Subst.id_idempotent
-      simpa only [DDSynthOrigin.RuntimeErasure, Context.applySubst_id,
+      simpa only [DDSynthOrigin.RuntimeErasure, NamedContext.applySubst_id,
         Subst.apply_id, published] using erased
 
 end DDTyping

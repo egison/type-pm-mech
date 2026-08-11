@@ -399,7 +399,7 @@ second direction is essential for `Step.patfunEnter`; `RuntimeSigTyped` alone
 only supplies runtime-to-source soundness.
 -/
 structure RuntimeSigAgrees
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (runtime : RuntimeSigF) : Prop where
   runtimeTyped : RuntimeSigTyped signature context runtime
   sourceLookup :
@@ -422,7 +422,7 @@ theorem DualScheme.ValueFlowInst.args_length
 
 /-- A checked pattern-function definition and one safe use agree on arity. -/
 theorem PatternDefTy.actual_arity
-    {definitionSignature : FrozenSig} {context : Context}
+    {definitionSignature : FrozenSig} {context : NamedContext}
     {definition : PatternDef} {scheme : DualScheme}
     (typing : PatternDefTy definitionSignature context definition scheme)
     {args : List Dual} {result : Dual}
@@ -453,7 +453,7 @@ theorem PatternDefTy.actual_arity
 
 /-- Every member of a typed arm list has its concrete data-pattern/body typing. -/
 theorem ArmsTy.member
-    {signature : FrozenSig} {context : Context} {target ppResult : Ty}
+    {signature : FrozenSig} {context : NamedContext} {target ppResult : Ty}
     {ppBindings : MonoCtx} {arms : List Arm}
     (typing : ArmsTy signature context target ppBindings ppResult arms) :
     ∀ {arm : Arm}, arm ∈ arms →
@@ -478,7 +478,7 @@ theorem ArmsTy.member
 
 /-- Threaded pattern-list typing composes over concatenation. -/
 theorem PatternTys.append
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input middle output : MonoCtx}
     {leftPatterns rightPatterns : List Pattern}
     {leftDuals rightDuals : List Dual}
@@ -499,7 +499,7 @@ theorem PatternTys.append
 /-- Threaded resolved pattern-list typing composes over concatenation. -/
 theorem PatternResolutions.append
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input middle output : MonoCtx}
     {leftPatterns rightPatterns : List Pattern}
     {leftDuals rightDuals : List Dual}
@@ -527,7 +527,7 @@ theorem PatternResolutions.append
 /-- Terminal pattern lists retain one dual for each pattern. -/
 theorem TerminalPatternResolutions.length
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {patterns : List Pattern} {duals : List Dual}
     (typing : TerminalPatternResolutions signature prevailing context
       parameters input patterns duals output) :
@@ -544,7 +544,7 @@ theorem TerminalPatternResolutions.length
 /-- Terminal pattern-list resolution composes over source-order append. -/
 theorem TerminalPatternResolutions.append
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input middle output : MonoCtx}
     {leftPatterns rightPatterns : List Pattern}
     {leftDuals rightDuals : List Dual}
@@ -564,7 +564,7 @@ theorem TerminalPatternResolutions.append
 
 /-- Every member of a typed clause list is paired with its actual evidence. -/
 theorem ClausesTy.member
-    {signature : FrozenSig} {prevailing : Subst} {context : Context}
+    {signature : FrozenSig} {prevailing : Subst} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     {evidence : List Shape.Evidence}
     (typing :
@@ -594,7 +594,7 @@ Resolved clause membership retains the one prevailing substitution shared by
 the whole matcher literal.
 -/
 theorem ResolvedClausesTy.member
-    {signature : FrozenSig} {context : Context} {clauses : List Clause}
+    {signature : FrozenSig} {context : NamedContext} {clauses : List Clause}
     {capability : Cap} {target : Ty} {evidence : List Shape.Evidence}
     (typing :
       ResolvedClausesTy signature context clauses capability target evidence)
@@ -663,7 +663,7 @@ theorem MatcherCursor.member_origin
 
 /-- Cursor membership recovers the original clause typing and evidence. -/
 theorem MatcherCursor.member_typed
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {current original : List Clause} {capability : Cap} {target : Ty}
     {evidence : List Shape.Evidence}
     (cursor : MatcherCursor current original)
@@ -685,7 +685,7 @@ theorem MatcherCursor.member_typed
 
 /-- A current runtime arm retains its exact source data-pattern/body typing. -/
 theorem MatcherCursor.arm_typed
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {current original : List Clause} {capability : Cap} {target : Ty}
     {evidence : List Shape.Evidence}
     (cursor : MatcherCursor current original)
@@ -786,7 +786,7 @@ theorem MonoEnvTys.toEnvTyped
 environment. -/
 theorem MonoEnvTys.envTyped_append
     {signature : FrozenSig} {bindings : MonoCtx} {values : Env}
-    {context : Context} {environment : Env}
+    {context : NamedContext} {environment : Env}
     (leading : MonoEnvTys signature bindings values)
     (suffix : EnvTyped signature context environment) :
     EnvTyped signature (bindings.toContext ++ context)
@@ -804,7 +804,7 @@ theorem MonoCtx.find_toContext_of_mem
     {bindings : MonoCtx} {name : String} {target : Ty}
     (nodup : bindings.names.Nodup)
     (membership : (name, target) ∈ bindings) :
-    Context.find? bindings.toContext name = some (NamedScheme.mono target) := by
+    NamedContext.find? bindings.toContext name = some (NamedScheme.mono target) := by
   induction bindings with
   | nil => contradiction
   | cons head tail induction =>
@@ -814,12 +814,12 @@ theorem MonoCtx.find_toContext_of_mem
       simp only [List.mem_cons] at membership
       rcases membership with equality | membership
       · cases equality
-        simp [Context.find?, MonoCtx.toContext]
+        simp [NamedContext.find?, MonoCtx.toContext]
       · have nameMember : name ∈ MonoCtx.names tail :=
           List.mem_map_of_mem membership
         have unequal : headName ≠ name := fun equality =>
           headFresh (equality ▸ nameMember)
-        simp only [Context.find?, MonoCtx.toContext, List.map_cons, List.find?]
+        simp only [NamedContext.find?, MonoCtx.toContext, List.map_cons, List.find?]
         rw [show (headName == name) = false by simp [unequal]]
         exact induction tailNodup membership
 
@@ -923,7 +923,7 @@ theorem MatchSubstTyped.snoc_cons
 
 /-- Typed stacks compose along their threaded binding index. -/
 theorem StackTy.append
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input middle output : MonoCtx} {left right : List Tree}
     (leftTyping : StackTy signature context parameters input left middle)
     (rightTyping : StackTy signature context parameters middle right output) :
@@ -963,11 +963,11 @@ theorem Env.find?_append_of_none
   | some entry => simp [raw] at missing
 
 /-- A successful prefix context lookup survives context concatenation. -/
-theorem Context.find?_append_left
-    {left right : Context} {name : String} {scheme : NamedScheme}
-    (found : Context.find? left name = some scheme) :
-    Context.find? (left ++ right) name = some scheme := by
-  unfold Context.find? at found ⊢
+theorem NamedContext.find?_append_left
+    {left right : NamedContext} {name : String} {scheme : NamedScheme}
+    (found : NamedContext.find? left name = some scheme) :
+    NamedContext.find? (left ++ right) name = some scheme := by
+  unfold NamedContext.find? at found ⊢
   rw [List.find?_append]
   cases raw : List.find? (fun entry => entry.1 == name) left with
   | none => simp [raw] at found
@@ -977,12 +977,12 @@ theorem Context.find?_append_left
       exact found
 
 /-- A missing prefix context delegates lookup to its suffix. -/
-theorem Context.find?_append_right
-    {left right : Context} {name : String} {scheme : NamedScheme}
-    (missing : Context.find? left name = none)
-    (found : Context.find? right name = some scheme) :
-    Context.find? (left ++ right) name = some scheme := by
-  unfold Context.find? at missing found ⊢
+theorem NamedContext.find?_append_right
+    {left right : NamedContext} {name : String} {scheme : NamedScheme}
+    (missing : NamedContext.find? left name = none)
+    (found : NamedContext.find? right name = some scheme) :
+    NamedContext.find? (left ++ right) name = some scheme := by
+  unfold NamedContext.find? at missing found ⊢
   rw [List.find?_append]
   cases raw : List.find? (fun entry => entry.1 == name) left with
   | none => simpa [raw] using found
@@ -1006,8 +1006,8 @@ theorem Env.find?_eq_none_of_name_not_mem
 theorem MonoCtx.find?_toContext_eq_none
     {bindings : MonoCtx} {name : String}
     (missing : name ∉ bindings.names) :
-    Context.find? bindings.toContext name = none := by
-  unfold Context.find?
+    NamedContext.find? bindings.toContext name = none := by
+  unfold NamedContext.find?
   have raw :
       List.find? (fun entry => entry.1 == name) bindings.toContext = none :=
     List.find?_eq_none.mpr (by
@@ -1029,7 +1029,7 @@ finite map; the prefix shadows the suffix on both sides.
 -/
 theorem MatchSubstTyped.envTyped_append
     {signature : FrozenSig} {bindings : MonoCtx}
-    {substitution : MatchSubst} {context : Context} {environment : Env}
+    {substitution : MatchSubst} {context : NamedContext} {environment : Env}
     (substitutionTyping : MatchSubstTyped signature bindings substitution)
     (environmentTyping : EnvTyped signature context environment) :
     EnvTyped signature (bindings.toContext ++ context)
@@ -1050,7 +1050,7 @@ theorem MatchSubstTyped.envTyped_append
       Option.some.inj (appendFind.symm.trans found)
     subst storedValue
     have sourceFind := MonoCtx.find_toContext_of_mem nodup entryMember
-    have contextFind := Context.find?_append_left
+    have contextFind := NamedContext.find?_append_left
       (right := context) sourceFind
     refine ⟨NamedScheme.mono target, contextFind, ?_⟩
     intro actual hinstance
@@ -1072,7 +1072,7 @@ theorem MatchSubstTyped.envTyped_append
       environmentTyping name value environmentFind
     have bindingContextMissing := MonoCtx.find?_toContext_eq_none inBindings
     refine ⟨scheme,
-      Context.find?_append_right bindingContextMissing sourceFind, ?_⟩
+      NamedContext.find?_append_right bindingContextMissing sourceFind, ?_⟩
     intro actual hinstance
     apply instances actual
     exact hinstance
@@ -1557,7 +1557,7 @@ form the concrete continuation stack at exactly the terminal indices.
 -/
 theorem TerminalPatternResolutions.atomStack
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patterns : List Pattern}
     {duals : List Dual} {matchers values : List Value}
     (resolutions : TerminalPatternResolutions signature prevailing context
@@ -1682,7 +1682,7 @@ theorem ValueTy.ctor_inversion
 /-- The syntactic next-matcher decomposition reconstructs the corresponding
 `prodTy` source judgment. -/
 theorem decomposeME_typed
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {next : Expr} {expressions : List Expr} {targets : List Ty}
     (decomposition : decomposeME next targets.length = some expressions)
     (typing : ExprsTy signature context expressions targets) :
@@ -2092,7 +2092,7 @@ target and capability derivations in lockstep without identifying their raw
 provenance lists.
 -/
 theorem PatternTy.ptuple_inv
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patterns : List Pattern}
     {capabilities : List Cap} {targets : List Ty}
     (typing : PatternTy signature context parameters input (.ptuple patterns)
@@ -2122,7 +2122,7 @@ theorem PPatCapsAt.tuple_inv
 alternative explicitly. -/
 theorem PatternResolution.ptuple_cases
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {patterns : List Pattern} {rawCapability : Cap} {rawTarget : Ty}
     (resolution : PatternResolution signature prevailing context parameters
       input (.ptuple patterns) rawCapability rawTarget output) :
@@ -2196,7 +2196,7 @@ theorem ppm_captures_typed_raw_at
     {pp : PPat} {pattern : Pattern} {captures : List Pattern}
     {ppEnvironment : Env} {target : Ty} {holes : List Dual}
     {holeCapabilities : List Cap} {ppBindings : MonoCtx}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patternCap : Cap} {atRoot : Bool}
     (ppTyping : PPatTy signature pp target holes ppBindings)
     (capTyping : PPatCapsAt signature atRoot pp holeCapabilities patternCap)
@@ -2213,7 +2213,7 @@ theorem ppm_captures_typed_raw_at
     (motive_1 := fun pp target holes ppBindings _ =>
       ∀ {atRoot : Bool} {holeCapabilities : List Cap}
         {pattern : Pattern} {captures : List Pattern} {ppEnvironment : Env}
-        {context : Context} {parameters : PatternCtx}
+        {context : NamedContext} {parameters : PatternCtx}
         {input output : MonoCtx} {patternCap : Cap},
         PPatCapsAt signature atRoot pp holeCapabilities patternCap →
         (atRoot = true → pp ≠ .hole) →
@@ -2228,7 +2228,7 @@ theorem ppm_captures_typed_raw_at
       ∀ {holeCapabilities childCapabilities : List Cap}
         {patterns : List Pattern}
         {results : List (List Pattern × Env)}
-        {context : Context} {parameters : PatternCtx}
+        {context : NamedContext} {parameters : PatternCtx}
         {input output : MonoCtx} {patternDuals : List Dual},
         PPatCapsList signature pps holeCapabilities childCapabilities →
         PatternTys signature context parameters input patterns patternDuals
@@ -2373,7 +2373,7 @@ theorem ppm_captures_typed_raw
     {pp : PPat} {pattern : Pattern} {captures : List Pattern}
     {ppEnvironment : Env} {target : Ty} {holes : List Dual}
     {holeCapabilities : List Cap} {ppBindings : MonoCtx}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patternCap : Cap}
     (ppTyping : PPatTy signature pp target holes ppBindings)
     (capTyping : PPatCapsAt signature true pp holeCapabilities patternCap)
@@ -2396,7 +2396,7 @@ theorem ppm_captures_typed_raw_list
     {pps : List PPat} {patterns : List Pattern}
     {results : List (List Pattern × Env)} {targets : List Ty}
     {holes : List Dual} {holeCapabilities childCapabilities : List Cap}
-    {ppBindings : MonoCtx} {context : Context} {parameters : PatternCtx}
+    {ppBindings : MonoCtx} {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx} {patternDuals : List Dual}
     (ppTyping : PPatTys signature pps targets holes ppBindings)
     (capTyping :
@@ -2434,7 +2434,7 @@ theorem ppm_captures_resolved_parts
     {pp : PPat} {ppRawTarget : Ty} {rawHoles : List Dual}
     {rawPPBindings : MonoCtx} {holeCapabilities : List Cap}
     {pattern : Pattern} {captures : List Pattern} {ppEnvironment : Env}
-    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawContext : NamedContext} {rawParameters : PatternCtx}
     {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
     {rawPatternTarget : Ty}
     (ppResolution : PPatResolution signature prevailing pp ppRawTarget
@@ -2459,7 +2459,7 @@ theorem ppm_captures_resolved_parts
     (motive_1 := fun pp ppRawTarget rawHoles rawPPBindings _ =>
       ∀ {atRoot : Bool} {holeCapabilities : List Cap}
         {pattern : Pattern} {captures : List Pattern} {ppEnvironment : Env}
-        {rawContext : Context} {rawParameters : PatternCtx}
+        {rawContext : NamedContext} {rawParameters : PatternCtx}
         {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
         {rawPatternTarget : Ty},
         PPatCapsAt signature atRoot pp holeCapabilities
@@ -2480,7 +2480,7 @@ theorem ppm_captures_resolved_parts
     (motive_2 := fun pps ppRawTargets rawHoles rawPPBindings _ =>
       ∀ {holeCapabilities childCapabilities : List Cap}
         {patterns : List Pattern} {results : List (List Pattern × Env)}
-        {rawContext : Context} {rawParameters : PatternCtx}
+        {rawContext : NamedContext} {rawParameters : PatternCtx}
         {rawInput rawOutput : MonoCtx} {rawPatternDuals : List Dual},
         PPatCapsList signature pps holeCapabilities childCapabilities →
         PatternResolutions signature prevailing rawContext rawParameters
@@ -2751,7 +2751,7 @@ theorem ppm_captures_resolved
     {pp : PPat} {ppRawTarget : Ty} {rawHoles : List Dual}
     {rawPPBindings : MonoCtx} {pattern : Pattern}
     {captures : List Pattern} {ppEnvironment : Env}
-    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawContext : NamedContext} {rawParameters : PatternCtx}
     {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
     {rawPatternTarget : Ty}
     (ppResolution : PPatResolution signature prevailing pp ppRawTarget
@@ -2783,7 +2783,7 @@ theorem ppm_captures_resolved
 resolution, including its identity shortcut. -/
 theorem PatternResolution.pctor_actual_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {name : String} {patterns : List Pattern} {rawCapability : Cap}
     {rawTarget : Ty}
     (resolution : PatternResolution signature prevailing context parameters
@@ -2815,7 +2815,7 @@ theorem PatternResolution.pctor_actual_inversion
 /-- Actual tuple children retained by any aligned user-pattern resolution. -/
 theorem PatternResolution.ptuple_actual_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {patterns : List Pattern} {rawCapability : Cap} {rawTarget : Ty}
     (resolution : PatternResolution signature prevailing context parameters
       input (.ptuple patterns) rawCapability rawTarget output) :
@@ -2923,7 +2923,7 @@ theorem PPatResolutions.cons_actual_inversion
 or its explicit cons constructor. -/
 theorem PatternResolutions.cons_actual_inversion
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {duals : List Dual}
     (resolution : PatternResolutions signature prevailing context parameters
       input (pattern :: patterns) duals output) :
@@ -3029,7 +3029,7 @@ theorem TerminalPPatResolution.holes_length
 /-- Terminal wildcard resolution preserves its incoming binding context. -/
 theorem TerminalPatternResolution.wild_output
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {capability : Cap} {target : Ty}
     (resolution : TerminalPatternResolution signature prevailing context
       parameters input .wild capability target output) :
@@ -3040,7 +3040,7 @@ theorem TerminalPatternResolution.wild_output
 /-- Terminal value-pattern resolution also preserves incoming bindings. -/
 theorem TerminalPatternResolution.pval_output
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {input output : MonoCtx}
     {expression : Expr} {capability : Cap} {target : Ty}
     (resolution : TerminalPatternResolution signature prevailing context
       parameters input (.pval expression) capability target output) :
@@ -3107,7 +3107,7 @@ theorem ppm_captures_terminal_parts
     {pp : PPat} {target : Ty} {holes : List Dual}
     {ppBindings : MonoCtx} {pattern : Pattern}
     {captures : List Pattern} {ppEnvironment : Env}
-    {context : Context} {parameters : PatternCtx}
+    {context : NamedContext} {parameters : PatternCtx}
     {input output : MonoCtx}
     {producerCapability consumerCapability : Cap}
     (ppResolution : TerminalPPatResolution signature ppPrevailing pp target
@@ -3131,7 +3131,7 @@ theorem ppm_captures_terminal_parts
   refine TerminalPPatResolution.rec
     (motive_1 := fun pp target holes _ _ =>
       ∀ {atRoot : Bool} {pattern : Pattern} {captures : List Pattern}
-        {ppEnvironment : Env} {context : Context} {parameters : PatternCtx}
+        {ppEnvironment : Env} {context : NamedContext} {parameters : PatternCtx}
         {input output : MonoCtx}
         {producerCapability consumerCapability : Cap},
         PPatCapsAt signature atRoot pp (holes.map Dual.cap)
@@ -3150,7 +3150,7 @@ theorem ppm_captures_terminal_parts
     (motive_2 := fun pps targets holes _ _ =>
       ∀ {patterns : List Pattern}
         {results : List (List Pattern × Env)}
-        {context : Context} {parameters : PatternCtx}
+        {context : NamedContext} {parameters : PatternCtx}
         {input output : MonoCtx} {patternDuals : List Dual}
         {childCapabilities : List Cap},
         PPatCapsList signature pps (holes.map Dual.cap)
@@ -3328,7 +3328,7 @@ theorem ppm_captures_resolved_two_parts
     {pp : PPat} {ppRawTarget : Ty} {ppRawHoles : List Dual}
     {ppRawBindings : MonoCtx} {pattern : Pattern}
     {captures : List Pattern} {ppEnvironment : Env}
-    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawContext : NamedContext} {rawParameters : PatternCtx}
     {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
     {rawPatternTarget : Ty}
     (ppResolution : PPatResolution signature ppPrevailing pp ppRawTarget
@@ -3359,7 +3359,7 @@ theorem ppm_captures_resolved_two_parts
         {ppRawHoles : List Dual} {ppRawBindings : MonoCtx}
         {atRoot : Bool} {pattern : Pattern} {captures : List Pattern}
         {ppEnvironment : Env} {patternPrevailing : Subst}
-        {rawContext : Context} {rawParameters : PatternCtx}
+        {rawContext : NamedContext} {rawParameters : PatternCtx}
         {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
         {rawPatternTarget : Ty},
         PPatResolution signature ppPrevailing pp ppRawTarget ppRawHoles
@@ -3389,7 +3389,7 @@ theorem ppm_captures_resolved_two_parts
         {ppRawHoles : List Dual} {ppRawBindings : MonoCtx}
         {patterns : List Pattern}
         {results : List (List Pattern × Env)}
-        {patternPrevailing : Subst} {rawContext : Context}
+        {patternPrevailing : Subst} {rawContext : NamedContext}
         {rawParameters : PatternCtx} {rawInput rawOutput : MonoCtx}
         {rawPatternDuals : List Dual} {childCapabilities : List Cap},
         PPatResolutions signature ppPrevailing pps ppRawTargets ppRawHoles
@@ -3673,7 +3673,7 @@ theorem ppm_captures_resolved_two
     {pp : PPat} {ppRawTarget : Ty} {ppRawHoles : List Dual}
     {ppRawBindings : MonoCtx} {pattern : Pattern}
     {captures : List Pattern} {ppEnvironment : Env}
-    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawContext : NamedContext} {rawParameters : PatternCtx}
     {rawInput rawOutput : MonoCtx} {rawPatternCap : Cap}
     {rawPatternTarget : Ty}
     (ppResolution : PPatResolution signature ppPrevailing pp ppRawTarget

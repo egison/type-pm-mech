@@ -30,7 +30,7 @@ structure Dual where
 deriving Repr, DecidableEq, BEq
 
 /-- Expression scheme context `Γ`.  The newest binding is stored first. -/
-abbrev Context := List (String × NamedScheme)
+abbrev NamedContext := List (String × NamedScheme)
 
 /-- Monomorphic pattern-variable context `Δ`. -/
 abbrev MonoCtx := List (String × Ty)
@@ -39,7 +39,7 @@ abbrev MonoCtx := List (String × Ty)
 abbrev PatternCtx := List (String × Dual)
 
 /-- Look up an expression scheme. -/
-def Context.find? (Γ : Context) (name : String) : Option NamedScheme :=
+def NamedContext.find? (Γ : NamedContext) (name : String) : Option NamedScheme :=
   (List.find? (fun entry => entry.1 == name) Γ).map Prod.snd
 
 /-- Look up a pattern-parameter dual. -/
@@ -47,7 +47,7 @@ def PatternCtx.find? (Φ : PatternCtx) (name : String) : Option Dual :=
   (List.find? (fun entry => entry.1 == name) Φ).map Prod.snd
 
 /-- Put monomorphic pattern bindings into an expression context. -/
-def MonoCtx.toContext (Δ : MonoCtx) : Context :=
+def MonoCtx.toContext (Δ : MonoCtx) : NamedContext :=
   Δ.map fun entry => (entry.1, NamedScheme.mono entry.2)
 
 /-- Names in a monomorphic context. -/
@@ -126,7 +126,7 @@ def NamedScheme.applySubst (S : Subst) (scheme : NamedScheme) : NamedScheme :=
         (S.target.mask scheme.tyBinders)).apply scheme.body }
 
 /-- Apply a paired substitution pointwise to an expression context. -/
-def Context.applySubst (S : Subst) (context : Context) : Context :=
+def NamedContext.applySubst (S : Subst) (context : NamedContext) : NamedContext :=
   context.map fun entry => (entry.1, entry.2.applySubst S)
 
 /-- Apply a paired substitution pointwise to a monomorphic context. -/
@@ -159,12 +159,12 @@ def PatternCtx.applySubst (S : Subst) (context : PatternCtx) : PatternCtx :=
       rw [hsubst, Subst.apply_id]
 
 /-- Identity substitution changes no expression context. -/
-@[simp] theorem Context.applySubst_id (context : Context) :
+@[simp] theorem NamedContext.applySubst_id (context : NamedContext) :
     context.applySubst Subst.id = context := by
   induction context with
   | nil => rfl
   | cons entry context ih =>
-      simp [Context.applySubst]
+      simp [NamedContext.applySubst]
 
 /-- Identity substitution changes no monomorphic context. -/
 @[simp] theorem MonoCtx.applySubst_id (context : MonoCtx) :
@@ -209,19 +209,19 @@ def DualScheme.allTyVars (scheme : DualScheme) : List TypePM.TyVar :=
   scheme.tyBinders ++ scheme.args.flatMap Dual.ftv ++ scheme.result.ftv
 
 /-- Free capability variables of an expression context. -/
-def Context.fcv (context : Context) : List CapVar :=
+def NamedContext.fcv (context : NamedContext) : List CapVar :=
   context.flatMap fun entry => entry.2.fcv
 
 /-- Free ordinary type variables of an expression context. -/
-def Context.ftv (context : Context) : List TypePM.TyVar :=
+def NamedContext.ftv (context : NamedContext) : List TypePM.TyVar :=
   context.flatMap fun entry => entry.2.ftv
 
 /-- Every capability-variable name occurring in an expression context. -/
-def Context.allCapVars (context : Context) : List CapVar :=
+def NamedContext.allCapVars (context : NamedContext) : List CapVar :=
   context.flatMap fun entry => entry.2.allCapVars
 
 /-- Every ordinary-variable name occurring in an expression context. -/
-def Context.allTyVars (context : Context) : List TypePM.TyVar :=
+def NamedContext.allTyVars (context : NamedContext) : List TypePM.TyVar :=
   context.flatMap fun entry => entry.2.allTyVars
 
 /-- Simultaneous two-sorted instantiation of a dual scheme. -/
@@ -393,7 +393,7 @@ Generalize a normalized type relative to both the frozen global signature and
 the local expression context.  Global free variables are never quantified.
 -/
 def FrozenSig.generalize
-    (signature : FrozenSig) (context : Context) (target : Ty) : NamedScheme :=
+    (signature : FrozenSig) (context : NamedContext) (target : Ty) : NamedScheme :=
   TypePM.generalize
     (signature.fcv ++ context.fcv) (signature.ftv ++ context.ftv) target
 
@@ -448,7 +448,7 @@ quantified once and retain their repeated identity.  Ambient variables remain
 free and are never defaulted or quantified.
 -/
 def FrozenSig.generalizeDual
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) : DualScheme :=
   let ambientCaps := signature.fcv ++ context.fcv
   let normalized := normalizeDualSingletons ambientCaps args result
@@ -468,7 +468,7 @@ def FrozenSig.generalizeDual
 
 /-- Dual generalization changes capabilities but never the argument arity. -/
 @[simp] theorem FrozenSig.generalizeDual_args_length
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (args : List Dual) (result : Dual) :
     (signature.generalizeDual context args result).args.length = args.length := by
   simp [FrozenSig.generalizeDual]
@@ -693,45 +693,45 @@ theorem DualScheme.FreshInstAt.toValueFlowInst
   ⟨C, T, freshInstance.toVariableInstAt⟩
 
 /-- Free ambient capability variables reserved by expression-scheme lookup. -/
-def SourceCapScope (signature : FrozenSig) (context : Context) : List CapVar :=
+def SourceCapScope (signature : FrozenSig) (context : NamedContext) : List CapVar :=
   signature.fcv ++ context.fcv
 
 /-- Free ambient ordinary variables reserved by expression-scheme lookup. -/
 def SourceTyScope
-    (signature : FrozenSig) (context : Context) : List TypePM.TyVar :=
+    (signature : FrozenSig) (context : NamedContext) : List TypePM.TyVar :=
   signature.ftv ++ context.ftv
 
 /-- Free ambient capability variables that a source post must leave fixed. -/
 def SourceFixedCapScope
-    (signature : FrozenSig) (context : Context) : List CapVar :=
+    (signature : FrozenSig) (context : NamedContext) : List CapVar :=
   signature.fcv ++ context.fcv
 
 /-- Free ambient ordinary variables that a source post must leave fixed. -/
 def SourceFixedTyScope
-    (signature : FrozenSig) (context : Context) : List TypePM.TyVar :=
+    (signature : FrozenSig) (context : NamedContext) : List TypePM.TyVar :=
   signature.ftv ++ context.ftv
 
 /-- Free ambient capability variables reserved by pattern-function lookup. -/
 def PatternCapScope
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) : List CapVar :=
   signature.fcv ++ context.fcv ++ parameters.fcv ++ bindings.fcv
 
 /-- Free ambient ordinary variables reserved by pattern-function lookup. -/
 def PatternTyScope
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) : List TypePM.TyVar :=
   signature.ftv ++ context.ftv ++ parameters.ftv ++ bindings.ftv
 
 /-- Free ambient capability variables that a pattern post must leave fixed. -/
 def PatternFixedCapScope
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) : List CapVar :=
   signature.fcv ++ context.fcv ++ parameters.fcv ++ bindings.fcv
 
 /-- Free ambient ordinary variables that a pattern post must leave fixed. -/
 def PatternFixedTyScope
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx) : List TypePM.TyVar :=
   signature.ftv ++ context.ftv ++ parameters.ftv ++ bindings.ftv
 
@@ -974,7 +974,7 @@ generalization; capability movement has only fresh variable images and target
 movement is restricted to the generalized ordinary binders.
 -/
 structure GeneralizedPost
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (source target : Ty) (capImages : List CapVar) (post : Subst) : Prop where
   restricted :
     RestrictedPost
@@ -990,7 +990,7 @@ structure GeneralizedPost
 
 /-- A generalized post can be retained as the first suffix-chain node. -/
 def GeneralizedPost.toChain
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {source target : Ty} {capImages : List CapVar} {post : Subst}
     (generalized :
       GeneralizedPost signature context source target capImages post) :
@@ -1006,7 +1006,7 @@ Dual analogue used to specialize a raw pattern-function body at concrete
 argument/result duals without storing an arbitrary actual `PatternTy` proof.
 -/
 structure GeneralizedDualPost
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (sourceArgs : List Dual) (sourceResult : Dual)
     (targetArgs : List Dual) (targetResult : Dual)
     (capImages : List CapVar) (post : Subst) : Prop where
@@ -2460,7 +2460,7 @@ theorem NamedScheme.FreshInstAt.weakenReserved
 
 /-- A fresh capability variable for a source pattern judgment. -/
 def FreshCap
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx)
     (varId : CapVar) : Prop :=
   varId ∉ signature.fcv ∧
@@ -2470,7 +2470,7 @@ def FreshCap
 
 /-- A fresh ordinary variable for a source pattern/expression judgment. -/
 def FreshTy
-    (signature : FrozenSig) (context : Context)
+    (signature : FrozenSig) (context : NamedContext)
     (parameters : PatternCtx) (bindings : MonoCtx)
     (varId : TypePM.TyVar) : Prop :=
   varId ∉ signature.ftv ∧
@@ -3255,7 +3255,7 @@ theorem SlotToSlotRawCert.postSlotEquality
 mutual
 
 /-- State-free expression certificate `Σ̂ ; Γ ⊢ᵣ e : τ`. -/
-inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Prop where
+inductive RuntimeTyping (signature : FrozenSig) : NamedContext → Expr → Ty → Prop where
   /-- T-VAR. -/
   | var {context name scheme target} :
       context.find? name = some scheme →
@@ -3373,7 +3373,7 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
 
 /-- Pointwise expression typing with exact source order and arity. -/
 inductive ExprsTy (signature : FrozenSig) :
-    Context → List Expr → List Ty → Prop where
+    NamedContext → List Expr → List Ty → Prop where
   | nil {context} :
       ExprsTy signature context [] []
   | cons {context expression target expressions targets} :
@@ -3383,7 +3383,7 @@ inductive ExprsTy (signature : FrozenSig) :
 
 /-- Pattern dual typing `Σ̂;Γ;Φ;Δ ⊢ p : Pattern κ τ ; Δ'`. -/
 inductive PatternTy (signature : FrozenSig) :
-    Context → PatternCtx → MonoCtx → Pattern → Cap → Ty → MonoCtx → Prop where
+    NamedContext → PatternCtx → MonoCtx → Pattern → Cap → Ty → MonoCtx → Prop where
   /-- PAT-VAR. -/
   | pvar {context parameters bindings name capVar tyVar} :
       name ∉ bindings.names →
@@ -3452,7 +3452,7 @@ inductive PatternTy (signature : FrozenSig) :
 
 /-- Pattern-list typing with left-to-right `Δ` threading. -/
 inductive PatternTys (signature : FrozenSig) :
-    Context → PatternCtx → MonoCtx → List Pattern → List Dual → MonoCtx → Prop where
+    NamedContext → PatternCtx → MonoCtx → List Pattern → List Dual → MonoCtx → Prop where
   | nil {context parameters bindings} :
       PatternTys signature context parameters bindings [] [] bindings
   | cons
@@ -3471,7 +3471,7 @@ indices, preventing an unrelated actual derivation from being paired with the
 raw provenance tree.
 -/
 inductive PatternResolution (signature : FrozenSig) :
-    Subst → Context → PatternCtx → MonoCtx → Pattern →
+    Subst → NamedContext → PatternCtx → MonoCtx → Pattern →
       Cap → Ty → MonoCtx → Prop where
   /-- Identity resolution may retain the whole raw derivation directly. -/
   | identity
@@ -3560,7 +3560,7 @@ inductive PatternResolution (signature : FrozenSig) :
 
 /-- List form of structurally aligned user-pattern resolution. -/
 inductive PatternResolutions (signature : FrozenSig) :
-    Subst → Context → PatternCtx → MonoCtx → List Pattern →
+    Subst → NamedContext → PatternCtx → MonoCtx → List Pattern →
       List Dual → MonoCtx → Prop where
   /-- Identity resolution may retain the whole raw list derivation. -/
   | identity {context parameters bindings patterns duals resultBindings} :
@@ -3591,10 +3591,10 @@ compound constructors retain actual children and their final certificates.
 -/
 inductive TerminalPatternResolution
     (signature : FrozenSig) :
-    Subst → Context → PatternCtx → MonoCtx → Pattern →
+    Subst → NamedContext → PatternCtx → MonoCtx → Pattern →
       Cap → Ty → MonoCtx → Prop where
   | pvar {rawContext rawParameters rawBindings name capVar tyVar}
-      {actualContext : Context} :
+      {actualContext : NamedContext} :
       name ∉ rawBindings.names →
       FreshCap signature rawContext rawParameters rawBindings capVar →
       FreshTy signature rawContext rawParameters rawBindings tyVar →
@@ -3606,7 +3606,7 @@ inductive TerminalPatternResolution
         (prevailing.apply (Ty.var tyVar))
         ((rawBindings ++ [(name, Ty.var tyVar)]).applySubst prevailing)
   | wild {rawContext rawParameters rawBindings capVar tyVar}
-      {actualContext : Context} :
+      {actualContext : NamedContext} :
       FreshCap signature rawContext rawParameters rawBindings capVar →
       FreshTy signature rawContext rawParameters rawBindings tyVar →
       TerminalPatternResolution signature prevailing
@@ -3618,7 +3618,7 @@ inductive TerminalPatternResolution
         (rawBindings.applySubst prevailing)
   | pval
       {rawContext rawParameters rawBindings expression rawTarget capVar}
-      {actualContext : Context} :
+      {actualContext : NamedContext} :
       FreshCap signature rawContext rawParameters rawBindings capVar →
       capVar ∉ rawTarget.fcv →
       RuntimeTyping signature
@@ -3633,9 +3633,9 @@ inductive TerminalPatternResolution
         (prevailing.apply rawTarget)
         (rawBindings.applySubst prevailing)
   | embed
-      {rawContext : Context} {rawParameters : PatternCtx}
+      {rawContext : NamedContext} {rawParameters : PatternCtx}
       {rawBindings : MonoCtx} {name : String} {dual : Dual}
-      {actualContext : Context} :
+      {actualContext : NamedContext} :
       rawParameters.find? name = some dual →
       (rawParameters.applySubst prevailing).find? name =
         some (dual.applySubst prevailing) →
@@ -3690,7 +3690,7 @@ inductive TerminalPatternResolution
 /-- List form of actual-indexed terminal user-pattern resolution. -/
 inductive TerminalPatternResolutions
     (signature : FrozenSig) :
-    Subst → Context → PatternCtx → MonoCtx → List Pattern →
+    Subst → NamedContext → PatternCtx → MonoCtx → List Pattern →
       List Dual → MonoCtx → Prop where
   | nil {context parameters bindings} :
       TerminalPatternResolutions signature prevailing context parameters
@@ -3711,7 +3711,7 @@ substitution used by T-MATCHALL.  In particular the context, target, matcher
 capability, and output bindings cannot be resolved independently.
 -/
 inductive ResolvedPatternTy (signature : FrozenSig) :
-    Subst → Context → PatternCtx → MonoCtx → Pattern → Cap → Ty → MonoCtx → Prop where
+    Subst → NamedContext → PatternCtx → MonoCtx → Pattern → Cap → Ty → MonoCtx → Prop where
   | ofAligned
       {rawContext rawParameters rawBindings pattern rawCap rawTarget
        rawResultBindings} :
@@ -3734,7 +3734,7 @@ inductive ResolvedPatternTy (signature : FrozenSig) :
 
 /-- One matcher-clause arm. -/
 inductive ArmTy (signature : FrozenSig) :
-    Context → Ty → MonoCtx → Ty → Arm → Prop where
+    NamedContext → Ty → MonoCtx → Ty → Arm → Prop where
   | mk {context target ppBindings result pattern body armBindings} :
       DPatTy signature pattern target armBindings →
       RuntimeTyping signature
@@ -3744,7 +3744,7 @@ inductive ArmTy (signature : FrozenSig) :
 
 /-- Pointwise arm typing. -/
 inductive ArmsTy (signature : FrozenSig) :
-    Context → Ty → MonoCtx → Ty → List Arm → Prop where
+    NamedContext → Ty → MonoCtx → Ty → List Arm → Prop where
   | nil {context target ppBindings result} :
       ArmsTy signature context target ppBindings result []
   | cons {context target ppBindings result arm arms} :
@@ -3757,7 +3757,7 @@ The order premise is intentionally explicit even though the final
 `clauseEvidence` equality implies it: this belt-and-braces presentation keeps
 the declarative boundary visible and matches the displayed paper rule. -/
 inductive ClauseTy (signature : FrozenSig) :
-    Subst → Context → Clause → Cap → Ty → Shape.Evidence → Prop where
+    Subst → NamedContext → Clause → Cap → Ty → Shape.Evidence → Prop where
   | mk
       {context capability target pp next arms holes ppBindings nextMatchers
        evidence} :
@@ -3776,7 +3776,7 @@ inductive ClauseTy (signature : FrozenSig) :
 
 /-- Actual clause-list typing under one substitution shared by every clause. -/
 inductive ClausesTy (signature : FrozenSig) :
-    Subst → Context → List Clause → Cap → Ty →
+    Subst → NamedContext → List Clause → Cap → Ty →
       List Shape.Evidence → Prop where
   | nil {context target} :
       ClausesTy signature prevailing context [] capability target []
@@ -3792,7 +3792,7 @@ matcher clauses.  T-MATCHER consumes this package, so clauses cannot select
 unrelated resolutions.
 -/
 inductive ResolvedClausesTy (signature : FrozenSig) :
-    Context → List Clause → Cap → Ty → List Shape.Evidence → Prop where
+    NamedContext → List Clause → Cap → Ty → List Shape.Evidence → Prop where
   | ofShared {prevailing context clauses capability target evidence} :
       ClausesTy signature prevailing context clauses capability target evidence →
       ResolvedClausesTy signature context clauses capability target evidence
@@ -3806,7 +3806,7 @@ mutual
 /-- Raw user-pattern typing is terminal at identity. -/
 def PatternTy.terminal_id
     {signature : FrozenSig} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {pattern : Pattern} →
       {capability : Cap} → {target : Ty} → {result : MonoCtx} →
       PatternTy signature context parameters bindings pattern capability target
@@ -3846,7 +3846,7 @@ def PatternTy.terminal_id
 /-- List form of `PatternTy.terminal_id`. -/
 def PatternTys.terminal_id
     {signature : FrozenSig} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {patterns : List Pattern} →
       {duals : List Dual} → {result : MonoCtx} →
       PatternTys signature context parameters bindings patterns duals result →
@@ -3863,7 +3863,7 @@ mutual
 /-- Forget raw compound indices and expose the actual terminal resolution. -/
 def PatternResolution.terminal
     {signature : FrozenSig} {prevailing : Subst} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {pattern : Pattern} →
       {capability : Cap} → {target : Ty} → {result : MonoCtx} →
       PatternResolution signature prevailing context parameters bindings
@@ -3906,7 +3906,7 @@ def PatternResolution.terminal
 /-- List form of `PatternResolution.terminal`. -/
 def PatternResolutions.terminal
     {signature : FrozenSig} {prevailing : Subst} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {patterns : List Pattern} →
       {duals : List Dual} → {result : MonoCtx} →
       PatternResolutions signature prevailing context parameters bindings
@@ -3931,7 +3931,7 @@ mutual
 /-- Recover the raw user-pattern derivation retained by an alignment. -/
 def PatternResolution.raw
     {signature : FrozenSig} {prevailing : Subst} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {pattern : Pattern} →
       {capability : Cap} → {target : Ty} → {result : MonoCtx} →
       PatternResolution signature prevailing context parameters bindings
@@ -3958,7 +3958,7 @@ def PatternResolution.raw
 /-- List form of `PatternResolution.raw`. -/
 def PatternResolutions.raw
     {signature : FrozenSig} {prevailing : Subst} :
-    {context : Context} → {parameters : PatternCtx} →
+    {context : NamedContext} → {parameters : PatternCtx} →
       {bindings : MonoCtx} → {patterns : List Pattern} →
       {duals : List Dual} → {result : MonoCtx} →
       PatternResolutions signature prevailing context parameters bindings
@@ -3972,7 +3972,7 @@ end
 
 /-- Raw pattern typing resolves definitionally under identity. -/
 theorem PatternTy.resolve_id
-    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {signature : FrozenSig} {context : NamedContext} {parameters : PatternCtx}
     {bindings : MonoCtx} {pattern : Pattern} {capability : Cap}
     {target : Ty} {resultBindings : MonoCtx}
     (typing : PatternTy signature context parameters bindings pattern
@@ -3985,7 +3985,7 @@ theorem PatternTy.resolve_id
 /-- Both raw-aligned and terminal introductions expose one terminal view. -/
 theorem ResolvedPatternTy.terminal
     {signature : FrozenSig} {prevailing : Subst}
-    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {context : NamedContext} {parameters : PatternCtx} {bindings : MonoCtx}
     {pattern : Pattern} {capability : Cap} {target : Ty}
     {resultBindings : MonoCtx}
     (typing : ResolvedPatternTy signature prevailing context parameters bindings
@@ -3999,7 +3999,7 @@ theorem ResolvedPatternTy.terminal
 
 /-- Package identity-resolved clauses for T-MATCHER. -/
 theorem ClausesTy.resolve_id
-    {signature : FrozenSig} {context : Context} {clauses : List Clause}
+    {signature : FrozenSig} {context : NamedContext} {clauses : List Clause}
     {capability : Cap} {target : Ty} {evidence : List Shape.Evidence}
     (typing :
       ClausesTy signature Subst.id context clauses capability target evidence) :
@@ -4011,7 +4011,7 @@ theorem ClausesTy.resolve_id
 /-- Every runtime-certified function-shaped `fix` satisfies the public
 singleton direct-self boundary. -/
 theorem RuntimeTyping.fix_inversion
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {self argument : String} {body : Expr} {domain codomain : Ty}
     (typing :
       RuntimeTyping signature context (.fix self argument body)
@@ -4022,7 +4022,7 @@ theorem RuntimeTyping.fix_inversion
 
 /-- The higher-order self-flow counterexample cannot enter declarative T-FIX. -/
 theorem higherOrderFix_untypable
-    {signature : FrozenSig} {context : Context} {domain codomain : Ty} :
+    {signature : FrozenSig} {context : NamedContext} {domain codomain : Ty} :
     ¬ RuntimeTyping signature context
       (.fix "f" "x" (.app (.lam "h" (.var "x")) (.var "f")))
       (.fn domain codomain) := by
@@ -4037,7 +4037,7 @@ Inverting T-MATCHER exposes evidence from the actual clause list together
 with every mandatory coverage and well-formedness premise.
 -/
 theorem RuntimeTyping.matcher_inversion
-    {signature : FrozenSig} {context : Context}
+    {signature : FrozenSig} {context : NamedContext}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
       RuntimeTyping signature context (.matcher clauses) (.matcher capability target)) :
