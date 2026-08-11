@@ -1127,6 +1127,32 @@ def applicationFreshState
       (freshOrigin .expression path "application-domain")).2).freshTy
     (freshOrigin .expression path "application-result")).2
 
+/-- The ordinary recursive-binder domain allocated after visiting `fix`. -/
+def fixDomain (initial : InferState) (path : SyntaxPath) : Ty :=
+  ((visit initial .exprFix path).freshTy
+    (freshOrigin .recursiveBinder path "fix-domain")).1
+
+/-- The ordinary recursive-binder codomain allocated after its domain. -/
+def fixCodomain (initial : InferState) (path : SyntaxPath) : Ty :=
+  ((((visit initial .exprFix path).freshTy
+      (freshOrigin .recursiveBinder path "fix-domain")).2).freshTy
+    (freshOrigin .recursiveBinder path "fix-codomain")).1
+
+/-- State after the ordinary recursive placeholder's two allocations. -/
+def fixFreshState (initial : InferState) (path : SyntaxPath) : InferState :=
+  ((((visit initial .exprFix path).freshTy
+      (freshOrigin .recursiveBinder path "fix-domain")).2).freshTy
+    (freshOrigin .recursiveBinder path "fix-codomain")).2
+
+/-- State passed to an ordinary recursive body, including its two
+provenance-only acceptance events. -/
+def fixBodyEntryState (initial : InferState) (path : SyntaxPath)
+    (self argument : String) : InferState :=
+  let placeholder := .fn (fixDomain initial path) (fixCodomain initial path)
+  ((fixFreshState initial path).recordEvent
+    (.fixPlaceholder self argument placeholder path)).recordEvent
+    (.directSelfAccepted self placeholder path)
+
 @[simp] theorem lambdaDomain_eq
     (initial : InferState) (path : SyntaxPath) :
     lambdaDomain initial path = .var initial.supply.nextTy :=
@@ -1179,6 +1205,63 @@ def applicationFreshState
     (applicationFreshState functionResult path).capabilityOrigins =
       functionResult.state.capabilityOrigins :=
   rfl
+
+@[simp] theorem fixDomain_eq
+    (initial : InferState) (path : SyntaxPath) :
+    fixDomain initial path = .var initial.supply.nextTy :=
+  rfl
+
+@[simp] theorem fixCodomain_eq
+    (initial : InferState) (path : SyntaxPath) :
+    fixCodomain initial path = .var (initial.supply.nextTy + 1) :=
+  rfl
+
+@[simp] theorem fixFreshState_supply
+    (initial : InferState) (path : SyntaxPath) :
+    (fixFreshState initial path).supply =
+      { initial.supply with nextTy := initial.supply.nextTy + 2 } :=
+  rfl
+
+@[simp] theorem fixFreshState_prevailing
+    (initial : InferState) (path : SyntaxPath) :
+    (fixFreshState initial path).prevailing = initial.prevailing :=
+  rfl
+
+@[simp] theorem fixFreshState_capabilityOrigins
+    (initial : InferState) (path : SyntaxPath) :
+    (fixFreshState initial path).capabilityOrigins =
+      initial.capabilityOrigins :=
+  rfl
+
+@[simp] theorem fixBodyEntryState_supply
+    (initial : InferState) (path : SyntaxPath) (self argument : String) :
+    (fixBodyEntryState initial path self argument).supply =
+      { initial.supply with nextTy := initial.supply.nextTy + 2 } := by
+  simp [fixBodyEntryState]
+
+@[simp] theorem fixBodyEntryState_prevailing
+    (initial : InferState) (path : SyntaxPath) (self argument : String) :
+    (fixBodyEntryState initial path self argument).prevailing =
+      initial.prevailing := by
+  simp [fixBodyEntryState]
+
+@[simp] theorem fixBodyEntryState_capabilityOrigins
+    (initial : InferState) (path : SyntaxPath) (self argument : String) :
+    (fixBodyEntryState initial path self argument).capabilityOrigins =
+      initial.capabilityOrigins := by
+  simp [fixBodyEntryState]
+
+/-- Away from matcher literals, the executable placeholder selector is
+exactly the two-fresh ordinary `fix` allocation named above. -/
+theorem buildFixPlaceholder_nonMatcher
+    (signature : FrozenSig) (initial : InferState) (path : SyntaxPath)
+    (body : Expr) (nonMatcher : NonMatcherBody body) :
+    buildFixPlaceholder signature path body (visit initial .exprFix path) =
+      some (fixDomain initial path, fixCodomain initial path,
+        fixFreshState initial path) := by
+  cases body <;>
+    simp [NonMatcherBody, matcherProducingRoot, buildFixPlaceholder,
+      fixDomain, fixCodomain, fixFreshState] at nonMatcher ⊢
 
 /-- The empty executable expression-list result is the empty DD derivation. -/
 theorem DDSynthsRun.nil
@@ -1246,6 +1329,60 @@ theorem DDSynthRun.lam
     DDSynth.lam bodyDerived, ?_, ?_⟩
   · simp [finishExpr, bodyEq]
   · simpa [finishExpr] using DDSynthOrigin.lam bodyOrigin
+
+/-- Compose the ordinary recursive-body run with its codomain alignment.  The
+two acceptance events at body entry affect neither DD state index nor the
+origin ledger. -/
+theorem DDSynthRun.fix
+    {signature : FrozenSig} {context : Context} {self argument : String}
+    {body : Expr} {initial : InferState} {path : SyntaxPath}
+    {bodyResult : ExprResult} {alignedState : InferState}
+    (distinct : self ≠ argument)
+    (direct : DirectSelf.Holds self body)
+    (nonMatcher : NonMatcherBody body)
+    (bodyRun : DDSynthRun signature
+      ((argument, Scheme.mono (fixDomain initial path)) ::
+        (self, Scheme.mono
+          (.fn (fixDomain initial path) (fixCodomain initial path))) :: context)
+      body (fixBodyEntryState initial path self argument) bodyResult)
+    (alignRun : DDAlignTypesRun bodyResult.target (fixCodomain initial path)
+      bodyResult.state alignedState) :
+    DDSynthRun signature context (.fix self argument body) initial
+      (finishExpr (.fix self argument body) path
+        (.fn (fixDomain initial path) (fixCodomain initial path))
+        alignedState) := by
+  rcases bodyRun with ⟨bodyTarget, bodyDerived, bodyTargetEq, bodyOrigin⟩
+  rcases alignRun with ⟨alignedSupplyEq, alignedLedgerEq, aligned⟩
+  subst bodyTarget
+  change DDSynth signature
+    { initial.supply with nextTy := initial.supply.nextTy + 2 }
+    initial.prevailing
+    ((argument, Scheme.mono (.var initial.supply.nextTy)) ::
+      (self, Scheme.mono
+        (.fn (.var initial.supply.nextTy)
+          (.var (initial.supply.nextTy + 1)))) :: context)
+    body bodyResult.target bodyResult.state.supply
+      bodyResult.state.prevailing at bodyDerived
+  change DDSynthOrigin signature bodyDerived initial.capabilityOrigins
+    bodyResult.state.capabilityOrigins at bodyOrigin
+  simp only [fixCodomain_eq] at aligned
+  have baseRun : DDSynthRun signature context (.fix self argument body) initial
+      ⟨.fn (.var initial.supply.nextTy) (.var (initial.supply.nextTy + 1)),
+        alignedState⟩ := by
+    unfold DDSynthRun
+    let rawDerived :=
+      DDSynth.fix distinct direct nonMatcher bodyDerived aligned.erase
+    let finalDerived : DDSynth signature initial.supply initial.prevailing
+        context (.fix self argument body)
+        (.fn (.var initial.supply.nextTy) (.var (initial.supply.nextTy + 1)))
+        alignedState.supply alignedState.prevailing :=
+      alignedSupplyEq.symm ▸ rawDerived
+    refine ⟨.fn (.var initial.supply.nextTy)
+        (.var (initial.supply.nextTy + 1)), finalDerived, rfl, ?_⟩
+    simp only [alignedSupplyEq, alignedLedgerEq]
+    exact DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned
+  unfold DDSynthRun at baseRun ⊢
+  simpa [finishExpr] using baseRun
 
 /-- Reconstruct tuple synthesis from the exact expression-list run after the
 tuple visit event. -/
@@ -1521,6 +1658,75 @@ theorem inferExprFuel_lam_ddSynthRun
         simpa [inferExprFuel, lambdaDomain, actualBodyEq] using success
       subst result
       exact DDSynthRun.lam (bodySound bodyResult bodyEq)
+
+/-- The ordinary (non-matcher-literal) recursive branch reconstructs the
+declarative gate, its two-fresh monomorphic placeholder, the exact recursive
+body run, and the trailing codomain alignment. -/
+theorem inferExprFuel_fix_nonMatcher_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {self argument : String}
+    {body : Expr} {initial : InferState} {result : ExprResult}
+    (nonMatcher : NonMatcherBody body)
+    (bodySound : ∀ (bodyContext : Context) (bodySelfEnv : SelfEnv)
+        (bodyInitial : InferState) (bodyResult : ExprResult),
+      inferExprFuel fuel signature bodyContext bodySelfEnv (0 :: path) body
+        bodyInitial = some bodyResult →
+      DDSynthRun signature bodyContext body bodyInitial bodyResult)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.fix self argument body) initial = some result) :
+    DDSynthRun signature context (.fix self argument body) initial result := by
+  cases gate : (self != argument && DirectSelf.check self body) with
+  | false => simp [inferExprFuel, gate] at success
+  | true =>
+      rcases (DirectSelf.fix_gate_eq_true self argument body).mp gate with
+        ⟨distinct, direct⟩
+      have placeholderEq := buildFixPlaceholder_nonMatcher signature initial
+        path body nonMatcher
+      cases bodyEq : inferExprFuel fuel signature
+          ((argument, Scheme.mono (fixDomain initial path)) ::
+            (self, Scheme.mono
+              (.fn (fixDomain initial path) (fixCodomain initial path))) ::
+              context)
+          ((self, .fn (fixDomain initial path) (fixCodomain initial path)) ::
+            selfEnv.eraseMany [self, argument])
+          (0 :: path) body (fixBodyEntryState initial path self argument) with
+      | none =>
+          have actualPlaceholderEq := placeholderEq
+          simp only [fixDomain, fixCodomain, fixFreshState]
+            at actualPlaceholderEq
+          have actualBodyEq := bodyEq
+          simp only [fixDomain, fixCodomain, fixFreshState,
+            fixBodyEntryState] at actualBodyEq
+          simp [inferExprFuel, gate, actualPlaceholderEq, actualBodyEq]
+            at success
+      | some bodyResult =>
+          have actualPlaceholderEq := placeholderEq
+          simp only [fixDomain, fixCodomain, fixFreshState]
+            at actualPlaceholderEq
+          have actualBodyEq := bodyEq
+          simp only [fixDomain, fixCodomain, fixFreshState,
+            fixBodyEntryState] at actualBodyEq
+          cases alignEq : alignTypes bodyResult.state
+              (freshOrigin .recursiveBinder path "fix-result")
+              bodyResult.target (fixCodomain initial path) with
+          | none =>
+              have actualAlignEq := alignEq
+              simp only [fixCodomain] at actualAlignEq
+              simp [inferExprFuel, gate, actualPlaceholderEq, actualBodyEq,
+                actualAlignEq] at success
+          | some alignedState =>
+              have actualAlignEq := alignEq
+              simp only [fixCodomain] at actualAlignEq
+              have resultEq : finishExpr (.fix self argument body) path
+                  (.fn (fixDomain initial path) (fixCodomain initial path))
+                  alignedState = result := by
+                apply Option.some.inj
+                simpa [inferExprFuel, gate, actualPlaceholderEq, actualBodyEq,
+                  actualAlignEq, fixDomain, fixCodomain] using success
+              subst result
+              exact DDSynthRun.fix distinct direct nonMatcher
+                (bodySound _ _ _ bodyResult bodyEq)
+                (alignTypes_ddAlignTypesRun alignEq)
 
 /-- The tuple branch delegates to the expression-list induction hypothesis
 after recording its syntax visit. -/
