@@ -112,6 +112,19 @@ def TySubst.CapRangeWithin (S : TySubst) (tyVars : List TypePM.TyVar)
     (capVars : List CapVar) : Prop :=
   ∀ varId ∈ tyVars, ∀ image ∈ (S varId).fcv, image ∈ capVars
 
+/-- The executable target unifier never introduces a target variable outside
+the constraint.  This is the demand-typing projection of the kernel-local
+`TyRange` certificate exposed by `Unification.mguTy_inputRange`. -/
+theorem Unification.mguTy_rangeWithin
+    {left right : Ty} {S : TySubst}
+    (success : Unification.mguTy left right = some S) :
+    S.RangeWithin (left.ftv ++ right.ftv) := by
+  intro varId varMem image imageMem
+  rcases Unification.mguTy_inputRange success varId image imageMem with
+    rfl | imageIn
+  · exact varMem
+  · exact imageIn
+
 /-- Applying twice is applying once: the capability solved-form condition. -/
 def CapSubst.Idempotent (S : CapSubst) : Prop :=
   ∀ capability : Cap, (capability.apply S).apply S = capability.apply S

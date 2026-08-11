@@ -3204,6 +3204,40 @@ private theorem solveTyPair_varCert :
         | _ :: _, [] =>
             cases hrun
 
+/-! ## Public no-guess range certificates
+
+The exact demand-typing interface additionally asks that a solver result
+mention no target variables outside its input constraint.  The kernel's
+`TyRange` invariant is the implementation-specific core of that statement:
+an image may retain its own variable, or mention a variable already present
+in the two inputs.  We expose that core independently of the later
+`ExactTargetMGU` vocabulary so the unification layer does not depend on the
+demand-typing layer.
+-/
+
+/-- Every target variable occurring in an image returned by the fuelled
+target unifier is either the image's own index or occurs in the input
+constraint. -/
+theorem mguTyFuel_inputRange
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (success : mguTyFuel fuel left right = some S) :
+    ∀ x y, y ∈ (S x).ftv → y = x ∨ y ∈ left.ftv ++ right.ftv := by
+  unfold mguTyFuel at success
+  cases run : solveTy fuel left right with
+  | none => simp [run] at success
+  | some result =>
+      have resultEq : result.subst = S := by
+        simpa [run] using success
+      subst S
+      exact (solveTyPair_varCert fuel).1 left right result run |>.1
+
+/-- Complete-wrapper form of `mguTyFuel_inputRange`. -/
+theorem mguTy_inputRange
+    {left right : Ty} {S : TySubst}
+    (success : mguTy left right = some S) :
+    ∀ x y, y ∈ (S x).ftv → y = x ∨ y ∈ left.ftv ++ right.ftv := by
+  exact mguTyFuel_inputRange success
+
 /-! ## Solvability completeness
 
 Any unifiable constraint is solved by the kernel at some fuel.  The

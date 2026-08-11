@@ -301,7 +301,10 @@ checking側にもexact-stateな`DDAlignRun`／`DDCheckRun`とsynthesisからの�
 generic alignmentを実行solverから再構成するには，solverの既存soundness／support／universalityを
 DD規則が要求するrange／idempotenceを含む`ExactTargetMGU`／`ExactPairedMGU`まで強めるbridgeが
 次に必要である．ledger-relativeな成功結果についても，成功したsubstitution自体のglobal MGU性を
-証明し，DDのexactness契約は弱めない方針である．
+証明し，DDのexactness契約は弱めない方針である．通常target MGUについてはkernel内部の
+`TyRange` certificateを公開し，image target variableが入力constraintのfree-variable範囲を
+越えない`TySubst.RangeWithin`まで証明済みである．残るsupport，capability range，idempotenceは，
+solverが変更した各変数を最終imageから消去する相互invariantから導く．
 
 中心定理：
 
