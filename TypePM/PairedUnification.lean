@@ -1,4 +1,5 @@
 import TypePM.CapabilityOrigin
+import TypePM.SourceSubstitution
 
 /-!
 # Origin-aware paired unification

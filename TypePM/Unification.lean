@@ -85,6 +85,21 @@ theorem Cap.applyList_single_of_not_mem
 
 end
 
+/-- The single capability binding is idempotent under its occurs condition. -/
+theorem capSingle_idempotent {varId : CapVar} {capability : Cap}
+    (notMem : varId ∉ capability.fcv) :
+    (CapSubst.single varId capability).Idempotent := by
+  apply CapSubst.idempotent_of_pointwise
+  intro candidate
+  by_cases hcase : varId = candidate
+  · subst candidate
+    rw [show CapSubst.single varId capability varId = capability
+      from if_pos rfl]
+    exact Cap.apply_single_of_not_mem varId capability capability notMem
+  · rw [show CapSubst.single varId capability candidate =
+      .var candidate from if_neg hcase]
+    exact if_neg hcase
+
 mutual
 
 /-- A type not containing `varId` is fixed by its single target binding. -/
@@ -133,6 +148,20 @@ theorem Ty.applyTargetList_single_of_not_mem
         Ty.applyTargetList_single_of_not_mem varId replacement types hnotmem.2]
 
 end
+
+/-- The single target binding is idempotent under its occurs condition. -/
+theorem tySingle_idempotent {varId : TypePM.TyVar} {target : Ty}
+    (notMem : varId ∉ target.ftv) :
+    (TySubst.single varId target).Idempotent := by
+  apply TySubst.idempotent_of_pointwise
+  intro candidate
+  by_cases hcase : varId = candidate
+  · subst candidate
+    rw [show TySubst.single varId target varId = target from if_pos rfl]
+    exact Ty.applyTarget_single_of_not_mem varId target target notMem
+  · rw [show TySubst.single varId target candidate =
+      .var candidate from if_neg hcase]
+    exact if_neg hcase
 
 mutual
 

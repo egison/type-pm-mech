@@ -143,18 +143,6 @@ theorem Unification.mguTy_capRangeWithin
   intro candidate _ varId membership
   exact Unification.mguTy_capInputRange success candidate varId membership
 
-/-- Applying twice is applying once: the capability solved-form condition. -/
-def CapSubst.Idempotent (S : CapSubst) : Prop :=
-  ∀ capability : Cap, (capability.apply S).apply S = capability.apply S
-
-/-- Applying twice is applying once: the target solved-form condition. -/
-def TySubst.Idempotent (S : TySubst) : Prop :=
-  ∀ target : Ty, (target.applyTarget S).applyTarget S = target.applyTarget S
-
-/-- Applying twice is applying once: the paired solved-form condition. -/
-def Subst.Idempotent (S : Subst) : Prop :=
-  ∀ target : Ty, S.apply (S.apply target) = S.apply target
-
 def ExactCapMGU (left right : Cap) (subst : CapSubst) : Prop :=
   CapMGU left right subst ∧
   subst.SupportWithin (left.fcv ++ right.fcv) ∧
@@ -666,35 +654,6 @@ solved-form clause removes exactly that residue: applying a delta twice is
 applying it once, which is what prevailing-substitution absorption
 (`Subst.seq_absorbs_of_idempotent`) needs. -/
 
-/-- Pointwise fixed images make a capability substitution idempotent. -/
-theorem CapSubst.idempotent_of_pointwise {S : CapSubst}
-    (fixed : ∀ varId, (S varId).apply S = S varId) : S.Idempotent := by
-  intro capability
-  rw [← Cap.apply_comp]
-  congr 1
-  funext varId
-  exact fixed varId
-
-/-- Pointwise fixed images make a target substitution idempotent. -/
-theorem TySubst.idempotent_of_pointwise {S : TySubst}
-    (fixed : ∀ varId, (S varId).applyTarget S = S varId) : S.Idempotent := by
-  intro target
-  rw [← Ty.applyTarget_comp]
-  congr 1
-  funext varId
-  exact fixed varId
-
-/-- The executable target unifier returns a solved-form substitution. -/
-theorem Unification.mguTy_idempotent
-    {left right : Ty} {S : TySubst}
-    (success : Unification.mguTy left right = some S) :
-    S.Idempotent := by
-  apply TySubst.idempotent_of_pointwise
-  intro source
-  apply Ty.applyTarget_eq_self_of_ftv_fixed
-  intro image imageMem
-  exact Unification.mguTy_imageVarsFixed success source image imageMem
-
 /-- A successful executable target unification supplies the full exact MGU
 certificate required by demand-directed alignment. -/
 theorem Unification.mguTy_exactTargetMGU
@@ -757,88 +716,6 @@ theorem Inference.solveCapEqWithLedger_originSafeExactCapMGU
     subst step
     exact ⟨rfl, result.originSafeExactCapMGU⟩
 
-/-- The identity capability substitution is idempotent. -/
-theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
-  intro capability
-  simp [Cap.apply_id]
-
-/-- The identity target substitution is idempotent. -/
-theorem TySubst.id_idempotent : TySubst.id.Idempotent := by
-  intro target
-  simp [Ty.applyTarget_id]
-
-/-- The identity paired substitution is idempotent. -/
-theorem Subst.id_idempotent : Subst.Idempotent Subst.id := by
-  intro target
-  simp [Subst.apply_id]
-
-/-- A capability-identity paired delta is idempotent exactly when its target
-component is. -/
-theorem Subst.idempotent_of_capId {T : TySubst} (idem : T.Idempotent) :
-    Subst.Idempotent ⟨CapSubst.id, T⟩ := by
-  intro target
-  show (((target.applyCapability CapSubst.id).applyTarget T).applyCapability
-      CapSubst.id).applyTarget T =
-    (target.applyCapability CapSubst.id).applyTarget T
-  rw [Ty.applyCapability_id, Ty.applyCapability_id]
-  exact idem target
-
-/-- The single capability binding is idempotent under its occurs condition. -/
-theorem capSingle_idempotent {varId : CapVar} {capability : Cap}
-    (notMem : varId ∉ capability.fcv) :
-    (Unification.CapSubst.single varId capability).Idempotent := by
-  apply CapSubst.idempotent_of_pointwise
-  intro candidate
-  by_cases hcase : varId = candidate
-  · subst hcase
-    rw [show Unification.CapSubst.single varId capability varId = capability
-      from if_pos rfl]
-    exact Unification.Cap.apply_single_of_not_mem varId capability capability
-      notMem
-  · rw [show Unification.CapSubst.single varId capability candidate =
-      .var candidate from if_neg hcase]
-    show Unification.CapSubst.single varId capability candidate =
-      .var candidate
-    exact if_neg hcase
-
-/-- The single target binding is idempotent under its occurs condition. -/
-theorem tySingle_idempotent {varId : TypePM.TyVar} {target : Ty}
-    (notMem : varId ∉ target.ftv) :
-    (Unification.TySubst.single varId target).Idempotent := by
-  apply TySubst.idempotent_of_pointwise
-  intro candidate
-  by_cases hcase : varId = candidate
-  · subst hcase
-    rw [show Unification.TySubst.single varId target varId = target
-      from if_pos rfl]
-    exact Unification.Ty.applyTarget_single_of_not_mem varId target target
-      notMem
-  · rw [show Unification.TySubst.single varId target candidate =
-      .var candidate from if_neg hcase]
-    show Unification.TySubst.single varId target candidate = .var candidate
-    exact if_neg hcase
-
-/-- Sequencing any later substitution onto an idempotent prevailing
-substitution absorbs the prevailing action: the composite does not see the
-earlier substitution twice. -/
-theorem Subst.seq_absorbs_of_idempotent {S : Subst}
-    (idem : S.Idempotent) (U : Subst) (target : Ty) :
-    (Subst.seq U S).apply (S.apply target) = (Subst.seq U S).apply target := by
-  rw [Subst.seq_apply, Subst.seq_apply, idem]
-
-/-- A solved-form delta whose composite images stay fixed by the prevailing
-substitution keeps the composite in solved form.  The fixedness premise is
-where freshness discharges: the delta's constraint variables and images are
-prevailing-resolved, so the prevailing substitution does not move them. -/
-theorem Subst.seq_idempotent {S delta : Subst}
-    (idemDelta : delta.Idempotent)
-    (fixed : ∀ target : Ty,
-      S.apply (delta.apply (S.apply target)) =
-        delta.apply (S.apply target)) :
-    (Subst.seq delta S).Idempotent := by
-  intro target
-  rw [Subst.seq_apply, Subst.seq_apply, fixed, idemDelta]
-
 /-- Identity is an exact most general unifier of equal capabilities. -/
 theorem ExactCapMGU.refl (capability : Cap) :
     ExactCapMGU capability capability CapSubst.id :=
@@ -853,7 +730,7 @@ theorem ExactCapMGU.varLeft (varId : CapVar) (capability : Cap)
   refine ⟨CapMGU.varLeft varId capability notMem, ?_,
     capSingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
-    capSingle_idempotent notMem⟩
+    Unification.capSingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -868,7 +745,7 @@ theorem ExactCapMGU.varRight (capability : Cap) (varId : CapVar)
   refine ⟨CapMGU.varRight capability varId notMem, ?_,
     capSingle_rangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
-    capSingle_idempotent notMem⟩
+    Unification.capSingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -891,7 +768,7 @@ theorem ExactTargetMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
     tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
-    tySingle_idempotent notMem⟩
+    Unification.tySingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -908,7 +785,7 @@ theorem ExactTargetMGU.varRight (target : Ty) (varId : TypePM.TyVar)
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
     tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
-    tySingle_idempotent notMem⟩
+    Unification.tySingle_idempotent notMem⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -933,7 +810,7 @@ theorem ExactPairedMGU.varLeft (varId : TypePM.TyVar) (target : Ty)
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
     tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inr mem)),
-    Subst.idempotent_of_capId (tySingle_idempotent notMem)⟩
+    Subst.idempotent_of_capId (Unification.tySingle_idempotent notMem)⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -951,7 +828,7 @@ theorem ExactPairedMGU.varRight (target : Ty) (varId : TypePM.TyVar)
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
     tySingle_capRangeWithin
       (fun image mem => List.mem_append.mpr (Or.inl mem)),
-    Subst.idempotent_of_capId (tySingle_idempotent notMem)⟩
+    Subst.idempotent_of_capId (Unification.tySingle_idempotent notMem)⟩
   intro candidate outside
   have hne : ¬ varId = candidate := fun h => outside (by
     cases h
@@ -4244,227 +4121,6 @@ theorem SchemeInstanceCapOccurrenceView.ofGeneralizedBinder
   · simpa using binderMem
   · exact Scheme.mem_applySubst_body_fcv_of_bound _ _ binderMem
       (FrozenSig.generalize_capBinder_bodyMem _ _ _ binderMem)
-
-/-! ### Fixedness discharge for solved-form composition
-
-A solved-form prevailing substitution fixes the free variables of its own
-images, an exact delta's support and range live on prevailing images, and
-therefore the prevailing substitution fixes every composite image.  This
-discharges the fixedness premise of `Subst.seq_idempotent` at every
-ordinary alignment, so prevailing substitutions built from ordinary exact
-solves stay in solved form and absorb
-(`Subst.seq_absorbs_of_idempotent`). -/
-
-mutual
-
-/-- If applying a capability substitution reproduces a capability exactly,
-the substitution fixes every free variable of that capability. -/
-theorem Cap.fixed_of_apply_self {S : CapSubst} :
-    ∀ capability : Cap, capability.apply S = capability →
-      ∀ varId ∈ capability.fcv, S varId = .var varId
-  | .any, _, _, mem => nomatch mem
-  | .var a, applied, varId, mem => by
-      have h : varId = a := by simpa [Cap.fcv] using mem
-      subst h
-      exact applied
-  | .skolem _, _, _, mem => nomatch mem
-  | .con n caps, applied, varId, mem => by
-      have applied' : Cap.con n (Cap.applyList S caps) = Cap.con n caps :=
-        applied
-      injection applied' with _ listEq
-      exact Cap.fixed_of_applyList_self caps listEq varId mem
-  | .prod caps, applied, varId, mem => by
-      have applied' : Cap.prod (Cap.applyList S caps) = Cap.prod caps :=
-        applied
-      injection applied' with listEq
-      exact Cap.fixed_of_applyList_self caps listEq varId mem
-
-/-- List form of `Cap.fixed_of_apply_self`. -/
-theorem Cap.fixed_of_applyList_self {S : CapSubst} :
-    ∀ capabilities : List Cap,
-      Cap.applyList S capabilities = capabilities →
-      ∀ varId ∈ Cap.fcvList capabilities, S varId = .var varId
-  | [], _, _, mem => nomatch mem
-  | capability :: capabilities, applied, varId, mem => by
-      have applied' :
-          capability.apply S :: Cap.applyList S capabilities =
-            capability :: capabilities := applied
-      injection applied' with headEq tailEq
-      have mem' : varId ∈ capability.fcv ++ Cap.fcvList capabilities := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Cap.fixed_of_apply_self capability headEq varId here
-      · exact Cap.fixed_of_applyList_self capabilities tailEq varId there
-
-end
-
-mutual
-
-/-- If a paired substitution reproduces a type exactly, its target component
-fixes every free target variable of that type. -/
-theorem Subst.target_fixed_of_apply_self {S : Subst} :
-    ∀ target : Ty, S.apply target = target →
-      ∀ varId ∈ target.ftv, S.target varId = .var varId
-  | .var a, applied, varId, mem => by
-      have h : varId = a := by simpa [Ty.ftv] using mem
-      subst h
-      exact applied
-  | .skolem _, _, _, mem => nomatch mem
-  | .unit, _, _, mem => nomatch mem
-  | .int, _, _, mem => nomatch mem
-  | .bool, _, _, mem => nomatch mem
-  | .data n targets, applied, varId, mem => by
-      have applied' :
-          Ty.data n (Ty.applyTargetList S.target
-            (Ty.applyCapabilityList S.cap targets)) = Ty.data n targets :=
-        applied
-      injection applied' with _ listEq
-      exact Subst.target_fixed_of_applyList_self targets listEq varId mem
-  | .prod targets, applied, varId, mem => by
-      have applied' :
-          Ty.prod (Ty.applyTargetList S.target
-            (Ty.applyCapabilityList S.cap targets)) = Ty.prod targets :=
-        applied
-      injection applied' with listEq
-      exact Subst.target_fixed_of_applyList_self targets listEq varId mem
-  | .fn domain codomain, applied, varId, mem => by
-      have applied' :
-          Ty.fn (S.apply domain) (S.apply codomain) = Ty.fn domain codomain :=
-        applied
-      injection applied' with domainEq codomainEq
-      have mem' : varId ∈ domain.ftv ++ codomain.ftv := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Subst.target_fixed_of_apply_self domain domainEq varId here
-      · exact Subst.target_fixed_of_apply_self codomain codomainEq varId there
-  | .matcher capability target, applied, varId, mem => by
-      have applied' :
-          Ty.matcher (capability.apply S.cap) (S.apply target) =
-            Ty.matcher capability target := applied
-      injection applied' with _ targetEq
-      exact Subst.target_fixed_of_apply_self target targetEq varId mem
-  | .slot capability target, applied, varId, mem => by
-      have applied' :
-          Ty.slot (capability.apply S.cap) (S.apply target) =
-            Ty.slot capability target := applied
-      injection applied' with _ targetEq
-      exact Subst.target_fixed_of_apply_self target targetEq varId mem
-
-/-- List form of `Subst.target_fixed_of_apply_self`. -/
-theorem Subst.target_fixed_of_applyList_self {S : Subst} :
-    ∀ targets : List Ty,
-      Ty.applyTargetList S.target (Ty.applyCapabilityList S.cap targets) =
-        targets →
-      ∀ varId ∈ Ty.ftvList targets, S.target varId = .var varId
-  | [], _, _, mem => nomatch mem
-  | target :: targets, applied, varId, mem => by
-      have applied' :
-          S.apply target ::
-            Ty.applyTargetList S.target
-              (Ty.applyCapabilityList S.cap targets) =
-            target :: targets := applied
-      injection applied' with headEq tailEq
-      have mem' : varId ∈ target.ftv ++ Ty.ftvList targets := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Subst.target_fixed_of_apply_self target headEq varId here
-      · exact Subst.target_fixed_of_applyList_self targets tailEq varId there
-
-end
-
-mutual
-
-/-- If a paired substitution reproduces a type exactly, its capability
-component fixes every free capability variable of that type. -/
-theorem Subst.cap_fixed_of_apply_self {S : Subst} :
-    ∀ target : Ty, S.apply target = target →
-      ∀ varId ∈ target.fcv, S.cap varId = .var varId
-  | .var _, _, _, mem => nomatch mem
-  | .skolem _, _, _, mem => nomatch mem
-  | .unit, _, _, mem => nomatch mem
-  | .int, _, _, mem => nomatch mem
-  | .bool, _, _, mem => nomatch mem
-  | .data n targets, applied, varId, mem => by
-      have applied' :
-          Ty.data n (Ty.applyTargetList S.target
-            (Ty.applyCapabilityList S.cap targets)) = Ty.data n targets :=
-        applied
-      injection applied' with _ listEq
-      exact Subst.cap_fixed_of_applyList_self targets listEq varId mem
-  | .prod targets, applied, varId, mem => by
-      have applied' :
-          Ty.prod (Ty.applyTargetList S.target
-            (Ty.applyCapabilityList S.cap targets)) = Ty.prod targets :=
-        applied
-      injection applied' with listEq
-      exact Subst.cap_fixed_of_applyList_self targets listEq varId mem
-  | .fn domain codomain, applied, varId, mem => by
-      have applied' :
-          Ty.fn (S.apply domain) (S.apply codomain) = Ty.fn domain codomain :=
-        applied
-      injection applied' with domainEq codomainEq
-      have mem' : varId ∈ domain.fcv ++ codomain.fcv := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Subst.cap_fixed_of_apply_self domain domainEq varId here
-      · exact Subst.cap_fixed_of_apply_self codomain codomainEq varId there
-  | .matcher capability target, applied, varId, mem => by
-      have applied' :
-          Ty.matcher (capability.apply S.cap) (S.apply target) =
-            Ty.matcher capability target := applied
-      injection applied' with capEq targetEq
-      have mem' : varId ∈ capability.fcv ++ target.fcv := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Cap.fixed_of_apply_self capability capEq varId here
-      · exact Subst.cap_fixed_of_apply_self target targetEq varId there
-  | .slot capability target, applied, varId, mem => by
-      have applied' :
-          Ty.slot (capability.apply S.cap) (S.apply target) =
-            Ty.slot capability target := applied
-      injection applied' with capEq targetEq
-      have mem' : varId ∈ capability.fcv ++ target.fcv := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Cap.fixed_of_apply_self capability capEq varId here
-      · exact Subst.cap_fixed_of_apply_self target targetEq varId there
-
-/-- List form of `Subst.cap_fixed_of_apply_self`. -/
-theorem Subst.cap_fixed_of_applyList_self {S : Subst} :
-    ∀ targets : List Ty,
-      Ty.applyTargetList S.target (Ty.applyCapabilityList S.cap targets) =
-        targets →
-      ∀ varId ∈ Ty.fcvList targets, S.cap varId = .var varId
-  | [], _, _, mem => nomatch mem
-  | target :: targets, applied, varId, mem => by
-      have applied' :
-          S.apply target ::
-            Ty.applyTargetList S.target
-              (Ty.applyCapabilityList S.cap targets) =
-            target :: targets := applied
-      injection applied' with headEq tailEq
-      have mem' : varId ∈ target.fcv ++ Ty.fcvList targets := mem
-      rcases List.mem_append.mp mem' with here | there
-      · exact Subst.cap_fixed_of_apply_self target headEq varId here
-      · exact Subst.cap_fixed_of_applyList_self targets tailEq varId there
-
-end
-
-/-- A solved-form substitution fixes the target variables of its images. -/
-theorem Subst.Idempotent.image_target_fixed {S : Subst}
-    (idem : S.Idempotent) (target : Ty) :
-    ∀ varId ∈ (S.apply target).ftv, S.target varId = .var varId :=
-  Subst.target_fixed_of_apply_self (S.apply target) (idem target)
-
-/-- A solved-form substitution fixes the capability variables of its
-images. -/
-theorem Subst.Idempotent.image_cap_fixed {S : Subst}
-    (idem : S.Idempotent) (target : Ty) :
-    ∀ varId ∈ (S.apply target).fcv, S.cap varId = .var varId :=
-  Subst.cap_fixed_of_apply_self (S.apply target) (idem target)
-
-/-- Fixing both sorts of free variables fixes the whole type. -/
-theorem Subst.apply_eq_self_of_fixed {S : Subst} {target : Ty}
-    (targetsFixed : ∀ varId ∈ target.ftv, S.target varId = .var varId)
-    (capsFixed : ∀ varId ∈ target.fcv, S.cap varId = .var varId) :
-    S.apply target = target := by
-  show (target.applyCapability S.cap).applyTarget S.target = target
-  rw [Ty.applyCapability_eq_self_of_fcv_fixed S.cap target capsFixed]
-  exact Ty.applyTarget_eq_self_of_ftv_fixed S.target target targetsFixed
 
 /-- The prevailing substitution fixes every image of an exact delta over a
 prevailing-resolved constraint: the delta's support and range live on

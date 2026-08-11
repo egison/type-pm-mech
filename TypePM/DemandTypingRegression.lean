@@ -2456,7 +2456,8 @@ theorem delegating_bodyMGU_exact :
     CapSubst.id_rangeWithin _,
     tySingle_rangeWithin (fun image mem => nomatch mem),
     tySingle_capRangeWithin (fun image mem => nomatch mem),
-    Subst.idempotent_of_capId (tySingle_idempotent (by decide))⟩
+    Subst.idempotent_of_capId
+      (Unification.tySingle_idempotent (by decide))⟩
   intro candidate outside
   have hne : ¬ (0 : TypePM.TyVar) = candidate := fun h => outside (by
     cases h

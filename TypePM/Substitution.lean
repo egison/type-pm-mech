@@ -150,6 +150,18 @@ This is exactly the paper definition `S τ = T (C τ)`.
 def Subst.apply (S : Subst) (τ : Ty) : Ty :=
   (τ.applyCapability S.cap).applyTarget S.target
 
+/-- Applying twice is applying once: the capability solved-form condition. -/
+def CapSubst.Idempotent (S : CapSubst) : Prop :=
+  ∀ capability : Cap, (capability.apply S).apply S = capability.apply S
+
+/-- Applying twice is applying once: the target solved-form condition. -/
+def TySubst.Idempotent (S : TySubst) : Prop :=
+  ∀ target : Ty, (target.applyTarget S).applyTarget S = target.applyTarget S
+
+/-- Applying twice is applying once: the paired solved-form condition. -/
+def Subst.Idempotent (S : Subst) : Prop :=
+  ∀ target : Ty, S.apply (S.apply target) = S.apply target
+
 /--
 Pointwise composition of the two sorted components.
 
@@ -519,6 +531,49 @@ theorem target_capability_naive_commutation_counterexample :
 theorem Subst.apply_id (τ : Ty) :
     Subst.id.apply τ = τ := by
   rw [Subst.apply, Subst.id, Ty.applyCapability_id, Ty.applyTarget_id]
+
+/-- Pointwise fixed images make a capability substitution idempotent. -/
+theorem CapSubst.idempotent_of_pointwise {S : CapSubst}
+    (fixed : ∀ varId, (S varId).apply S = S varId) : S.Idempotent := by
+  intro capability
+  rw [← Cap.apply_comp]
+  congr 1
+  funext varId
+  exact fixed varId
+
+/-- Pointwise fixed images make a target substitution idempotent. -/
+theorem TySubst.idempotent_of_pointwise {S : TySubst}
+    (fixed : ∀ varId, (S varId).applyTarget S = S varId) : S.Idempotent := by
+  intro target
+  rw [← Ty.applyTarget_comp]
+  congr 1
+  funext varId
+  exact fixed varId
+
+/-- The identity capability substitution is idempotent. -/
+theorem CapSubst.id_idempotent : CapSubst.id.Idempotent := by
+  intro capability
+  simp [Cap.apply_id]
+
+/-- The identity target substitution is idempotent. -/
+theorem TySubst.id_idempotent : TySubst.id.Idempotent := by
+  intro target
+  simp [Ty.applyTarget_id]
+
+/-- The identity paired substitution is idempotent. -/
+theorem Subst.id_idempotent : Subst.Idempotent Subst.id := by
+  intro target
+  simp [Subst.apply_id]
+
+/-- A capability-identity pair is idempotent when its target component is. -/
+theorem Subst.idempotent_of_capId {T : TySubst} (idem : T.Idempotent) :
+    Subst.Idempotent ⟨CapSubst.id, T⟩ := by
+  intro target
+  show (((target.applyCapability CapSubst.id).applyTarget T).applyCapability
+      CapSubst.id).applyTarget T =
+    (target.applyCapability CapSubst.id).applyTarget T
+  rw [Ty.applyCapability_id, Ty.applyCapability_id]
+  exact idem target
 
 /--
 Semantic composition for combined substitutions.

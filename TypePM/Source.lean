@@ -761,6 +761,25 @@ theorem Subst.seq_apply (later earlier : Subst) (target : Ty) :
   rw [← Ty.applyCapability_applyTarget later.cap earlier.target
     (target.applyCapability earlier.cap)]
 
+/-- Sequencing any later substitution onto an idempotent prevailing
+substitution absorbs the prevailing action. -/
+theorem Subst.seq_absorbs_of_idempotent {S : Subst}
+    (idem : S.Idempotent) (U : Subst) (target : Ty) :
+    (Subst.seq U S).apply (S.apply target) =
+      (Subst.seq U S).apply target := by
+  rw [Subst.seq_apply, Subst.seq_apply, idem]
+
+/-- A solved-form later substitution whose images are fixed by the earlier
+substitution yields a solved-form sequential composition. -/
+theorem Subst.seq_idempotent {S delta : Subst}
+    (idemDelta : delta.Idempotent)
+    (fixed : ∀ target : Ty,
+      S.apply (delta.apply (S.apply target)) =
+        delta.apply (S.apply target)) :
+    (Subst.seq delta S).Idempotent := by
+  intro target
+  rw [Subst.seq_apply, Subst.seq_apply, fixed, idemDelta]
+
 /--
 The declarative suffix condition: capability variables remain capability
 variables.  `RestrictedPost` can additionally record freshness, distinct

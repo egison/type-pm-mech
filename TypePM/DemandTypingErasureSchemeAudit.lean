@@ -97,7 +97,8 @@ theorem prevailing_idempotent : prevailing.Idempotent := by
   unfold Subst.Idempotent prevailing
   intro target
   let C := Unification.CapSubst.single ⟨1⟩ (.var ⟨0⟩)
-  have capIdem : C.Idempotent := capSingle_idempotent (by decide)
+  have capIdem : C.Idempotent :=
+    Unification.capSingle_idempotent (by decide)
   simp only [Subst.apply, Ty.applyTarget_id]
   change (target.applyCapability C).applyCapability C =
     target.applyCapability C
@@ -158,7 +159,8 @@ theorem post_idempotent : post.Idempotent := by
   unfold Subst.Idempotent post
   intro target
   let C := Unification.CapSubst.single ⟨0⟩ (.var ⟨1⟩)
-  have capIdem : C.Idempotent := capSingle_idempotent (by decide)
+  have capIdem : C.Idempotent :=
+    Unification.capSingle_idempotent (by decide)
   simp only [Subst.apply, Ty.applyTarget_id]
   change (target.applyCapability C).applyCapability C =
     target.applyCapability C
