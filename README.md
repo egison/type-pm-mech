@@ -321,8 +321,10 @@ range，target imageのtarget-variable／capability-variable rangeを全構造�
 全構造分岐で証明した．soundness，global universality，support，range，idempotenceを同じkernel
 resultから束ねる`ExactPairedMGU`／`OriginSafeExactPairedMGU` bridgeも完成し，public paired solveと
 raw target-equality stepの双方へ公開した．ordinary equalityのうちannotated matcher／slot pairでない
-1-solve分岐はexact-stateな`DDAlignTypesWithLedger.ordinary`へ再構成済みである．次はannotated pairの
-2-solve分岐を閉じた後，slot-tuple liftとslot-to-slotを含むchecking alignment全体を完成する．
+1-solve分岐に加え，matcher／matcherとslot／slotのcapability-then-target 2-solve分岐も
+exact-stateな`DDAlignTypesWithLedger`へ再構成済みであり，ordinary type alignmentの3分類を閉じた．
+次はevent-onlyな`alignTypes` wrapperを持ち上げ，slot-tuple liftとslot-to-slotを含むchecking
+alignment全体を完成する．
 
 中心定理：
 

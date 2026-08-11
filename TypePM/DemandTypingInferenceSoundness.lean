@@ -151,6 +151,56 @@ theorem solveResolvedWithLedger_targetEq_originSafeExactPairedMGU
     OriginSafeExactPairedMGU ledger left right step.delta := by
   exact solveTargetEqWithLedger_originSafeExactPairedMGU success
 
+/-- Eliminate one capability-equality run while retaining its exact solver
+step and the precise recorded terminal state. -/
+private theorem runResolvedConstraint_capEq_exact
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Cap}
+    (success : runResolvedConstraint state origin (.capEq left right) =
+      some final) :
+    ∃ step,
+      solveResolvedWithLedger state.capabilityOrigins
+        state.trace.solves.length origin (.capEq left right) = some step ∧
+      final = state.recordSolve step ∧
+      step.delta.target = TySubst.id ∧
+      OriginSafeExactCapMGU state.capabilityOrigins left right
+        step.delta.cap := by
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin (.capEq left right) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      have finalEq := Option.some.inj success
+      subst final
+      rcases solveResolvedWithLedger_capEq_originSafeExactCapMGU stepEq with
+        ⟨targetId, exactCap⟩
+      exact ⟨step, rfl, rfl, targetId, exactCap⟩
+
+/-- Eliminate one target-equality run while retaining its exact solver step
+and the precise recorded terminal state. -/
+private theorem runResolvedConstraint_targetEq_exact
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (success : runResolvedConstraint state origin (.targetEq left right) =
+      some final) :
+    ∃ step,
+      solveResolvedWithLedger state.capabilityOrigins
+        state.trace.solves.length origin (.targetEq left right) = some step ∧
+      final = state.recordSolve step ∧
+      OriginSafeExactPairedMGU state.capabilityOrigins left right
+        step.delta := by
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin (.targetEq left right) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      have finalEq := Option.some.inj success
+      subst final
+      exact ⟨step, rfl, rfl,
+        solveResolvedWithLedger_targetEq_originSafeExactPairedMGU stepEq⟩
+
 /-- Reconstruct the one-step ordinary branch of executable type alignment.
 The two annotated homogeneous branches are intentionally excluded here; each
 of those performs a capability solve before its target solve. -/
@@ -180,6 +230,145 @@ theorem alignTypesCore_ordinary_ddAlignTypesRun
         rw [InferState.prevailing_recordSolve]
         exact DDAlignTypesWithLedger.ordinary pairClass
           (solveResolvedWithLedger_targetEq_originSafeExactPairedMGU stepEq)
+
+/-- Reconstruct the two-step matcher/matcher branch: first solve its
+capability annotations, then solve the capability-adjusted target pair. -/
+theorem alignTypesCore_matcherPair_ddAlignTypesRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty} {leftCap rightCap : Cap}
+    {leftTarget rightTarget : Ty}
+    (leftView : state.prevailing.apply left =
+      .matcher leftCap leftTarget)
+    (rightView : state.prevailing.apply right =
+      .matcher rightCap rightTarget)
+    (success : alignTypesCore state origin left right = some final) :
+    DDAlignTypesRun left right state final := by
+  unfold alignTypesCore at success
+  simp only [leftView, rightView] at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨middle, capSuccess, targetBranchSuccess⟩
+  rcases runResolvedConstraint_capEq_exact capSuccess with
+    ⟨capStep, _, middleEq, capTargetId, exactCap⟩
+  subst middle
+  split at targetBranchSuccess <;> try contradiction
+  · rename_i afterLeft afterRight ignoredLeftCap adjustedLeftTarget
+      ignoredRightCap adjustedRightTarget afterLeftView afterRightView
+    rcases runResolvedConstraint_targetEq_exact targetBranchSuccess with
+      ⟨targetStep, _, finalEq, exactTarget⟩
+    subst final
+    have capDeltaEq : capStep.delta =
+        ⟨capStep.delta.cap, TySubst.id⟩ := by
+      rw [← capTargetId]
+    have adjustedLeftEq :
+        adjustedLeftTarget = leftTarget.applyCapability capStep.delta.cap := by
+      have applied :
+          (state.recordSolve capStep).prevailing.apply left =
+            capStep.delta.apply (state.prevailing.apply left) := by
+        rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+      rw [leftView, afterLeftView] at applied
+      simp only [Subst.apply, Ty.applyCapability, capTargetId,
+        Ty.applyTarget_id] at applied
+      exact Ty.matcher.inj applied |>.2
+    have adjustedRightEq :
+        adjustedRightTarget = rightTarget.applyCapability capStep.delta.cap := by
+      have applied :
+          (state.recordSolve capStep).prevailing.apply right =
+            capStep.delta.apply (state.prevailing.apply right) := by
+        rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+      rw [rightView, afterRightView] at applied
+      simp only [Subst.apply, Ty.applyCapability, capTargetId,
+        Ty.applyTarget_id] at applied
+      exact Ty.matcher.inj applied |>.2
+    refine ⟨rfl, rfl, ?_⟩
+    rw [InferState.prevailing_recordSolve,
+      InferState.prevailing_recordSolve, capDeltaEq]
+    exact DDAlignTypesWithLedger.matcherPair leftView rightView exactCap
+      (adjustedLeftEq ▸ adjustedRightEq ▸ exactTarget)
+  · rename_i afterLeft afterRight ignoredLeftCap adjustedLeftTarget
+      ignoredRightCap adjustedRightTarget afterLeftView afterRightView
+    have applied :
+        (state.recordSolve capStep).prevailing.apply left =
+          capStep.delta.apply (state.prevailing.apply left) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [leftView, afterLeftView] at applied
+    simp [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+
+/-- Reconstruct the two-step slot/slot branch: first solve its capability
+annotations, then solve the capability-adjusted target pair. -/
+theorem alignTypesCore_slotPair_ddAlignTypesRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty} {leftCap rightCap : Cap}
+    {leftTarget rightTarget : Ty}
+    (leftView : state.prevailing.apply left = .slot leftCap leftTarget)
+    (rightView : state.prevailing.apply right = .slot rightCap rightTarget)
+    (success : alignTypesCore state origin left right = some final) :
+    DDAlignTypesRun left right state final := by
+  unfold alignTypesCore at success
+  simp only [leftView, rightView] at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨middle, capSuccess, targetBranchSuccess⟩
+  rcases runResolvedConstraint_capEq_exact capSuccess with
+    ⟨capStep, _, middleEq, capTargetId, exactCap⟩
+  subst middle
+  split at targetBranchSuccess <;> try contradiction
+  · rename_i afterLeft afterRight ignoredLeftCap adjustedLeftTarget
+      ignoredRightCap adjustedRightTarget afterLeftView afterRightView
+    have applied :
+        (state.recordSolve capStep).prevailing.apply left =
+          capStep.delta.apply (state.prevailing.apply left) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [leftView, afterLeftView] at applied
+    simp [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+  · rename_i afterLeft afterRight ignoredLeftCap adjustedLeftTarget
+      ignoredRightCap adjustedRightTarget afterLeftView afterRightView
+    rcases runResolvedConstraint_targetEq_exact targetBranchSuccess with
+      ⟨targetStep, _, finalEq, exactTarget⟩
+    subst final
+    have capDeltaEq : capStep.delta =
+        ⟨capStep.delta.cap, TySubst.id⟩ := by
+      rw [← capTargetId]
+    have adjustedLeftEq :
+        adjustedLeftTarget = leftTarget.applyCapability capStep.delta.cap := by
+      have applied :
+          (state.recordSolve capStep).prevailing.apply left =
+            capStep.delta.apply (state.prevailing.apply left) := by
+        rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+      rw [leftView, afterLeftView] at applied
+      simp only [Subst.apply, Ty.applyCapability, capTargetId,
+        Ty.applyTarget_id] at applied
+      exact Ty.slot.inj applied |>.2
+    have adjustedRightEq :
+        adjustedRightTarget = rightTarget.applyCapability capStep.delta.cap := by
+      have applied :
+          (state.recordSolve capStep).prevailing.apply right =
+            capStep.delta.apply (state.prevailing.apply right) := by
+        rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+      rw [rightView, afterRightView] at applied
+      simp only [Subst.apply, Ty.applyCapability, capTargetId,
+        Ty.applyTarget_id] at applied
+      exact Ty.slot.inj applied |>.2
+    refine ⟨rfl, rfl, ?_⟩
+    rw [InferState.prevailing_recordSolve,
+      InferState.prevailing_recordSolve, capDeltaEq]
+    exact DDAlignTypesWithLedger.slotPair leftView rightView exactCap
+      (adjustedLeftEq ▸ adjustedRightEq ▸ exactTarget)
+
+/-- Every successful executable type-alignment core reconstructs the branch
+selected from its two resolved input views. -/
+theorem alignTypesCore_ddAlignTypesRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (success : alignTypesCore state origin left right = some final) :
+    DDAlignTypesRun left right state final := by
+  cases leftEq : state.prevailing.apply left <;>
+    cases rightEq : state.prevailing.apply right <;>
+    first
+    | exact alignTypesCore_matcherPair_ddAlignTypesRun leftEq rightEq success
+    | exact alignTypesCore_slotPair_ddAlignTypesRun leftEq rightEq success
+    | exact alignTypesCore_ordinary_ddAlignTypesRun
+        (by simp [alignPairClass, leftEq, rightEq]) success
 
 /-- The executable one-way solver returns exactly the origin-safe delta used
 by the DD matcher-to-slot rule. -/
