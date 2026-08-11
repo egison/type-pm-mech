@@ -223,13 +223,29 @@ def markFreshCap (ledger : CapabilityOriginLedger)
 /-- Capability metavariables allocated in the half-open supply interval
 `[initial.nextCap, final.nextCap)` become structurally flexible.  Pure
 supply-indexed traversals such as skeleton freshening use this batch form in
-place of the executable state's sequence of `freshCap` updates. -/
+place of the executable state's sequence of `freshCap` updates.  Reversing
+the ascending identifier range reproduces the exact ledger stack order of
+those repeated head-inserting updates. -/
 def markCapRange (ledger : CapabilityOriginLedger)
     (initial final : InferenceBase.FreshSupply) :
     CapabilityOriginLedger :=
   let offsets := List.range (final.nextCap - initial.nextCap)
-  let varIds := offsets.map fun offset => ⟨initial.nextCap + offset⟩
+  let varIds :=
+    (offsets.map fun offset => ⟨initial.nextCap + offset⟩).reverse
   ledger.setOrigins varIds .structuralFlexible
+
+/-- The executable-order representation has the same lookup semantics as the
+former ascending batch representation: all range members receive the common
+structural origin, so reversing their distinct keys changes only list order. -/
+theorem markCapRange_originOf_eq_ascending
+    (ledger : CapabilityOriginLedger)
+    (initial final : InferenceBase.FreshSupply) (varId : CapVar) :
+    (markCapRange ledger initial final).originOf varId =
+      (ledger.setOrigins
+        ((List.range (final.nextCap - initial.nextCap)).map fun offset =>
+          ⟨initial.nextCap + offset⟩)
+        .structuralFlexible).originOf varId := by
+  simp [markCapRange, CapabilityOriginLedger.originOf_setOrigins_eq]
 
 /-- Variable leaves in the prevailing images of constructor-instance binders
 that still occur in the exported payload and remain structurally flexible. -/

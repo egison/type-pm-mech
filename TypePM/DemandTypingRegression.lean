@@ -39,6 +39,36 @@ def originSafePairedCapId (ledger : CapabilityOriginLedger)
       ⟨CapSubst.id, targetSubst⟩ :=
   ⟨exact, ⟨AdmissibleCapPost.id ledger⟩⟩
 
+/-! ## Capability-range ledger order -/
+
+/-- A two-variable batch has exactly the stack order produced by two
+successive executable `freshCap` updates: the later allocation shadows at the
+ledger head. -/
+theorem markCapRange_two_exact (ledger : CapabilityOriginLedger)
+    (nextCap nextTy : Nat) :
+    let q : InferenceBase.FreshSupply := ⟨nextCap, nextTy⟩
+    DDLedger.markCapRange ledger q
+        { q with nextCap := q.nextCap + 2 } =
+      (ledger.setOrigin ⟨nextCap⟩ .structuralFlexible).setOrigin
+        ⟨nextCap + 1⟩ .structuralFlexible := by
+  simp only [DDLedger.markCapRange]
+  have rangeLength : nextCap + 2 - nextCap = 2 := by omega
+  rw [rangeLength, show List.range 2 = [0, 1] by decide]
+  rfl
+
+/-- The same exact-order equation stated directly against two executable
+allocations. -/
+theorem markCapRange_two_matches_freshCap (state : Inference.InferState)
+    (origin : Inference.ConstraintOrigin) :
+    let first := (state.freshCap origin).2
+    let second := (first.freshCap origin).2
+    DDLedger.markCapRange state.capabilityOrigins state.supply second.supply =
+      second.capabilityOrigins := by
+  simpa [Inference.InferState.freshCap, InferenceBase.freshCapMeta,
+    Inference.InferState.recordEvent] using
+    (markCapRange_two_exact state.capabilityOrigins state.supply.nextCap
+      state.supply.nextTy)
+
 /-! ## Solve-free synthesis -/
 
 /-- `λx. x` with a fresh metavariable domain. -/

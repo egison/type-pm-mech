@@ -335,7 +335,9 @@ exact-state `DDChecksRun`とnil／cons traversalも再構成済みである．�
 capability export freezeをDD ledger transitionへ接続し，constructor／primitive applicationも
 まとめて再構成した．direct-self gate，2 target placeholder，body synthesis，result alignmentをthreadする
 non-matcher recursive functionのfix branchも再構成済みである．次はmatcher bodyのfix placeholderと，
-matcher／pattern／clauseの相互familyを必要とするbranchへ進む．
+matcher／pattern／clauseの相互familyを必要とするbranchへ進む．この接続で見つかったbatch capability
+fresheningのledger list順は，`markCapRange`を実行時のhead-insertion順へcanonicalizeして修正し，
+2-variable allocationのexact-order回帰と従来表現との`originOf`同値を固定した．
 
 中心定理：
 

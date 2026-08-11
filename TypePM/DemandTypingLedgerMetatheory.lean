@@ -204,13 +204,13 @@ theorem LedgerBelow.markCapRange
     (monotone : initial.nextCap ≤ final.nextCap) :
     LedgerBelow final (markCapRange ledger initial final) := by
   let varIds :=
-    (List.range (final.nextCap - initial.nextCap)).map fun offset =>
-      (⟨initial.nextCap + offset⟩ : CapVar)
+    ((List.range (final.nextCap - initial.nextCap)).map fun offset =>
+      (⟨initial.nextCap + offset⟩ : CapVar)).reverse
   change LedgerBelow final
     (ledger.setOrigins varIds .structuralFlexible)
   apply LedgerBelow.setOrigins below monotone
   intro varId membership
-  simp only [varIds, List.mem_map] at membership
+  simp only [varIds, List.mem_reverse, List.mem_map] at membership
   rcases membership with ⟨offset, offsetMem, rfl⟩
   have offsetBelow : offset < final.nextCap - initial.nextCap := by
     simpa using offsetMem
@@ -222,13 +222,13 @@ theorem RefinesBelow.markCapRange
     (ledger : CapabilityOriginLedger) :
     RefinesBelow initial ledger (markCapRange ledger initial final) := by
   let varIds :=
-    (List.range (final.nextCap - initial.nextCap)).map fun offset =>
-      (⟨initial.nextCap + offset⟩ : CapVar)
+    ((List.range (final.nextCap - initial.nextCap)).map fun offset =>
+      (⟨initial.nextCap + offset⟩ : CapVar)).reverse
   change RefinesBelow initial ledger
     (ledger.setOrigins varIds .structuralFlexible)
   apply refinesBelow_setFreshOrigins
   intro varId membership
-  simp only [varIds, List.mem_map] at membership
+  simp only [varIds, List.mem_reverse, List.mem_map] at membership
   rcases membership with ⟨offset, _, rfl⟩
   exact Nat.le_add_right _ _
 
