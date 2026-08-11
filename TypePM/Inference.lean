@@ -637,6 +637,17 @@ def matcherProducerVars
   capability.fcv.filter fun varId =>
     varId ∈ state.trace.allocatedCapVars
 
+/-- Structurally flexible ledger leaves visible in a finalized matcher
+producer.  Unlike `matcherProducerVars`, this selector governs only the
+origin-ledger transition: already frozen variables need no redundant ledger
+entry, while `protectedCaps` continues to retain trace-owned producer
+variables for the one-way guard. -/
+def matcherProducerLedgerLeaves
+    (ledger : CapabilityOriginLedger) (capability : Cap) : List CapVar :=
+  (capability.fcv.filter fun varId =>
+      varId ∈ ledger.map Prod.fst).eraseDups.filter
+    fun varId => ledger.originOf varId = .structuralFlexible
+
 @[simp] theorem mem_matcherProducerVars
     (state : InferState) (capability : Cap) (varId : CapVar) :
     varId ∈ matcherProducerVars state capability ↔
@@ -653,7 +664,8 @@ def InferState.protectMatcherCapability
     protectedCaps :=
       state.protectedCaps ++ matcherProducerVars state capability
     capabilityOrigins := state.capabilityOrigins.setOrigins
-      (matcherProducerVars state capability) .renameOnly }
+      (matcherProducerLedgerLeaves state.capabilityOrigins capability)
+      .renameOnly }
 
 @[simp] theorem InferState.protectMatcherCapability_trace
     (state : InferState) (capability : Cap) :
@@ -667,6 +679,14 @@ def InferState.protectMatcherCapability
       state.supply :=
   rfl
 
+@[simp] theorem InferState.protectMatcherCapability_capabilityOrigins
+    (state : InferState) (capability : Cap) :
+    (state.protectMatcherCapability capability).capabilityOrigins =
+      state.capabilityOrigins.setOrigins
+        (matcherProducerLedgerLeaves state.capabilityOrigins capability)
+        .renameOnly :=
+  rfl
+
 @[simp] theorem InferState.protectMatcherCapability_protectedCaps
     (state : InferState) (capability : Cap) :
     (state.protectMatcherCapability capability).protectedCaps =
@@ -676,11 +696,13 @@ def InferState.protectMatcherCapability
 
 theorem InferState.protectMatcherCapability_origin_of_mem
     (state : InferState) (capability : Cap) (varId : CapVar)
-    (membership : varId ∈ matcherProducerVars state capability) :
+    (membership : varId ∈
+      matcherProducerLedgerLeaves state.capabilityOrigins capability) :
     (state.protectMatcherCapability capability).capabilityOrigins.originOf
         varId = .renameOnly := by
   exact CapabilityOriginLedger.originOf_setOrigins_of_mem
-    state.capabilityOrigins (matcherProducerVars state capability) varId
+    state.capabilityOrigins
+      (matcherProducerLedgerLeaves state.capabilityOrigins capability) varId
       .renameOnly membership
 
 @[simp] theorem InferState.mem_protectMatcherCapability_protectedCaps
@@ -729,6 +751,12 @@ theorem protectedProducerTraceCheck_eq_true (state : InferState) :
 /-- The unique prevailing substitution is replayed from all prior steps. -/
 def InferState.prevailing (state : InferState) : Subst :=
   replay state.trace.solves
+
+@[simp] theorem InferState.protectMatcherCapability_prevailing
+    (state : InferState) (capability : Cap) :
+    (state.protectMatcherCapability capability).prevailing =
+      state.prevailing :=
+  rfl
 
 /-- `later` extends the chronological solver/event history of `earlier`.
 Inference is allowed to advance the fresh supply and its producer ledgers, but

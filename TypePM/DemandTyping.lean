@@ -273,9 +273,7 @@ placeholder that flows into a nested matcher result, while excluding rigid
 source variables that are absent from the ledger. -/
 def matcherProducerLeaves (ledger : CapabilityOriginLedger)
     (capability : Cap) : List CapVar :=
-  (capability.fcv.filter fun varId =>
-      varId ∈ ledger.map Prod.fst).eraseDups.filter
-    fun varId => ledger.originOf varId = .structuralFlexible
+  Inference.matcherProducerLedgerLeaves ledger capability
 
 /-- Finalizing a matcher freezes every inference-owned structurally flexible
 leaf visible in its producer capability; rigid ambient and already-frozen
@@ -297,7 +295,8 @@ theorem matcherProducerLeaves_recorded
     (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
     (membership : varId ∈ matcherProducerLeaves ledger capability) :
     varId ∈ capability.fcv ∧ varId ∈ ledger.map Prod.fst := by
-  simp [matcherProducerLeaves] at membership
+  simp [matcherProducerLeaves, Inference.matcherProducerLedgerLeaves]
+    at membership
   rcases membership.1.2 with ⟨origin, entryMembership⟩
   exact ⟨membership.1.1,
     List.mem_map.mpr ⟨(varId, origin), entryMembership, rfl⟩⟩
@@ -306,7 +305,8 @@ theorem matcherProducerLeaves_origin
     (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
     (membership : varId ∈ matcherProducerLeaves ledger capability) :
     ledger.originOf varId = .structuralFlexible := by
-  simp [matcherProducerLeaves] at membership
+  simp [matcherProducerLeaves, Inference.matcherProducerLedgerLeaves]
+    at membership
   cases originEquation : ledger.originOf varId <;> simp_all
 
 theorem markSchemeInstance_origin_of_mem
