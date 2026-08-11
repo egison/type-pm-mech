@@ -1,5 +1,6 @@
 import TypePM.Source
 import TypePM.FreshSupply
+import TypePM.PolyFreshInstantiation
 
 /-!
 # Fresh supplies and executable instantiation
@@ -346,6 +347,42 @@ theorem instantiateBinders_ty_fresh
 
 /-! ## Executable scheme instantiation -/
 
+/-- Instantiate a capture-free expression scheme by its finite binder
+positions.  The result exposes a dedicated opening rather than a solver
+substitution. -/
+def instantiateScheme
+    (supply : FreshSupply) (scheme : Scheme) : Scheme.FreshResult scheme :=
+  scheme.freshInstantiate supply
+
+@[simp] theorem instantiateScheme_value
+    (supply : FreshSupply) (scheme : Scheme) :
+    (instantiateScheme supply scheme).value =
+      scheme.openValue
+        (Scheme.canonicalFreshOpening supply scheme).toValueOpening := by
+  rfl
+
+@[simp] theorem instantiateScheme_nextCap
+    (supply : FreshSupply) (scheme : Scheme) :
+    (instantiateScheme supply scheme).supply.nextCap =
+      supply.nextCap + scheme.capArity := by
+  rfl
+
+@[simp] theorem instantiateScheme_nextTy
+    (supply : FreshSupply) (scheme : Scheme) :
+    (instantiateScheme supply scheme).supply.nextTy =
+      supply.nextTy + scheme.tyArity := by
+  rfl
+
+@[simp] theorem instantiateScheme_mono_value
+    (supply : FreshSupply) (target : Ty) :
+    (instantiateScheme supply (Scheme.mono target)).value = target :=
+  Scheme.freshInstantiate_mono_value supply target
+
+@[simp] theorem instantiateScheme_mono_supply
+    (supply : FreshSupply) (target : Ty) :
+    (instantiateScheme supply (Scheme.mono target)).supply = supply :=
+  Scheme.freshInstantiate_mono_supply supply target
+
 /-- A substitution, instantiated payload, and successor fresh supply. -/
 structure InstanceResult (Payload : Type) where
   subst : Subst
@@ -387,7 +424,7 @@ def instantiateCtorScheme
     supply := assignment.supply }
 
 /-- Executable expression-scheme instantiation satisfies `NamedScheme.InstAt`. -/
-theorem instantiateScheme_sound
+theorem instantiateNamedScheme_sound
     (supply : FreshSupply) (scheme : NamedScheme) :
     scheme.InstAt
       (instantiateNamedScheme supply scheme).subst.cap
@@ -432,25 +469,25 @@ theorem instantiateCtorScheme_sound
 /-! ## Monomorphic lookup regression -/
 
 /-- Looking up a monomorphic scheme allocates no substitutions. -/
-@[simp] theorem instantiateScheme_mono_subst
+@[simp] theorem instantiateNamedScheme_mono_subst
     (supply : FreshSupply) (target : Ty) :
     (instantiateNamedScheme supply (NamedScheme.mono target)).subst = Subst.id := by
   rfl
 
 /-- Looking up a monomorphic scheme does not advance either fresh counter. -/
-@[simp] theorem instantiateScheme_mono_supply
+@[simp] theorem instantiateNamedScheme_mono_supply
     (supply : FreshSupply) (target : Ty) :
     (instantiateNamedScheme supply (NamedScheme.mono target)).supply = supply := by
   cases supply
   rfl
 
 /-- Looking up a monomorphic scheme returns the identical body. -/
-@[simp] theorem instantiateScheme_mono_value
+@[simp] theorem instantiateNamedScheme_mono_value
     (supply : FreshSupply) (target : Ty) :
     (instantiateNamedScheme supply (NamedScheme.mono target)).value = target := by
   change
     (instantiateNamedScheme supply (NamedScheme.mono target)).subst.apply target = target
-  rw [instantiateScheme_mono_subst]
+  rw [instantiateNamedScheme_mono_subst]
   exact Subst.apply_id target
 
 end InferenceBase

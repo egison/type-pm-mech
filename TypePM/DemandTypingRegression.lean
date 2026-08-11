@@ -1476,13 +1476,13 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
   | var lookup2 =>
   simp [Context.applySubst, Context.find?] at lookup2
   subst_vars
-  rw [InferenceBase.instantiateScheme_mono_value] at secondAligned
+  rw [InferenceBase.instantiateNamedScheme_mono_value] at secondAligned
   have initialTy :
       (Inference.initialSupply emptySignature producerContext).nextTy = 1 :=
     by decide
   rw [initialTy] at secondAligned
   rw [sharedOutput] at secondAligned
-  simp only [InferenceBase.instantiateScheme_mono_supply, initialTy,
+  simp only [InferenceBase.instantiateNamedScheme_mono_supply, initialTy,
     Nat.reduceAdd] at argumentOutput secondAligned
   simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply]
     at argumentOutput secondAligned
@@ -1501,7 +1501,7 @@ theorem capFreezeProgram_no_ddTyping (target : Ty) :
   have initialCap :
       (Inference.initialSupply emptySignature producerContext).nextCap = 1 :=
     by decide
-  simp only [InferenceBase.instantiateScheme_mono_supply, initialTy,
+  simp only [InferenceBase.instantiateNamedScheme_mono_supply, initialTy,
     initialCap, Nat.reduceAdd] at producerAligned secondCuts
   simp [InferenceBase.instantiateNamedScheme, InferenceBase.instantiateBinders,
     InferenceBase.freshCapSubst, InferenceBase.freshTySubst, producerScheme,
@@ -1765,7 +1765,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   | nil =>
   cases valueAligned with
   | productMatcherLift rawProduct _ _ =>
-      rw [InferenceBase.instantiateScheme_mono_value, Subst.apply_id]
+      rw [InferenceBase.instantiateNamedScheme_mono_value, Subst.apply_id]
         at rawProduct
       nomatch rawProduct
   | slotTupleLift _ _ expectedSlot _ _ =>
@@ -1773,7 +1773,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
   | matcherToSlot _ expectedSlot _ =>
       simp [initial, packScheme] at expectedSlot
   | slotToSlot rawSlot _ _ _ =>
-      rw [InferenceBase.instantiateScheme_mono_value, Subst.apply_id]
+      rw [InferenceBase.instantiateNamedScheme_mono_value, Subst.apply_id]
         at rawSlot
       nomatch rawSlot
   | ordinary valueClass valueTypeAligned =>
@@ -1922,7 +1922,7 @@ theorem letCapFreezeProgram_no_ddTyping (target : Ty) :
       valueDelta.cap = .var firstImage from valueDeltaFixesFirstImage]
     simp [firstScheme]
     constructor <;> rfl
-  simp only [initial, InferenceBase.instantiateScheme_mono_supply]
+  simp only [initial, InferenceBase.instantiateNamedScheme_mono_supply]
     at firstAligned
   simp [packScheme] at firstAligned
   change DDAlignTypesWithLedger
