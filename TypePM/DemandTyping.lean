@@ -125,6 +125,14 @@ theorem Unification.mguTy_rangeWithin
   · exact varMem
   · exact imageIn
 
+/-- The executable target unifier changes only target variables occurring in
+its input constraint. -/
+theorem Unification.mguTy_supportWithin
+    {left right : Ty} {S : TySubst}
+    (success : Unification.mguTy left right = some S) :
+    S.SupportWithin (left.ftv ++ right.ftv) :=
+  Unification.mguTy_supportInput success
+
 /-- Applying twice is applying once: the capability solved-form condition. -/
 def CapSubst.Idempotent (S : CapSubst) : Prop :=
   ∀ capability : Cap, (capability.apply S).apply S = capability.apply S
