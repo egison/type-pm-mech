@@ -261,6 +261,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
   capability像のvariable-only性とfresh assignmentのinjectivityを型で表すopening APIを構成する．
 - [x] binder名ではなく有限なbinder位置からfresh metaを割り当てるcanonical allocatorと，
   supply bounds／ambient freshnessを構成する．
+- [x] environmentに現れないsolver metavariableを選択し，named binderを保存せず直ちに
+  `PolyScheme`へcloseするgeneralizationを構成する．
 - [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
 - [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
 - [ ] matcher／clauseを終端cutで相互に再構成する．

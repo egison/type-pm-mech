@@ -1,4 +1,6 @@
 import TypePM.Substitution
+import TypePM.FreeVars
+import TypePM.UniqueVars
 
 /-!
 # Relations and two-sorted schemes
@@ -10,69 +12,6 @@ an explicit consumer node; all other ground heads are rigid.
 -/
 
 namespace TypePM
-
-/-! ## Free variables -/
-
-mutual
-
-/-- Flexible capability variables occurring in a capability. -/
-def Cap.fcv : Cap → List CapVar
-  | .any          => []
-  | .var a        => [a]
-  | .skolem _     => []
-  | .con _ caps   => Cap.fcvList caps
-  | .prod caps    => Cap.fcvList caps
-
-/-- Flexible capability variables occurring in a list of capabilities. -/
-def Cap.fcvList : List Cap → List CapVar
-  | []          => []
-  | cap :: caps => cap.fcv ++ Cap.fcvList caps
-
-end
-
-mutual
-
-/-- Flexible capability variables occurring anywhere in a two-sorted type. -/
-def Ty.fcv : Ty → List CapVar
-  | .var _         => []
-  | .skolem _      => []
-  | .unit          => []
-  | .int           => []
-  | .bool          => []
-  | .data _ tys    => Ty.fcvList tys
-  | .prod tys      => Ty.fcvList tys
-  | .fn dom cod    => dom.fcv ++ cod.fcv
-  | .matcher c τ   => c.fcv ++ τ.fcv
-  | .slot c τ      => c.fcv ++ τ.fcv
-
-/-- Flexible capability variables occurring in a list of two-sorted types. -/
-def Ty.fcvList : List Ty → List CapVar
-  | []        => []
-  | τ :: tys  => τ.fcv ++ Ty.fcvList tys
-
-end
-
-mutual
-
-/-- Ordinary target-type variables occurring in a two-sorted type. -/
-def Ty.ftv : Ty → List TypePM.TyVar
-  | .var a         => [a]
-  | .skolem _      => []
-  | .unit          => []
-  | .int           => []
-  | .bool          => []
-  | .data _ tys    => Ty.ftvList tys
-  | .prod tys      => Ty.ftvList tys
-  | .fn dom cod    => dom.ftv ++ cod.ftv
-  | .matcher _ τ   => τ.ftv
-  | .slot _ τ      => τ.ftv
-
-/-- Ordinary target-type variables occurring in a list of two-sorted types. -/
-def Ty.ftvList : List Ty → List TypePM.TyVar
-  | []        => []
-  | τ :: tys  => τ.ftv ++ Ty.ftvList tys
-
-end
 
 /-- Free capability variables of a scheme, excluding its capability binders. -/
 def Scheme.fcv (σ : Scheme) : List CapVar :=
@@ -537,41 +476,6 @@ theorem targetOnlyExampleScheme_preserves_cap_var {τ : Ty}
   exact hshape.symm
 
 /-! ## Generalization relative to explicit environment free variables -/
-
-/-- Keep one occurrence of every variable, retaining the last occurrence. -/
-def uniqueVars {α : Type} [DecidableEq α] : List α → List α
-  | [] => []
-  | item :: items =>
-      if item ∈ items then
-        uniqueVars items
-      else
-        item :: uniqueVars items
-
-@[simp] theorem mem_uniqueVars {α : Type} [DecidableEq α]
-    {item : α} {items : List α} :
-    item ∈ uniqueVars items ↔ item ∈ items := by
-  induction items with
-  | nil =>
-      simp [uniqueVars]
-  | cons head tail ih =>
-      simp only [uniqueVars]
-      split <;> simp_all
-
-theorem uniqueVars_nodup {α : Type} [DecidableEq α]
-    (items : List α) :
-    (uniqueVars items).Nodup := by
-  induction items with
-  | nil =>
-      simp [uniqueVars]
-  | cons head tail ih =>
-      simp only [uniqueVars]
-      split <;> rename_i hmem
-      · exact ih
-      · constructor
-        · intro item hitem heq
-          subst item
-          exact hmem (mem_uniqueVars.mp hitem)
-        · exact ih
 
 /--
 Generalize exactly the body variables not free in the surrounding environment.
