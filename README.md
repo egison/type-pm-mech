@@ -95,6 +95,9 @@ matcher 引数と matcher clause の next-matcher も同じ `DDCheck` を使う�
 [`TypePM/Source.lean`](TypePM/Source.lean) の `RuntimeTyping` は，fresh supply，solver の実行順，
 origin ledger を持たない state-free certificate である．closure と matcher value はこの
 certificate を保持し，preservation はそれを `ValueTy` へ移す．
+matcher-to-slot coercion も実行器の matching／MGU 成功証拠を保持せず，終端 capability 間の
+`CapabilityDemand` だけを保持する．slot-to-slot solve は終端型の等しさへ消去される．実行用の
+raw solver certificate は reconstruction がこの意味的証拠へ射影するまでの境界にだけ残る．
 
 実行可能推論については次の経路が機械化済みである．
 
@@ -221,8 +224,14 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
 clauseを含む全14 familyのfactorizationを，`SchemesClosed`と入力boundednessだけから得る無前提の
 相互定理として構成済みである．canonical scheme／dual-scheme instanceのbinder imageをrename-only
 ledgerから局所的にtransportする補題と，variable／literal／`something`／lambda／tupleから
-`RuntimeTyping`を得る初期erasure補題もある．未完了なのは，canonical instanceのprovenanceを保った
-全constructorのruntime erasureである．
+`RuntimeTyping`を得る初期erasure補題もある．さらに，全expression／pattern／arm／clause familyの
+終端state-free命題とconstructor-wise合成補題を分離し，checking alignmentの全5分岐を終端の
+意味的な`RuntimeAlignment`へ射影した．後続cutを量化する`RuntimeErasureUnder`はvariable，literal，
+`something`について閉じている．この整理に合わせ，`RuntimeTyping`と`ValueTy`から実装solverの
+raw certificateとglobal `VariablePost`を除き，matcher-to-slotは終端`CapabilityDemand`，
+slot-to-slotは終端型等式だけへ消去した．未完了なのは，`RuntimeErasureUnder`をrecursive expression，
+pattern，arm，clauseへ相互に拡張する部分であり，特に`let`のgeneralized bindingとmatcher
+finalizationの終端fixednessが次のcutである．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：

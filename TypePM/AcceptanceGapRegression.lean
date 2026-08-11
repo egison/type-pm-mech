@@ -104,16 +104,7 @@ theorem orPattern_resolved :
 /-- `something` inhabits the slot demanded by the match site. -/
 private theorem something_slot_typed :
     RuntimeTyping emptySignature [] .something (.slot .any .int) := by
-  refine RuntimeTyping.coerceMatcherToSlot
-    (producerCap := .any) (consumerCap := .any)
-    (producerTarget := .int) (consumerTarget := .int)
-    (bindings := []) (C := CapSubst.id) (T := TySubst.id) (post := Subst.id)
-    RuntimeTyping.something ?_ VariablePost.id
-  exact
-    { matched := rfl
-      capSubstitution := rfl
-      targetUnified := Unification.mguTy_self _
-      rangeFixed := Subst.id_rangeFixed }
+  exact RuntimeTyping.coerceMatcherToSlot RuntimeTyping.something .equal
 
 /-- Declaratively the or-pattern program is typed at `List Integer`. -/
 theorem orProgram_typed :
@@ -152,17 +143,7 @@ def consumerContext : Context :=
 /-- `something` fills the wildcard slot at the product target. -/
 private theorem something_sharedSlot_typed :
     RuntimeTyping emptySignature consumerContext .something sharedSlot := by
-  refine RuntimeTyping.coerceMatcherToSlot
-    (producerCap := .any) (consumerCap := .any)
-    (producerTarget := .prod [.int, .int])
-    (consumerTarget := .prod [.int, .int])
-    (bindings := []) (C := CapSubst.id) (T := TySubst.id) (post := Subst.id)
-    RuntimeTyping.something ?_ VariablePost.id
-  exact
-    { matched := rfl
-      capSubstitution := rfl
-      targetUnified := Unification.mguTy_self _
-      rangeFixed := Subst.id_rangeFixed }
+  exact RuntimeTyping.coerceMatcherToSlot RuntimeTyping.something .equal
 
 /-- The tuple of `something`s lifts to a product matcher. -/
 private theorem tuple_productMatcher_typed :
@@ -178,17 +159,7 @@ literal `Any` accepts the structured producer capability. -/
 private theorem tuple_sharedSlot_typed :
     RuntimeTyping emptySignature consumerContext (.tuple [.something, .something])
       sharedSlot := by
-  refine RuntimeTyping.coerceMatcherToSlot
-    (producerCap := .prod [.any, .any]) (consumerCap := .any)
-    (producerTarget := .prod [.int, .int])
-    (consumerTarget := .prod [.int, .int])
-    (bindings := []) (C := CapSubst.id) (T := TySubst.id) (post := Subst.id)
-    tuple_productMatcher_typed ?_ VariablePost.id
-  exact
-    { matched := rfl
-      capSubstitution := rfl
-      targetUnified := Unification.mguTy_self _
-      rangeFixed := Subst.id_rangeFixed }
+  exact RuntimeTyping.coerceMatcherToSlot tuple_productMatcher_typed .any
 
 /-- The shared consumer variable at its monomorphic type. -/
 private theorem consumer_var_typed :

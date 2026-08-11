@@ -109,30 +109,15 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
       ValueTy signature (.tuple values)
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
+  /-- State-erased matcher-to-slot evidence: dynamic safety needs only the
+  terminal producer/consumer demand relation at one common target. -/
   | matcherToSlot
-      {value producerCap producerTarget consumerCap consumerTarget
-       bindings C T post} :
+      {value producerCap consumerCap target} :
       ValueTy signature value
-        (.matcher ((producerCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply producerTarget))) →
-      MatcherToSlotRawCert producerCap consumerCap producerTarget
-        consumerTarget bindings C T →
-      VariablePost post →
+        (.matcher producerCap target) →
+      CapabilityDemand producerCap consumerCap →
       ValueTy signature value
-        (.slot ((consumerCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply consumerTarget)))
-  | slotToSlot
-      {value sourceCap sourceTarget requestedCap requestedTarget C T
-       post} :
-      ValueTy signature value
-        (.slot ((sourceCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply sourceTarget))) →
-      SlotToSlotRawCert sourceCap requestedCap sourceTarget requestedTarget
-        C T →
-      VariablePost post →
-      ValueTy signature value
-        (.slot ((requestedCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply requestedTarget)))
+        (.slot consumerCap target)
   | slotProduct {values} {duals : List Dual} :
       ValueTys signature values
         (duals.map fun dual => .slot dual.cap dual.target) →
@@ -488,43 +473,6 @@ theorem matcherLiteral_capability_unique_of_same_evidence
   Option.some.inj (hleft.symm.trans hright)
 
 /-! ## Typed atoms, pattern environments, trees, stacks, and states -/
-
-mutual
-
-/--
-A runtime producer is compatible with an already-normalized consumer endpoint.
-This relation is the sound endpoint erasure obtained from raw `DemandMatches`
-or a checked matcher-to-slot certificate: an explicit consumer `any` accepts
-every producer, while all other heads decompose structurally.
-
-The relation intentionally does not index the original consumer syntax or its
-shared substitution.  In particular, `equal` expresses endpoint equality, not
-recoverable evidence that the endpoint came from a solved raw variable, and it
-overlaps with `any` at `CapabilityDemand .any .any`.  Repeated-variable
-strictness is checked by `DemandMatches` before this erasure; no converse or
-exact raw-origin theorem is claimed for `CapabilityDemand`.
--/
-inductive CapabilityDemand : Cap → Cap → Prop where
-  | equal {capability} :
-      CapabilityDemand capability capability
-  | any {producer} :
-      CapabilityDemand producer .any
-  | con {name producers consumers} :
-      CapabilityDemands producers consumers →
-      CapabilityDemand (.con name producers) (.con name consumers)
-  | prod {producers consumers} :
-      CapabilityDemands producers consumers →
-      CapabilityDemand (.prod producers) (.prod consumers)
-
-/-- Pointwise runtime demand compatibility with exact order and arity. -/
-inductive CapabilityDemands : List Cap → List Cap → Prop where
-  | nil : CapabilityDemands [] []
-  | cons {producer consumer producers consumers} :
-      CapabilityDemand producer consumer →
-      CapabilityDemands producers consumers →
-      CapabilityDemands (producer :: producers) (consumer :: consumers)
-
-end
 
 /-- Reflexive pointwise demand evidence. -/
 def CapabilityDemand.equalList : (capabilities : List Cap) →

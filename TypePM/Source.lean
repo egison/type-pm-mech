@@ -3002,12 +3002,136 @@ operational proof after inference state has been erased; it does not define
 source acceptance.  The only source-typing judgment is `DDTyping` in
 `TypePM.DemandTyping`.
 
-The current state-erasure boundary is partial.  In particular, the raw DD
-relation does not yet record the capability-origin freeze information needed
-to construct every `RuntimeTyping` certificate.  Keeping this inductive family
-internal makes that missing projection explicit instead of presenting two
-competing source type systems.
+The DD layer records capability-origin information separately; state erasure
+projects it into the terminal semantic premises below.  Constructor-wise
+projections are available for every DD family, while their full mutual
+composition remains the current roadmap theorem.  Keeping this inductive
+family internal avoids presenting it as a second source type system.
 -/
+
+mutual
+
+/--
+A runtime producer is compatible with an already-normalized consumer endpoint.
+An explicit consumer `any` accepts every producer; all other heads decompose
+structurally.
+
+This semantic relation deliberately forgets raw matching syntax, solver
+choices, and post-substitution provenance.  Those remain in executable
+`MatcherToSlotRawCert` values until reconstruction erases them.  The `equal`
+constructor expresses terminal endpoint equality and may overlap with `any` at
+`CapabilityDemand .any .any`.
+-/
+inductive CapabilityDemand : Cap → Cap → Prop where
+  | equal {capability} :
+      CapabilityDemand capability capability
+  | any {producer} :
+      CapabilityDemand producer .any
+  | con {name producers consumers} :
+      CapabilityDemands producers consumers →
+      CapabilityDemand (.con name producers) (.con name consumers)
+  | prod {producers consumers} :
+      CapabilityDemands producers consumers →
+      CapabilityDemand (.prod producers) (.prod consumers)
+
+/-- Pointwise runtime demand compatibility with exact order and arity. -/
+inductive CapabilityDemands : List Cap → List Cap → Prop where
+  | nil : CapabilityDemands [] []
+  | cons {producer consumer producers consumers} :
+      CapabilityDemand producer consumer →
+      CapabilityDemands producers consumers →
+      CapabilityDemands (producer :: producers) (consumer :: consumers)
+
+end
+
+mutual
+
+/-- Applying one common capability substitution preserves terminal demand
+compatibility. -/
+theorem CapabilityDemand.apply (S : CapSubst) :
+    ∀ {producer consumer : Cap},
+      CapabilityDemand producer consumer →
+        CapabilityDemand (producer.apply S) (consumer.apply S)
+  | _, _, .equal => .equal
+  | _, _, .any => .any
+  | _, _, .con children => .con (CapabilityDemands.apply S children)
+  | _, _, .prod children => .prod (CapabilityDemands.apply S children)
+
+/-- Pointwise form of `CapabilityDemand.apply`. -/
+theorem CapabilityDemands.apply (S : CapSubst) :
+    ∀ {producers consumers : List Cap},
+      CapabilityDemands producers consumers →
+        CapabilityDemands (Cap.applyList S producers)
+          (Cap.applyList S consumers)
+  | _, _, .nil => .nil
+  | _, _, .cons head tail =>
+      .cons (CapabilityDemand.apply S head) (CapabilityDemands.apply S tail)
+
+end
+
+/-- Erase raw one-way matching to terminal runtime demand evidence. -/
+theorem CapabilityDemand.ofDemandMatches (S : CapSubst) :
+    ∀ (producer consumer : Cap),
+      DemandMatches S producer consumer →
+      CapabilityDemand producer (consumer.apply S) := by
+  intro producer consumer matching
+  exact Cap.rec
+    (motive_1 := fun consumer => ∀ producer,
+      DemandMatches S producer consumer →
+      CapabilityDemand producer (consumer.apply S))
+    (motive_2 := fun consumers => ∀ producers,
+      DemandMatchesList S producers consumers →
+      CapabilityDemands producers (Cap.applyList S consumers))
+    (by intro _ _; exact .any)
+    (fun varId => by
+      intro producer matching
+      have equality : S varId = producer := by
+        cases producer <;> simpa [DemandMatches] using matching
+      rw [Cap.apply, equality]
+      exact .equal)
+    (fun consumerId => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producerId
+      change producerId = consumerId at matching
+      rw [matching]
+      exact .equal)
+    (fun consumerName consumers consumersIH => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producerName producers
+      change producerName = consumerName ∧
+        DemandMatchesList S producers consumers at matching
+      rw [matching.1]
+      exact .con (consumersIH producers matching.2))
+    (fun consumers consumersIH => by
+      intro producer matching
+      cases producer <;> try contradiction
+      rename_i producers
+      change DemandMatchesList S producers consumers at matching
+      exact .prod (consumersIH producers matching))
+    (by
+      intro producers matching
+      cases producers with
+      | nil => exact .nil
+      | cons _ _ => contradiction)
+    (fun _ _ consumerIH consumersIH => by
+      intro producers matching
+      cases producers with
+      | nil => contradiction
+      | cons producer producers =>
+          simp only [DemandMatchesList] at matching
+          exact .cons (consumerIH producer matching.1)
+            (consumersIH producers matching.2))
+    consumer producer matching
+
+/-- A declarative one-way witness retains the normalized producer endpoint. -/
+theorem CapabilityDemand.ofOneWayAt
+    {S : CapSubst} {producer consumer : Cap}
+    (matching : OneWayAt S producer consumer) :
+    CapabilityDemand (producer.apply S) (consumer.apply S) := by
+  rw [matching.2.1]
+  exact CapabilityDemand.ofDemandMatches S producer consumer matching.2.2
 
 /-- Raw, generation-time certificate for matcher-to-slot coercion. -/
 structure MatcherToSlotRawCert
@@ -3033,6 +3157,81 @@ structure SlotToSlotRawCert
       (sourceTarget.applyCapability C)
       (requestedTarget.applyCapability C) = some T
   rangeFixed : (Subst.mk C T).RangeFixed
+
+/-- Runtime demand exposed by an executable matcher-to-slot certificate. -/
+theorem MatcherToSlotRawCert.capabilityDemand
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) :
+    CapabilityDemand (producerCap.apply C) (consumerCap.apply C) := by
+  rw [raw.capSubstitution]
+  exact CapabilityDemand.ofOneWayAt
+    (CapMatch.matchCap_restricted_sound raw.matched)
+
+/-- A common later capability substitution preserves the raw demand. -/
+theorem MatcherToSlotRawCert.postCapabilityDemand
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) (post : Subst) :
+    CapabilityDemand ((producerCap.apply C).apply post.cap)
+      ((consumerCap.apply C).apply post.cap) :=
+  raw.capabilityDemand.apply post.cap
+
+/-- The target endpoints of a raw matcher-to-slot solve normalize equally. -/
+theorem MatcherToSlotRawCert.targetEquality
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) :
+    (Subst.mk C T).apply producerTarget =
+      (Subst.mk C T).apply consumerTarget := by
+  simpa only [Subst.apply] using Unification.mguTy_sound raw.targetUnified
+
+/-- Any common later substitution preserves normalized target equality. -/
+theorem MatcherToSlotRawCert.postTargetEquality
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) (post : Subst) :
+    post.apply ((Subst.mk C T).apply producerTarget) =
+      post.apply ((Subst.mk C T).apply consumerTarget) :=
+  congrArg post.apply raw.targetEquality
+
+/-- A raw slot-to-slot solve makes the fully normalized slot endpoints equal. -/
+theorem SlotToSlotRawCert.slotEquality
+    {sourceCap requestedCap : Cap}
+    {sourceTarget requestedTarget : Ty}
+    {C : CapSubst} {T : TySubst}
+    (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
+      requestedTarget C T) :
+    (Subst.mk C T).apply (.slot sourceCap sourceTarget) =
+      (Subst.mk C T).apply (.slot requestedCap requestedTarget) := by
+  have capability := Unification.mguCap_sound raw.capabilityUnified
+  have target : (Subst.mk C T).apply sourceTarget =
+      (Subst.mk C T).apply requestedTarget := by
+    simpa only [Subst.apply] using Unification.mguTy_sound raw.targetUnified
+  change Ty.slot (sourceCap.apply C)
+      ((Subst.mk C T).apply sourceTarget) =
+    Ty.slot (requestedCap.apply C)
+      ((Subst.mk C T).apply requestedTarget)
+  rw [capability, target]
+
+/-- Any common later substitution preserves normalized slot equality. -/
+theorem SlotToSlotRawCert.postSlotEquality
+    {sourceCap requestedCap : Cap}
+    {sourceTarget requestedTarget : Ty}
+    {C : CapSubst} {T : TySubst}
+    (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
+      requestedTarget C T) (post : Subst) :
+    post.apply ((Subst.mk C T).apply (.slot sourceCap sourceTarget)) =
+      post.apply ((Subst.mk C T).apply (.slot requestedCap requestedTarget)) :=
+  congrArg post.apply raw.slotEquality
 
 mutual
 
@@ -3119,43 +3318,19 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
       RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)
   /--
-  COERCE-MATCHER-TO-SLOT in cumulative-substitution normal form.
-
-  The TeX rule starts from the raw producer judgment in `Γ` and concludes in
-  `SΓ`.  Here the premise is that raw judgment after occurrence-wide transport
-  by the retained solver certificate `S = (C,T)`.  Raw producer/consumer
-  indices and all solver equations remain in the constructor, so provenance is
-  not lost.  `SourceSubstitution` supplies the derived raw-to-normalized rule.
+  COERCE-MATCHER-TO-SLOT at the state-erased runtime boundary.  Both endpoints
+  are already terminal: the targets coincide, and `CapabilityDemand` retains
+  exactly the producer/consumer compatibility used by dynamic safety.
+  Executable matching and unification evidence belongs to reconstruction, not
+  to this runtime certificate.
   -/
   | coerceMatcherToSlot
-      {context expression producerCap producerTarget consumerCap consumerTarget
-       bindings C T post} :
+      {context expression producerCap consumerCap target} :
       RuntimeTyping signature context expression
-        (.matcher ((producerCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply producerTarget))) →
-      MatcherToSlotRawCert producerCap consumerCap producerTarget
-        consumerTarget bindings C T →
-      VariablePost post →
+        (.matcher producerCap target) →
+      CapabilityDemand producerCap consumerCap →
       RuntimeTyping signature context expression
-        (.slot ((consumerCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply consumerTarget)))
-  /--
-  CHECK-SLOT-TO-SLOT in the same cumulative-substitution normal form.
-  The premise retains the raw source indices but is already transported by the
-  exact `C/T` solver certificate used in the conclusion.
-  -/
-  | checkSlotToSlot
-      {context expression sourceCap sourceTarget requestedCap requestedTarget C T
-       post} :
-      RuntimeTyping signature context expression
-        (.slot ((sourceCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply sourceTarget))) →
-      SlotToSlotRawCert sourceCap requestedCap sourceTarget requestedTarget
-        C T →
-      VariablePost post →
-      RuntimeTyping signature context expression
-        (.slot ((requestedCap.apply C).apply post.cap)
-          (post.apply ((Subst.mk C T).apply requestedTarget)))
+        (.slot consumerCap target)
   /--
   COERCE-PRODUCT-MATCHER.
 

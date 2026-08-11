@@ -54,8 +54,7 @@ theorem tuple_ty_head {signature : FrozenSig} {context : Context}
   cases typing with
   | tuple _ => exact .inl ⟨_, rfl⟩
   | coerceProductMatcher _ => exact .inr (.inl ⟨_, _, rfl⟩)
-  | coerceMatcherToSlot _ _ _ => exact .inr (.inr ⟨_, _, rfl⟩)
-  | checkSlotToSlot _ _ _ => exact .inr (.inr ⟨_, _, rfl⟩)
+  | coerceMatcherToSlot _ _ => exact .inr (.inr ⟨_, _, rfl⟩)
   | coerceSlotTuple _ => exact .inr (.inr ⟨_, _, rfl⟩)
 
 /-- Paired substitution preserves the `prod` head. -/

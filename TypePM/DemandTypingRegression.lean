@@ -1982,8 +1982,7 @@ theorem something_matcher_cap {context : Context} {published : Ty}
       injection headEq with capEq _
       exact capEq.symm
   | coerceProductMatcher premise => cases premise
-  | coerceMatcherToSlot _ _ _ => nomatch headEq
-  | checkSlotToSlot _ _ _ => nomatch headEq
+  | coerceMatcherToSlot _ _ => nomatch headEq
   | coerceSlotTuple _ => nomatch headEq
 
 /-- The seeded monomorphic consumer typed at any matcher-headed type has
@@ -2016,8 +2015,7 @@ theorem m2var_matcher_cap {context : Context} {published : Ty}
           injection pinned with pinned
           subst pinned
           nomatch inst.mono_eq
-  | coerceMatcherToSlot _ _ _ => nomatch headEq
-  | checkSlotToSlot _ _ _ => nomatch headEq
+  | coerceMatcherToSlot _ _ => nomatch headEq
   | coerceSlotTuple _ => nomatch headEq
 
 /-- Any runtime certificate for the value body `Pack x` forces the λ domain
@@ -2065,12 +2063,9 @@ theorem packCtor_domain_shape {domain : Ty} :
               injection pinnedX with pinnedX
               subst pinnedX
               exact Or.inr ⟨_, instX.mono_eq.symm⟩
-      | coerceMatcherToSlot _ _ _ => nomatch headEq'
-      | checkSlotToSlot _ _ _ => nomatch headEq'
+      | coerceMatcherToSlot _ _ => nomatch headEq'
       | coerceSlotTuple _ => nomatch headEq'
-  | _, _, _, .coerceMatcherToSlot premise _ _, exprEq, contextFind =>
-      packCtor_domain_shape premise exprEq contextFind
-  | _, _, _, .checkSlotToSlot premise _ _, exprEq, contextFind =>
+  | _, _, _, .coerceMatcherToSlot premise _, exprEq, contextFind =>
       packCtor_domain_shape premise exprEq contextFind
   | _, _, _, .coerceProductMatcher premise, exprEq, contextFind =>
       packCtor_domain_shape premise exprEq contextFind
@@ -2165,8 +2160,7 @@ theorem letCapFreezeProgram_not_runtimeTyping :
       injection valueEq1 with domainEq1 _
       rw [← domainEq1] at harg1
       cases harg1
-  | coerceMatcherToSlot _ _ _ => nomatch inst1.result
-  | checkSlotToSlot _ _ _ => nomatch inst1.result
+  | coerceMatcherToSlot _ _ => nomatch inst1.result
   | coerceProductMatcher _ => nomatch inst1.result
   | coerceSlotTuple _ => nomatch inst1.result
 

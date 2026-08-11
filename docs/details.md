@@ -176,6 +176,13 @@ variable-onlyにfreezeされる．
 state，origin ledger を消去した expression certificate である．`ExprsTy`，pattern resolution，
 arm／clause certificate と相互に構成される．source acceptance は定義しない．
 
+coercion certificate も同じ消去原則に従う．`RuntimeTyping` と `ValueTy` の matcher-to-slot
+constructor は終端 producer／consumer capability 間の `CapabilityDemand` だけを持ち，raw
+matching，MGU，後続 substitution を持たない．slot-to-slot solve は終端 slot 型の等しさで
+premise を書き換えるため，専用 runtime constructor を持たない．実行可能な
+`MatcherToSlotRawCert`／`SlotToSlotRawCert` は reconstruction 境界まで保持され，そこで終端
+demand または等式へ射影される．
+
 この family が state-free であることにより，closure body，matcher literal，substitution，
 preservation の帰納法を推論器の履歴から独立に記述できる．その代わり，DD derivation から
 certificate を作る際には，消去する state が value-flow freeze 条件を満たした証明が必要になる．

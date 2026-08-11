@@ -143,7 +143,7 @@ theorem ValueTy.product_inversion
           actualValue = .tuple values ∧
             ValueTys signature values requestedTargets)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     typing targets rfl
   · intro literal requestedTargets equality
     cases equality
@@ -156,8 +156,6 @@ theorem ValueTy.product_inversion
   · intro values tupleTargets valuesTyped _ requestedTargets targetEquality
     cases targetEquality
     exact ⟨values, rfl, valuesTyped⟩
-  · intros
-    contradiction
   · intros
     contradiction
   · intros
@@ -292,14 +290,10 @@ def preserveSourceCoercions
         ValueTy signature value terminalTarget) :
     ValueTy signature value target :=
   match typing with
-  | .coerceMatcherToSlot inner raw post =>
+  | .coerceMatcherToSlot inner demand =>
       ValueTy.matcherToSlot
         (preserveSourceCoercions signatureWF inner environmentTyping terminal)
-        raw post
-  | .checkSlotToSlot inner raw post =>
-      ValueTy.slotToSlot
-        (preserveSourceCoercions signatureWF inner environmentTyping terminal)
-        raw post
+        demand
   | .coerceProductMatcher inner =>
       let innerValue :=
         preserveSourceCoercions signatureWF inner

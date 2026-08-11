@@ -319,6 +319,31 @@ theorem Scheme.VariableInstAt.transportResult
   · rw [Scheme.post_apply typing.capSupport typing.tySupport
       externalCapFixed externalTargetFixed, typing.result]
 
+/-- Transport a variable-only instance to the externally transformed scheme.
+Unlike `transportResult`, free variables need not be fixed: their action is
+recorded in `scheme.applySubst external`.  The caller supplies the ordinary
+instantiation-composition witness and only has to show that its composed
+capability binder images remain variables. -/
+theorem Scheme.VariableInstAt.transportApplied
+    {external : Subst} {scheme : Scheme} {target : Ty}
+    {C : CapSubst} {T : TySubst}
+    (typing : scheme.VariableInstAt C T target)
+    (composition : scheme.InstCompositionAt external C T)
+    (binderImagesVariable : ∀ binder, binder ∈ scheme.capBinders →
+      ∃ image, composition.composedCap binder = .var image) :
+    (scheme.applySubst external).ValueFlowInst
+      (external.apply target) := by
+  refine ⟨composition.composedCap, composition.composedTarget, ?_⟩
+  refine
+    { capSupport := ?_
+      tySupport := ?_
+      capBinderVariable := ?_
+      result := ?_ }
+  · simpa only [Scheme.applySubst_capBinders] using composition.capSupport
+  · simpa [Scheme.applySubst] using composition.targetSupport
+  · simpa only [Scheme.applySubst_capBinders] using binderImagesVariable
+  · rw [composition.bodyEquation, typing.result]
+
 /-- Dual-scheme counterpart of `Scheme.VariableInstAt.transportResult`. -/
 theorem DualScheme.VariableInstAt.transportResult
     {external : Subst} {scheme : DualScheme}

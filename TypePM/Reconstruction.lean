@@ -578,12 +578,52 @@ Resolved-evidence constructors are tried before their generic `ofRaw`
 inclusions, which prevents raw freshness premises from being invented. -/
 syntax "finish_reconstruction" : tactic
 
+private theorem runtimeMatcherToSlot_ofRaw
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
+    {post : Subst}
+    (typing : RuntimeTyping signature context expression
+      (.matcher ((producerCap.apply C).apply post.cap)
+        (post.apply ((Subst.mk C T).apply producerTarget))))
+    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
+      consumerTarget bindings C T) :
+    RuntimeTyping signature context expression
+      (.slot ((consumerCap.apply C).apply post.cap)
+        (post.apply ((Subst.mk C T).apply consumerTarget))) := by
+  rw [← raw.postTargetEquality post]
+  exact RuntimeTyping.coerceMatcherToSlot typing
+    (raw.postCapabilityDemand post)
+
+private theorem runtimeSlotToSlot_ofRaw
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {sourceCap requestedCap : Cap} {sourceTarget requestedTarget : Ty}
+    {C : CapSubst} {T : TySubst} {post : Subst}
+    (typing : RuntimeTyping signature context expression
+      (.slot ((sourceCap.apply C).apply post.cap)
+        (post.apply ((Subst.mk C T).apply sourceTarget))))
+    (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
+      requestedTarget C T) :
+    RuntimeTyping signature context expression
+      (.slot ((requestedCap.apply C).apply post.cap)
+        (post.apply ((Subst.mk C T).apply requestedTarget))) := by
+  have endpoint :
+      Ty.slot ((sourceCap.apply C).apply post.cap)
+          (post.apply ((Subst.mk C T).apply sourceTarget)) =
+        Ty.slot ((requestedCap.apply C).apply post.cap)
+          (post.apply ((Subst.mk C T).apply requestedTarget)) := by
+    simpa only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply]
+      using raw.postSlotEquality post
+  exact endpoint ▸ typing
+
 macro_rules
   | `(tactic| finish_reconstruction) =>
       `(tactic|
         all_goals intros <;>
         first
-          | apply RuntimeTyping.checkSlotToSlot <;> assumption
+          | apply runtimeMatcherToSlot_ofRaw <;> assumption
+          | apply runtimeSlotToSlot_ofRaw <;> assumption
+          | apply RuntimeTyping.coerceSlotTuple <;> assumption
           | apply TerminalPPatResolution.hole <;> assumption
           | exact TerminalPPatResolution.wild
           | exact TerminalPPatResolution.pval

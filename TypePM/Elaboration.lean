@@ -1,17 +1,17 @@
 import TypePM.Source
 
 /-!
-# Runtime-certificate factorization and explicit coercion plans
+# Explicit coercion plans
 
-The internal `RuntimeTyping` certificate includes matcher/slot coercions but
-does not define source acceptance.  This module factors that certificate into
-a non-coercion root and an explicit outer coercion plan for use by
-reconstruction and the dynamic proof.
+The internal `RuntimeTyping` certificate keeps only the terminal semantic
+effect of coercion.  This module separately records the executable raw solver
+evidence used by reconstruction as an explicit outer coercion plan.
 
 `SynthHead` records one non-coercion certificate rule at
 the root, while `CoercionPlan` records the (possibly empty) outer coercion
-spine explicitly.  `RuntimeTyping.factorHead` proves that every runtime
-certificate admits this decomposition.
+spine explicitly.  Erasing a plan yields `RuntimeTyping`; the converse is not
+claimed because semantic runtime evidence intentionally forgets solver
+provenance.
 
 The premises of `SynthHead` intentionally remain `RuntimeTyping` certificates here.
 Thus this is the root factorization consumed by the recursive core
@@ -180,74 +180,21 @@ theorem CoercionPlan.toRuntimeTyping
   induction plan with
   | refl => exact typing
   | matcherToSlot raw post =>
-      exact .coerceMatcherToSlot typing raw post
+      rw [← raw.postTargetEquality _]
+      exact .coerceMatcherToSlot typing (raw.postCapabilityDemand _)
   | checkSlotToSlot raw post =>
-      exact .checkSlotToSlot typing raw post
+      rename_i sourceCap sourceTarget requestedCap requestedTarget C T postSubst
+      change RuntimeTyping signature context expression
+        (postSubst.apply ((Subst.mk C T).apply
+          (.slot requestedCap requestedTarget)))
+      change RuntimeTyping signature context expression
+        (postSubst.apply ((Subst.mk C T).apply
+          (.slot sourceCap sourceTarget))) at typing
+      exact raw.postSlotEquality postSubst ▸ typing
   | productMatcher => exact .coerceProductMatcher typing
   | slotTuple => exact .coerceSlotTuple typing
   | trans _ _ firstIH secondIH => exact secondIH (firstIH typing)
 
-/-- Every runtime certificate is a non-coercion root followed by an explicit
-coercion plan.  This is the first factorization boundary used by the planned
-principal-core theorem. -/
-theorem RuntimeTyping.factorHead
-    {signature : FrozenSig} {context : Context} {expression : Expr}
-    {target : Ty}
-    (typing : RuntimeTyping signature context expression target) :
-    ∃ source,
-      SynthHead signature context expression source ∧
-      CoercionPlan signature context expression source target := by
-  apply RuntimeTyping.rec
-    (motive_1 := fun context expression target _ =>
-      ∃ source,
-        SynthHead signature context expression source ∧
-        CoercionPlan signature context expression source target)
-    (motive_2 := fun _ _ _ _ => True)
-    (motive_3 := fun _ _ _ _ _ _ _ _ => True)
-    (motive_4 := fun _ _ _ _ _ _ _ => True)
-    (motive_5 := fun _ _ _ _ _ _ _ _ _ => True)
-    (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    (motive_7 := fun _ _ _ _ _ _ _ _ _ => True)
-    (motive_8 := fun _ _ _ _ _ _ _ _ => True)
-    (motive_9 := fun _ _ _ _ _ _ _ _ _ => True)
-    (motive_10 := fun _ _ _ _ _ _ => True)
-    (motive_11 := fun _ _ _ _ _ _ => True)
-    (motive_12 := fun _ _ _ _ _ _ _ => True)
-    (motive_13 := fun _ _ _ _ _ _ _ => True)
-    (motive_14 := fun _ _ _ _ _ _ => True)
-    (t := typing)
-  all_goals intros
-  all_goals
-    first
-    | trivial
-    | (refine ⟨_, ?_, .refl⟩; constructor <;> assumption)
-    | (rcases ‹∃ source, SynthHead _ _ _ source ∧
-          CoercionPlan _ _ _ source _› with ⟨source, synthesis, plan⟩
-       refine ⟨source, synthesis, .trans plan ?_⟩
-       first
-       | exact .matcherToSlot (by assumption) (by assumption)
-       | exact .checkSlotToSlot (by assumption) (by assumption)
-       | exact .productMatcher
-       | exact .slotTuple)
-
-/-- Package surface factorization as the root checking judgment. -/
-theorem RuntimeTyping.toCheckHead
-    {signature : FrozenSig} {context : Context} {expression : Expr}
-    {target : Ty}
-    (typing : RuntimeTyping signature context expression target) :
-    CheckHead signature context expression target := by
-  rcases RuntimeTyping.factorHead typing with ⟨source, synthesis, plan⟩
-  exact ⟨source, synthesis, plan⟩
-
-/-- Replaying the factorization obtained from a surface derivation recovers a
-surface derivation at the original target. -/
-theorem RuntimeTyping.factorHead_sound
-    {signature : FrozenSig} {context : Context} {expression : Expr}
-    {target source : Ty}
-    (synthesis : SynthHead signature context expression source)
-    (plan : CoercionPlan signature context expression source target) :
-    RuntimeTyping signature context expression target :=
-  plan.toRuntimeTyping synthesis.toRuntimeTyping
 
 /-- Checking evidence erases to the existing surface judgment. -/
 theorem CheckHead.toRuntimeTyping
@@ -258,14 +205,13 @@ theorem CheckHead.toRuntimeTyping
   rcases checking with ⟨source, synthesis, plan⟩
   exact plan.toRuntimeTyping synthesis.toRuntimeTyping
 
-/-- The current surface relation is exactly a synthesized root followed by an
-explicit outer coercion spine. -/
-theorem checkHead_iff_runtimeTyping
+/-- Explicit checking evidence soundly erases to the semantic runtime
+certificate. -/
+theorem checkHead_sound
     {signature : FrozenSig} {context : Context} {expression : Expr}
-    {target : Ty} :
-    CheckHead signature context expression target ↔
-      RuntimeTyping signature context expression target :=
-  ⟨CheckHead.toRuntimeTyping, RuntimeTyping.toCheckHead⟩
+    {target : Ty} (checking : CheckHead signature context expression target) :
+    RuntimeTyping signature context expression target :=
+  checking.toRuntimeTyping
 
 end Elaboration
 end TypePM

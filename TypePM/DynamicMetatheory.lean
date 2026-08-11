@@ -1102,7 +1102,7 @@ theorem ValueTy.matcher_nextClause
           .matcherV environment original (.mk pp next arms :: tail) →
         ValueTy signature (.matcherV environment original tail) actualTarget)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
   · intros
     contradiction
   · intros
@@ -1119,14 +1119,10 @@ theorem ValueTy.matcher_nextClause
     contradiction
   · intros
     contradiction
-  · intro value producerCap producerTarget consumerCap consumerTarget
-      bindings C T post inner raw postVariable innerIH equality
+  · intro value producerCap consumerCap matcherTarget inner demand innerIH
+      equality
     cases equality
-    exact .matcherToSlot (innerIH rfl) raw postVariable
-  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
-      inner raw postVariable innerIH equality
-    cases equality
-    exact .slotToSlot (innerIH rfl) raw postVariable
+    exact .matcherToSlot (innerIH rfl) demand
   · intros
     contradiction
   · trivial
@@ -1151,7 +1147,7 @@ theorem ValueTy.matcher_nextArm
           (.matcherV environment original (.mk pp next arms :: clauses))
           actualTarget)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
   · intros
     contradiction
   · intros
@@ -1168,14 +1164,10 @@ theorem ValueTy.matcher_nextArm
     contradiction
   · intros
     contradiction
-  · intro value producerCap producerTarget consumerCap consumerTarget
-      bindings C T post inner raw postVariable innerIH equality
+  · intro value producerCap consumerCap matcherTarget inner demand innerIH
+      equality
     cases equality
-    exact .matcherToSlot (innerIH rfl) raw postVariable
-  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
-      inner raw postVariable innerIH equality
-    cases equality
-    exact .slotToSlot (innerIH rfl) raw postVariable
+    exact .matcherToSlot (innerIH rfl) demand
   · intros
     contradiction
   · trivial
@@ -1211,131 +1203,6 @@ theorem slotToSlot_indices_eq
       Unification.mguTy_sound targetUnified⟩
 
 /-! ## Canonical matcher products -/
-
-/--
-Raw one-way matching induces runtime demand evidence against the substituted
-consumer.  In particular, the variable case becomes `equal`: even when the
-variable's image is `any`, it is not reinterpreted as a wildcard occurrence.
--/
-theorem CapabilityDemand.ofDemandMatches (S : CapSubst) :
-    ∀ (producer consumer : Cap),
-      DemandMatches S producer consumer →
-      CapabilityDemand producer (consumer.apply S) := by
-  intro producer consumer matching
-  exact Cap.rec
-    (motive_1 := fun consumer => ∀ producer,
-      DemandMatches S producer consumer →
-      CapabilityDemand producer (consumer.apply S))
-    (motive_2 := fun consumers => ∀ producers,
-      DemandMatchesList S producers consumers →
-      CapabilityDemands producers (Cap.applyList S consumers))
-    (by
-      intro _ _
-      exact .any)
-    (fun varId => by
-      intro producer matching
-      have equality : S varId = producer := by
-        cases producer <;> simpa [DemandMatches] using matching
-      rw [Cap.apply, equality]
-      exact .equal)
-    (fun consumerId => by
-      intro producer matching
-      cases producer <;> try contradiction
-      rename_i producerId
-      change producerId = consumerId at matching
-      rw [matching]
-      exact .equal)
-    (fun consumerName consumers consumersIH => by
-      intro producer matching
-      cases producer <;> try contradiction
-      rename_i producerName producers
-      change producerName = consumerName ∧
-        DemandMatchesList S producers consumers at matching
-      rw [matching.1]
-      exact .con (consumersIH producers matching.2))
-    (fun consumers consumersIH => by
-      intro producer matching
-      cases producer <;> try contradiction
-      rename_i producers
-      change DemandMatchesList S producers consumers at matching
-      exact .prod (consumersIH producers matching))
-    (by
-      intro producers matching
-      cases producers with
-      | nil => exact .nil
-      | cons _ _ => contradiction)
-    (fun _ _ consumerIH consumersIH => by
-      intro producers matching
-      cases producers with
-      | nil => contradiction
-      | cons producer producers =>
-          simp only [DemandMatchesList] at matching
-          exact .cons (consumerIH producer matching.1)
-            (consumersIH producers matching.2))
-    consumer producer matching
-
-/-- A declarative one-way witness retains the normalized producer endpoint. -/
-theorem CapabilityDemand.ofOneWayAt
-    {S : CapSubst} {producer consumer : Cap}
-    (matching : OneWayAt S producer consumer) :
-    CapabilityDemand (producer.apply S) (consumer.apply S) := by
-  rw [matching.2.1]
-  exact CapabilityDemand.ofDemandMatches S producer consumer matching.2.2
-
-mutual
-
-/-- Variable renaming preserves runtime demand provenance. -/
-theorem CapabilityDemand.applyRen
-    {producer consumer : Cap} (ren : CapVar → CapVar)
-    (demand : CapabilityDemand producer consumer) :
-    CapabilityDemand (producer.applyRen ren)
-      (consumer.applyRen ren) := by
-  cases demand with
-  | equal => exact .equal
-  | any => exact .any
-  | con children => exact .con (children.applyRen ren)
-  | prod components => exact .prod (components.applyRen ren)
-
-/-- List form of `CapabilityDemand.applyRen`. -/
-theorem CapabilityDemands.applyRen
-    {producers consumers : List Cap} (ren : CapVar → CapVar)
-    (demands : CapabilityDemands producers consumers) :
-    CapabilityDemands (Cap.applyRenList ren producers)
-      (Cap.applyRenList ren consumers) := by
-  cases demands with
-  | nil => exact .nil
-  | cons head tail =>
-      exact .cons (head.applyRen ren) (tail.applyRen ren)
-
-end
-
-/-- The runtime demand carried by a matcher-to-slot raw certificate. -/
-theorem MatcherToSlotRawCert.capabilityDemand
-    {producerCap consumerCap : Cap}
-    {producerTarget consumerTarget : Ty}
-    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
-    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
-      consumerTarget bindings C T) :
-    CapabilityDemand (producerCap.apply C) (consumerCap.apply C) := by
-  rw [raw.capSubstitution]
-  exact CapabilityDemand.ofOneWayAt
-    (CapMatch.matchCap_restricted_sound raw.matched)
-
-/-- Variable-only solver posts preserve a raw matcher-to-slot demand. -/
-theorem MatcherToSlotRawCert.postCapabilityDemand
-    {producerCap consumerCap : Cap}
-    {producerTarget consumerTarget : Ty}
-    {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
-    {post : Subst}
-    (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
-      consumerTarget bindings C T)
-    (postVariable : VariablePost post) :
-    CapabilityDemand ((producerCap.apply C).apply post.cap)
-      ((consumerCap.apply C).apply post.cap) := by
-  have renamed := raw.capabilityDemand.applyRen postVariable.capRen
-  rw [← postVariable.applyCap_eq_applyRen,
-    ← postVariable.applyCap_eq_applyRen] at renamed
-  exact renamed
 
 /-- Pointwise demand streams compose by append. -/
 theorem CapabilityDemands.append : ∀
@@ -1485,7 +1352,7 @@ theorem ValueTy.toMatcherUsable
         actualTargets = requestedDuals.map
           (fun dual => .slot dual.cap dual.target) →
         MatcherUsables signature actualValues requestedDuals)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     typing capability target rfl
   · intros
     contradiction
@@ -1505,25 +1372,10 @@ theorem ValueTy.toMatcherUsable
     contradiction
   · intros
     contradiction
-  · intro value producerCap producerTarget consumerCap consumerTarget
-      bindings C T post inner raw postVariable _ requestedCapability
-      requestedTarget equality
+  · intro value producerCap consumerCap matcherTarget inner demand _
+      requestedCapability requestedTarget equality
     cases equality
-    have producerTyping := inner
-    have targetEquality := matcherToSlot_targets_eq raw.targetUnified
-    rw [targetEquality] at producerTyping
-    exact ⟨_, producerTyping, raw.postCapabilityDemand postVariable⟩
-  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
-      inner raw postVariable innerIH requestedCapability actualTarget equality
-    cases equality
-    have sourceUsable := innerIH _ _ rfl
-    have indexEquality := slotToSlot_indices_eq raw.capabilityUnified
-      raw.targetUnified
-    have capabilityEquality := congrArg
-      (fun current => current.apply post.cap) indexEquality.1
-    have targetEquality := congrArg post.apply indexEquality.2
-    rw [capabilityEquality, targetEquality] at sourceUsable
-    exact sourceUsable
+    exact ⟨producerCap, inner, demand⟩
   · intro values duals componentTyping componentIH requestedCapability
       requestedTarget equality
     cases equality
@@ -1655,7 +1507,7 @@ theorem ValueTy.tupleMatcher_inversion
         duals.map Dual.cap = capabilities ∧
         duals.map Dual.target = targets)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl rfl
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl rfl
   · intros
     contradiction
   · intros
@@ -1674,11 +1526,8 @@ theorem ValueTy.tupleMatcher_inversion
     simp only [Ty.matcher.injEq, Cap.prod.injEq, Ty.prod.injEq] at targetEquality
     exact ⟨actualDuals, componentTyping, targetEquality.1,
       targetEquality.2⟩
-  · intro value producerCap producerTarget consumerCap consumerTarget
-      bindings C T post inner raw postVariable _ valueEquality targetEquality
-    cases targetEquality
-  · intro value sourceCap sourceTarget requestedCap requestedTarget C T post
-      inner raw postVariable _ valueEquality targetEquality
+  · intro value producerCap consumerCap matcherTarget inner demand _
+      valueEquality targetEquality
     cases targetEquality
   · intro actualValues actualDuals componentTyping _ valueEquality
       targetEquality
@@ -1787,7 +1636,7 @@ theorem ValueTy.ctor_inversion
         requestedScheme.Inst requestedTargets requestedResult →
         ValueTys signature requestedValues requestedTargets)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     typing rfl rfl hfind hinstance
   · intros
     contradiction
@@ -1815,19 +1664,9 @@ theorem ValueTy.ctor_inversion
     contradiction
   · intros
     contradiction
-  · intro value producerCap producerTarget consumerCap consumerTarget
-      bindings C T post inner raw postVariable _ requestedName
+  · intro value producerCap consumerCap matcherTarget inner demand _ requestedName
       requestedScheme requestedValues requestedTargets requestedResult
       valueEquality targetEquality requestedFind requestedInstance
-    obtain ⟨former, arguments, dataEquality⟩ :=
-      signatureWF.dataResult requestedFind requestedInstance
-    rw [dataEquality] at targetEquality
-    cases targetEquality
-  · intro value sourceCap sourceTarget requestedCap requestedTarget C T
-      post inner raw postVariable _
-      requestedName requestedScheme requestedValues requestedTargets
-      requestedResult valueEquality targetEquality requestedFind
-      requestedInstance
     obtain ⟨former, arguments, dataEquality⟩ :=
       signatureWF.dataResult requestedFind requestedInstance
     rw [dataEquality] at targetEquality
@@ -1881,7 +1720,7 @@ theorem ValueTy.unit_impossible
   refine ValueTy.rec
     (motive_1 := fun _ target _ => target = .unit → False)
     (motive_2 := fun _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ typing rfl
   · intros
     contradiction
   · intro name scheme values targets result hfind hinst _ _ equality
@@ -1889,8 +1728,6 @@ theorem ValueTy.unit_impossible
       signatureWF.dataResult hfind hinst
     rw [resultEquality] at equality
     cases equality
-  · intros
-    contradiction
   · intros
     contradiction
   · intros

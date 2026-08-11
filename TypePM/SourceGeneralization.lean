@@ -1454,36 +1454,16 @@ theorem RuntimeTyping.transportFlows
       simpa only [Subst.apply_matcher] using RuntimeTyping.matcher clausesMoved
         shapeMoved catchAll (exhaustive.transport_basic basic) ppNodup armNodup
         coverageMoved
-  | @RuntimeTyping.coerceMatcherToSlot _ context expression producerCap producerTarget
-      consumerCap consumerTarget bindings C T post premise certificate
-      premiseVariable => by
+  | @RuntimeTyping.coerceMatcherToSlot _ context expression producerCap
+      consumerCap target premise demand => by
       have premiseMoved := premise.transportFlows basic postVariable capFixed
         targetFixed contextFlow
-      have premiseFor : RuntimeTyping signature targetContext expression
-          (.matcher ((producerCap.apply C).apply (Subst.seq S post).cap)
-            ((Subst.seq S post).apply ((Subst.mk C T).apply producerTarget))) := by
-        simpa only [Subst.apply_matcher, Cap.apply_substSeq,
-          Subst.seq_apply] using premiseMoved
       have result := RuntimeTyping.coerceMatcherToSlot
-        (post := Subst.seq S post) premiseFor certificate
-        (postVariable.seq premiseVariable)
-      simpa only [Subst.apply_matcher, Subst.apply_slot,
-        Cap.apply_substSeq, Subst.seq_apply] using result
-  | @RuntimeTyping.checkSlotToSlot _ context expression sourceCap sourceTarget
-      requestedCap requestedTarget C T post premise certificate
-      premiseVariable => by
-      have premiseMoved := premise.transportFlows basic postVariable capFixed
-        targetFixed contextFlow
-      have premiseFor : RuntimeTyping signature targetContext expression
-          (.slot ((sourceCap.apply C).apply (Subst.seq S post).cap)
-            ((Subst.seq S post).apply ((Subst.mk C T).apply sourceTarget))) := by
-        simpa only [Subst.apply_slot, Cap.apply_substSeq,
-          Subst.seq_apply] using premiseMoved
-      have result := RuntimeTyping.checkSlotToSlot
-        (post := Subst.seq S post) premiseFor certificate
-        (postVariable.seq premiseVariable)
-      simpa only [Subst.apply_slot, Cap.apply_substSeq,
-        Subst.seq_apply] using result
+        premiseMoved (demand.apply S.cap)
+      change RuntimeTyping signature targetContext expression
+        (.slot (consumerCap.apply S.cap)
+          ((target.applyCapability S.cap).applyTarget S.target))
+      exact result
   | @RuntimeTyping.coerceProductMatcher _ context expression duals expressionTyping => by
       have expressionMoved := expressionTyping.transportFlows basic
         postVariable capFixed targetFixed contextFlow

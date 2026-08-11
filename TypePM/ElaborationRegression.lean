@@ -47,7 +47,7 @@ theorem pair_runtime_factor_exists {signature : FrozenSig} :
       SynthHead signature [] pairProgram source ∧
       CoercionPlan signature [] pairProgram source
         (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  RuntimeTyping.factorHead pair_matcher_typing
+  ⟨pairProductType, pair_synthesizes_product, pair_product_matcher_plan⟩
 
 /-- The generalized unary product lift can be inserted at a variable use,
 after the ordinary product has crossed a `let` boundary.  The former
