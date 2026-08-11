@@ -9,10 +9,10 @@ This module connects the type-erased operational objects in
 calculus in `TypePM.Source`.  No abstract runtime specification, oracle, or
 claimed type safety theorem occurs here.
 
-A runtime matcher literal retains an actual source derivation
+A runtime matcher literal retains an internal state-free certificate
 
 ```text
-HasTy signature context (.matcher clauses) (.matcher capability target)
+RuntimeTyping signature context (.matcher clauses) (.matcher capability target)
 ```
 
 for exactly its captured clause list.  Consequently matcher inversion recovers
@@ -76,10 +76,10 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         scheme.ValueFlowInst target →
         ValueTy signature value target) →
       (self = none →
-        SemanticTyping signature
+        RuntimeTyping signature
           ((parameter, Scheme.mono domain) :: context) body codomain) →
       (∀ name, self = some name →
-        SemanticTyping signature
+        RuntimeTyping signature
           ((parameter, Scheme.mono domain) ::
             (name, Scheme.mono (.fn domain codomain)) :: context)
           body codomain) →
@@ -95,7 +95,7 @@ inductive ValueTy (signature : FrozenSig) : Value → Ty → Prop where
         Context.find? context name = some scheme →
         scheme.ValueFlowInst instanceTarget →
         ValueTy signature value instanceTarget) →
-      SemanticTyping signature context (.matcher originalClauses)
+      RuntimeTyping signature context (.matcher originalClauses)
         (.matcher capability target) →
       MatcherCursor currentClauses originalClauses →
       ValueTy signature
@@ -337,7 +337,7 @@ theorem selfClosure_typed
     {signature : FrozenSig} {context : Context} {environment : Env}
     {name parameter : String} {body : Expr} {domain codomain : Ty}
     (environmentTyping : EnvTyped signature context environment)
-    (bodyTyping : HasTy signature
+    (bodyTyping : RuntimeTyping signature
       ((parameter, Scheme.mono domain) ::
         (name, Scheme.mono (.fn domain codomain)) :: context)
       body codomain) :
@@ -358,7 +358,7 @@ theorem selfClosure_typed
 
 /--
 Applying a typed closure yields a typed argument/self environment and the
-source typing derivation of its body in that same context.
+runtime certificate of its body in that same context.
 -/
 theorem pushArg_typed
     {signature : FrozenSig} {self : Option String} {environment : Env}
@@ -371,7 +371,7 @@ theorem pushArg_typed
     ∃ bodyContext,
       EnvTyped signature bodyContext
         (pushArg self environment parameter body argument) ∧
-      HasTy signature bodyContext body codomain := by
+      RuntimeTyping signature bodyContext body codomain := by
   cases functionTyping with
   | closure context domainPart instancePart noneBody someBody =>
       have environmentTyping : EnvTyped signature context environment :=
@@ -404,7 +404,7 @@ def CoveredMatcherLiteralView
   ∃ context evidence,
     EnvTyped signature context environment ∧
     MatcherCursor currentClauses originalClauses ∧
-    HasTy signature context (.matcher originalClauses)
+    RuntimeTyping signature context (.matcher originalClauses)
       (.matcher capability target) ∧
     ResolvedClausesTy signature context originalClauses capability target
       evidence ∧
@@ -426,7 +426,7 @@ theorem ValueTy.matcherLiteral_inversion
     ∃ context,
       EnvTyped signature context environment ∧
       MatcherCursor currentClauses originalClauses ∧
-      HasTy signature context (.matcher originalClauses)
+      RuntimeTyping signature context (.matcher originalClauses)
         (.matcher capability target) := by
   cases typing with
   | matcherLiteral context domainPart instancePart sourceTyping cursor =>

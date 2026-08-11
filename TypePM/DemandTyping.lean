@@ -49,9 +49,11 @@ relational forms of its solver sequences (`DDAlignDual`,
 `DDAlignTargetList`, `DDAlignBindings`, `DDAlignCtorCaps`,
 `DDPatternCtorCap`); matcher-literal finalization consumes the same
 executable coverage checks as the declarative rule.  The
-capability-freeze/export ledger axis is deliberately absent: it is the
-separate `FreezeCompatible` correspondence condition of stage 3-3, not part
-of the demand specification.
+capability-freeze/export ledger axis is not yet indexed by these raw
+judgments.  Consequently the state-erasure map from DD derivations to the
+internal `RuntimeTyping` certificate still needs a freeze-compatibility
+condition.  This is a missing component of the DD specification, not a second
+source-typing relation.
 -/
 
 namespace TypePM
@@ -2544,8 +2546,9 @@ end
 the identity substitution, synthesize without an expected type, and publish
 the terminal substitution applied to the raw result.
 
-`SemanticTyping`/`HasTy` remains an internal state-free certificate for the
-dynamic metatheory; it is not a second definition of accepted source programs.
+`RuntimeTyping` is the internal state-free certificate used by the dynamic
+metatheory.  It is a target of state erasure, not another definition of source
+acceptance.
 -/
 def DDTyping (signature : FrozenSig) (context : Context)
     (expression : Expr) (target : Ty) : Prop :=

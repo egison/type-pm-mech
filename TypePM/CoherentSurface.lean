@@ -17,7 +17,7 @@ the whole pattern tree and threads only the raw binding context left-to-right.
 Reconstruction now retains exactly these raw indices, and the W reconstruction
 motive generates the threaded evidence directly.  Its recursive value-pattern
 premise is `ExprDeriv`; only the independent surface judgment below forgets
-that premise to ordinary `HasTy`.  These bridges establish coherent core
+that premise to ordinary `RuntimeTyping`.  These bridges establish coherent core
 provenance, but imply neither inference completeness nor principality.  The
 mutually inductive coherent judgment covering expressions, arms, and clauses
 on top of this boundary lives in `TypePM.CoherentTyping`.
@@ -60,7 +60,7 @@ inductive CoherentTerminalPatternResolution (signature : FrozenSig) :
       {rawContext rawParameters rawBindings expression rawTarget capVar} :
       FreshCap signature rawContext rawParameters rawBindings capVar ->
       capVar ∉ rawTarget.fcv ->
-      HasTy signature
+      RuntimeTyping signature
         ((rawBindings.applySubst prevailing).toContext ++
           rawContext.applySubst prevailing)
         expression (prevailing.apply rawTarget) ->
@@ -174,7 +174,7 @@ inductive ThreadedPatternResolution
   | pval {rawBindings expression rawTarget capVar} :
       FreshCap signature rawContext rawParameters rawBindings capVar ->
       capVar ∉ rawTarget.fcv ->
-      HasTy signature
+      RuntimeTyping signature
         ((rawBindings.applySubst prevailing).toContext ++
           rawContext.applySubst prevailing)
         expression (prevailing.apply rawTarget) ->
@@ -411,7 +411,7 @@ def PatternResolutionDeriv.toThreadedSurface
   | .wild freshCap freshTy =>
       .wild freshCap freshTy
   | .pval freshCap separate expressionTyping =>
-      .pval freshCap separate expressionTyping.toHasTy
+      .pval freshCap separate expressionTyping.toRuntimeTyping
   | .embed rawLookup actualLookup =>
       .embed rawLookup actualLookup
   | .tuple children =>
@@ -491,7 +491,7 @@ def ResolvedPatternDeriv.toCoherentSurface
 /-! ## Pattern-value-free absorption
 
 The threaded surface boundary differs from reconstruction evidence in one
-premise only: a `pval` leaf carries a plain `HasTy` on the surface side and
+premise only: a `pval` leaf carries a plain `RuntimeTyping` on the surface side and
 an `ExprDeriv` certificate on the reconstruction side.  On patterns without
 any pattern-value leaf there is no expression premise to upgrade, so the
 standalone surface judgment absorbs into reconstruction evidence outright.

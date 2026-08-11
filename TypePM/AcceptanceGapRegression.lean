@@ -2,26 +2,25 @@ import TypePM.CertifiedInferenceRegression
 import TypePM.CoherentTyping
 
 /-!
-# Acceptance gap regressions
+# DD acceptance and state-erasure boundary regressions
 
-This module tracks the concrete acceptance gaps between declarative typing
-and the executable pipeline.  The first gap — an or-pattern binding the same
+This module tracks concrete boundaries of DD acceptance and the internal
+runtime certificate.  The first gap — an or-pattern binding the same
 variable in both alternatives, previously rejected because the traversal
 compared raw binding contexts for syntactic identity — is fixed: the or case
 now aligns binder names positionally and unifies the bound types
 (`alignBindings`), so both the original program and a variant binding `x` at
-different positions of the alternatives are accepted.  The declarative
-derivation is kept alongside as the specification witness.
+different positions of the alternatives are accepted.  Its runtime
+certificate is kept as a downstream safety witness.
 
-The second family is pinned below as a boundary example of the wide
-declarative system, not as an inference defect: a shared monomorphic
-consumer declaratively receives the wildcard slot domain
+The second family shows why `RuntimeTyping` must not be read backwards as a
+source-acceptance rule: a shared monomorphic consumer receives the wildcard slot domain
 (`Slot Any (prod [Int, Int])`) and consumes both a bare `something` and a
 product of `something`s.  The exhibited derivations below choose
 `coerceMatcherToSlot` steps at argument positions where no slot demand exists
 — the domain is a plain lambda-bound metavariable, and those witnesses invent
 the slot structure that makes both coercions succeed.  No inversion theorem
-claiming that every wide `HasTy` derivation must have this form is made here.
+claiming that every `RuntimeTyping` certificate must have this form is made here.
 The pipeline is demand-directed:
 coercions are inserted only where the substituted expected type already
 demands a slot head, and unresolved domains are never structured to
@@ -30,10 +29,8 @@ the raw `Matcher Any ?τ`, and the second use finds no slot demand there:
 the raw product of matchers stays unlifted and ordinary alignment rejects
 the `prod`/`matcher` head mismatch.  In the swapped order the domain is
 pinned to the raw product type and the bare matcher likewise meets no slot
-demand.  Both rejections are intended
-behaviour and permanently refute `WideAnnotationFree`
-(`wideAnnotationFree_refuted`); they are not scheduled to be fixed by the
-origin-aware unifier.  The accepted idiom — let-polymorphism giving each
+demand.  Both rejections are intended behaviour.  The accepted idiom —
+let-polymorphism giving each
 use its own domain instance — is pinned as `nestedCapLetProgram_accepted`.
 
 The former third gap — constructor instance capabilities pinned before their
@@ -80,7 +77,7 @@ theorem orMixedProgram_accepted :
     Inference.inferenceSucceeds emptySignature [] orMixedProgram = true := by
   native_decide
 
-/-- The prevailing substitution of the declarative derivation below. -/
+/-- The prevailing substitution of the runtime certificate below. -/
 def orPrevailing : Subst :=
   Subst.mk (Unification.CapSubst.single 0 .any)
     (Unification.TySubst.single 0 .int)
@@ -106,12 +103,12 @@ theorem orPattern_resolved :
 
 /-- `something` inhabits the slot demanded by the match site. -/
 private theorem something_slot_typed :
-    HasTy emptySignature [] .something (.slot .any .int) := by
-  refine HasTy.coerceMatcherToSlot
+    RuntimeTyping emptySignature [] .something (.slot .any .int) := by
+  refine RuntimeTyping.coerceMatcherToSlot
     (producerCap := .any) (consumerCap := .any)
     (producerTarget := .int) (consumerTarget := .int)
     (bindings := []) (C := CapSubst.id) (T := TySubst.id) (post := Subst.id)
-    HasTy.something ?_ VariablePost.id
+    RuntimeTyping.something ?_ VariablePost.id
   exact
     { matched := rfl
       capSubstitution := rfl
@@ -120,12 +117,12 @@ private theorem something_slot_typed :
 
 /-- Declaratively the or-pattern program is typed at `List Integer`. -/
 theorem orProgram_typed :
-    HasTy emptySignature [] orProgram (Ty.listT .int) :=
-  HasTy.matchAll (prevailing := orPrevailing)
-    HasTy.lit orPattern_resolved something_slot_typed
-    (HasTy.var rfl (Scheme.mono_valueFlowInst _))
+    RuntimeTyping emptySignature [] orProgram (Ty.listT .int) :=
+  RuntimeTyping.matchAll (prevailing := orPrevailing)
+    RuntimeTyping.lit orPattern_resolved something_slot_typed
+    (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _))
 
-/-! ## Nested matcher capability: rigid annotation comparison -/
+/-! ## Nested matcher capability: DD rejection boundary -/
 
 /-- A shared monomorphic consumer applied to two matcher producers whose
 capabilities differ: the bare `something` synthesizes `Matcher Any ?τ`,
@@ -154,13 +151,13 @@ def consumerContext : Context :=
 
 /-- `something` fills the wildcard slot at the product target. -/
 private theorem something_sharedSlot_typed :
-    HasTy emptySignature consumerContext .something sharedSlot := by
-  refine HasTy.coerceMatcherToSlot
+    RuntimeTyping emptySignature consumerContext .something sharedSlot := by
+  refine RuntimeTyping.coerceMatcherToSlot
     (producerCap := .any) (consumerCap := .any)
     (producerTarget := .prod [.int, .int])
     (consumerTarget := .prod [.int, .int])
     (bindings := []) (C := CapSubst.id) (T := TySubst.id) (post := Subst.id)
-    HasTy.something ?_ VariablePost.id
+    RuntimeTyping.something ?_ VariablePost.id
   exact
     { matched := rfl
       capSubstitution := rfl
@@ -169,19 +166,19 @@ private theorem something_sharedSlot_typed :
 
 /-- The tuple of `something`s lifts to a product matcher. -/
 private theorem tuple_productMatcher_typed :
-    HasTy emptySignature consumerContext (.tuple [.something, .something])
+    RuntimeTyping emptySignature consumerContext (.tuple [.something, .something])
       (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  HasTy.coerceProductMatcher
+  RuntimeTyping.coerceProductMatcher
     (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
-    (HasTy.tuple (ExprsTy.cons HasTy.something
-      (ExprsTy.cons HasTy.something ExprsTy.nil)))
+    (RuntimeTyping.tuple (ExprsTy.cons RuntimeTyping.something
+      (ExprsTy.cons RuntimeTyping.something ExprsTy.nil)))
 
 /-- The product matcher also fills the wildcard slot: the consumer-side
 literal `Any` accepts the structured producer capability. -/
 private theorem tuple_sharedSlot_typed :
-    HasTy emptySignature consumerContext (.tuple [.something, .something])
+    RuntimeTyping emptySignature consumerContext (.tuple [.something, .something])
       sharedSlot := by
-  refine HasTy.coerceMatcherToSlot
+  refine RuntimeTyping.coerceMatcherToSlot
     (producerCap := .prod [.any, .any]) (consumerCap := .any)
     (producerTarget := .prod [.int, .int])
     (consumerTarget := .prod [.int, .int])
@@ -195,34 +192,34 @@ private theorem tuple_sharedSlot_typed :
 
 /-- The shared consumer variable at its monomorphic type. -/
 private theorem consumer_var_typed :
-    HasTy emptySignature consumerContext (.var "f")
+    RuntimeTyping emptySignature consumerContext (.var "f")
       (.fn sharedSlot sharedSlot) :=
-  HasTy.var rfl (Scheme.mono_valueFlowInst _)
+  RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)
 
 /-- Declaratively the program is typed: both producers coerce into the same
 wildcard slot domain. -/
 theorem nestedCapProgram_typed :
-    HasTy emptySignature [] nestedCapProgram
+    RuntimeTyping emptySignature [] nestedCapProgram
       (.prod [sharedSlot, sharedSlot]) :=
-  HasTy.app
-    (HasTy.lam (HasTy.tuple
-      (ExprsTy.cons (HasTy.app consumer_var_typed something_sharedSlot_typed)
+  RuntimeTyping.app
+    (RuntimeTyping.lam (RuntimeTyping.tuple
+      (ExprsTy.cons (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
         (ExprsTy.cons
-          (HasTy.app consumer_var_typed tuple_sharedSlot_typed)
+          (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
           ExprsTy.nil))))
-    (HasTy.lam (HasTy.var rfl (Scheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- The swapped order is typed by the same pieces. -/
 theorem nestedCapSwappedProgram_typed :
-    HasTy emptySignature [] nestedCapSwappedProgram
+    RuntimeTyping emptySignature [] nestedCapSwappedProgram
       (.prod [sharedSlot, sharedSlot]) :=
-  HasTy.app
-    (HasTy.lam (HasTy.tuple
-      (ExprsTy.cons (HasTy.app consumer_var_typed tuple_sharedSlot_typed)
+  RuntimeTyping.app
+    (RuntimeTyping.lam (RuntimeTyping.tuple
+      (ExprsTy.cons (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
         (ExprsTy.cons
-          (HasTy.app consumer_var_typed something_sharedSlot_typed)
+          (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
           ExprsTy.nil))))
-    (HasTy.lam (HasTy.var rfl (Scheme.mono_valueFlowInst _)))
+    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- Consuming the same producer twice is accepted: the shared domain
 resolves to one raw matcher type and the second use aligns rigidly. -/
@@ -302,24 +299,6 @@ theorem nestedCapSwappedProgram_rejected :
       false := by
   native_decide
 
-/-- The nested-capability boundary example permanently refutes the
-wide-premise `WideAnnotationFree`: the displayed declarative typing witness
-uses demand-free matcher-to-slot coercions, and rejecting that witness's
-coercion strategy is the intended demand-directed behaviour.  The pursued
-completeness statement keeps the conclusion but replaces the wide `HasTy`
-premise with the independent syntax-directed, state-threaded `DDTyping`
-judgment from stage 3 of the roadmap.  That judgment introduces lambda
-domains as fresh metavariables and admits a non-identity coercion only for
-an expected slot head observed after synthesis at the current
-prevailing-substitution cut. -/
-theorem wideAnnotationFree_refuted : ¬ Coherent.WideAnnotationFree := by
-  intro hfree
-  have haccept :=
-    hfree emptySignature nestedCapProgram (.prod [sharedSlot, sharedSlot])
-      nestedCapProgram_typed
-  rw [nestedCapProgram_rejected] at haccept
-  cases haccept
-
 /-! ## Capability freeze: constructor instance capabilities -/
 
 /-- `Pack : ∀κ α. Matcher κ α → Packed` — a constructor whose field
@@ -363,8 +342,8 @@ def packProgram : Expr := .ctor "Pack" [.something]
 /-- Declaratively the constructor instance may choose `κ := Any`, so the
 program is typed. -/
 theorem packProgram_typed :
-    HasTy packSignature [] packProgram (.data "Packed" []) := by
-  refine HasTy.ctor (scheme := packScheme)
+    RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
+  refine RuntimeTyping.ctor (scheme := packScheme)
     (targets := [.matcher .any .int]) rfl ?_ ?_
   · refine ⟨Unification.CapSubst.single 0 .any,
       Unification.TySubst.single 0 .int, ?_,
@@ -375,7 +354,7 @@ theorem packProgram_typed :
       simp [Unification.CapSubst.single, reverse]
     · simp [packScheme, Subst.apply, Ty.applyCapability, Ty.applyTarget,
         Cap.apply, Unification.CapSubst.single, Unification.TySubst.single]
-  · exact ExprsTy.cons HasTy.something ExprsTy.nil
+  · exact ExprsTy.cons RuntimeTyping.something ExprsTy.nil
 
 /-- Raw W accepts the local structural specialization. -/
 theorem packProgram_raw_accepted :
@@ -422,11 +401,11 @@ theorem packProgram_coherent :
   simpa [Inference.ResolvedContext, Context.applySubst] using
     Coherent.infer_success_coherent packProgram_result
 
-/-- The public soundness eliminator independently recovers the advertised
-surface typing from the executable success equation. -/
+/-- Public inference independently reconstructs the advertised runtime
+certificate from the executable success equation. -/
 theorem packProgram_typed_by_inference :
-    HasTy packSignature [] packProgram (.data "Packed" []) := by
-  have typing := Inference.infer_success_sound packProgram_result
+    RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
+  have typing := Inference.infer_success_runtimeTyping packProgram_result
   rw [packProgram_result_type] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing
 

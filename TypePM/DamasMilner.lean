@@ -8,10 +8,10 @@ the core expression language and relates it to a one-sorted Damas–Milner syste
 defined from scratch below.  Its recursion rule deliberately carries the same
 singleton direct-self side conditions as the core.
 
-The main theorem `DM.HasTy.emb` is the completeness half of the intended
-fragment agreement: every derivation in this direct-self-restricted
-Damas–Milner system embeds into the two-sort declarative system over any closed
-frozen signature, with the capability sort inert.  Under the embedding,
+The main theorem `DM.Typing.emb` maps every derivation in this
+direct-self-restricted Damas–Milner system into the two-sort state-free
+`RuntimeTyping` certificate over any closed frozen signature, with the
+capability sort inert.  Under the embedding,
 capability binder lists are empty, capability substitutions act trivially, and
 `let` generalization commutes with the two-sort generalizer.  The converse
 (conservativity) direction is not claimed here.  `TypePM.CoherentTyping`
@@ -143,43 +143,43 @@ def SCtx.generalize (context : SCtx) (τ : STy) : SScheme :=
 mutual
 
 /-- Damas–Milner typing with the core's direct-self recursion boundary. -/
-inductive HasTy : SCtx → Expr → STy → Prop where
+inductive Typing : SCtx → Expr → STy → Prop where
   | var {context name scheme target} :
       SCtx.find? context name = some scheme →
       scheme.Inst target →
-      HasTy context (.var name) target
+      Typing context (.var name) target
   | lam {context name body domain codomain} :
-      HasTy ((name, SScheme.mono domain) :: context) body codomain →
-      HasTy context (.lam name body) (.fn domain codomain)
+      Typing ((name, SScheme.mono domain) :: context) body codomain →
+      Typing context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
-      HasTy context function (.fn domain codomain) →
-      HasTy context argument domain →
-      HasTy context (.app function argument) codomain
+      Typing context function (.fn domain codomain) →
+      Typing context argument domain →
+      Typing context (.app function argument) codomain
   | letE {context name value body valueTy bodyTy} :
-      HasTy context value valueTy →
-      HasTy ((name, SCtx.generalize context valueTy) :: context)
+      Typing context value valueTy →
+      Typing ((name, SCtx.generalize context valueTy) :: context)
         body bodyTy →
-      HasTy context (.letE name value body) bodyTy
+      Typing context (.letE name value body) bodyTy
   | fixE {context self argument body domain codomain} :
       self ≠ argument →
       DirectSelf.Holds self body →
-      HasTy ((argument, SScheme.mono domain) ::
+      Typing ((argument, SScheme.mono domain) ::
         (self, SScheme.mono (.fn domain codomain)) :: context)
         body codomain →
-      HasTy context (.fix self argument body) (.fn domain codomain)
+      Typing context (.fix self argument body) (.fn domain codomain)
   | lit {context value} :
-      HasTy context (.lit value) .int
+      Typing context (.lit value) .int
   | tuple {context expressions targets} :
-      HasTys context expressions targets →
-      HasTy context (.tuple expressions) (.prod targets)
+      Typings context expressions targets →
+      Typing context (.tuple expressions) (.prod targets)
 
 /-- Pointwise Damas–Milner typing with exact order and arity. -/
-inductive HasTys : SCtx → List Expr → List STy → Prop where
-  | nil {context} : HasTys context [] []
+inductive Typings : SCtx → List Expr → List STy → Prop where
+  | nil {context} : Typings context [] []
   | cons {context expression target expressions targets} :
-      HasTy context expression target →
-      HasTys context expressions targets →
-      HasTys context (expression :: expressions) (target :: targets)
+      Typing context expression target →
+      Typings context expressions targets →
+      Typings context (expression :: expressions) (target :: targets)
 
 end
 
@@ -386,41 +386,41 @@ mutual
 Every derivation in the direct-self Damas–Milner fragment embeds into the
 two-sort declarative system over any closed frozen signature.
 -/
-theorem HasTy.emb {signature : FrozenSig}
+theorem Typing.emb {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
     ∀ {context : SCtx} {expression : Expr} {target : STy},
-      HasTy context expression target →
-      TypePM.HasTy signature (SCtx.emb context) expression target.emb
+      Typing context expression target →
+      TypePM.RuntimeTyping signature (SCtx.emb context) expression target.emb
   | _, _, _, .var found instantiation =>
-      TypePM.HasTy.var (SCtx.find?_emb found)
+      TypePM.RuntimeTyping.var (SCtx.find?_emb found)
         (SScheme.emb_valueFlowInst instantiation)
   | _, _, _, .lam bodyTyping =>
-      TypePM.HasTy.lam (HasTy.emb sigFtv bodyTyping)
+      TypePM.RuntimeTyping.lam (Typing.emb sigFtv bodyTyping)
   | _, _, _, .app functionTyping argumentTyping =>
-      TypePM.HasTy.app (HasTy.emb sigFtv functionTyping)
-        (HasTy.emb sigFtv argumentTyping)
+      TypePM.RuntimeTyping.app (Typing.emb sigFtv functionTyping)
+        (Typing.emb sigFtv argumentTyping)
   | _, _, _, .letE valueTyping bodyTyping => by
-      refine TypePM.HasTy.letE (HasTy.emb sigFtv valueTyping) ?_
+      refine TypePM.RuntimeTyping.letE (Typing.emb sigFtv valueTyping) ?_
       rw [generalize_emb sigFtv]
-      exact HasTy.emb sigFtv bodyTyping
+      exact Typing.emb sigFtv bodyTyping
   | _, _, _, .fixE distinct direct bodyTyping =>
-      TypePM.HasTy.fixE distinct direct (HasTy.emb sigFtv bodyTyping)
+      TypePM.RuntimeTyping.fixE distinct direct (Typing.emb sigFtv bodyTyping)
   | _, _, _, .lit =>
-      TypePM.HasTy.lit
+      TypePM.RuntimeTyping.lit
   | _, _, _, .tuple componentTypings =>
-      TypePM.HasTy.tuple (HasTys.emb sigFtv componentTypings)
+      TypePM.RuntimeTyping.tuple (Typings.emb sigFtv componentTypings)
 
-/-- List form of `HasTy.emb`. -/
-theorem HasTys.emb {signature : FrozenSig}
+/-- List form of `Typing.emb`. -/
+theorem Typings.emb {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
     ∀ {context : SCtx} {expressions : List Expr} {targets : List STy},
-      HasTys context expressions targets →
+      Typings context expressions targets →
       TypePM.ExprsTy signature (SCtx.emb context) expressions
         (STy.embList targets)
   | _, _, _, .nil => TypePM.ExprsTy.nil
   | _, _, _, .cons headTyping tailTypings =>
-      TypePM.ExprsTy.cons (HasTy.emb sigFtv headTyping)
-        (HasTys.emb sigFtv tailTypings)
+      TypePM.ExprsTy.cons (Typing.emb sigFtv headTyping)
+        (Typings.emb sigFtv tailTypings)
 
 end
 
@@ -432,13 +432,13 @@ def idProgram : Expr :=
     (.app (.app (.var "id") (.var "id")) (.lit 1))
 
 /-- `λx.x` receives the generalized scheme `∀0.\ 0 → 0` at the `let`. -/
-theorem idProgram_dm_typed : HasTy [] idProgram .int := by
-  refine HasTy.letE (valueTy := .fn (.var 0) (.var 0))
-    (HasTy.lam (HasTy.var (scheme := SScheme.mono (.var 0)) rfl
+theorem idProgram_dm_typed : Typing [] idProgram .int := by
+  refine Typing.letE (valueTy := .fn (.var 0) (.var 0))
+    (Typing.lam (Typing.var (scheme := SScheme.mono (.var 0)) rfl
       ⟨fun name => .var name, fun _ _ => rfl, rfl⟩)) ?_
-  refine HasTy.app (domain := .int) ?_ HasTy.lit
-  refine HasTy.app (domain := .fn .int .int)
-    (HasTy.var rfl ?_) (HasTy.var rfl ?_)
+  refine Typing.app (domain := .int) ?_ Typing.lit
+  refine Typing.app (domain := .fn .int .int)
+    (Typing.var rfl ?_) (Typing.var rfl ?_)
   · exact ⟨SSubst.single 0 (.fn .int .int),
       SSubst.single_supportWithin 0 _, rfl⟩
   · exact ⟨SSubst.single 0 .int, SSubst.single_supportWithin 0 _, rfl⟩
@@ -447,8 +447,8 @@ theorem idProgram_dm_typed : HasTy [] idProgram .int := by
 `Int` through the embedding. -/
 theorem idProgram_two_sort_typed {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
-    TypePM.HasTy signature [] idProgram .int :=
-  HasTy.emb sigFtv idProgram_dm_typed
+    TypePM.RuntimeTyping signature [] idProgram .int :=
+  Typing.emb sigFtv idProgram_dm_typed
 
 end DM
 end TypePM

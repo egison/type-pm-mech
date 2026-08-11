@@ -524,15 +524,15 @@ theorem NormalPlan.sound
     Elaboration.CoercionPlan signature context expression source target :=
   plan.toCoercionPlan
 
-/-- Replaying a normal plan over a source typing yields the target surface
-typing. -/
-theorem NormalPlan.toHasTy
+/-- Replaying a normal plan over a runtime certificate yields the target
+runtime certificate. -/
+theorem NormalPlan.toRuntimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target)
-    (typing : HasTy signature context expression source) :
-    HasTy signature context expression target :=
-  plan.toCoercionPlan.toHasTy typing
+    (typing : RuntimeTyping signature context expression source) :
+    RuntimeTyping signature context expression target :=
+  plan.toCoercionPlan.toRuntimeTyping typing
 
 end CanonicalCoercion
 

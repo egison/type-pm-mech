@@ -3,17 +3,17 @@ import TypePM.CanonicalCoercion
 import TypePM.CertifiedInference
 
 /-!
-# Public core-typing boundary
+# Internal core reconstruction boundary
 
 `Reconstruction.ExprDeriv` is the derivation-structured `Prop` certificate
 produced by the certified inference pipeline without storing source-typing
 premises as an oracle.  Its constructors mirror the coercion choices made by
 inference, but Lean proof irrelevance means that this certificate is not itself
 observable elaboration data.  This module gives that existing object its
-provisional role in the surface/core architecture.  Successful inference
+role in the reconstruction architecture.  Successful inference
 constructs core evidence, every such certificate factors into a recursively
 reconstructed non-coercion head plus an explicit outer coercion plan, and
-erasing either view recovers surface typing.  Outer plans are logically
+erasing either view recovers `RuntimeTyping`.  Outer plans are logically
 normalizable through `Nonempty NormalPlan`; this does not yet make the inferred
 plan observable data.
 
@@ -21,12 +21,10 @@ Pattern reconstruction inside this certificate keeps one raw expression and
 parameter context across the entire pattern tree and threads raw bindings
 left-to-right.  Value-pattern expressions, matcher arms, and clauses retain
 their recursive reconstruction evidence, so the certificate does not fall
-back to a surface-typing oracle at those boundaries.
+back to a `RuntimeTyping` oracle at those boundaries.
 
 This is still a `Prop`-valued elaboration certificate, not an executable core
-AST.  Principality and completeness are deliberately separate future
-theorems.  In particular, naming this already-certified evidence does not
-weaken or hide the surface counterexample.
+AST.  It is not another source-typing judgment.
 -/
 
 namespace TypePM
@@ -168,20 +166,20 @@ theorem CoreCheck.toCoreTyping
   | intro synthesis plan =>
       exact plan.toCoreTyping synthesis.toCoreTyping
 
-/-- Erase explicit elaboration evidence back to the surface typing relation. -/
+/-- Erase explicit elaboration evidence back to `RuntimeTyping`. -/
 theorem CoreTyping.erase
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreTyping signature context expression target) :
-    HasTy signature context expression target :=
-  typing.toHasTy
+    RuntimeTyping signature context expression target :=
+  typing.toRuntimeTyping
 
-/-- Erase a checked core-head factorization directly to surface typing. -/
+/-- Erase a checked core-head factorization directly to `RuntimeTyping`. -/
 theorem CoreCheck.erase
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CoreCheck signature context expression target) :
-    HasTy signature context expression target :=
+    RuntimeTyping signature context expression target :=
   checking.toCoreTyping.erase
 
 /-- Forget recursive reconstruction premises while retaining the same
@@ -352,11 +350,11 @@ theorem infer_success_normal_core_factor
   (infer_success_core success).factorNormalHead
 
 /-- Surface soundness factors through the explicit core evidence. -/
-theorem infer_success_surface_via_core
+theorem infer_success_runtimeTyping_via_core
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
-    HasTy signature
+    RuntimeTyping signature
       (Inference.ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget :=
   (infer_success_core success).erase

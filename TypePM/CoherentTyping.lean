@@ -3,47 +3,29 @@ import TypePM.CoherentSurface
 import TypePM.DamasMilner
 
 /-!
-# Coherent surface typing and the acceptance boundary
+# Internal coherent reconstruction
 
 The reconstruction certificate `Reconstruction.ExprDeriv` is itself the
-mutual coherent surface typing: its value-pattern, arm, and clause premises
-recurse into the certificate rather than a surface-typing oracle, its pattern
+mutual coherent certificate: its value-pattern, arm, and clause premises
+recurse into the certificate rather than a `RuntimeTyping` oracle, its pattern
 layer keeps one threaded raw provenance, and its product-lift constructors
 carry raw-source provenance indices.  The inference reconstruction motive
 fills those indices faithfully — the recorded raw source is the type whose
 head the selector actually inspected — while plan replay and the match-free
 embedding below supply the always-available identity witness.
 
-Following the `CoreTyping` precedent, this module names that judgment
+Following the `CoreTyping` precedent, this module names that certificate
 `Coherent.CoherentExpr` by definitional abbreviation instead of maintaining a
-mirrored copy.  On top of the aliases it proves the surface-facing
-corollaries: coherent typings are surface typings, successful public
-inference lands in the coherent judgment, every surface typing of a
-match-free expression is coherent, and every Damas–Milner typing embeds into
-the coherent judgment.  The standalone pattern-local boundaries and their
-forgetful maps remain in `TypePM.CoherentSurface`
+mirrored copy.  On top of the aliases it proves the internal projections:
+coherent reconstruction yields `RuntimeTyping`, successful public inference
+yields coherent reconstruction, and every Damas–Milner typing embeds into the
+coherent certificate.  The standalone pattern-local boundaries and their
+projections remain in `TypePM.CoherentSurface`
 (`PatternResolutionDeriv.toThreadedSurface` and onward).
 
-`WideAnnotationFree` names the broad acceptance-completeness envelope for
-closed programs typed by the unrestricted surface `HasTy`.  That proposition
-is permanently refuted by `AcceptanceGapRegression.wideAnnotationFree_refuted`;
-it is retained only to state the rejected boundary precisely.  The stage-3
-target specification is instead an independent, syntax-directed,
-state-threaded judgment called `DDTyping` in the design documents.  Its state
-contains a fresh supply and prevailing substitution; checking synthesizes
-first and inspects the retained raw synthesized head and the current
-prevailing expected head at that exact solve cut.  It gives ordinary equality
-alignment/identity priority through a deterministic positive head selector,
-and never guesses a lambda domain or metavariable structure merely to enable a
-coercion.  Genuine unification failure is deliberately not a negative rule
-premise, so failed-attempt rollback, operational fuel exhaustion, and guard
-rejection cannot become coercion evidence.  The equality-priority property is
-instead a selector invariant to prove.  `DDTyping` is not yet defined here.
-The unrestricted
-`HasTy` remains the deliberately broad dynamic-safety envelope, while raw-head
-visibility at a cut and capability freeze/export admissibility are separate
-axes of a future completeness theorem.  Neither algorithmic completeness nor
-any principality claim is made here.
+This module does not define source typability.  That role belongs exclusively
+to `DDTyping`; coherence and `RuntimeTyping` occur only downstream of a
+successful reconstruction or a future DD state-erasure theorem.
 -/
 
 namespace TypePM
@@ -85,14 +67,14 @@ abbrev CoherentClauses := Inference.Reconstruction.ClausesDeriv
 abbrev CoherentResolvedClauses :=
   Inference.Reconstruction.ResolvedClausesDeriv
 
-/-! ## Surface soundness and inference corollaries -/
+/-! ## Runtime-certificate projection and inference corollaries -/
 
-/-- Coherent typings are surface typings. -/
-theorem CoherentExpr.toHasTy
+/-- Coherent reconstruction yields the state-free runtime certificate. -/
+theorem CoherentExpr.toRuntimeTyping
     {signature context expression target}
     (derivation : CoherentExpr signature context expression target) :
-    HasTy signature context expression target :=
-  ExprDeriv.toHasTy derivation
+    RuntimeTyping signature context expression target :=
+  ExprDeriv.toRuntimeTyping derivation
 
 /-- Successful public inference lands in the coherent judgment. -/
 theorem infer_success_coherent
@@ -104,14 +86,12 @@ theorem infer_success_coherent
       expression result.resolvedTarget :=
   Inference.infer_success_reconstruct success
 
-/-! ## The match-free fragment is coherent
+/-! ## The match-free runtime-certificate fragment is coherent
 
-Coherence restricts only pattern provenance, so surface typings of
+Coherence restricts only pattern provenance, so runtime certificates for
 expressions without `matchAll` and matcher literals are all coherent: their
 typing constructors mirror the reconstruction certificate one to one.  This
-discharges the declarative half of the staged Damas–Milner acceptance goal —
-every DM typing embeds into the coherent judgment and hence carries a
-recursive core certificate. -/
+shows that every DM typing embeds into a recursive runtime certificate. -/
 
 mutual
 
@@ -140,10 +120,10 @@ end
 
 mutual
 
-/-- Every surface typing of a match-free expression is coherent. -/
+/-- Every runtime certificate for a match-free expression is coherent. -/
 theorem coherent_of_matchFree {signature : FrozenSig} :
     ∀ {context : Context} {expression : Expr} {target : Ty},
-      HasTy signature context expression target →
+      RuntimeTyping signature context expression target →
       matchFree expression = true →
       CoherentExpr signature context expression target
   | _, _, _, .var lookup flow, _ => .var lookup flow
@@ -202,7 +182,7 @@ mutual
 /-- Damas–Milner typable expressions never contain match constructs. -/
 theorem matchFree_of_dm :
     ∀ {context : DM.SCtx} {expression : Expr} {target : DM.STy},
-      DM.HasTy context expression target → matchFree expression = true
+      DM.Typing context expression target → matchFree expression = true
   | _, _, _, .var _ _ => rfl
   | _, _, _, .lam bodyTyping => by
       simp only [matchFree]
@@ -224,7 +204,7 @@ theorem matchFree_of_dm :
 /-- List form of `matchFree_of_dm`. -/
 theorem matchFreeList_of_dm :
     ∀ {context : DM.SCtx} {expressions : List Expr} {targets : List DM.STy},
-      DM.HasTys context expressions targets →
+      DM.Typings context expressions targets →
         matchFreeList expressions = true
   | _, _, _, .nil => rfl
   | _, _, _, .cons head tail => by
@@ -233,14 +213,12 @@ theorem matchFreeList_of_dm :
 
 end
 
-/-- Every Damas–Milner typing embeds into the coherent judgment: the
-declarative half of the staged DM acceptance goal.  The algorithmic half —
-public inference succeeding on these programs — remains open. -/
+/-- Every Damas–Milner typing embeds into the coherent runtime certificate. -/
 theorem dm_coherent {signature : FrozenSig} (sigFtv : signature.ftv = [])
     {context : DM.SCtx} {expression : Expr} {target : DM.STy}
-    (typing : DM.HasTy context expression target) :
+    (typing : DM.Typing context expression target) :
     CoherentExpr signature (DM.SCtx.emb context) expression target.emb :=
-  coherent_of_matchFree (DM.HasTy.emb sigFtv typing)
+  coherent_of_matchFree (DM.Typing.emb sigFtv typing)
     (matchFree_of_dm typing)
 
 /-- The polymorphic-identity witness is coherent over any closed signature. -/
@@ -248,43 +226,6 @@ theorem idProgram_coherent {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
     CoherentExpr signature [] DM.idProgram .int :=
   dm_coherent sigFtv DM.idProgram_dm_typed
-
-/-! ## The refuted wide annotation-freeness envelope -/
-
-/--
-The deliberately broad full-`HasTy` envelope: closed declaratively typed
-programs are accepted by public executable inference without any annotation.
-It records a tempting but overly strong statement so that its refutation has
-a stable name; it is not the project's open completion target.
-
-Over the full `HasTy` the proposition is permanently refuted
-(`AcceptanceGapRegression.wideAnnotationFree_refuted`): the wide system
-admits matcher-to-slot coercions at positions with no slot demand
-(`nestedCapProgram`), and rejecting those is the intended behaviour of the
-syntax-directed pipeline.  The pursued form keeps the same acceptance
-conclusion but replaces the premise by the not-yet-defined `DDTyping` judgment
-from stage 3 of the roadmap.  `DDTyping` threads a fresh supply and prevailing
-substitution, introduces unresolved lambda domains instead of choosing their
-shape, and synthesizes before checking.  At the exact cut it gives ordinary
-alignment/identity priority through a deterministic positive selector and
-permits a canonical non-identity coercion only when the raw/current heads
-visible there select it under the no-guess rules.  It does not turn failed
-unification into a rule premise.  `HasTy` remains the
-wider safety envelope rather than this completeness premise.  On that path the
-first concrete counterexample — an or-pattern whose alternatives bind the same
-variable — is fixed (`AcceptanceGapRegression` now pins its acceptance).
-Raw-head visibility, including the selector's cut-indexed blind spot, and
-capability freeze/export, including `packProgram`, are independent
-completeness axes rather than demand-admissibility rules inside `DDTyping`.
-The staged path continues through Damas–Milner algorithmic acceptance and
-fragment-restricted completeness.  The mechanized
-principality counterexample is independent: it refutes substitution-only
-recovery of every typing from the inferred result, not acceptance itself.
--/
-def WideAnnotationFree : Prop :=
-  ∀ (signature : FrozenSig) (expression : Expr) (target : Ty),
-    HasTy signature [] expression target →
-    Inference.inferenceSucceeds signature [] expression = true
 
 end Coherent
 end TypePM

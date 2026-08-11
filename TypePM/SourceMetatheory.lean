@@ -6,7 +6,7 @@ import TypePM.Source
 The theorems in this module expose facts that follow from the actual
 `ClauseTy`/`ClausesTy` derivations.  In particular, matcher coverage and
 dispatch are not supplied by a runtime interface: they are recovered from
-the internal `SemanticTyping`/`HasTy` derivation for the literal itself.
+the internal `RuntimeTyping` certificate for the literal itself.
 -/
 
 namespace TypePM
@@ -76,7 +76,7 @@ theorem ResolvedClausesTy.length
 
 /-! ## Actual-clause evidence -/
 
-/-- Every declaratively typed matcher clause satisfies the core PP order. -/
+/-- Every runtime-certified matcher clause satisfies the core PP order. -/
 theorem ClauseTy.coreOrder
     {signature : FrozenSig} {prevailing : Subst} {context : Context}
     {clause : Clause} {capability : Cap} {target : Ty}
@@ -125,34 +125,34 @@ theorem ClauseTy.evidence_holeCount
       rfl, _hpp, _hcaps, _hdecompose, _hnext, _harms, hcheck⟩
   exact ⟨holes, clauseEvidence_holeCount hcheck⟩
 
-/-! ## Coverage is retained by source typing -/
+/-! ## Coverage is retained by the runtime certificate -/
 
 /-- A source-typed matcher literal exposes coverage of its actual clauses. -/
-theorem HasTy.matcher_coverage
+theorem RuntimeTyping.matcher_coverage
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      HasTy signature context (.matcher clauses)
+      RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)) :
     CoverageOK signature.toMatcherSig clauses capability := by
   exact (typing.matcher_inversion).choose_spec.2.2.2.2.2.2
 
 /-- A source-typed matcher literal has a final catch-all. -/
-theorem HasTy.matcher_catchAllLast
+theorem RuntimeTyping.matcher_catchAllLast
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      HasTy signature context (.matcher clauses)
+      RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)) :
     CatchAllLast clauses := by
   exact (typing.matcher_inversion).choose_spec.2.2.1
 
 /-- Every source-typed matcher dispatches all required general clauses first. -/
-theorem HasTy.matcher_dispatchOK
+theorem RuntimeTyping.matcher_dispatchOK
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      HasTy signature context (.matcher clauses)
+      RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)) :
     DispatchOK signature.toMatcherSig clauses capability := by
   exact coverageOK_catchAllLast_dispatchOK _ _ _
@@ -163,17 +163,17 @@ theorem noMatcherTyping_of_not_coverage
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (missing : ¬ CoverageOK signature.toMatcherSig clauses capability) :
-    ¬ HasTy signature context (.matcher clauses)
+    ¬ RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target) := by
   intro typing
   exact missing typing.matcher_coverage
 
 /-- The actual evidence list retained by T-MATCHER has source-clause arity. -/
-theorem HasTy.matcher_evidence_length
+theorem RuntimeTyping.matcher_evidence_length
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      HasTy signature context (.matcher clauses)
+      RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)) :
     ∃ evidence,
       ResolvedClausesTy signature context clauses capability target evidence ∧

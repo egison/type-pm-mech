@@ -4,7 +4,7 @@ import TypePM.CertifiedInference
 /-!
 # A terminal-acceptance milestone for the Damas--Milner fragment
 
-The general algorithmic-acceptance theorem for every `DM.HasTy` derivation is
+The general algorithmic-acceptance theorem for every `DM.Typing` derivation is
 still open.  This module fixes a first nontrivial terminal milestone at the
 classic polymorphic-let witness from `TypePM.DamasMilner`: raw Algorithm W
 succeeds, its exact raw result passes `wBridgeCheck`, and the public certified
@@ -66,7 +66,7 @@ theorem idProgram_raw_success_and_checked :
 /-- The executable milestone is attached to the existing DM typing
 derivation, rather than being only an untyped evaluation regression. -/
 theorem idProgram_dm_terminal_milestone :
-    DM.HasTy [] DM.idProgram .int ∧
+    DM.Typing [] DM.idProgram .int ∧
       ∃ result : Inference.ExprResult,
         Inference.inferRaw emptySignature [] DM.idProgram = some result ∧
         Inference.Reconstruction.wBridgeCheck emptySignature result = true ∧

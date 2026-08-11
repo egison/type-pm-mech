@@ -33,10 +33,15 @@ raw result を解決する．
 \land \tau=S'\tau_{\mathrm{raw}}.
 \]
 
-Lean 内の歴史的な帰納型名 $\mathsf{HasTy}$ には
-$\mathsf{SemanticTyping}$ という役割名を与える．これは runtime value typing と
-preservation が使う state-free な安全性 certificate であり，source acceptance を定める
-第二の型システムではない．本稿の推論規則はすべて $\mathsf{DDTyping}$ family で記述する．
+動的安全性の証明では，推論 state を消去した内部 certificate
+$\mathsf{RuntimeTyping}$ を用いる．これは runtime value typing と preservation の帰納法を
+簡潔にするための補助判断であり，source acceptance を定めない．本稿の source typing rule は
+すべて $\mathsf{DDTyping}$ family で記述する．目指す依存方向は
+\[
+\mathsf{DDTyping}\Longrightarrow\mathsf{RuntimeTyping}
+\Longrightarrow\mathsf{RuntimeSafety}
+\]
+である．最初の矢印には capability freeze provenance の統合がまだ必要である．
 
 \subsection{中心となる考え：producer と slot demand}
 
@@ -63,6 +68,7 @@ $\mathtt{matchAll}$ の matcher 引数，matcher clause の next-matcher，slot 
 高階関数の引数は，すべて同じ $\DDCheck$ を使う．したがって「一度だけ」とは導出木全体で
 一度という意味ではなく，一つの checking cut ごとに一度という意味である．
 
+\pagebreak
 resolved source と expected の組は次の表で分類する．
 \begin{center}
 \begin{tabular}{lll}

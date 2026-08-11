@@ -1,7 +1,7 @@
-\section{機械化された性質と境界}
+\section{機械化された性質と未完成の接続}
 
-この章では，規則の意味を理解するために必要な主結果だけをまとめる．solver の fuel 証明，
-trace invariant，回帰一覧，module ごとの証明状況は \texttt{../docs/details.md} に分離する．
+本節では，前節までの規則から得られる性質と，実行可能推論・動的安全性への接続をまとめる．
+solver の個別補題，trace invariant，回帰一覧は \texttt{../docs/details.md} に分離する．
 
 \subsection{DDTyping 自身の性質}
 
@@ -16,21 +16,21 @@ $\DDAlign(S,\tau,\rho,S')$ が ordinary equality でないなら，resolved expe
 \exists\kappa,\upsilon.\;S\rho=\MatcherSlot{\kappa}{\upsilon}.
 \]
 特に $S\rho$ が matcher-headed なら，どの $\DDAlign$ derivation も
-$\DDAlignTypes$ へ退化する．これにより「coercion は slot demand で一度だけ」という
-設計原則が judgment の定理になる．
+$\DDAlignTypes$ へ退化する．これにより「coercion は slot demand を観測した checking cut で
+一度だけ」という原則が judgment の定理になる．
 
 \subsubsection*{State extension}
-すべての judgment は supply を単調に進め，出力 substitution を入力 substitution と
-局所 solve delta の chronological replay に因子化できる．公開型，pattern dual，bindings，
-hole ledger に現れる flexible variable は出力 supply で有界である．従って closed wrapper が
-公開する型も $\mathsf{initialSupply}(\Sighat,\Gamma)$ を拡張する終端 supply で有界である．
+すべての DD family は supply を単調に進め，出力 substitution を入力 substitution と局所
+solve delta の chronological replay に因子化できる．公開型，pattern dual，bindings，hole
+ledger に現れる flexible variable は出力 supply で有界である．従って closed wrapper が
+公開する型も canonical initial supply を拡張する終端 supply で有界である．
 
 \subsubsection*{No guess}
-fresh domain と既存 type の equality constraint に対する MGU は，constraint が固定する
-他の fresh variable を高々 rename できるだけで，slot や matcher へ構造化できない．
-この性質により，lambda domain を coercion の成立に合わせて先回りして選ぶ derivation を除く．
+exact MGU は constraint 外で恒等であり，constraint variable の像を constraint 内に保ち，
+solved form である．従って fresh lambda domain や無関係な metavariable を slot／matcher に
+構造化して coercion を成立させる derivation は存在しない．
 
-\subsubsection*{代表的な正例と負例}
+\subsubsection*{代表的な境界}
 or-pattern
 \[
 \mathtt{matchAll}\;0\;\mathtt{as}\;\mathtt{something}\;
@@ -38,10 +38,10 @@ or-pattern
 \]
 と，hole slot を $\mathtt{something}$ が満たす delegating matcher literal は
 $\mathsf{DDTyping}$ derivation を持つ．一方，matcher-expected 位置へ product of matchers を
-渡す項と，fresh monomorphic domain を共有して demand のない product lift を必要とする
-$\mathsf{nestedCapProgram}$ は derivation を持たない．この拒否は意図された境界である．
+渡す項と，fresh monomorphic domain を共有して demand のない product lift を必要とする項は
+derivation を持たない．
 
-\subsection{実行可能な型推論との関係}
+\subsection{実行可能推論から内部 certificate へ}
 
 公開 inference は停止する raw traversal と有限の fail-closed validator の合成である．
 \[
@@ -50,25 +50,26 @@ $\mathsf{nestedCapProgram}$ は derivation を持たない．この拒否は意�
   \lambda r.\;\mathsf{if}\;\mathsf{wBridgeCheck}(\Sighat,r)
   \;\mathsf{then}\;\mathsf{some}\;r\;\mathsf{else}\;\mathsf{none}).
 \]
-raw traversal は fresh allocation，solve delta，generalization，coverage evidence を trace に残す．
-validator はその有限 trace から binder-local instance，alignment，matcher finalization，
-let-generalization を再検査し，内部 bridge certificate を構成する．型付け derivation 自体を
-oracle として受け取らない．
+raw traversal は fresh allocation，solve delta，generalization，coverage evidence，capability-origin
+ledger を trace に残す．validator はその有限 trace から binder-local instance，alignment，
+matcher finalization，let-generalization，freeze event を再検査し，reconstruction certificate を
+構成する．型付け derivation 自体を oracle として受け取らない．
 
-$S_r=r.\mathsf{state.prevailing}$ とすると，公開成功から次の semantic soundness が得られる．
+$S_r=r.\mathsf{state.prevailing}$ とすると，公開成功から次の state-erasure 定理を得る．
 \[
 \frac{\mathsf{infer}(\Sighat,\Gamma,e)=\mathsf{some}\;r}
-{\mathsf{SemanticTyping}(\Sighat,S_r\Gamma,e,
+{\mathsf{RuntimeTyping}(\Sighat,S_r\Gamma,e,
   r.\mathsf{resolvedTarget})}.
 \]
-この定理は caller-supplied bridge や $\mathsf{InferenceInputWF}$ を前提にしない．
-$\mathsf{SemanticTyping}$ certificate は reconstruction を経て concrete dynamic safety package に
-接続される．
+$\mathsf{RuntimeTyping}$ は source acceptance の規則ではなく，solver state を持たない内部
+certificate である．この定理は caller-supplied bridge や $\mathsf{InferenceInputWF}$ を前提に
+しない．
 
+\pagebreak
 \subsection{動的安全性}
 
 freeze 済み signature の実行可能 checker が $\mathsf{FrozenSigWF}$ を確立する．その下で，
-pristine な typed environment における評価は $\mathsf{SemanticTyping}$ を
+pristine な typed environment における評価は $\mathsf{RuntimeTyping}$ certificate を
 $\mathsf{ValueTy}$ へ保存する．matching machine については次を証明する．
 \begin{enumerate}
   \item typed state の一段の全 successor は typed である；
@@ -79,55 +80,49 @@ $\mathsf{ValueTy}$ へ保存する．matching machine については次を証�
 \end{enumerate}
 空 successor 列は正当な match failure であり stuck ではない．一般の program termination は
 主張しない．primitive-pattern 内の value pattern capture admissibility は
-depth-first・左から右の core-order checker から導出し，preservation の外部前提にしない．
+depth-first・左から右の core-order checker から導出する．
 
-\subsection{二つの relation を混同しない}
+\subsection{DDTyping から安全性へ残る接続}
 
-$\mathsf{DDTyping}$ は source acceptance，$\mathsf{SemanticTyping}$ は動的安全性の内部包絡である．
-両者の無条件な包含はどちら向きにも主張しない．
-\begin{itemize}
-  \item $\mathsf{SemanticTyping}$ は demand のない surface coercion も許すため，
-        $\mathsf{nestedCapProgram}$ のように semantic typing を持つが DD typing を持たない項がある．
-  \item DD の ordinary solve は fresh capability を構造化できるが，semantic value-flow instance は
-        capability binder を variable へしか写せない．この freeze 境界により，DD typing を持つが
-        semantic typing を持たない context-indexed 例がある．
-\end{itemize}
-したがって，広い $\mathsf{SemanticTyping}$ 全体について inference completeness を述べる
-$\mathsf{WideAnnotationFree}$ は恒久的に反証済みである．また
-$(\mathtt{something},\mathtt{something})$ の semantic typing には head の異なる型があり，
-その全体に対する無制限 principality も成り立たない．これらは $\mathsf{DDTyping}$ 自身の
-決定性や条件付き受理完全性を否定する結果ではない．
-
-\subsection{未完の受理定理}
-
-現行 executable selector は expected type には cut 時点の prevailing substitution を適用するが，
-product source の認識には raw type を使う．この実装上の blind spot を
-$\mathsf{RawSourceVisible}$ として分離する．また producer capability の instance・solve・export が
-origin ledger の freeze 条件を満たすことを $\mathsf{FreezeCompatible}$ とする．両者は
-slot demand の有無とは独立な対応条件である．
-
-最初の目標は次の fragment completeness である．
+最終的に公開したい安全性定理の構造は次である．
 \[
-\frac{
-  \mathcal D:\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
-  \qquad\mathsf{RawSourceVisible}(\mathcal D)
-  \qquad\mathsf{FreezeCompatible}(\mathcal D)
-}{
-  \mathsf{infer}(\Sighat,\emptyset,e)\ne\mathsf{none}
-}.
+\mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
+\quad\Longrightarrow\quad
+\mathsf{RuntimeTyping}(\Sighat,\emptyset,e,\tau)
+\quad\Longrightarrow\quad
+\mathsf{RuntimeSafe}(\Sighat,e,\tau).
 \]
-その後，cut-resolved source の記録と traversal 全体の trace factorization により二条件を外し，
+第二の矢印は機械化済みである．第一の矢印は現行 DD family にはまだ成り立たない．原因は，
+$\DDSynth$ が fresh supply と prevailing substitution を持つ一方，producer capability の
+origin と freeze event を index に持たないことである．
+
+具体的には，context の量化 matcher scheme から生成した fresh capability や，$\mathtt{let}$
+generalization が束縛した capability を，後続の ordinary solve が $\mathsf{Any}$ や構造化
+capability へ解く DD derivation が存在する．しかし runtime certificate の value-flow instance
+は，producer capability binder の像を capability variable に限定する．従って現行 DD
+derivation からは必要な variable-only instance を復元できない．
+
+解決方針は，producer capability の生成・instance・generalization・export freeze の provenance
+を DD family 自体へ統合することである．その情報を derivation に沿って消去すれば
+$\mathsf{RuntimeTyping}$ certificate を構成できる．certificate の存在を DD rule の premise に
+置く方法は循環するため採らない．
+
+\subsection{受理完全性}
+
+もう一つの未完成定理は，DD derivation を executable inference の成功へ移すことである．
+現行 executable selector は expected type には cut 時点の prevailing substitution を適用するが，
+product source の認識には raw type を使う箇所がある．DD rule は cut-resolved source で
+classification するため，両者を一致させる trace factorization が必要である．最終目標は
+追加 premise のない次の定理である．
 \[
 \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
 \Longrightarrow
-\mathsf{infer}(\Sighat,\emptyset,e)\ne\mathsf{none}
+\mathsf{infer}(\Sighat,\emptyset,e)\ne\mathsf{none}.
 \]
-を得ることが完成目標である．この受理定理は未証明である．
 
 \subsection{機械化の範囲}
 
 $\DDSynth$／$\DDCheck$ と pattern・arm・clause family，alignment の slot-demand，state replay，
-supply boundedness，公開 inference の semantic soundness，concrete dynamic safety は Lean~4 に
-機械化済みである．主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined
-$\mathtt{axiom}$ はない．大きな executable regression の一部だけは $\mathtt{native\_decide}$ の
-計算結果について Lean native compiler を追加で信頼する．
+supply boundedness，公開 inference から $\mathsf{RuntimeTyping}$ への reconstruction，concrete
+dynamic safety は Lean~4 に機械化済みである．主定理と一般補題に $\mathtt{sorry}$，
+$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

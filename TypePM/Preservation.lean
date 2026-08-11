@@ -175,84 +175,84 @@ theorem ValueTy.product_inversion
     trivial
 
 /-!
-`HasTy` is a mutually inductive proposition, so a separate proof-relevant
+`RuntimeTyping` is a mutually inductive proposition, so a separate proof-relevant
 predicate records the non-coercion cases without eliminating source evidence
 into data.  Its constructors are exactly the terminal source rules.
 -/
-namespace HasTy
+namespace RuntimeTyping
 
 inductive Terminal {signature : FrozenSig} :
     {context : Context} → {expression : Expr} → {target : Ty} →
-    HasTy signature context expression target → Prop where
+    RuntimeTyping signature context expression target → Prop where
   | var {context : Context} {name : String} {scheme : Scheme} {target : Ty}
       (hfind : Context.find? context name = some scheme)
       (hinst : scheme.ValueFlowInst target) :
-      Terminal (HasTy.var hfind hinst)
+      Terminal (RuntimeTyping.var hfind hinst)
   | lam {context : Context} {name : String} {body : Expr}
       {domain codomain : Ty}
       (bodyTyping :
-        HasTy signature ((name, Scheme.mono domain) :: context) body codomain) :
-      Terminal (HasTy.lam bodyTyping)
+        RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain) :
+      Terminal (RuntimeTyping.lam bodyTyping)
   | app {context : Context} {function argument : Expr}
       {domain codomain : Ty}
       (functionTyping :
-        HasTy signature context function (.fn domain codomain))
-      (argumentTyping : HasTy signature context argument domain) :
-      Terminal (HasTy.app functionTyping argumentTyping)
+        RuntimeTyping signature context function (.fn domain codomain))
+      (argumentTyping : RuntimeTyping signature context argument domain) :
+      Terminal (RuntimeTyping.app functionTyping argumentTyping)
   | letE {context : Context} {name : String} {value body : Expr}
       {valueTy bodyTy : Ty}
-      (valueTyping : HasTy signature context value valueTy)
+      (valueTyping : RuntimeTyping signature context value valueTy)
       (bodyTyping :
-        HasTy signature
+        RuntimeTyping signature
           ((name, signature.generalize context valueTy) :: context)
           body bodyTy) :
-      Terminal (HasTy.letE valueTyping bodyTyping)
+      Terminal (RuntimeTyping.letE valueTyping bodyTyping)
   | fixE {context : Context} {self argument : String} {body : Expr}
       {domain codomain : Ty}
       (distinct : self ≠ argument)
       (direct : DirectSelf.Holds self body)
       (bodyTyping :
-        HasTy signature
+        RuntimeTyping signature
           ((argument, Scheme.mono domain) ::
             (self, Scheme.mono (.fn domain codomain)) :: context)
           body codomain) :
-      Terminal (HasTy.fixE distinct direct bodyTyping)
+      Terminal (RuntimeTyping.fixE distinct direct bodyTyping)
   | lit {context : Context} {value : Int} :
-      Terminal (@HasTy.lit signature context value)
+      Terminal (@RuntimeTyping.lit signature context value)
   | tuple {context : Context} {expressions : List Expr} {targets : List Ty}
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
-      Terminal (HasTy.tuple expressionsTyping)
+      Terminal (RuntimeTyping.tuple expressionsTyping)
   | ctor {context : Context} {name : String} {expressions : List Expr}
       {targets : List Ty} {result : Ty} {scheme : CtorScheme}
       (hfind : signature.findDataCtor name = some scheme)
       (hinst : scheme.Inst targets result)
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
-      Terminal (HasTy.ctor hfind hinst expressionsTyping)
+      Terminal (RuntimeTyping.ctor hfind hinst expressionsTyping)
   | prim {context : Context} {op : PrimOp} {expressions : List Expr}
       {targets : List Ty} {result : Ty} {scheme : CtorScheme}
       (hfind : signature.findPrimitive op = some scheme)
       (hinst : scheme.Inst targets result)
       (expressionsTyping :
         ExprsTy signature context expressions targets) :
-      Terminal (HasTy.prim hfind hinst expressionsTyping)
+      Terminal (RuntimeTyping.prim hfind hinst expressionsTyping)
   | something {context : Context} {target : Ty} :
-      Terminal (@HasTy.something signature context target)
+      Terminal (@RuntimeTyping.something signature context target)
   | matchAll
       {prevailing : Subst} {context : Context} {target matcher body : Expr}
       {pattern : Pattern} {targetTy result : Ty} {patternCap : Cap}
       {bindings : MonoCtx}
-      (targetTyping : HasTy signature context target targetTy)
+      (targetTyping : RuntimeTyping signature context target targetTy)
       (patternTyping :
         ResolvedPatternTy signature prevailing context [] [] pattern
           patternCap targetTy bindings)
       (matcherTyping :
-        HasTy signature context matcher (.slot patternCap targetTy))
+        RuntimeTyping signature context matcher (.slot patternCap targetTy))
       (bodyTyping :
-        HasTy signature (bindings.toContext ++ context) body result) :
+        RuntimeTyping signature (bindings.toContext ++ context) body result) :
       Terminal
-        (HasTy.matchAll targetTyping patternTyping matcherTyping bodyTyping)
+        (RuntimeTyping.matchAll targetTyping patternTyping matcherTyping bodyTyping)
   | matcher {context : Context} {clauses : List Clause} {target : Ty}
       {capability : Cap} {evidence : List Shape.Evidence}
       (clausesTyping :
@@ -265,14 +265,14 @@ inductive Terminal {signature : FrozenSig} :
       (armNodup : ArmBindNodup clauses)
       (coverage : CoverageOK signature.toMatcherSig clauses capability) :
       Terminal
-        (HasTy.matcher clausesTyping shape catchAll exhaustive ppNodup armNodup
+        (RuntimeTyping.matcher clausesTyping shape catchAll exhaustive ppNodup armNodup
           coverage)
-end HasTy
+end RuntimeTyping
 
 /--
 Lift a terminal runtime typing result through the unary source coercions.
 
-The recursive calls are on strict premise derivations of `HasTy`.  Source
+The recursive calls are on strict premise derivations of `RuntimeTyping`.  Source
 coercion premises have already been transported by their retained cumulative
 substitution, so every recursive call uses the unchanged environment typing.
 -/
@@ -281,12 +281,12 @@ def preserveSourceCoercions
     (signatureWF : FrozenSigWF signature)
     {environment : Env} {expression : Expr} {value : Value}
     {context : Context} {target : Ty}
-    (typing : HasTy signature context expression target)
+    (typing : RuntimeTyping signature context expression target)
     (environmentTyping : EnvTyped signature context environment)
     (terminal :
       ∀ {terminalContext terminalTarget}
         (terminalTyping :
-          HasTy signature terminalContext expression terminalTarget),
+          RuntimeTyping signature terminalContext expression terminalTarget),
         terminalTyping.Terminal →
         EnvTyped signature terminalContext environment →
         ValueTy signature value terminalTarget) :
@@ -362,7 +362,7 @@ def valueTys_of_evalZip
       expressions.length = values.length →
       (∀ pair ∈ expressions.zip values,
         ∀ target,
-          HasTy signature context pair.1 target →
+          RuntimeTyping signature context pair.1 target →
           ValueTy signature pair.2 target) →
       ValueTys signature values targets
   | [], hlength, _ => by

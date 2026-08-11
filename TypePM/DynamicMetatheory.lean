@@ -460,7 +460,7 @@ theorem ArmsTy.member
       ∃ pattern body armBindings,
         arm = .mk pattern body ∧
         DPatTy signature pattern target armBindings ∧
-        HasTy signature
+        RuntimeTyping signature
           (armBindings.toContext ++ ppBindings.toContext ++ context)
           body ppResult := by
   intro arm membership
@@ -708,7 +708,7 @@ theorem MatcherCursor.arm_typed
       result = Ty.listT (prodTy (holes.map Dual.target)) ∧
       arm = .mk pattern body ∧
       DPatTy signature pattern target armBindings ∧
-      HasTy signature
+      RuntimeTyping signature
         (armBindings.toContext ++ ppBindings.toContext ++ context)
         body result := by
   obtain ⟨originalClause, prevailing, clauseEvidence, sourceMember,
@@ -1847,7 +1847,7 @@ theorem decomposeME_typed
     {next : Expr} {expressions : List Expr} {targets : List Ty}
     (decomposition : decomposeME next targets.length = some expressions)
     (typing : ExprsTy signature context expressions targets) :
-    HasTy signature context next (prodTy targets) := by
+    RuntimeTyping signature context next (prodTy targets) := by
   cases targets with
   | nil =>
       cases next <;> simp [decomposeME] at decomposition

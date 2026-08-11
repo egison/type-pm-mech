@@ -75,7 +75,7 @@ import TypePM.DemandTypingRegression
 # Egison core with two-index matcher types
 
 This is the public import surface of the current formalization.  `DDTyping` is
-the source-language typing discipline.  `SemanticTyping` (implemented by the
-historical inductive relation `HasTy`) is the state-free certificate used
-internally by reconstruction and the dynamic metatheory.
+the only source-language typing judgment.  `RuntimeTyping` is an internal,
+state-free certificate used after inference state has been erased; it supports
+value typing and the dynamic metatheory but does not define source acceptance.
 -/

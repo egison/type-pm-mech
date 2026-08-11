@@ -861,7 +861,7 @@ inductive CaptureAdm (signature : FrozenSig)
   | wild {target} :
       CaptureAdm signature context input .wild .wild target []
   | pval {name expression target} :
-      HasTy signature (input.toContext ++ context) expression target →
+      RuntimeTyping signature (input.toContext ++ context) expression target →
       CaptureAdm signature context input (.pval name) (.pval expression) target
         [(name, target)]
   | ctor {name entry pps patterns targets result bindings} :
@@ -897,7 +897,7 @@ theorem TerminalPatternResolution.pval_parts
     (typing : TerminalPatternResolution signature prevailing context parameters
       input (.pval expression) capability target output) :
     output = input ∧
-      HasTy signature (input.toContext ++ context) expression target := by
+      RuntimeTyping signature (input.toContext ++ context) expression target := by
   cases typing with
   | pval fresh separate expressionTyping => exact ⟨rfl, expressionTyping⟩
 
@@ -1266,7 +1266,7 @@ theorem ppm_environment_typed
     (evalPreserve :
       ∀ {expression value target},
         Eval SF environment expression value →
-        HasTy signature (input.toContext ++ context) expression target →
+        RuntimeTyping signature (input.toContext ++ context) expression target →
         ValueTy signature value target)
     {pp : PPat} {pattern : Pattern} {target : Ty} {bindings : MonoCtx}
     {captures : List Pattern} {ppEnvironment : Env}
@@ -2470,7 +2470,7 @@ theorem ResolvedPatternTy.pval_inversion
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.pval expression) capability target output) :
     output = input ∧
-      HasTy signature (input.toContext ++ context) expression target := by
+      RuntimeTyping signature (input.toContext ++ context) expression target := by
   cases typing.terminal with
   | pval fresh separate actualTyping =>
       exact ⟨rfl, actualTyping⟩
@@ -3040,13 +3040,13 @@ theorem matom_matcher_success_typed
           body decomposition →
         EnvTyped signature bodyContext
           (dataEnvironment ++ ppEnvironment ++ matcherEnvironment) →
-        HasTy signature bodyContext body bodyTarget →
+        RuntimeTyping signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
       ∀ {nextContext : Context} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
-        HasTy signature nextContext next nextTarget →
+        RuntimeTyping signature nextContext next nextTarget →
         ValueTy signature matcherValue nextTarget) :
     MAtomTypedOutput signature context parameters input output
       (valueLists.map fun values =>
@@ -3189,13 +3189,13 @@ theorem matom_matcher_success_primitive_typed
           body decomposition →
         EnvTyped signature bodyContext
           (dataEnvironment ++ ppEnvironment ++ matcherEnvironment) →
-        HasTy signature bodyContext body bodyTarget →
+        RuntimeTyping signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
       ∀ {nextContext : Context} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
-        HasTy signature nextContext next nextTarget →
+        RuntimeTyping signature nextContext next nextTarget →
         ValueTy signature matcherValue nextTarget) :
     MAtomTypedOutput signature context parameters input output
       (valueLists.map fun values =>
@@ -3477,7 +3477,7 @@ inductive EvalRuntimeSigAgrees
         Eval SF (pair.1 ++ environment) body pair.2} :
       (∀ {context : Context} {result : Ty},
         EnvTyped signature context environment →
-        HasTy signature context (.matchAll target matcher pattern body) result →
+        RuntimeTyping signature context (.matchAll target matcher pattern body) result →
         RuntimeSigAgrees signature context SF) →
       EvalRuntimeSigAgrees signature SF targetEvaluation →
       EvalRuntimeSigAgrees signature SF matcherEvaluation →
@@ -3785,7 +3785,7 @@ private abbrev EvalPreservationKernel
     ∀ {context : Context} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
-      HasTy signature context expression target →
+      RuntimeTyping signature context expression target →
       ValueTy signature value target
 
 /-- Internal pristine-result motive for concrete evaluation. -/
@@ -4920,7 +4920,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     {SF : RuntimeSigF}
     (generalizedValueFlow :
       ∀ {context : Context} {expression : Expr} {source : Ty}
-        (typing : HasTy signature context expression source),
+        (typing : RuntimeTyping signature context expression source),
         typing.GeneralizedValueFlow)
     (patfunPreserve : PatfunPreservationKernel signature SF)
     {environment : Env} {expression : Expr} {value : Value}
@@ -4930,7 +4930,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     (∀ {context : Context} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
-      HasTy signature context expression target →
+      RuntimeTyping signature context expression target →
       ValueTy signature value target) := by
   refine EvalRuntimeSigAgrees.rec
     (motive_1 := fun {runtimeEnvironment} {sourceExpression} {result} _ _ =>
@@ -4938,7 +4938,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       (∀ {sourceContext : Context} {sourceTarget : Ty},
         EnvPristine runtimeEnvironment →
         EnvTyped signature sourceContext runtimeEnvironment →
-        HasTy signature sourceContext sourceExpression sourceTarget →
+        RuntimeTyping signature sourceContext sourceExpression sourceTarget →
         ValueTy signature result sourceTarget))
     (motive_2 := fun {runtimeEnvironment} {primitivePattern} {userPattern}
         {runtimeResult} _ _ =>
@@ -5177,7 +5177,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
                 (fun name value found => terminalEnvironment.domain found)
                 (fun name value scheme actual found sourceFound instantiation =>
                   terminalEnvironment.lookup found sourceFound instantiation)
-                (HasTy.matcher clausesTyping shape catchAll exhaustive ppNodup
+                (RuntimeTyping.matcher clausesTyping shape catchAll exhaustive ppNodup
                   armNodup coverage) MatcherCursor.refl)
   case ematchAll =>
     intro runtimeEnvironment targetExpression matcherExpression body pattern
@@ -5203,10 +5203,10 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
       exact preserveSourceCoercions signatureWF typing runtimeTyping
         (fun {terminalContext : Context} {terminalTarget : Ty}
-            (terminalTyping : HasTy signature terminalContext
+            (terminalTyping : RuntimeTyping signature terminalContext
               (.matchAll targetExpression matcherExpression pattern body)
               terminalTarget)
-            (terminalEvidence : HasTy.Terminal terminalTyping)
+            (terminalEvidence : RuntimeTyping.Terminal terminalTyping)
             (terminalEnvironment :
               EnvTyped signature terminalContext runtimeEnvironment) => by
           cases terminalEvidence with
@@ -5596,7 +5596,7 @@ theorem EvalRuntimeSigAgrees.preservation
     {context : Context} {target : Ty}
     (environmentPristine : EnvPristine environment)
     (environmentTyping : EnvTyped signature context environment)
-    (sourceTyping : SemanticTyping signature context expression target) :
+    (sourceTyping : RuntimeTyping signature context expression target) :
     ValueTy signature value target :=
   (EvalRuntimeSigAgrees.preserve_with signatureWF
     (fun typing => typing.generalizedValueFlow
@@ -5996,7 +5996,7 @@ structure CoreSafety (signature : FrozenSig) (SF : RuntimeSigF) : Prop where
       EvalRuntimeSigAgrees signature SF evaluation →
       EnvPristine environment →
       EnvTyped signature context environment →
-      SemanticTyping signature context expression target →
+      RuntimeTyping signature context expression target →
       ValueTy signature value target
   stepPreservation :
     ∀ {state states} {reduction : Step SF state states}

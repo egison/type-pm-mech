@@ -38,17 +38,18 @@ commit／push はその都度の明示指示がある場合に限るという規
 
 以下は破ってはならない不変量である．各項の詳細と根拠は `docs/details.md`．
 
-### calculus と宣言体系
+### calculus と型付けの役割
 
 - 現行 calculus は `TypePM/` の二 sort・二 index 版だけである．旧一添字 calculus，
   抽象 `RuntimeSpec`／`CoreSpecWF`，それらに相対的な旧安全性証明を復活させない．
-- 宣言的 `HasTy` は意図的に広い**動的安全性の包絡**として維持する．狭めない．
-  受理完全性の前提にも使わない（`WideAnnotationFree` は恒久的に反証済みであり，
-  完成目標でも open goal でもない）．
+- source program の型付け可能性を定義する公開 judgment は `DDTyping` だけとする．
+  `RuntimeTyping` は inference state を消去した後に value typing／preservation が消費する
+  内部 certificate であり，source acceptance を定義する規則として説明・使用しない．
+  `RuntimeTyping` の旧名や互換 alias，これを第二の source type system とする説明を追加しない．
 - source matcher literal は actual clause evidence，`ShapeCap`，`CatchAllLast`，
   data-arm exhaustiveness，binder 線形性，`CoverageOK` をすべて要求する．coverage を
   欠く literal を追加 mode で受理する経路を作らない．
-- value-flow scheme の宣言的 instance（context lookup と pattern-function lookup）では
+- value-flow scheme の runtime-certificate instance（context lookup と pattern-function lookup）では
   capability binder を capability variable へだけ写し，producer capability を consumer
   demand に合わせて構造化する経路を追加しない（variable-only 条件）．constructor／
   primitive signature の `Inst` は通常の binder-supported structural instance であり
@@ -71,38 +72,40 @@ commit／push はその都度の明示指示がある場合に限るという規
 - 各 solve は syntax，signature，fresh state と現在の constraint だけから決まり，
   coercion を成立させるために λ domain や未解決 metavariable の構造を推測する
   no-guess 違反を許さない．λ domain は fresh metavariable とし，任意の `MatcherSlot`
-  domain を先に選べる宣言的 λ 規則で `DDTyping` を代用しない．
+  domain を先に選べる state-free λ certificate で `DDTyping` を代用しない．
 - **raw visibility**（cut 時点で selector に必要な head が raw source に見えるか）と
   **capability freeze**（producer image に許される substitution／export）は demand とは
   別軸であり，fragment 受理完全性で別々に扱う．capability-origin ledger は coercion
   demand に別証人を要求する仕組みではない．
-- `nestedCapProgram`（と swapped 版）の拒否は意図された挙動であり変えない．全 `HasTy`
-  導出が demand-free coercion に依存するという inversion は未証明なので主張しない．
+- `nestedCapProgram`（と swapped 版）の DD 拒否は意図された挙動であり変えない．
+  これらが `RuntimeTyping` certificate を持つことは，certificate から source acceptance を
+  逆向きに推論できないことを示すだけである．
 
 ### inference と validator
 
 - 公開 entry point `infer` は停止する raw 走査 `inferRaw` と有限な fail-closed terminal
   validator の合成である．公開 `infer` が成功したとき，成功等式だけから
-  `infer_success_sound` が concrete `HasTy` を与える状態を維持する．
+  `infer_success_runtimeTyping` が内部 `RuntimeTyping` certificate を与える状態を維持する．
 - `InferenceInputWF` を soundness の前提に戻さない．`WBridgeWF` は validator が内部で
   構成する証明書であり，呼び出し側の追加前提に戻さない．terminal validator の
   completeness は主張しない．
-- principality はそのままの形では機械化反例（`no_principal_type`）により反証済みで
-  あり，principal-type theorem を無証明で復活させない．存在定理（∀ typing ∃θ plan）を
-  先に立て，canonical boundary を定義してから条件付き一意性を扱う．proof-indexed な
-  derivation property や `ElaborableHasTy := ∃ CoreTyping` のような循環的定義で
-  代用しない．
-- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みで，受理完全性定理は
-  未である．未定義・未証明の部分を成立済みとは主張しない．
+- `RuntimeTyping` certificate の substitution-only principality は
+  `no_principal_type` により否定されるが，これは `DDTyping` の principality 主張ではない．
+  `DDTyping` の principal-type theorem は独立に定式化してから議論する．
+- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みである．受理完全性と
+  `RuntimeTyping` への state erasure は未証明なので，成立済みとは主張しない．
+  後者に必要な capability freeze 情報を typing derivation 自体へ統合するまでは，
+  `RuntimeTyping` の存在を premise に埋め込む循環的な `DDTyping` 定義で穴を隠さない．
   `DDAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
-  分岐を判断側へ持ち込まない（raw visibility は段階 3-3 の対応条件 `RawSourceVisible`）．
+  分岐を判断側へ持ち込まない（raw visibility は executable inference との対応境界である）．
   pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の
   一致を崩す規則変更をしない．matcher literal の finalization 検査群を DD 側だけ
   弱めない．
 
 ### 動的安全性
 
-- 動的安全性は concrete `HasTy`／`ValueTy`／matching-state judgments 上で述べる．
+- 内部の動的安全性は concrete `RuntimeTyping`／`ValueTy`／matching-state judgments 上で
+  証明する．公開する最終形は `DDTyping` から state erasure を経てこの定理へ接続する．
   抽象 spec に相対化しない．
 - primitive-pattern pattern は depth-first・左から右に走査し，一度 hole を通過した後の
   value-pattern-pattern を禁止する（`PPatCoreOrder`）．この順序条件から値パターン

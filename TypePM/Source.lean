@@ -309,7 +309,7 @@ def FrozenSig.findPrimitive
     (signature : FrozenSig) (op : PrimOp) : Option CtorScheme :=
   (signature.primitives.find? (fun entry => entry.1 == op)).map Prod.snd
 
-/-- Forget source typing information and retain the concrete matcher checker. -/
+/-- Forget full frozen declarations and retain the concrete matcher checker. -/
 def FrozenSig.toMatcherSig (signature : FrozenSig) : FrozenMatcherSig where
   observability := signature.observability
   patternConstructors :=
@@ -2994,14 +2994,19 @@ inductive DPatTys (signature : FrozenSig) :
 
 end
 
-/-! ## State-free semantic typing
+/-! ## State-free runtime certificate
 
-`HasTy` is the internal semantic typing envelope used by value typing,
-preservation, and the certified-inference soundness bridge.  It is deliberately
-independent of fresh-supply and solver order, and may contain surface coercion
-derivations that the demand-directed source discipline rejects.  Public source
-typability is `DDTyping` in `TypePM.DemandTyping`; `HasTy` is not its competing
-acceptance specification.
+`RuntimeTyping` is the state-free certificate consumed by value typing and
+preservation.  Its indices describe the type information needed by the
+operational proof after inference state has been erased; it does not define
+source acceptance.  The only source-typing judgment is `DDTyping` in
+`TypePM.DemandTyping`.
+
+The current state-erasure boundary is partial.  In particular, the raw DD
+relation does not yet record the capability-origin freeze information needed
+to construct every `RuntimeTyping` certificate.  Keeping this inductive family
+internal makes that missing projection explicit instead of presenting two
+competing source type systems.
 -/
 
 /-- Raw, generation-time certificate for matcher-to-slot coercion. -/
@@ -3031,56 +3036,56 @@ structure SlotToSlotRawCert
 
 mutual
 
-/-- Expression typing `Σ̂ ; Γ ⊢ e : τ`. -/
-inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
+/-- State-free expression certificate `Σ̂ ; Γ ⊢ᵣ e : τ`. -/
+inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Prop where
   /-- T-VAR. -/
   | var {context name scheme target} :
       context.find? name = some scheme →
       scheme.ValueFlowInst target →
-      HasTy signature context (.var name) target
+      RuntimeTyping signature context (.var name) target
   /-- T-LAM. -/
   | lam {context name body domain codomain} :
-      HasTy signature ((name, Scheme.mono domain) :: context) body codomain →
-      HasTy signature context (.lam name body) (.fn domain codomain)
+      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain →
+      RuntimeTyping signature context (.lam name body) (.fn domain codomain)
   /-- T-APP. -/
   | app {context function argument domain codomain} :
-      HasTy signature context function (.fn domain codomain) →
-      HasTy signature context argument domain →
-      HasTy signature context (.app function argument) codomain
+      RuntimeTyping signature context function (.fn domain codomain) →
+      RuntimeTyping signature context argument domain →
+      RuntimeTyping signature context (.app function argument) codomain
   /-- T-LET; its input type is already under the prevailing substitution. -/
   | letE {context name value body valueTy bodyTy} :
-      HasTy signature context value valueTy →
-      HasTy signature
+      RuntimeTyping signature context value valueTy →
+      RuntimeTyping signature
         ((name, signature.generalize context valueTy) :: context) body bodyTy →
-      HasTy signature context (.letE name value body) bodyTy
+      RuntimeTyping signature context (.letE name value body) bodyTy
   /-- T-FIX, restricted to singleton direct-self monomorphic recursion. -/
   | fixE {context self argument body domain codomain} :
       self ≠ argument →
       DirectSelf.Holds self body →
-      HasTy signature
+      RuntimeTyping signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain →
-      HasTy signature context (.fix self argument body) (.fn domain codomain)
+      RuntimeTyping signature context (.fix self argument body) (.fn domain codomain)
   /-- T-LIT. -/
   | lit {context value} :
-      HasTy signature context (.lit value) .int
+      RuntimeTyping signature context (.lit value) .int
   /-- T-TUPLE. -/
   | tuple {context expressions targets} :
       ExprsTy signature context expressions targets →
-      HasTy signature context (.tuple expressions) (.prod targets)
+      RuntimeTyping signature context (.tuple expressions) (.prod targets)
   /-- T-CON. -/
   | ctor {context name expressions targets result scheme} :
       signature.findDataCtor name = some scheme →
       scheme.Inst targets result →
       ExprsTy signature context expressions targets →
-      HasTy signature context (.ctor name expressions) result
+      RuntimeTyping signature context (.ctor name expressions) result
   /-- T-PRIM. -/
   | prim {context op expressions targets result scheme} :
       signature.findPrimitive op = some scheme →
       scheme.Inst targets result →
       ExprsTy signature context expressions targets →
-      HasTy signature context (.prim op expressions) result
+      RuntimeTyping signature context (.prim op expressions) result
   /--
   Declarative T-SOME: `something` inhabits `Matcher Any τ` for every target.
 
@@ -3089,17 +3094,17 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
   substitution closure explicit (`somethingScheme = ∀α. Matcher Any α`).
   -/
   | something {context target} :
-      HasTy signature context .something (.matcher .any target)
+      RuntimeTyping signature context .something (.matcher .any target)
   /-- T-MATCHALL. -/
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :
-      HasTy signature context target targetTy →
+      RuntimeTyping signature context target targetTy →
       ResolvedPatternTy signature prevailing context [] [] pattern
         patternCap targetTy bindings →
-      HasTy signature context matcher (.slot patternCap targetTy) →
-      HasTy signature (bindings.toContext ++ context) body result →
-      HasTy signature context (.matchAll target matcher pattern body)
+      RuntimeTyping signature context matcher (.slot patternCap targetTy) →
+      RuntimeTyping signature (bindings.toContext ++ context) body result →
+      RuntimeTyping signature context (.matchAll target matcher pattern body)
         (Ty.listT result)
   /-- T-MATCHER, tied to the evidence of these exact source clauses. -/
   | matcher
@@ -3111,7 +3116,7 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
       PPBindNodup clauses →
       ArmBindNodup clauses →
       CoverageOK signature.toMatcherSig clauses capability →
-      HasTy signature context (.matcher clauses)
+      RuntimeTyping signature context (.matcher clauses)
         (.matcher capability target)
   /--
   COERCE-MATCHER-TO-SLOT in cumulative-substitution normal form.
@@ -3125,13 +3130,13 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
   | coerceMatcherToSlot
       {context expression producerCap producerTarget consumerCap consumerTarget
        bindings C T post} :
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.matcher ((producerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply producerTarget))) →
       MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T →
       VariablePost post →
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.slot ((consumerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply consumerTarget)))
   /--
@@ -3142,13 +3147,13 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
   | checkSlotToSlot
       {context expression sourceCap sourceTarget requestedCap requestedTarget C T
        post} :
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.slot ((sourceCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply sourceTarget))) →
       SlotToSlotRawCert sourceCap requestedCap sourceTarget requestedTarget
         C T →
       VariablePost post →
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.slot ((requestedCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply requestedTarget)))
   /--
@@ -3159,16 +3164,16 @@ inductive HasTy (signature : FrozenSig) : Context → Expr → Ty → Prop where
   insert the explicit coercion at the eventual matcher use site.
   -/
   | coerceProductMatcher {context expression} {duals : List Dual} :
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.prod (duals.map fun dual => .matcher dual.cap dual.target)) →
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
   /-- COERCE-SLOT-TUPLE. -/
   | coerceSlotTuple {context expression} {duals : List Dual} :
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.prod (duals.map fun dual => .slot dual.cap dual.target)) →
-      HasTy signature context expression
+      RuntimeTyping signature context expression
         (.slot (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
 
@@ -3178,7 +3183,7 @@ inductive ExprsTy (signature : FrozenSig) :
   | nil {context} :
       ExprsTy signature context [] []
   | cons {context expression target expressions targets} :
-      HasTy signature context expression target →
+      RuntimeTyping signature context expression target →
       ExprsTy signature context expressions targets →
       ExprsTy signature context (expression :: expressions) (target :: targets)
 
@@ -3200,7 +3205,7 @@ inductive PatternTy (signature : FrozenSig) :
         (.var capVar) (.var tyVar) bindings
   /-- PAT-VALUE. -/
   | pval {context parameters bindings expression target capVar} :
-      HasTy signature (bindings.toContext ++ context) expression target →
+      RuntimeTyping signature (bindings.toContext ++ context) expression target →
       FreshCap signature context parameters bindings capVar →
       capVar ∉ target.fcv →
       PatternTy signature context parameters bindings (.pval expression)
@@ -3295,10 +3300,10 @@ inductive PatternResolution (signature : FrozenSig) :
       PatternResolution signature prevailing context parameters bindings
         .wild (.var capVar) (.var tyVar) bindings
   | pval {context parameters bindings expression target capVar} :
-      HasTy signature (bindings.toContext ++ context) expression target →
+      RuntimeTyping signature (bindings.toContext ++ context) expression target →
       FreshCap signature context parameters bindings capVar →
       capVar ∉ target.fcv →
-      HasTy signature
+      RuntimeTyping signature
         ((bindings.applySubst prevailing).toContext ++
           context.applySubst prevailing)
         expression (prevailing.apply target) →
@@ -3422,7 +3427,7 @@ inductive TerminalPatternResolution
       {actualContext : Context} :
       FreshCap signature rawContext rawParameters rawBindings capVar →
       capVar ∉ rawTarget.fcv →
-      HasTy signature
+      RuntimeTyping signature
         ((rawBindings.applySubst prevailing).toContext ++
           actualContext)
         expression (prevailing.apply rawTarget) →
@@ -3538,7 +3543,7 @@ inductive ArmTy (signature : FrozenSig) :
     Context → Ty → MonoCtx → Ty → Arm → Prop where
   | mk {context target ppBindings result pattern body armBindings} :
       DPatTy signature pattern target armBindings →
-      HasTy signature
+      RuntimeTyping signature
         (armBindings.toContext ++ ppBindings.toContext ++ context)
         body result →
       ArmTy signature context target ppBindings result (.mk pattern body)
@@ -3599,11 +3604,6 @@ inductive ResolvedClausesTy (signature : FrozenSig) :
       ResolvedClausesTy signature context clauses capability target evidence
 
 end
-
-/-- Public name for the state-free typing certificate consumed by the dynamic
-metatheory.  The historical `HasTy` name remains the inductive implementation
-name so existing proofs and constructor names stay stable. -/
-abbrev SemanticTyping := HasTy
 
 /-! ## Identity-resolution introductions -/
 
@@ -3814,13 +3814,13 @@ theorem ClausesTy.resolve_id
 
 /-! ## Fix inversion -/
 
-/-- Every declaratively typed function-shaped `fix` satisfies the public
+/-- Every runtime-certified function-shaped `fix` satisfies the public
 singleton direct-self boundary. -/
-theorem HasTy.fix_inversion
+theorem RuntimeTyping.fix_inversion
     {signature : FrozenSig} {context : Context}
     {self argument : String} {body : Expr} {domain codomain : Ty}
     (typing :
-      HasTy signature context (.fix self argument body)
+      RuntimeTyping signature context (.fix self argument body)
         (.fn domain codomain)) :
     self ≠ argument ∧ DirectSelf.Holds self body := by
   cases typing with
@@ -3829,12 +3829,12 @@ theorem HasTy.fix_inversion
 /-- The higher-order self-flow counterexample cannot enter declarative T-FIX. -/
 theorem higherOrderFix_untypable
     {signature : FrozenSig} {context : Context} {domain codomain : Ty} :
-    ¬ HasTy signature context
+    ¬ RuntimeTyping signature context
       (.fix "f" "x" (.app (.lam "h" (.var "x")) (.var "f")))
       (.fn domain codomain) := by
   intro typing
   exact DirectSelf.self_as_argument_rejected "f" (.lam "h" (.var "x"))
-    (HasTy.fix_inversion typing).2
+    (RuntimeTyping.fix_inversion typing).2
 
 /-! ## Matcher-literal inversion -/
 
@@ -3842,11 +3842,11 @@ theorem higherOrderFix_untypable
 Inverting T-MATCHER exposes evidence from the actual clause list together
 with every mandatory coverage and well-formedness premise.
 -/
-theorem HasTy.matcher_inversion
+theorem RuntimeTyping.matcher_inversion
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      HasTy signature context (.matcher clauses) (.matcher capability target)) :
+      RuntimeTyping signature context (.matcher clauses) (.matcher capability target)) :
     ∃ evidence,
       ResolvedClausesTy signature context clauses capability target evidence ∧
       Shape.inferShape signature.observability evidence = some capability ∧

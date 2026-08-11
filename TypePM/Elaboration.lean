@@ -1,57 +1,51 @@
 import TypePM.Source
 
 /-!
-# Surface elaboration and explicit coercion plans
+# Runtime-certificate factorization and explicit coercion plans
 
-The internal semantic judgment `SemanticTyping` (implemented by `HasTy`)
-deliberately includes the implicit matcher/slot coercions used by the surface
-language.  That makes it the right boundary for dynamic safety, but not the
-public source-acceptance judgment and not the right relation for an ordinary
-principal-type statement: a single expression may have derivable types with
-different head constructors.
+The internal `RuntimeTyping` certificate includes matcher/slot coercions but
+does not define source acceptance.  This module factors that certificate into
+a non-coercion root and an explicit outer coercion plan for use by
+reconstruction and the dynamic proof.
 
-This module starts the syntax-directed elaboration layer without changing the
-existing safety boundary.  `SynthHead` records one non-coercion source rule at
+`SynthHead` records one non-coercion certificate rule at
 the root, while `CoercionPlan` records the (possibly empty) outer coercion
-spine explicitly.  `HasTy.factorHead` proves that every semantic-envelope
-typing admits
-this decomposition.
+spine explicitly.  `RuntimeTyping.factorHead` proves that every runtime
+certificate admits this decomposition.
 
-The premises of `SynthHead` intentionally remain surface judgments here.
+The premises of `SynthHead` intentionally remain `RuntimeTyping` certificates here.
 Thus this is the root factorization consumed by the recursive core
-factorization in `TypePM.CoreTyping` and the mutual coherent surface typing
-in `TypePM.CoherentTyping`, not yet a claim of full core principality.
-Keeping that distinction explicit prevents the negative result in
-`PrincipalityCounterexample` from being hidden by terminology.
+factorization in `TypePM.CoreTyping` and the mutual coherent reconstruction in
+`TypePM.CoherentTyping`.
 -/
 
 namespace TypePM
 namespace Elaboration
 
-/-- A source typing whose root rule synthesizes a type rather than applying an
-implicit matcher/slot coercion.  Recursive premises remain the existing
-surface judgments; later core elaboration can refine them independently. -/
+/-- A runtime certificate whose root rule synthesizes a type rather than
+applying an implicit matcher/slot coercion.  Recursive premises remain
+`RuntimeTyping`; later core reconstruction can refine them independently. -/
 inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop where
   | var {context name scheme target} :
       context.find? name = some scheme ->
       scheme.ValueFlowInst target ->
       SynthHead signature context (.var name) target
   | lam {context name body domain codomain} :
-      HasTy signature ((name, Scheme.mono domain) :: context) body codomain ->
+      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain ->
       SynthHead signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
-      HasTy signature context function (.fn domain codomain) ->
-      HasTy signature context argument domain ->
+      RuntimeTyping signature context function (.fn domain codomain) ->
+      RuntimeTyping signature context argument domain ->
       SynthHead signature context (.app function argument) codomain
   | letE {context name value body valueTy bodyTy} :
-      HasTy signature context value valueTy ->
-      HasTy signature
+      RuntimeTyping signature context value valueTy ->
+      RuntimeTyping signature
         ((name, signature.generalize context valueTy) :: context) body bodyTy ->
       SynthHead signature context (.letE name value body) bodyTy
   | fixE {context self argument body domain codomain} :
       self ≠ argument ->
       DirectSelf.Holds self body ->
-      HasTy signature
+      RuntimeTyping signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain ->
@@ -77,11 +71,11 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :
-      HasTy signature context target targetTy ->
+      RuntimeTyping signature context target targetTy ->
       ResolvedPatternTy signature prevailing context [] [] pattern
         patternCap targetTy bindings ->
-      HasTy signature context matcher (.slot patternCap targetTy) ->
-      HasTy signature (bindings.toContext ++ context) body result ->
+      RuntimeTyping signature context matcher (.slot patternCap targetTy) ->
+      RuntimeTyping signature (bindings.toContext ++ context) body result ->
       SynthHead signature context (.matchAll target matcher pattern body)
         (Ty.listT result)
   | matcher {context clauses target capability evidence} :
@@ -97,11 +91,11 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
 
 /-- Forget the root synthesis boundary and recover the existing surface
 typing judgment. -/
-theorem SynthHead.toHasTy
+theorem SynthHead.toRuntimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : SynthHead signature context expression target) :
-    HasTy signature context expression target := by
+    RuntimeTyping signature context expression target := by
   cases typing with
   | var lookup instanceTyping => exact .var lookup instanceTyping
   | lam bodyTyping => exact .lam bodyTyping
@@ -177,12 +171,12 @@ def CheckHead (signature : FrozenSig) (context : Context)
     CoercionPlan signature context expression source target
 
 /-- Replay explicit coercion evidence on top of a pre-coercion typing. -/
-theorem CoercionPlan.toHasTy
+theorem CoercionPlan.toRuntimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (plan : CoercionPlan signature context expression source target)
-    (typing : HasTy signature context expression source) :
-    HasTy signature context expression target := by
+    (typing : RuntimeTyping signature context expression source) :
+    RuntimeTyping signature context expression target := by
   induction plan with
   | refl => exact typing
   | matcherToSlot raw post =>
@@ -193,17 +187,17 @@ theorem CoercionPlan.toHasTy
   | slotTuple => exact .coerceSlotTuple typing
   | trans _ _ firstIH secondIH => exact secondIH (firstIH typing)
 
-/-- Every surface typing is a non-coercion root typing followed by an explicit
+/-- Every runtime certificate is a non-coercion root followed by an explicit
 coercion plan.  This is the first factorization boundary used by the planned
 principal-core theorem. -/
-theorem HasTy.factorHead
+theorem RuntimeTyping.factorHead
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
-    (typing : HasTy signature context expression target) :
+    (typing : RuntimeTyping signature context expression target) :
     ∃ source,
       SynthHead signature context expression source ∧
       CoercionPlan signature context expression source target := by
-  apply HasTy.rec
+  apply RuntimeTyping.rec
     (motive_1 := fun context expression target _ =>
       ∃ source,
         SynthHead signature context expression source ∧
@@ -237,41 +231,41 @@ theorem HasTy.factorHead
        | exact .slotTuple)
 
 /-- Package surface factorization as the root checking judgment. -/
-theorem HasTy.toCheckHead
+theorem RuntimeTyping.toCheckHead
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
-    (typing : HasTy signature context expression target) :
+    (typing : RuntimeTyping signature context expression target) :
     CheckHead signature context expression target := by
-  rcases HasTy.factorHead typing with ⟨source, synthesis, plan⟩
+  rcases RuntimeTyping.factorHead typing with ⟨source, synthesis, plan⟩
   exact ⟨source, synthesis, plan⟩
 
 /-- Replaying the factorization obtained from a surface derivation recovers a
 surface derivation at the original target. -/
-theorem HasTy.factorHead_sound
+theorem RuntimeTyping.factorHead_sound
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target source : Ty}
     (synthesis : SynthHead signature context expression source)
     (plan : CoercionPlan signature context expression source target) :
-    HasTy signature context expression target :=
-  plan.toHasTy synthesis.toHasTy
+    RuntimeTyping signature context expression target :=
+  plan.toRuntimeTyping synthesis.toRuntimeTyping
 
 /-- Checking evidence erases to the existing surface judgment. -/
-theorem CheckHead.toHasTy
+theorem CheckHead.toRuntimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CheckHead signature context expression target) :
-    HasTy signature context expression target := by
+    RuntimeTyping signature context expression target := by
   rcases checking with ⟨source, synthesis, plan⟩
-  exact plan.toHasTy synthesis.toHasTy
+  exact plan.toRuntimeTyping synthesis.toRuntimeTyping
 
 /-- The current surface relation is exactly a synthesized root followed by an
 explicit outer coercion spine. -/
-theorem checkHead_iff_surface
+theorem checkHead_iff_runtimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty} :
     CheckHead signature context expression target ↔
-      HasTy signature context expression target :=
-  ⟨CheckHead.toHasTy, HasTy.toCheckHead⟩
+      RuntimeTyping signature context expression target :=
+  ⟨CheckHead.toRuntimeTyping, RuntimeTyping.toCheckHead⟩
 
 end Elaboration
 end TypePM

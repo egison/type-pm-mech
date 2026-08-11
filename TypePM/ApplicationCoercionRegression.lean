@@ -2,12 +2,12 @@ import TypePM.CanonicalCoercion
 import TypePM.CertifiedInferenceRegression
 
 /-!
-# Surface witnesses for domain-directed application coercions
+# Runtime-certificate witnesses for application coercions
 
 These declarations complement the executable guards in
-`CertifiedInferenceRegression` with explicit declarative derivations.  Each
+`CertifiedInferenceRegression` with explicit state-free certificates.  Each
 application has result type `Int`; only the coercion spine used to check its
-argument differs.  The matcher-headed variant is declarative-only: a matcher
+argument differs.  The matcher-headed variant is certificate-only: a matcher
 expectation is not a slot demand, so the public inferencer rejects that
 application and its guard is negative.
 -/
@@ -18,58 +18,57 @@ namespace ApplicationCoercionRegression
 open CertifiedInferenceRegression
 
 private theorem productMatcherConsumer_typed :
-    HasTy emptySignature productMatcherConsumerContext (.var "consume")
+    RuntimeTyping emptySignature productMatcherConsumerContext (.var "consume")
       (.fn concretePairMatcherType .int) := by
-  apply HasTy.var
+  apply RuntimeTyping.var
       (scheme := Scheme.mono (.fn concretePairMatcherType .int))
   · simp [productMatcherConsumerContext, Context.find?]
   · exact Scheme.mono_valueFlowInst _
 
 private theorem productSlotConsumer_typed :
-    HasTy emptySignature productSlotConsumerContext (.var "consume")
+    RuntimeTyping emptySignature productSlotConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
-  apply HasTy.var
+  apply RuntimeTyping.var
       (scheme := Scheme.mono (.fn concretePairSlotType .int))
   · simp [productSlotConsumerContext, Context.find?]
   · exact Scheme.mono_valueFlowInst _
 
 private theorem slotTupleConsumer_typed :
-    HasTy emptySignature slotTupleConsumerContext (.var "consume")
+    RuntimeTyping emptySignature slotTupleConsumerContext (.var "consume")
       (.fn concretePairSlotType .int) := by
-  apply HasTy.var
+  apply RuntimeTyping.var
       (scheme := Scheme.mono (.fn concretePairSlotType .int))
   · simp [slotTupleConsumerContext, Context.find?]
   · exact Scheme.mono_valueFlowInst _
 
 private theorem pairOfMatchers_product_typed
     (context : Context) :
-    HasTy emptySignature context (.tuple [.something, .something])
+    RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairProductType := by
   simpa [concretePairProductType] using
-    (HasTy.tuple
-      (ExprsTy.cons (HasTy.something (target := .int))
-        (ExprsTy.cons (HasTy.something (target := .int)) ExprsTy.nil)) :
-      HasTy emptySignature context (.tuple [.something, .something])
+    (RuntimeTyping.tuple
+      (ExprsTy.cons (RuntimeTyping.something (target := .int))
+        (ExprsTy.cons (RuntimeTyping.something (target := .int)) ExprsTy.nil)) :
+      RuntimeTyping emptySignature context (.tuple [.something, .something])
         (.prod [.matcher .any .int, .matcher .any .int]))
 
 private theorem pairOfMatchers_matcher_typed
     (context : Context) :
-    HasTy emptySignature context (.tuple [.something, .something])
+    RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairMatcherType := by
   simpa [concretePairProductType, concretePairMatcherType] using
-    (HasTy.coerceProductMatcher
+    (RuntimeTyping.coerceProductMatcher
       (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
       (pairOfMatchers_product_typed context))
 
-/-- In the wide declarative envelope a product of matchers can still be
-lifted at a matcher-headed argument boundary.  Under slot-demand this is not
-a coercion demand, so the public inferencer rejects this application (the
-negative guard lives in `CertifiedInferenceRegression`); the derivation is
-kept as an intended acceptance gap of the wide envelope. -/
-theorem productMatcherArgumentApplication_surface_typed :
-    HasTy emptySignature productMatcherConsumerContext
+/-- A state-free certificate can lift a product of matchers at a matcher-headed
+argument boundary.  This does not imply source acceptance: under slot-demand
+the boundary is not a coercion demand, so both `DDTyping` and public inference
+reject the application. -/
+theorem productMatcherArgumentApplication_runtimeCertified :
+    RuntimeTyping emptySignature productMatcherConsumerContext
       productMatcherArgumentApplication .int := by
-  exact HasTy.app productMatcherConsumer_typed
+  exact RuntimeTyping.app productMatcherConsumer_typed
     (pairOfMatchers_matcher_typed productMatcherConsumerContext)
 
 private theorem concretePairMatcher_toSlot_raw :
@@ -127,43 +126,43 @@ def emptyProductToSlotNormalPlan
 
 private theorem pairOfMatchers_slot_typed
     (context : Context) :
-    HasTy emptySignature context (.tuple [.something, .something])
+    RuntimeTyping emptySignature context (.tuple [.something, .something])
       concretePairSlotType := by
-  exact (pairProductToSlotNormalPlan context).toHasTy
+  exact (pairProductToSlotNormalPlan context).toRuntimeTyping
     (pairOfMatchers_product_typed context)
 
 /-- A product matcher is subsequently converted to the aggregate slot required
 by the function domain. -/
-theorem productSlotArgumentApplication_surface_typed :
-    HasTy emptySignature productSlotConsumerContext
+theorem productSlotArgumentApplication_runtimeCertified :
+    RuntimeTyping emptySignature productSlotConsumerContext
       productSlotArgumentApplication .int := by
-  exact HasTy.app productSlotConsumer_typed
+  exact RuntimeTyping.app productSlotConsumer_typed
     (pairOfMatchers_slot_typed productSlotConsumerContext)
 
 private theorem slotVariable_typed
     (name : String)
     (lookup : slotTupleConsumerContext.find? name =
       some (Scheme.mono (.slot .any .int))) :
-    HasTy emptySignature slotTupleConsumerContext (.var name)
+    RuntimeTyping emptySignature slotTupleConsumerContext (.var name)
       (.slot .any .int) :=
-  HasTy.var lookup (Scheme.mono_valueFlowInst _)
+  RuntimeTyping.var lookup (Scheme.mono_valueFlowInst _)
 
 private theorem pairOfSlots_product_typed :
-    HasTy emptySignature slotTupleConsumerContext
+    RuntimeTyping emptySignature slotTupleConsumerContext
       (.tuple [.var "left", .var "right"]) concretePairOfSlotsType := by
   have leftTyping := slotVariable_typed "left" (by
     simp [slotTupleConsumerContext, Context.find?])
   have rightTyping := slotVariable_typed "right" (by
     simp [slotTupleConsumerContext, Context.find?])
   simpa [concretePairOfSlotsType] using
-    (HasTy.tuple (ExprsTy.cons leftTyping
+    (RuntimeTyping.tuple (ExprsTy.cons leftTyping
       (ExprsTy.cons rightTyping ExprsTy.nil)))
 
 private theorem pairOfSlots_slot_typed :
-    HasTy emptySignature slotTupleConsumerContext
+    RuntimeTyping emptySignature slotTupleConsumerContext
       (.tuple [.var "left", .var "right"]) concretePairSlotType := by
   simpa [concretePairOfSlotsType, concretePairSlotType] using
-    (HasTy.coerceSlotTuple
+    (RuntimeTyping.coerceSlotTuple
       (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
       pairOfSlots_product_typed)
 
@@ -186,10 +185,10 @@ def pairSlotsNormalPlan :
 
 /-- A product of slot-valued components uses the aggregate slot-tuple
 coercion before application. -/
-theorem slotTupleArgumentApplication_surface_typed :
-    HasTy emptySignature slotTupleConsumerContext
+theorem slotTupleArgumentApplication_runtimeCertified :
+    RuntimeTyping emptySignature slotTupleConsumerContext
       slotTupleArgumentApplication .int := by
-  exact HasTy.app slotTupleConsumer_typed pairOfSlots_slot_typed
+  exact RuntimeTyping.app slotTupleConsumer_typed pairOfSlots_slot_typed
 
 end ApplicationCoercionRegression
 end TypePM

@@ -1,25 +1,26 @@
 import TypePM.Source
 
 /-!
-# Principality fails for the two-sort declarative system
+# The runtime certificate is not a principal-type specification
 
-This module settles the negative side of the principality question.  The
-closed expression `(something, something)` is derivably
+This module records why the internal `RuntimeTyping` family must not be used
+as a principal-type specification.  The closed expression
+`(something, something)` has certificates for
 
 * a product of matchers, by `T-TUPLE`, and
 * a product matcher, by `COERCE-PRODUCT-MATCHER`,
 
-and these two derivable types have different head constructors (`prod`
-versus `matcher`).  Every derivable type of a tuple expression has a
+and these two certificate types have different head constructors (`prod`
+versus `matcher`).  Every certificate type of a tuple expression has a
 `prod`, `matcher`, or `slot` head, and paired substitution preserves each
-of these heads, so no derivable type of this expression has both typings
-among its substitution instances.  Hence no principal type exists.
+of these heads, so no certificate type of this expression has both forms
+among its substitution instances.  Hence this internal family has no
+principal certificate type for the expression.
 
 The counterexample is not exotic: usable product matchers require exactly
 this coercion overlap, and the failure is independent of capability
-evidence.  It delimits what a restricted principality statement must
-exclude; the pattern-free fragment of `TypePM.DamasMilner` contains no
-coercion rule and is unaffected.
+evidence.  It says nothing about type uniqueness or principality for the
+public `DDTyping` judgment.
 -/
 
 namespace TypePM
@@ -31,22 +32,22 @@ def pairProgram : Expr :=
 
 /-- Its product-of-matchers typing, by `T-TUPLE`. -/
 theorem pair_prod_typing {signature : FrozenSig} :
-    HasTy signature [] pairProgram
+    RuntimeTyping signature [] pairProgram
       (.prod [.matcher .any .int, .matcher .any .int]) :=
-  HasTy.tuple (.cons HasTy.something (.cons HasTy.something .nil))
+  RuntimeTyping.tuple (.cons RuntimeTyping.something (.cons RuntimeTyping.something .nil))
 
 /-- Its product-matcher typing, by `COERCE-PRODUCT-MATCHER`. -/
 theorem pair_matcher_typing {signature : FrozenSig} :
-    HasTy signature [] pairProgram
+    RuntimeTyping signature [] pairProgram
       (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  HasTy.coerceProductMatcher
+  RuntimeTyping.coerceProductMatcher
     (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
     pair_prod_typing
 
 /-- Every derivable type of a tuple has a `prod`, `matcher`, or `slot` head. -/
 theorem tuple_ty_head {signature : FrozenSig} {context : Context}
     {expressions : List Expr} {target : Ty}
-    (typing : HasTy signature context (.tuple expressions) target) :
+    (typing : RuntimeTyping signature context (.tuple expressions) target) :
     (∃ components, target = .prod components) ∨
     (∃ capability targetTy, target = .matcher capability targetTy) ∨
     (∃ capability targetTy, target = .slot capability targetTy) := by
@@ -79,15 +80,15 @@ theorem apply_slot_head (S : Subst) (capability : Cap) (target : Ty) :
     (target.applyCapability S.cap).applyTarget S.target, rfl⟩
 
 /--
-No derivable type of `(something, something)` has both the product typing
-and the product-matcher typing among its paired-substitution instances.
-Principality therefore fails for the declarative system as stated.
+No `RuntimeTyping` type of `(something, something)` has both the product and
+product-matcher certificates among its paired-substitution instances.
+Principality therefore fails for the runtime-certificate family as stated.
 -/
 theorem no_principal_type {signature : FrozenSig} :
     ¬ ∃ principal : Ty,
-        HasTy signature [] pairProgram principal ∧
+        RuntimeTyping signature [] pairProgram principal ∧
         ∀ target : Ty,
-          HasTy signature [] pairProgram target →
+          RuntimeTyping signature [] pairProgram target →
           ∃ S : Subst, S.apply principal = target := by
   rintro ⟨principal, principalTyping, instances⟩
   obtain ⟨S₁, prodInstance⟩ := instances _ pair_prod_typing

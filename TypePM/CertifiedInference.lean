@@ -94,18 +94,18 @@ theorem infer_success_reconstruct
     (infer_success_raw_and_checked success).1
     (infer_success_bridge success)
 
-/-- Soundness of executable type inference for the Egison core.
+/-- State erasure for a successful executable inference run.
 
 The theorem is stronger than the intended well-formed-input interface: the
 public terminal validator fails closed, so no separate caller premise is
-needed to eliminate a successful result. -/
-theorem infer_success_sound
+needed to construct the internal runtime certificate. -/
+theorem infer_success_runtimeTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
-    SemanticTyping signature (ResolvedContext result.state.prevailing context)
+    RuntimeTyping signature (ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget :=
-  (infer_success_reconstruct success).toHasTy
+  (infer_success_reconstruct success).toRuntimeTyping
 
 /-- Public result type after certified replay. -/
 def inferType

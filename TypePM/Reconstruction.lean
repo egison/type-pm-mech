@@ -3,9 +3,9 @@ import TypePM.InferenceHistory
 /-!
 # Proof-relevant reconstruction after executable type inference
 
-This module keeps successful inference evidence separate from the state-free
-semantic judgments.  The mutually inductive family below mirrors every source
-form, but no constructor stores `HasTy`, `PatternTy`, `PPatTy`, `DPatTy`, or
+This module keeps successful inference evidence separate from the internal
+state-free runtime certificates.  The mutually inductive family below mirrors
+every source form, but no constructor stores `RuntimeTyping`, `PatternTy`, `PPatTy`, `DPatTy`, or
 `ClauseTy`.  The final section is the only forgetful map into those judgments.
 
 In particular, variable and pattern-function reconstruction consumes the
@@ -513,7 +513,7 @@ macro_rules
       `(tactic|
         apply $recursor
           (motive_1 := fun context expression target _ =>
-            HasTy $signature context expression target)
+            RuntimeTyping $signature context expression target)
           (motive_2 := fun context expressions targets _ =>
             ExprsTy $signature context expressions targets)
           (motive_3 := fun context parameters bindings pattern capability target
@@ -583,7 +583,7 @@ macro_rules
       `(tactic|
         all_goals intros <;>
         first
-          | apply HasTy.checkSlotToSlot <;> assumption
+          | apply RuntimeTyping.checkSlotToSlot <;> assumption
           | apply TerminalPPatResolution.hole <;> assumption
           | exact TerminalPPatResolution.wild
           | exact TerminalPPatResolution.pval
@@ -612,13 +612,13 @@ macro_rules
           | constructor <;> assumption)
 
 /-- The combined mutual recursor discharges every recursive source premise. -/
-theorem ExprDeriv.toHasTy
+theorem ExprDeriv.toRuntimeTyping
     {signature context expression target}
     (derivation : ExprDeriv signature context expression target) :
-    HasTy signature context expression target := by
+    RuntimeTyping signature context expression target := by
   apply ExprDeriv.rec
     (motive_1 := fun context expression target _ =>
-      HasTy signature context expression target)
+      RuntimeTyping signature context expression target)
     (motive_2 := fun context expressions targets _ =>
       ExprsTy signature context expressions targets)
     (motive_3 := fun context parameters bindings pattern capability target
@@ -2678,8 +2678,8 @@ theorem inferExprFuel_reconstructAt
 
 end Reconstruction
 
-/-- A successful raw W run reconstructs the proof-relevant declarative
-derivation when supplied the terminal algebraic bridge.  The public wrapper
+/-- A successful raw W run reconstructs the proof-relevant internal
+certificate when supplied the terminal algebraic bridge.  The public wrapper
 constructs this bridge internally. -/
 theorem inferRaw_success_reconstruct
     {signature context expression result}

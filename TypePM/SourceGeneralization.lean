@@ -1030,8 +1030,8 @@ theorem PatternTy.resolveUnderPost
     (expressionFlow :
       ∀ {context : Context} {bindings : MonoCtx}
         {expression : Expr} {target : Ty},
-        HasTy signature (bindings.toContext ++ context) expression target →
-        HasTy signature
+        RuntimeTyping signature (bindings.toContext ++ context) expression target →
+        RuntimeTyping signature
           ((bindings.applySubst S).toContext ++ context.applySubst S)
           expression (S.apply target))
     (patternFunctionFlow :
@@ -1110,8 +1110,8 @@ theorem PatternTys.resolveUnderPost
     (expressionFlow :
       ∀ {context : Context} {bindings : MonoCtx}
         {expression : Expr} {target : Ty},
-        HasTy signature (bindings.toContext ++ context) expression target →
-        HasTy signature
+        RuntimeTyping signature (bindings.toContext ++ context) expression target →
+        RuntimeTyping signature
           ((bindings.applySubst S).toContext ++ context.applySubst S)
           expression (S.apply target))
     (patternFunctionFlow :
@@ -1162,8 +1162,8 @@ theorem TerminalPatternResolution.transportUnderPost
       ∀ {sourceContext targetContext : Context}
         {expression : Expr} {target : Ty},
         Context.FlowsUnder S sourceContext targetContext →
-        HasTy signature sourceContext expression target →
-        HasTy signature targetContext expression (S.apply target))
+        RuntimeTyping signature sourceContext expression target →
+        RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
       ∀ {scheme : DualScheme} {args : List Dual} {result : Dual},
         scheme.ValueFlowInst args result →
@@ -1282,8 +1282,8 @@ theorem TerminalPatternResolutions.transportUnderPost
       ∀ {sourceContext targetContext : Context}
         {expression : Expr} {target : Ty},
         Context.FlowsUnder S sourceContext targetContext →
-        HasTy signature sourceContext expression target →
-        HasTy signature targetContext expression (S.apply target))
+        RuntimeTyping signature sourceContext expression target →
+        RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
       ∀ {scheme : DualScheme} {args : List Dual} {result : Dual},
         scheme.ValueFlowInst args result →
@@ -1321,8 +1321,8 @@ theorem ResolvedPatternTy.transportUnderPost
       ∀ {sourceContext targetContext : Context}
         {expression : Expr} {target : Ty},
         Context.FlowsUnder S sourceContext targetContext →
-        HasTy signature sourceContext expression target →
-        HasTy signature targetContext expression (S.apply target))
+        RuntimeTyping signature sourceContext expression target →
+        RuntimeTyping signature targetContext expression (S.apply target))
     (patternFunctionFlow :
       ∀ {scheme : DualScheme} {args : List Dual} {result : Dual},
         scheme.ValueFlowInst args result →
@@ -1354,36 +1354,36 @@ derivation.
 mutual
 
 /-- Transport an expression derivation through an aligned value-flow context. -/
-theorem HasTy.transportFlows
+theorem RuntimeTyping.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
     {sourceContext : Context} {expression : Expr} {source : Ty}
-    (typing : HasTy signature sourceContext expression source) :
+    (typing : RuntimeTyping signature sourceContext expression source) :
     ∀ {S : Subst} {targetContext : Context}
       (_postVariable : VariablePost S),
       (∀ varId, varId ∈ signature.fcv → S.cap varId = .var varId) →
       (∀ varId, varId ∈ signature.ftv → S.target varId = .var varId) →
       Context.FlowsUnder S sourceContext targetContext →
-      HasTy signature targetContext expression (S.apply source) := by
+      RuntimeTyping signature targetContext expression (S.apply source) := by
   intro S targetContext postVariable capFixed targetFixed contextFlow
   exact match typing with
   | .var lookup instanceTyping => by
       rcases contextFlow.find? lookup with
         ⟨targetScheme, targetLookup, schemeFlow⟩
-      exact HasTy.var targetLookup
+      exact RuntimeTyping.var targetLookup
         (schemeFlow postVariable (by intros; rfl) (by intros; rfl)
           instanceTyping)
-  | @HasTy.lam _ context name body domain codomain bodyTyping => by
-      simpa only [Subst.apply_fn] using HasTy.lam
+  | @RuntimeTyping.lam _ context name body domain codomain bodyTyping => by
+      simpa only [Subst.apply_fn] using RuntimeTyping.lam
         (bodyTyping.transportFlows basic postVariable capFixed targetFixed
           (contextFlow.consMono _ _))
   | .app functionTyping argumentTyping => by
-      exact HasTy.app
+      exact RuntimeTyping.app
         (functionTyping.transportFlows basic postVariable capFixed targetFixed
           contextFlow)
         (argumentTyping.transportFlows basic postVariable capFixed targetFixed
           contextFlow)
-  | @HasTy.letE _ context name value body valueTy bodyTy valueTyping
+  | @RuntimeTyping.letE _ context name value body valueTy bodyTy valueTyping
       bodyTyping => by
       let localPost := LocalFreshening.localPost signature context
         targetContext valueTy postVariable
@@ -1404,36 +1404,36 @@ theorem HasTy.transportFlows
         (contextFlow.reindexLocal postVariable)
       have bodyMoved := bodyTyping.transportFlows basic postVariable capFixed
         targetFixed (contextFlow.consGeneralizedFresh postVariable name)
-      exact HasTy.letE valueMoved bodyMoved
+      exact RuntimeTyping.letE valueMoved bodyMoved
   | .fixE distinct direct bodyTyping => by
-      simpa only [Subst.apply_fn] using HasTy.fixE distinct direct
+      simpa only [Subst.apply_fn] using RuntimeTyping.fixE distinct direct
         (bodyTyping.transportFlows basic postVariable capFixed targetFixed
           ((contextFlow.consMono _ _).consMono _ _))
   | .lit => by simpa only [Subst.apply_int] using
-      (HasTy.lit (signature := signature) (context := targetContext))
+      (RuntimeTyping.lit (signature := signature) (context := targetContext))
   | .tuple expressionsTyping => by
-      simpa only [Subst.apply_prod] using HasTy.tuple
+      simpa only [Subst.apply_prod] using RuntimeTyping.tuple
         (expressionsTyping.transportFlows basic postVariable capFixed
           targetFixed contextFlow)
   | .ctor lookup instanceTyping expressionsTyping => by
-      exact HasTy.ctor lookup
+      exact RuntimeTyping.ctor lookup
         (CtorScheme.Inst.transport instanceTyping
           ((signature.dataCtorInstCompositionAdm_of_free_fixed
             capFixed targetFixed) lookup))
         (expressionsTyping.transportFlows basic postVariable capFixed
           targetFixed contextFlow)
   | .prim lookup instanceTyping expressionsTyping => by
-      exact HasTy.prim lookup
+      exact RuntimeTyping.prim lookup
         (CtorScheme.Inst.transport instanceTyping
           ((signature.primitiveInstCompositionAdm_of_free_fixed
             capFixed targetFixed) lookup))
         (expressionsTyping.transportFlows basic postVariable capFixed
           targetFixed contextFlow)
   | .something => by simpa only [Subst.apply_matcher, Cap.apply] using
-      (HasTy.something (signature := signature) (context := targetContext)
+      (RuntimeTyping.something (signature := signature) (context := targetContext)
         (target := S.apply _))
   | .matchAll targetTyping patternTyping matcherTyping bodyTyping => by
-      exact HasTy.matchAll
+      exact RuntimeTyping.matchAll
         (targetTyping.transportFlows basic postVariable capFixed targetFixed
           contextFlow)
         (patternTyping.transportFlows basic postVariable capFixed targetFixed
@@ -1451,53 +1451,53 @@ theorem HasTy.transportFlows
       rw [← postVariable.applyCap_eq_applyRen] at shapeMoved
       have coverageMoved := coverage.applyRen postVariable.capRen
       rw [← postVariable.applyCap_eq_applyRen] at coverageMoved
-      simpa only [Subst.apply_matcher] using HasTy.matcher clausesMoved
+      simpa only [Subst.apply_matcher] using RuntimeTyping.matcher clausesMoved
         shapeMoved catchAll (exhaustive.transport_basic basic) ppNodup armNodup
         coverageMoved
-  | @HasTy.coerceMatcherToSlot _ context expression producerCap producerTarget
+  | @RuntimeTyping.coerceMatcherToSlot _ context expression producerCap producerTarget
       consumerCap consumerTarget bindings C T post premise certificate
       premiseVariable => by
       have premiseMoved := premise.transportFlows basic postVariable capFixed
         targetFixed contextFlow
-      have premiseFor : HasTy signature targetContext expression
+      have premiseFor : RuntimeTyping signature targetContext expression
           (.matcher ((producerCap.apply C).apply (Subst.seq S post).cap)
             ((Subst.seq S post).apply ((Subst.mk C T).apply producerTarget))) := by
         simpa only [Subst.apply_matcher, Cap.apply_substSeq,
           Subst.seq_apply] using premiseMoved
-      have result := HasTy.coerceMatcherToSlot
+      have result := RuntimeTyping.coerceMatcherToSlot
         (post := Subst.seq S post) premiseFor certificate
         (postVariable.seq premiseVariable)
       simpa only [Subst.apply_matcher, Subst.apply_slot,
         Cap.apply_substSeq, Subst.seq_apply] using result
-  | @HasTy.checkSlotToSlot _ context expression sourceCap sourceTarget
+  | @RuntimeTyping.checkSlotToSlot _ context expression sourceCap sourceTarget
       requestedCap requestedTarget C T post premise certificate
       premiseVariable => by
       have premiseMoved := premise.transportFlows basic postVariable capFixed
         targetFixed contextFlow
-      have premiseFor : HasTy signature targetContext expression
+      have premiseFor : RuntimeTyping signature targetContext expression
           (.slot ((sourceCap.apply C).apply (Subst.seq S post).cap)
             ((Subst.seq S post).apply ((Subst.mk C T).apply sourceTarget))) := by
         simpa only [Subst.apply_slot, Cap.apply_substSeq,
           Subst.seq_apply] using premiseMoved
-      have result := HasTy.checkSlotToSlot
+      have result := RuntimeTyping.checkSlotToSlot
         (post := Subst.seq S post) premiseFor certificate
         (postVariable.seq premiseVariable)
       simpa only [Subst.apply_slot, Cap.apply_substSeq,
         Subst.seq_apply] using result
-  | @HasTy.coerceProductMatcher _ context expression duals expressionTyping => by
+  | @RuntimeTyping.coerceProductMatcher _ context expression duals expressionTyping => by
       have expressionMoved := expressionTyping.transportFlows basic
         postVariable capFixed targetFixed contextFlow
-      have result := HasTy.coerceProductMatcher
+      have result := RuntimeTyping.coerceProductMatcher
         (duals := duals.map (Dual.applySubst S)) (by
           simpa [List.map_map, Function.comp_def, Dual.applySubst, Dual.apply]
             using expressionMoved)
       simpa only [Subst.apply_matcher, Subst.apply_prod, Cap.apply_prod,
         Dual.map_cap_applySubst, Cap.applyList_eq_map,
         Dual.map_target_applySubst] using result
-  | @HasTy.coerceSlotTuple _ context expression duals expressionTyping => by
+  | @RuntimeTyping.coerceSlotTuple _ context expression duals expressionTyping => by
       have expressionMoved := expressionTyping.transportFlows basic
         postVariable capFixed targetFixed contextFlow
-      have result := HasTy.coerceSlotTuple
+      have result := RuntimeTyping.coerceSlotTuple
         (duals := duals.map (Dual.applySubst S)) (by
           simpa [List.map_map, Function.comp_def, Dual.applySubst, Dual.apply]
             using expressionMoved)
@@ -1507,7 +1507,7 @@ theorem HasTy.transportFlows
 
 termination_by structural typing
 
-/-- List form of `HasTy.transportFlows`. -/
+/-- List form of `RuntimeTyping.transportFlows`. -/
 theorem ExprsTy.transportFlows
     {signature : FrozenSig}
     (basic : signature.armExhaustive = basicArmExhaustive)
@@ -2118,19 +2118,19 @@ set_option maxHeartbeats 200000
 
 
 /-- The exact source-level conclusion needed by let-bound runtime values. -/
-def HasTy.GeneralizedValueFlow
+def RuntimeTyping.GeneralizedValueFlow
     {signature : FrozenSig} {context : Context}
     {expression : Expr} {source : Ty}
-    (_typing : HasTy signature context expression source) : Prop :=
+    (_typing : RuntimeTyping signature context expression source) : Prop :=
   ∀ {target : Ty},
     (signature.generalize context source).ValueFlowInst target →
-    HasTy signature context expression target
+    RuntimeTyping signature context expression target
 
 /-- Replay any binder-local instance of a generalized value derivation. -/
-theorem HasTy.generalizedValueFlow
+theorem RuntimeTyping.generalizedValueFlow
     {signature : FrozenSig} {context : Context}
     {expression : Expr} {source : Ty}
-    (typing : HasTy signature context expression source)
+    (typing : RuntimeTyping signature context expression source)
     (basic : signature.armExhaustive = basicArmExhaustive) :
     typing.GeneralizedValueFlow := by
   intro target requested

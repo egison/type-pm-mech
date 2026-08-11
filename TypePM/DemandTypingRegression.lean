@@ -373,8 +373,8 @@ theorem nestedCapLetProgram_ddTyping :
 /-! ## The nested-capability boundary: no demand-directed derivation exists
 
 `nestedCapProgram` shares one monomorphic consumer between a bare matcher
-producer and a product of matcher producers.  Its wide declarative typings
-insert coercions at argument positions with no slot demand
+producer and a product of matcher producers.  Its state-free runtime
+certificates can insert coercions at argument positions with no slot demand
 (`AcceptanceGapRegression.nestedCapProgram_typed`), and the executable
 pipeline rejects it.  The inversion below fixes the boundary at the level
 of the judgment itself: no demand-directed derivation exists, for any
@@ -667,7 +667,7 @@ unrelated variables `?3` and `?9`.  If `?9` is the binder of a partially
 generalized scheme with `?3` free, the masked scheme substitution captures
 — `∀9. 9 → 3` becomes `∀9. 9 → 9` — while the transported instance
 `Int → ?9` is no instance of the captured scheme.  This fixes, as a
-boundary theorem, why the forgetting map to `HasTy` cannot be proved by
+boundary theorem, why the forgetting map to `RuntimeTyping` cannot be proved by
 transporting instances along bare `PairedMGU` deltas, and it motivates the
 exactness strengthening (identity outside the constraint) of the
 judgment's solve deltas: the swap is exactly what exactness removes. -/
@@ -773,8 +773,8 @@ supported and ranged within the constraint — yet applying it twice undoes
 it.  Such a delta breaks prevailing-substitution absorption
 (`Subst.seq_absorbs_of_idempotent` needs idempotency): a mid-derivation
 view of an already-threaded type disagrees with the terminal view, so
-context types would not transport to the terminal `HasTy` statement of the
-stage 3-2 forgetting map.  The solved-form clause is the exactness
+context types would not transport to the terminal `RuntimeTyping` statement
+of the state-erasure map.  The solved-form clause is the exactness
 condition that rejects exactly this residue. -/
 
 /-- The involutive swap of `?0` and `?1`. -/
@@ -927,15 +927,13 @@ instance of `m`.  The demand-directed derivation resolves the shared domain
 from the first use and then structures the fresh instance capability of `m`
 to `Any` by an ordinary matcher-pair solve — an exact most general solve,
 so no-guess and exactness are respected.  The published type
-`(Matcher Any ?4, Matcher Any ?4)` is nevertheless not declaratively
-derivable: the declarative value-flow instance maps a quantified capability
+`(Matcher Any ?4, Matcher Any ?4)` nevertheless has no `RuntimeTyping`
+certificate: its value-flow instance maps a quantified capability
 binder only to a capability *variable*, and every coercion rule that could
 retype `m` either concludes at a slot head or carries the violating
 instance in its premise.  Unconditional forgetting from `DDTyping` to
-`HasTy` over an arbitrary context is therefore false, and the forgetting
-theorem of stage 3-2 must carry a freeze-side correspondence condition
-(mirroring the `FreezeCompatible` condition of stage 3-3) or the judgment
-must gain the ledger axis. -/
+`RuntimeTyping` over an arbitrary context is therefore false.  The DD family
+must gain the freeze ledger axis before unconditional state erasure is valid. -/
 
 /-- A quantified matcher producer: `∀κ α. Matcher κ α`. -/
 def producerScheme : Scheme := ⟨[⟨0⟩], [0], .matcher (.var ⟨0⟩) (.var 0)⟩
@@ -1053,11 +1051,11 @@ theorem producerScheme_no_any_instance (target : Ty) :
   have caps' : C ⟨0⟩ = Cap.any := caps
   nomatch imageEq.symm.trans caps'
 
-/-- The published type is not declaratively derivable: the shared
+/-- The published type has no runtime certificate: the shared
 monomorphic consumer forces `m` to inhabit the `Any`-capped matcher type,
 which no value-flow instance provides. -/
-theorem capFreezeProgram_not_hasTy :
-    ¬ HasTy emptySignature producerContext capFreezeProgram
+theorem capFreezeProgram_not_runtimeTyping :
+    ¬ RuntimeTyping emptySignature producerContext capFreezeProgram
       (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) := by
   intro typing
   cases typing with
@@ -1102,15 +1100,14 @@ theorem capFreezeProgram_not_hasTy :
   exact producerScheme_no_any_instance _ hinstm
 
 /-- The boundary in one statement: the demand-directed derivation exists,
-the declarative typing does not.  Unconditional forgetting over an
-arbitrary context is refuted; the stage 3-2 forgetting map must carry a
-freeze-side correspondence condition. -/
+but the runtime certificate does not.  The DD family needs capability-freeze
+provenance before unconditional state erasure is valid. -/
 theorem capFreeze_forgetting_gap :
     DDTyping emptySignature producerContext capFreezeProgram
         (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) ∧
-      ¬ HasTy emptySignature producerContext capFreezeProgram
+      ¬ RuntimeTyping emptySignature producerContext capFreezeProgram
         (.prod [.matcher .any (.var 4), .matcher .any (.var 4)]) :=
-  ⟨capFreezeProgram_ddTyping, capFreezeProgram_not_hasTy⟩
+  ⟨capFreezeProgram_ddTyping, capFreezeProgram_not_runtimeTyping⟩
 
 /-! ## Capability freeze through `let`: the second forgetting-gap source
 
@@ -1126,11 +1123,11 @@ closes in `DDTyping` at `(Packed, Packed)`: the value's domain resolves to
 `Matcher ?κ ?α`, mid-derivation generalization quantifies the capability
 meta, and each use structures its own fresh instance capability by an
 ordinary matcher-pair solve (`Any` at the first use, `con "c" []` at the
-second).  Declaratively no choice of the λ domain serves both uses: a
+second).  No state-free certificate can choose a λ domain serving both uses: a
 variable-capped domain violates the variable-only value-flow condition,
 and any structural cap collides with one of the two divergent demands.
-The forgetting-side freeze condition of stage 3-2 therefore cannot be a
-condition on the ambient context alone — it must constrain
+The required freeze provenance therefore cannot be a condition on the
+ambient context alone — it must constrain
 `let`-generalized schemes as well. -/
 
 open AcceptanceGapRegression (packSignature packScheme)
@@ -1243,7 +1240,7 @@ theorem letCapFreezeProgram_ddTyping :
 
 /-- `something` typed at any matcher-headed type has capability `Any`. -/
 theorem something_matcher_cap {context : Context} {published : Ty}
-    (typing : HasTy packSignature context .something published)
+    (typing : RuntimeTyping packSignature context .something published)
     {capability : Cap} {target : Ty}
     (headEq : published = .matcher capability target) :
     capability = .any := by
@@ -1261,7 +1258,7 @@ capability `con "c" []`. -/
 theorem m2var_matcher_cap {context : Context} {published : Ty}
     (contextFind :
       context.find? "m2" = some (Scheme.mono (.matcher (.con "c" []) .int)))
-    (typing : HasTy packSignature context (.var "m2") published)
+    (typing : RuntimeTyping packSignature context (.var "m2") published)
     {capability : Cap} {target : Ty}
     (headEq : published = .matcher capability target) :
     capability = .con "c" [] := by
@@ -1290,12 +1287,12 @@ theorem m2var_matcher_cap {context : Context} {published : Ty}
   | checkSlotToSlot _ _ _ => nomatch headEq
   | coerceSlotTuple _ => nomatch headEq
 
-/-- Any declarative typing of the value body `Pack x` forces the λ domain
+/-- Any runtime certificate for the value body `Pack x` forces the λ domain
 to be matcher-headed or a product of matchers: coercion wrappers only move
 the published head, never the domain constraint. -/
 theorem packCtor_domain_shape {domain : Ty} :
     ∀ {context : Context} {expression : Expr} {published : Ty},
-      HasTy packSignature context expression published →
+      RuntimeTyping packSignature context expression published →
       expression = .ctor "Pack" [.var "x"] →
       context.find? "x" = some (Scheme.mono domain) →
       (∃ capability target, domain = .matcher capability target) ∨
@@ -1358,11 +1355,11 @@ theorem packCtor_domain_shape {domain : Ty} :
   | _, _, _, .matchAll _ _ _ _, exprEq, _ => nomatch exprEq
   | _, _, _, .matcher _ _ _ _ _ _ _, exprEq, _ => nomatch exprEq
 
-/-- The two divergent uses admit no declarative typing: no λ-domain choice
+/-- The two divergent uses admit no runtime certificate: no λ-domain choice
 serves both an `Any`-capped and a `con`-capped consumer under the
 variable-only value-flow condition. -/
-theorem letCapFreezeProgram_not_hasTy :
-    ¬ HasTy packSignature letCapContext letCapFreezeProgram
+theorem letCapFreezeProgram_not_runtimeTyping :
+    ¬ RuntimeTyping packSignature letCapContext letCapFreezeProgram
       (.prod [.data "Packed" [], .data "Packed" []]) := by
   intro typing
   cases typing with
@@ -1442,15 +1439,15 @@ theorem letCapFreezeProgram_not_hasTy :
 
 /-- The `let`-generalized boundary in one statement: mid-derivation
 generalization quantifies the instance capability, both uses structure it
-divergently in the demand-directed judgment, and no declarative derivation
-exists.  The forgetting-side freeze condition cannot be a context-side
-predicate alone. -/
+divergently in the demand-directed judgment, and no runtime certificate
+exists.  The required freeze provenance cannot be a context-side predicate
+alone. -/
 theorem letCapFreeze_forgetting_gap :
     DDTyping packSignature letCapContext letCapFreezeProgram
         (.prod [.data "Packed" [], .data "Packed" []]) ∧
-      ¬ HasTy packSignature letCapContext letCapFreezeProgram
+      ¬ RuntimeTyping packSignature letCapContext letCapFreezeProgram
         (.prod [.data "Packed" [], .data "Packed" []]) :=
-  ⟨letCapFreezeProgram_ddTyping, letCapFreezeProgram_not_hasTy⟩
+  ⟨letCapFreezeProgram_ddTyping, letCapFreezeProgram_not_runtimeTyping⟩
 
 /-! ## Pattern layer: the or-pattern `matchAll` program
 
