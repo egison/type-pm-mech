@@ -332,7 +332,9 @@ expected-type alignmentとchecking traversalをexact-stateな`DDAlignRun`／`DDC
 このgeneric checking補題を使い，function synthesis，2 target fresh，function alignment，argument checkingを
 threadするapplication traversalも`DDSynth`／`DDSynthOrigin`へ再構成した．次はexpression-list checkingの
 exact-state `DDChecksRun`とnil／cons traversalも再構成済みである．次はscheme instantiationと
-capability export freezeを接続し，constructor／primitive applicationをまとめて閉じる．
+capability export freezeをDD ledger transitionへ接続し，constructor／primitive applicationも
+まとめて再構成した．次はnon-matcher recursive functionのfix branchを閉じ，その後に
+matcher／pattern／clauseの相互familyを必要とするbranchへ進む．
 
 中心定理：
 

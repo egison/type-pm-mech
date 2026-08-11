@@ -80,6 +80,62 @@ namespace Inference
           (freshCapImages state.supply scheme.capBinders) .renameOnly :=
   rfl
 
+@[simp] theorem instantiateCtorInState_target
+    (state : InferState) (scheme : CtorScheme) :
+    (instantiateCtorInState state scheme).1 =
+      (InferenceBase.instantiateCtorScheme state.supply scheme).value :=
+  rfl
+
+@[simp] theorem instantiateCtorInState_supply
+    (state : InferState) (scheme : CtorScheme) :
+    (instantiateCtorInState state scheme).2.supply =
+      (InferenceBase.instantiateCtorScheme state.supply scheme).supply :=
+  rfl
+
+@[simp] theorem instantiateCtorInState_prevailing
+    (state : InferState) (scheme : CtorScheme) :
+    (instantiateCtorInState state scheme).2.prevailing = state.prevailing :=
+  rfl
+
+@[simp] theorem instantiateCtorInState_capabilityOrigins
+    (state : InferState) (scheme : CtorScheme) :
+    (instantiateCtorInState state scheme).2.capabilityOrigins =
+      DDLedger.markCtorInstance state.capabilityOrigins state.supply scheme :=
+  rfl
+
+/-- Executable and DD export selection name the same surviving capability
+leaves. -/
+theorem capabilityExportLeaves_eq_exportLeaves
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    capabilityExportLeaves state capImages exportedPayload =
+      DDLedger.exportLeaves state.capabilityOrigins state.prevailing capImages
+        exportedPayload := by
+  unfold capabilityExportLeaves DDLedger.exportLeaves
+  dsimp only
+  congr 1
+  funext varId
+  cases state.capabilityOrigins.originOf varId <;> rfl
+
+@[simp] theorem InferState.freezeCapabilityExport_supply
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    (state.freezeCapabilityExport capImages exportedPayload).supply =
+      state.supply :=
+  rfl
+
+@[simp] theorem InferState.freezeCapabilityExport_prevailing
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    (state.freezeCapabilityExport capImages exportedPayload).prevailing =
+      state.prevailing :=
+  rfl
+
+@[simp] theorem InferState.freezeCapabilityExport_capabilityOrigins_eq_freezeExport
+    (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
+    (state.freezeCapabilityExport capImages exportedPayload).capabilityOrigins =
+      DDLedger.freezeExport state.capabilityOrigins state.prevailing capImages
+        exportedPayload := by
+  simp [InferState.freezeCapabilityExport, DDLedger.freezeExport,
+    capabilityExportLeaves_eq_exportLeaves]
+
 /-- The DD certificate reconstructed from one successful executable
 expression traversal.  This is an internal induction package for proving
 `infer` sound with respect to `DDTyping`; it is not a second typing judgment. -/
@@ -1254,6 +1310,62 @@ theorem DDSynthRun.app
   · simpa [finishExpr] using
       DDSynthOrigin.app functionOrigin functionAlignedDD argumentOrigin
 
+/-- Reconstruct a data-constructor result from exact pointwise argument
+checking and the executable export freeze. -/
+theorem DDSynthRun.ctor
+    {signature : FrozenSig} {context : Context} {name : String}
+    {expressions : List Expr} {scheme : CtorScheme}
+    {initial childrenFinal : InferState} {path : SyntaxPath}
+    (lookup : signature.findDataCtor name = some scheme)
+    (childrenRun : DDChecksRun signature context expressions
+      (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+      (instantiateCtorInState (visit initial .exprCtor path) scheme).2
+      childrenFinal) :
+    DDSynthRun signature context (.ctor name expressions) initial
+      (finishExpr (.ctor name expressions) path
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
+        (childrenFinal.freezeCapabilityExport
+          (freshCapImages initial.supply scheme.capBinders)
+          (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2)) := by
+  rcases childrenRun with ⟨childrenDerived, childrenOrigin⟩
+  simp only [instantiateCtorInState_supply,
+    instantiateCtorInState_prevailing,
+    instantiateCtorInState_capabilityOrigins, visit,
+    InferState.recordEvent_supply, InferState.prevailing_recordEvent,
+    InferState.recordEvent_capabilityOrigins] at childrenDerived childrenOrigin
+  refine ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
+    DDSynth.ctor lookup childrenDerived, ?_, ?_⟩
+  · rfl
+  · simpa [finishExpr] using DDSynthOrigin.ctor lookup childrenOrigin
+
+/-- Primitive application has the same instantiation, checking, and export
+freeze boundary as a data constructor. -/
+theorem DDSynthRun.prim
+    {signature : FrozenSig} {context : Context} {op : PrimOp}
+    {expressions : List Expr} {scheme : CtorScheme}
+    {initial childrenFinal : InferState} {path : SyntaxPath}
+    (lookup : signature.findPrimitive op = some scheme)
+    (childrenRun : DDChecksRun signature context expressions
+      (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+      (instantiateCtorInState (visit initial .exprPrim path) scheme).2
+      childrenFinal) :
+    DDSynthRun signature context (.prim op expressions) initial
+      (finishExpr (.prim op expressions) path
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
+        (childrenFinal.freezeCapabilityExport
+          (freshCapImages initial.supply scheme.capBinders)
+          (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2)) := by
+  rcases childrenRun with ⟨childrenDerived, childrenOrigin⟩
+  simp only [instantiateCtorInState_supply,
+    instantiateCtorInState_prevailing,
+    instantiateCtorInState_capabilityOrigins, visit,
+    InferState.recordEvent_supply, InferState.prevailing_recordEvent,
+    InferState.recordEvent_capabilityOrigins] at childrenDerived childrenOrigin
+  refine ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
+    DDSynth.prim lookup childrenDerived, ?_, ?_⟩
+  · rfl
+  · simpa [finishExpr] using DDSynthOrigin.prim lookup childrenOrigin
+
 /-- The empty branch of the executable expression-list traversal reconstructs
 the empty DD list certificate. -/
 theorem inferExprsFuel_nil_ddSynthsRun
@@ -1511,6 +1623,94 @@ theorem inferExprFuel_app_ddSynthRun
                   exact DDSynthRun.app
                     (functionSound functionResult functionEq)
                     (alignTypes_ddAlignTypesRun functionAlignEq) argumentRun
+
+/-- A successful constructor branch instantiates its scheme, checks all
+arguments, freezes the exported result leaves, and reconstructs `DDSynth.ctor`. -/
+theorem inferExprFuel_ctor_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
+    {expressions : List Expr} {initial : InferState} {result : ExprResult}
+    (childrenSound : ∀ (scheme : CtorScheme) (childrenFinal : InferState),
+      checkExprsFuel fuel signature context selfEnv path 0 expressions
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+        (instantiateCtorInState (visit initial .exprCtor path) scheme).2 =
+          some childrenFinal →
+      DDChecksRun signature context expressions
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+        (instantiateCtorInState (visit initial .exprCtor path) scheme).2
+        childrenFinal)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.ctor name expressions) initial = some result) :
+    DDSynthRun signature context (.ctor name expressions) initial result := by
+  cases lookup : signature.findDataCtor name with
+  | none => simp [inferExprFuel, lookup] at success
+  | some scheme =>
+      cases childrenEq : checkExprsFuel fuel signature context selfEnv path 0
+          expressions
+          (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+          (instantiateCtorInState (visit initial .exprCtor path) scheme).2 with
+      | none =>
+          have actualChildrenEq := childrenEq
+          simp only [visit] at actualChildrenEq
+          simp [inferExprFuel, lookup, visit, actualChildrenEq] at success
+      | some childrenFinal =>
+          have actualChildrenEq := childrenEq
+          simp only [visit] at actualChildrenEq
+          have resultEq : finishExpr (.ctor name expressions) path
+              (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
+              (childrenFinal.freezeCapabilityExport
+                (freshCapImages initial.supply scheme.capBinders)
+                (InferenceBase.instantiateCtorScheme initial.supply
+                  scheme).value.2) = result := by
+            apply Option.some.inj
+            simpa [inferExprFuel, lookup, visit, actualChildrenEq] using success
+          subst result
+          exact DDSynthRun.ctor lookup
+            (childrenSound scheme childrenFinal childrenEq)
+
+/-- Primitive synthesis shares the constructor instantiation/check/freeze
+pipeline and reconstructs `DDSynth.prim`. -/
+theorem inferExprFuel_prim_ddSynthRun
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {op : PrimOp}
+    {expressions : List Expr} {initial : InferState} {result : ExprResult}
+    (childrenSound : ∀ (scheme : CtorScheme) (childrenFinal : InferState),
+      checkExprsFuel fuel signature context selfEnv path 0 expressions
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+        (instantiateCtorInState (visit initial .exprPrim path) scheme).2 =
+          some childrenFinal →
+      DDChecksRun signature context expressions
+        (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+        (instantiateCtorInState (visit initial .exprPrim path) scheme).2
+        childrenFinal)
+    (success : inferExprFuel (fuel + 1) signature context selfEnv path
+      (.prim op expressions) initial = some result) :
+    DDSynthRun signature context (.prim op expressions) initial result := by
+  cases lookup : signature.findPrimitive op with
+  | none => simp [inferExprFuel, lookup] at success
+  | some scheme =>
+      cases childrenEq : checkExprsFuel fuel signature context selfEnv path 0
+          expressions
+          (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
+          (instantiateCtorInState (visit initial .exprPrim path) scheme).2 with
+      | none =>
+          have actualChildrenEq := childrenEq
+          simp only [visit] at actualChildrenEq
+          simp [inferExprFuel, lookup, visit, actualChildrenEq] at success
+      | some childrenFinal =>
+          have actualChildrenEq := childrenEq
+          simp only [visit] at actualChildrenEq
+          have resultEq : finishExpr (.prim op expressions) path
+              (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
+              (childrenFinal.freezeCapabilityExport
+                (freshCapImages initial.supply scheme.capBinders)
+                (InferenceBase.instantiateCtorScheme initial.supply
+                  scheme).value.2) = result := by
+            apply Option.some.inj
+            simpa [inferExprFuel, lookup, visit, actualChildrenEq] using success
+          subst result
+          exact DDSynthRun.prim lookup
+            (childrenSound scheme childrenFinal childrenEq)
 
 /-- Context lookup uses the executable scheme-instantiation helper and
 reconstructs the matching rename-only origin transition.  A direct-self hit
