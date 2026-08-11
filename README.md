@@ -12,7 +12,7 @@ source program
      │
      ▼
  DDTyping                 唯一の source typing
-     │ state erasure      未完成：capability freeze 情報の統合が必要
+     │ state erasure      未完成：Origin derivation からの射影が未証明
      ▼
  RuntimeTyping            内部の state-free certificate
      │ preservation / progress
@@ -30,19 +30,35 @@ clause 層について demand-directed な型付けを定義する．式層の�
 の二判断である．
 
 ```text
-q; S; Γ ⊢ e ⇒ τraw ⊣ q'; S'       DDSynth
-q; S; Γ ⊢ e ⇐ τexpected ⊣ q'; S'  DDCheck
+q; S; Ω; Γ ⊢ e ⇒ τraw      ⊣ q'; S'; Ω'    synthesis
+q; S; Ω; Γ ⊢ e ⇐ τexpected ⊣ q'; S'; Ω'    checking
 ```
 
 `q = (qκ, qτ)` は capability metavariable と target metavariable の次の番号を持つ fresh
-supply，`S` はその cut までに得た paired substitution である．各規則は子を左から右へ調べ，
-出力 `q'; S'` を次の子へ渡す．公開 wrapper は canonical initial supply と恒等置換から始め，
-最後に `S' τraw` を公開する．
+supply，`S` はその cut までに得た paired substitution，`Ω` は capability variable の生成由来を
+記録する origin ledger である．各規則は子を左から右へ調べ，出力 `q'; S'; Ω'` を次の子へ
+渡す．公開 wrapper は canonical initial supply，恒等置換，空 ledger から始め，最後に
+`S' τraw` を公開する．Leanでは rawな synthesis derivationと，それに構造を一致させた intrinsic
+Origin certificateを分けて表現するが，両者を合わせた上の判断が公開 source typingである．
+
+`Ω(χ)` は次の三値を取る．未登録の変数は `rigid` として扱う．
+
+- `rigid`: signatureや入力contextに由来し，solveはその変数を固定する．
+- `renameOnly`: 既に外へ流れたproducerであり，非structuralな変数へのrenameだけを許す．
+- `structuralFlexible`: constructor内部やconsumer demandの局所変数であり，export前だけ構造化を許す．
+
+expression schemeとpattern-function schemeのcapability binderはinstance生成時から
+`renameOnly` である．constructor／primitive instanceと単発fresh consumerは
+`structuralFlexible` として生成し，使用後にexported payloadへ残る像のleafだけを
+`renameOnly` へfreezeする．matcher literalは，最終capabilityに現れる全DD-owned explicit ledger
+keyのstructural leafだけをfreezeする．これにはmatcher開始前に生成された `fixMatcher`
+placeholderのowned leafも含まれる．ordinary equalityとone-way matcher-to-slot solveはいずれも，
+そのcutの `Ω` に対してadmissibleなdeltaでなければならない．
 
 ```text
 DDTyping Σ Γ e τ  iff
-  ∃ τraw q' S',
-    DDSynth Σ (initialSupply Σ Γ) id Γ e τraw q' S' ∧
+  ∃ τraw q' S' Ω',
+    initialSupply Σ Γ; id; ∅; Γ ⊢ e ⇒ τraw ⊣ q'; S'; Ω' ∧
     τ = S' τraw
 ```
 
@@ -65,7 +81,9 @@ DDTyping Σ Γ e τ  iff
 
 expected type が未解決変数なら ordinary equality だけを行う．coercion のために変数を slot
 へ推測せず，ordinary equality の失敗後に別 branch を試す rollback も行わない．各 solve は
-exact MGU または exact one-way solution であり，constraint 外の metavariable を構造化しない．
+exact MGU または exact one-way solutionであり，constraint外のmetavariableを構造化しない．
+さらにdeltaはcutの `Ω` に適合するため，`renameOnly` producerを `Any` やconstructor capabilityへ
+後から強化するsolveは公開判断に入らない．
 
 coercion の場所は `matchAll` や matcher literal に固定されない．たとえば
 `use : MatcherSlot κ τ → ρ` へ `m : Matcher κ τ` を渡す場合，関数適用が domain を決め，
@@ -101,13 +119,19 @@ progress，到達可能 state の保存，成功 branch の substitution typing 
 1. `DDTyping → RuntimeTyping` の state erasure
 2. `DDTyping → infer` の受理完全性
 
-一つ目には capability origin の freeze 情報が必要である．現行 `DDSynth` は `q` と `S` を
-持つが origin ledger を持たないため，量化された matcher producer の capability を後続 solve
-が構造化したことを derivation だけから排除できない．`capFreezeProgram` と
-`letCapFreezeProgram` はこの不足を固定する回帰である．解決方針は，producer capability の
-生成・instance・一般化・export に必要な freeze provenance を DD family 自体へ統合し，その
-情報を用いて `RuntimeTyping` へ射影することである．`RuntimeTyping` の存在を `DDTyping` の
-premise に埋め込む循環的な定義は採らない．
+一つ目に必要な capability-origin ledger は DD family 全体へ統合済みである．raw derivation と
+同じ形の intrinsic Origin certificate が，fresh allocation，scheme／dual instance，constructor
+instance，producer export，matcher finalization，solve cut を追跡する．public `DDTyping` は
+canonical initial supply，恒等置換，空 ledger から始まる raw derivationとその certificateの
+組だけを受理する．
+
+残っているのは，この Origin derivation を各 constructor に沿って `RuntimeTyping` へ射影する
+state-erasure 定理である．`capFreezeProgram` と `letCapFreezeProgram` については，origin を
+追跡しない局所 solve が capability を不正に強化できた箇所と，ledger-aware な局所 solve が
+それを拒否することを回帰で固定している．public `DDTyping` 全体としての導出不能性はまだ
+end-to-end 回帰として閉じていない．一方，既存正例の Origin certificate は public wrapper
+まで構成済みである．`RuntimeTyping` の存在を `DDTyping` の premise に埋め込む循環的な定義は
+採らない．
 
 二つ目には，上記 freeze 統合に加え，現行 executable selector が product source の認識に
 raw type を使う箇所を cut-resolved view と一致させる必要がある．最終目標は追加 premise の
@@ -119,7 +143,8 @@ DDTyping signature [] e τ →
 ```
 
 `nestedCapProgram` と swapped 版は DD で型付かず，推論器も拒否する意図された負例である．
-一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は DD の正例である．
+一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は維持すべき正例で
+あり，public Origin certificate を伴う回帰を milestone 1 で完成させる．
 
 ## Roadmap
 
@@ -131,20 +156,22 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 現在の DDTyping／infer／runtime safety
               │
               ▼
-1. freeze provenance を DD family へ統合
+[~] 1. freeze provenance（core 完了／public 負回帰は未完了）
               │
         ┌─────┴──────────┐
         ▼                ▼
-2. DD state erasure   3. infer success → DDTyping
+[ ] 2. DD state erasure   [ ] 3. infer success → DDTyping
         │                │
         ▼                ▼
-4. DD の公開安全性    5. DDTyping → infer success
+[ ] 4. DD の公開安全性    [ ] 5. DDTyping → infer success
                          │
                          ▼
-                    6. 受理同値と注釈不要性
+                    [ ] 6. 受理同値と注釈不要性
 ```
 
-### 0. 現在の基盤
+記号は `[x]` が完了，`[~]` が一部完了，`[ ]` が未完了を表す．
+
+### [x] 0. 現在の基盤
 
 次は完成済みの出発点であり，後続 milestone で維持する不変量である．
 
@@ -155,23 +182,30 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 - `infer` の成功から reconstruction と `RuntimeTyping` を構成できる．
 - `RuntimeTyping`，`ValueTy`，matching-state judgment 上の動的安全性が証明されている．
 
-### 1. Capability freeze provenance を DD family へ統合する
+### [~] 1. Capability freeze provenance の public 回帰を完成する
 
-`q; S` に加えて capability-origin ledger を DD family の入出力 state に持たせる．fresh
-capability の生成理由を `rigid`／`renameOnly`／`structuralFlexible` として記録し，scheme
-instance，`let` generalization，producer export で必要な freeze transition を規則に含める．
-`DDAlign` の ordinary solve と one-way solve は，その cut の ledger に対して admissible な
-delta だけを受け入れる．
+core 実装は完了している．全 DD family の raw derivation に構造を一致させた intrinsic Origin
+certificateがあり，`q; S; Ω` を状態として追跡する．scheme／dual instance は binder imageを
+`renameOnly`，constructor instanceとfresh consumerは `structuralFlexible` とし，exportとmatcher
+finalizationは外へ残るstructural leafだけを選択的にfreezeする．ordinary equalityとone-way solveは
+cutのledgerに対してadmissibleなdeltaだけを受理する．`let` certificateは終端 substitution 後にも
+同じgeneralization schemeが得られる安定性を要求する．public wrapperも空ledgerから始める．
+
+未完了なのは，このcoreを公開境界で固定する負の回帰である．origin を追跡しない局所導出で
+現れた反例を，新しい public `DDTyping` の正例として扱ってはならない．
 
 完了条件：
 
-- ledger の extension，freeze，substitution replay に関する基本補題が全 DD family で成り立つ．
-- `capFreezeProgram` と `letCapFreezeProgram` は新しい `DDTyping` では導出不能になる．
-- or-pattern，delegating matcher，let-polymorphic producer など既存の正例は導出可能なままである．
-- `nestedCapProgram`，matcher-expected product application など既存の負例は導出不能なままである．
-- public `DDTyping` は canonical initial ledger から開始し，外部の freeze premise を要求しない．
+- [x] ledger の extension，freeze，substitution replay に関する基本補題が全 DD family で成り立つ
+  （基本的な supply-scoped ledger 補題と transition 補題は実装済み）．
+- [ ] `capFreezeProgram` と `letCapFreezeProgram` が public `DDTyping` では導出不能であることを証明する
+  （問題となる局所導出と ledger-aware solve による拒否の回帰は実装済み）．
+- [x] or-pattern，delegating matcher，let-polymorphic producer など既存の正例について public Origin
+  certificate を構成する（実装済み）．
+- [x] `nestedCapProgram`，matcher-expected product application など既存の負例は導出不能なままである．
+- [x] public `DDTyping` は canonical initial ledger から開始し，外部の freeze premise を要求しない．
 
-### 2. DD state erasure を証明する
+### [ ] 2. DD state erasure を証明する
 
 ledger-aware な DD derivation から，supply，prevailing substitution，origin ledger を消去して
 `RuntimeTyping` certificate を構成する．expression だけを個別に処理せず，expression list，
@@ -179,11 +213,11 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
 証明する．`let` では一般化 scheme の binder-local value-flow instance，matcher literalでは
 共有 target と terminal hole capability の一致を回収する．
 
-一般の context では終端 substitution を context に適用した `RuntimeTyping` を構成する．その
-closed-program corollary が中心定理である：
+一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
+contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
 
 ```text
-DDSynth signature q S context e raw q' S' →
+q; S; Ω; context ⊢ e ⇒ raw ⊣ q'; S'; Ω' →
   RuntimeTyping signature (context.applySubst S') e (S'.apply raw)
 
 DDTyping signature [] e τ →
@@ -193,7 +227,7 @@ DDTyping signature [] e τ →
 完了条件は，型付け derivation を premise に持つ oracle や任意の capability transport を
 追加せず，freeze 回帰を含む全例についてこの定理を適用できることである．
 
-### 3. 実行可能推論の DD soundness を証明する
+### [ ] 3. 実行可能推論の DD soundness を証明する
 
 現在の `infer_success_runtimeTyping` より前に，successful trace そのものを ledger-aware DD
 derivation へ再構成する．`inferRaw` の fresh allocation 順，solve cut，generalization，matcher
@@ -210,7 +244,7 @@ infer signature context e = some result →
 これにより，公開推論器の成功は唯一の source typing に対して sound である，という通常の API を
 得る．`RuntimeTyping` はこの定理と milestone 2 の合成から内部的に回収できる．
 
-### 4. DDTyping から公開動的安全性を導く
+### [ ] 4. DDTyping から公開動的安全性を導く
 
 milestone 2 の state erasure と既存の preservation／progress を合成し，公開定理の premise から
 `RuntimeTyping` を隠す．`FrozenSigWF` は従来どおり実行可能 checker から確立する．
@@ -226,7 +260,7 @@ runtime safety package for e at τ
 expression evaluation と matching machine の既存定理をこの入口から利用できること，および
 `Soundness` module の公開結果が source typing と runtime safety を同時に返すことを完了条件とする．
 
-### 5. DDTyping に対する推論器の受理完全性を証明する
+### [ ] 5. DDTyping に対する推論器の受理完全性を証明する
 
 DD derivation を左から右に読み，対応する `inferRaw` traversal が成功することを証明する．先に
 executable selector の product source 認識を raw view から cut-resolved view へ揃え，DD の
@@ -244,7 +278,7 @@ DDTyping signature [] e τ →
 最終定理には `RawSourceVisible`，`FreezeCompatible`，caller-supplied bridge などの追加 premise を
 残さない．
 
-### 6. 受理同値と注釈不要性を公開する
+### [ ] 6. 受理同値と注釈不要性を公開する
 
 milestone 3 と 5 を合成し，closed program について source typability と公開推論器の成功を
 対応付ける．
@@ -277,7 +311,7 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
 | 層 | 主な module | 役割 |
 |---|---|---|
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| DD typing | `DemandTyping`, `DemandTypingRegression` | source typing，alignment，基本メタ理論と回帰 |
+| DD typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingLedgerMetatheory`, `DemandTypingOriginMetatheory`, `DemandTypingRegression` | raw規則，intrinsic Origin certificate，ledgerメタ理論，public source typingと回帰 |
 | runtime certificate | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free certificate と再構成 |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety` | evaluation，matching machine，安全性 |

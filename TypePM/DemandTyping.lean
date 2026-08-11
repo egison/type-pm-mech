@@ -1,7 +1,7 @@
 import TypePM.Inference
 
 /-!
-# Demand-directed typing (`DDTyping`), expression layer
+# Raw demand-directed typing derivations
 
 This module defines the syntax-directed, state-threaded demand-directed
 judgments `DDSynth`/`DDCheck` announced by the roadmap, independently of the
@@ -59,7 +59,7 @@ source-typing relation.
 namespace TypePM
 
 open Inference (productMatcherDuals? productSlotDuals? matcherProducingRoot
-  initialSupply)
+  initialSupply freshCapImages)
 
 /-! ## Most-general solve deltas, in specification form
 
@@ -161,6 +161,209 @@ def OneWayDelta (producerCap : Cap) (producerTarget : Ty)
     delta.cap = bindings.toSubstWithin consumerCap.fcv ∧
     ExactTargetMGU (producerTarget.applyCapability delta.cap)
       (consumerTarget.applyCapability delta.cap) delta.target
+
+/-! ### Capability-origin ledger transitions
+
+The demand-directed families use the same chronological origin policy as the
+executable traversal, but the policy is expressed here without an
+`InferState` or trace.  Instance allocation and export freezing are pure
+ledger transitions; equality solving itself leaves the ledger unchanged and
+must instead present one of the admissible exact-solve certificates below.
+-/
+
+namespace DDLedger
+
+/-- Fresh capability images of a value-flow scheme are exported immediately,
+so later solves may only rename them to another non-structural variable. -/
+def markSchemeInstance (ledger : CapabilityOriginLedger)
+    (q : InferenceBase.FreshSupply) (scheme : Scheme) :
+    CapabilityOriginLedger :=
+  ledger.setOrigins (freshCapImages q scheme.capBinders) .renameOnly
+
+/-- Pattern-function lookup is value flow and uses the same rename-only
+instance policy as ordinary context lookup. -/
+def markDualInstance (ledger : CapabilityOriginLedger)
+    (q : InferenceBase.FreshSupply) (scheme : DualScheme) :
+    CapabilityOriginLedger :=
+  ledger.setOrigins (freshCapImages q scheme.capBinders) .renameOnly
+
+/-- Constructor and primitive instance variables remain structurally flexible
+while their local arguments or patterns are checked. -/
+def markCtorInstance (ledger : CapabilityOriginLedger)
+    (q : InferenceBase.FreshSupply) (scheme : CtorScheme) :
+    CapabilityOriginLedger :=
+  ledger.setOrigins (freshCapImages q scheme.capBinders)
+    .structuralFlexible
+
+/-- A single fresh consumer capability is structurally flexible at its
+allocation cut. -/
+def markFreshCap (ledger : CapabilityOriginLedger)
+    (q : InferenceBase.FreshSupply) : CapabilityOriginLedger :=
+  ledger.markStructuralFlexible ⟨q.nextCap⟩
+
+/-- Capability metavariables allocated in the half-open supply interval
+`[initial.nextCap, final.nextCap)` become structurally flexible.  Pure
+supply-indexed traversals such as skeleton freshening use this batch form in
+place of the executable state's sequence of `freshCap` updates. -/
+def markCapRange (ledger : CapabilityOriginLedger)
+    (initial final : InferenceBase.FreshSupply) :
+    CapabilityOriginLedger :=
+  let offsets := List.range (final.nextCap - initial.nextCap)
+  let varIds := offsets.map fun offset => ⟨initial.nextCap + offset⟩
+  ledger.setOrigins varIds .structuralFlexible
+
+/-- Variable leaves in the prevailing images of constructor-instance binders
+that still occur in the exported payload and remain structurally flexible. -/
+def exportLeaves (ledger : CapabilityOriginLedger) (S : Subst)
+    (capImages : List CapVar) (exportedPayload : Ty) : List CapVar :=
+  let exportedVars := (S.apply exportedPayload).fcv
+  let imageLeaves := capImages.flatMap fun varId => (S.cap varId).fcv
+  (imageLeaves.filter fun varId => varId ∈ exportedVars).eraseDups.filter
+    fun varId => ledger.originOf varId = .structuralFlexible
+
+/-- Freeze exactly the surviving structural leaves of a completed
+constructor or primitive instance. -/
+def freezeExport (ledger : CapabilityOriginLedger) (S : Subst)
+    (capImages : List CapVar) (exportedPayload : Ty) :
+    CapabilityOriginLedger :=
+  ledger.setOrigins (exportLeaves ledger S capImages exportedPayload)
+    .renameOnly
+
+/-- Inference-owned, still-structural leaves visible in a finalized matcher
+producer.  Explicit ledger membership is the state-free counterpart of the
+executable trace's allocation ownership.  This includes an earlier recursive
+placeholder that flows into a nested matcher result, while excluding rigid
+source variables that are absent from the ledger. -/
+def matcherProducerLeaves (ledger : CapabilityOriginLedger)
+    (capability : Cap) : List CapVar :=
+  (capability.fcv.filter fun varId =>
+      varId ∈ ledger.map Prod.fst).eraseDups.filter
+    fun varId => ledger.originOf varId = .structuralFlexible
+
+/-- Finalizing a matcher freezes every inference-owned structurally flexible
+leaf visible in its producer capability; rigid ambient and already-frozen
+leaves are left untouched. -/
+def freezeMatcherProducer (ledger : CapabilityOriginLedger) (capability : Cap) :
+    CapabilityOriginLedger :=
+  ledger.setOrigins
+    (matcherProducerLeaves ledger capability) .renameOnly
+
+theorem exportLeaves_origin
+    (ledger : CapabilityOriginLedger) (S : Subst)
+    (capImages : List CapVar) (exportedPayload : Ty) (varId : CapVar)
+    (membership : varId ∈ exportLeaves ledger S capImages exportedPayload) :
+    ledger.originOf varId = .structuralFlexible := by
+  simp [exportLeaves] at membership
+  cases originEquation : ledger.originOf varId <;> simp_all
+
+theorem matcherProducerLeaves_recorded
+    (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
+    (membership : varId ∈ matcherProducerLeaves ledger capability) :
+    varId ∈ capability.fcv ∧ varId ∈ ledger.map Prod.fst := by
+  simp [matcherProducerLeaves] at membership
+  rcases membership.1.2 with ⟨origin, entryMembership⟩
+  exact ⟨membership.1.1,
+    List.mem_map.mpr ⟨(varId, origin), entryMembership, rfl⟩⟩
+
+theorem matcherProducerLeaves_origin
+    (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
+    (membership : varId ∈ matcherProducerLeaves ledger capability) :
+    ledger.originOf varId = .structuralFlexible := by
+  simp [matcherProducerLeaves] at membership
+  cases originEquation : ledger.originOf varId <;> simp_all
+
+theorem markSchemeInstance_origin_of_mem
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : Scheme) (varId : CapVar)
+    (membership : varId ∈ freshCapImages q scheme.capBinders) :
+    (markSchemeInstance ledger q scheme).originOf varId = .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    ledger (freshCapImages q scheme.capBinders) varId .renameOnly membership
+
+theorem markDualInstance_origin_of_mem
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : DualScheme) (varId : CapVar)
+    (membership : varId ∈ freshCapImages q scheme.capBinders) :
+    (markDualInstance ledger q scheme).originOf varId = .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    ledger (freshCapImages q scheme.capBinders) varId .renameOnly membership
+
+theorem markCtorInstance_origin_of_mem
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)
+    (scheme : CtorScheme) (varId : CapVar)
+    (membership : varId ∈ freshCapImages q scheme.capBinders) :
+    (markCtorInstance ledger q scheme).originOf varId =
+      .structuralFlexible := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    ledger (freshCapImages q scheme.capBinders) varId .structuralFlexible
+      membership
+
+@[simp] theorem markFreshCap_origin
+    (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply) :
+    (markFreshCap ledger q).originOf ⟨q.nextCap⟩ =
+      .structuralFlexible := by
+  simp [markFreshCap]
+
+theorem freezeExport_origin_of_mem
+    (ledger : CapabilityOriginLedger) (S : Subst)
+    (capImages : List CapVar) (exportedPayload : Ty) (varId : CapVar)
+    (membership : varId ∈ exportLeaves ledger S capImages exportedPayload) :
+    (freezeExport ledger S capImages exportedPayload).originOf varId =
+      .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem ledger
+    (exportLeaves ledger S capImages exportedPayload) varId .renameOnly
+      membership
+
+theorem freezeExport_origin_of_not_mem
+    (ledger : CapabilityOriginLedger) (S : Subst)
+    (capImages : List CapVar) (exportedPayload : Ty) (varId : CapVar)
+    (membership : varId ∉ exportLeaves ledger S capImages exportedPayload) :
+    (freezeExport ledger S capImages exportedPayload).originOf varId =
+      ledger.originOf varId := by
+  simp [freezeExport,
+    CapabilityOriginLedger.originOf_setOrigins_eq, membership]
+
+theorem freezeMatcherProducer_origin_of_mem
+    (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
+    (membership : varId ∈ matcherProducerLeaves ledger capability) :
+    (freezeMatcherProducer ledger capability).originOf varId =
+      .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem ledger
+    (matcherProducerLeaves ledger capability) varId .renameOnly
+      membership
+
+theorem freezeMatcherProducer_origin_of_not_mem
+    (ledger : CapabilityOriginLedger) (capability : Cap) (varId : CapVar)
+    (membership : varId ∉ matcherProducerLeaves ledger capability) :
+    (freezeMatcherProducer ledger capability).originOf varId =
+      ledger.originOf varId := by
+  simp [freezeMatcherProducer,
+    CapabilityOriginLedger.originOf_setOrigins_eq, membership]
+
+end DDLedger
+
+/-! ### Origin-safe exact solves -/
+
+/-- An exact capability MGU that is legal at the given origin-ledger cut. -/
+structure OriginSafeExactCapMGU (ledger : CapabilityOriginLedger)
+    (left right : Cap) (subst : CapSubst) : Prop where
+  exact : ExactCapMGU left right subst
+  admissible : AdmissibleCapPost ledger subst
+
+/-- An exact paired MGU that is legal at the given origin-ledger cut. -/
+structure OriginSafeExactPairedMGU (ledger : CapabilityOriginLedger)
+    (left right : Ty) (subst : Subst) : Prop where
+  exact : ExactPairedMGU left right subst
+  admissible : AdmissiblePost ledger subst
+
+/-- An exact producer-to-slot delta that is legal at the given
+origin-ledger cut. -/
+structure OriginSafeOneWayDelta (ledger : CapabilityOriginLedger)
+    (producerCap : Cap) (producerTarget : Ty)
+    (consumerCap : Cap) (consumerTarget : Ty) (delta : Subst) : Prop where
+  exact : OneWayDelta producerCap producerTarget consumerCap consumerTarget
+    delta
+  admissible : AdmissiblePost ledger delta
 
 /-! ### Reflexive and single-binding witnesses -/
 
@@ -1768,6 +1971,328 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       DDAlignTypes S raw expected S' →
       DDAlign S raw expected S'
 
+/-! The ledger-aware forms below are additive counterparts of the existing
+alignment relations.  They expose the same output substitution, but every
+local solve must also respect the capability-origin policy at this cut. -/
+
+/-- Origin-safe ordinary equality alignment at one cut. -/
+inductive DDAlignTypesWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → Ty → Ty → Subst → Prop where
+  | matcherPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
+      {leftTarget rightTarget : Ty} {capDelta : CapSubst}
+      {targetDelta : Subst} :
+      S.apply left = .matcher leftCap leftTarget →
+      S.apply right = .matcher rightCap rightTarget →
+      OriginSafeExactCapMGU ledger leftCap rightCap capDelta →
+      OriginSafeExactPairedMGU ledger
+        (leftTarget.applyCapability capDelta)
+        (rightTarget.applyCapability capDelta) targetDelta →
+      DDAlignTypesWithLedger ledger S left right
+        (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
+  | slotPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
+      {leftTarget rightTarget : Ty} {capDelta : CapSubst}
+      {targetDelta : Subst} :
+      S.apply left = .slot leftCap leftTarget →
+      S.apply right = .slot rightCap rightTarget →
+      OriginSafeExactCapMGU ledger leftCap rightCap capDelta →
+      OriginSafeExactPairedMGU ledger
+        (leftTarget.applyCapability capDelta)
+        (rightTarget.applyCapability capDelta) targetDelta →
+      DDAlignTypesWithLedger ledger S left right
+        (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
+  | ordinary {S : Subst} {left right : Ty} {delta : Subst} :
+      alignPairClass (S.apply left) (S.apply right) = .ordinary →
+      OriginSafeExactPairedMGU ledger (S.apply left) (S.apply right) delta →
+      DDAlignTypesWithLedger ledger S left right (Subst.seq delta S)
+
+/-- Origin-safe complete checking-cut alignment. -/
+inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → Ty → Ty → Subst → Prop where
+  | productMatcherLift {S : Subst} {raw expected : Ty} {duals : List Dual}
+      {consumerCap : Cap} {consumerTarget : Ty} {delta : Subst} :
+      productMatcherDuals? (S.apply raw) = some duals →
+      S.apply expected = .slot consumerCap consumerTarget →
+      OriginSafeOneWayDelta ledger (.prod (duals.map Dual.cap))
+        (.prod (duals.map Dual.target)) consumerCap consumerTarget delta →
+      DDAlignWithLedger ledger S raw expected (Subst.seq delta S)
+  | slotTupleLift {S : Subst} {raw expected : Ty} {duals : List Dual}
+      {consumerCap : Cap} {consumerTarget : Ty} {capDelta : CapSubst}
+      {targetDelta : Subst} :
+      demandClass (S.apply raw) (S.apply expected) = .slotTupleLift →
+      productSlotDuals? (S.apply raw) = some duals →
+      S.apply expected = .slot consumerCap consumerTarget →
+      OriginSafeExactCapMGU ledger (.prod (duals.map Dual.cap)) consumerCap
+        capDelta →
+      OriginSafeExactPairedMGU ledger
+        ((Ty.prod (duals.map Dual.target)).applyCapability capDelta)
+        (consumerTarget.applyCapability capDelta) targetDelta →
+      DDAlignWithLedger ledger S raw expected
+        (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
+  | matcherToSlot {S : Subst} {raw expected : Ty}
+      {producerCap : Cap} {producerTarget : Ty}
+      {consumerCap : Cap} {consumerTarget : Ty} {delta : Subst} :
+      S.apply raw = .matcher producerCap producerTarget →
+      S.apply expected = .slot consumerCap consumerTarget →
+      OriginSafeOneWayDelta ledger producerCap producerTarget consumerCap
+        consumerTarget delta →
+      DDAlignWithLedger ledger S raw expected (Subst.seq delta S)
+  | slotToSlot {S : Subst} {raw expected : Ty}
+      {sourceCap : Cap} {sourceTarget : Ty}
+      {requestedCap : Cap} {requestedTarget : Ty} {capDelta : CapSubst}
+      {targetDelta : Subst} :
+      S.apply raw = .slot sourceCap sourceTarget →
+      S.apply expected = .slot requestedCap requestedTarget →
+      OriginSafeExactCapMGU ledger sourceCap requestedCap capDelta →
+      OriginSafeExactPairedMGU ledger
+        (sourceTarget.applyCapability capDelta)
+        (requestedTarget.applyCapability capDelta) targetDelta →
+      DDAlignWithLedger ledger S raw expected
+        (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
+  | ordinary {S : Subst} {raw expected : Ty} {S' : Subst} :
+      demandClass (S.apply raw) (S.apply expected) = .ordinary →
+      DDAlignTypesWithLedger ledger S raw expected S' →
+      DDAlignWithLedger ledger S raw expected S'
+
+/-- Ledger-aware ordinary alignment makes its two inputs equal under the
+output substitution. -/
+theorem DDAlignTypesWithLedger.output_equal
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
+    {S' : Subst}
+    (aligned : DDAlignTypesWithLedger ledger S left right S') :
+    S'.apply left = S'.apply right := by
+  cases aligned with
+  | matcherPair leftView rightView capSafe targetSafe =>
+      rw [Subst.seq_apply, Subst.seq_apply,
+        Subst.seq_apply, Subst.seq_apply, leftView, rightView]
+      have capEqual := capSafe.exact.1.1
+      have targetEqual := targetSafe.exact.1.1
+      simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget_id]
+        at targetEqual ⊢
+      rw [capEqual]
+      exact congrArg (Ty.matcher _) targetEqual
+  | slotPair leftView rightView capSafe targetSafe =>
+      rw [Subst.seq_apply, Subst.seq_apply,
+        Subst.seq_apply, Subst.seq_apply, leftView, rightView]
+      have capEqual := capSafe.exact.1.1
+      have targetEqual := targetSafe.exact.1.1
+      simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget_id]
+        at targetEqual ⊢
+      rw [capEqual]
+      exact congrArg (Ty.slot _) targetEqual
+  | ordinary _ deltaSafe =>
+      rw [Subst.seq_apply, Subst.seq_apply]
+      exact deltaSafe.exact.1.1
+
+/-- Every ledger-aware ordinary alignment factors its output into the input
+followed by one origin-admissible post. -/
+theorem DDAlignTypesWithLedger.relativeAdmissible
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
+    {S' : Subst}
+    (aligned : DDAlignTypesWithLedger ledger S left right S') :
+    ∃ post, S' = Subst.seq post S ∧ AdmissiblePost ledger post := by
+  cases aligned with
+  | matcherPair _ _ capSafe targetSafe =>
+      exact ⟨Subst.seq _ ⟨_, TySubst.id⟩,
+        PhasedPost.seq_assoc _ _ _,
+        AdmissiblePost.seq targetSafe.admissible
+          { cap := capSafe.admissible }⟩
+  | slotPair _ _ capSafe targetSafe =>
+      exact ⟨Subst.seq _ ⟨_, TySubst.id⟩,
+        PhasedPost.seq_assoc _ _ _,
+        AdmissiblePost.seq targetSafe.admissible
+          { cap := capSafe.admissible }⟩
+  | ordinary _ deltaSafe =>
+      exact ⟨_, rfl, deltaSafe.admissible⟩
+
+/-- Solving a variable against a fresh function shape cannot structure either
+fresh component.  In particular, the fresh domain remains a bare target
+variable at the output cut. -/
+theorem DDAlignTypesWithLedger.var_fn_domain_variable
+    {ledger : CapabilityOriginLedger} {shared domain codomain : TypePM.TyVar}
+    {S' : Subst}
+    (aligned : DDAlignTypesWithLedger ledger Subst.id (.var shared)
+      (.fn (.var domain) (.var codomain)) S')
+    (sharedNeDomain : shared ≠ domain)
+    (sharedNeCodomain : shared ≠ codomain)
+    (domainNeShared : domain ≠ shared) :
+    ∃ image, S'.apply (.var domain) = .var image := by
+  cases aligned with
+  | matcherPair leftView _ _ _ =>
+      rw [Subst.apply_id] at leftView
+      cases leftView
+  | slotPair leftView _ _ _ =>
+      rw [Subst.apply_id] at leftView
+      cases leftView
+  | ordinary ordinaryClass deltaSafe =>
+      rename_i delta
+      have mgu := deltaSafe.exact.1
+      simp only [Subst.apply_id] at mgu
+      rcases mgu.varConstraint_target_image_var
+          (by
+            intro membership
+            simp only [Ty.ftv, List.mem_append, List.mem_singleton] at membership
+            exact membership.elim sharedNeDomain sharedNeCodomain)
+          domainNeShared with
+        ⟨image, imageView⟩
+      refine ⟨image, ?_⟩
+      rw [Subst.seq_apply, Subst.apply_id]
+      change delta.target domain = .var image
+      exact imageView
+
+/-- A non-structural capability variable cannot be equated with `Any` by an
+origin-safe ordinary alignment. -/
+theorem DDAlignTypesWithLedger.not_of_nonStructuralMatcher_any
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
+    {S' : Subst} {varId : CapVar} {leftTarget rightTarget : Ty}
+    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (leftView : S.apply left = .matcher (.var varId) leftTarget)
+    (rightView : S.apply right = .matcher .any rightTarget)
+    (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
+  cases aligned with
+  | matcherPair resolvedLeft resolvedRight capSafe _ =>
+      rw [leftView] at resolvedLeft
+      cases resolvedLeft
+      rw [rightView] at resolvedRight
+      cases resolvedRight
+      have solved := capSafe.exact.1.1
+      simp only [Cap.apply] at solved
+      cases origin : ledger.originOf varId with
+      | rigid =>
+          have fixed := capSafe.admissible.rigid origin
+          rw [solved] at fixed
+          cases fixed
+      | renameOnly =>
+          rcases capSafe.admissible.renameOnly_image_variable origin solved with
+            ⟨_, imageVariable, _⟩
+          cases imageVariable
+      | structuralFlexible => exact nonStructural origin
+  | slotPair resolvedLeft _ _ _ =>
+      rw [leftView] at resolvedLeft
+      cases resolvedLeft
+  | ordinary pairClass _ =>
+      rw [leftView, rightView] at pairClass
+      cases pairClass
+
+/-- Symmetric orientation of
+`DDAlignTypesWithLedger.not_of_nonStructuralMatcher_any`. -/
+theorem DDAlignTypesWithLedger.not_of_any_nonStructuralMatcher
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
+    {S' : Subst} {varId : CapVar} {leftTarget rightTarget : Ty}
+    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (leftView : S.apply left = .matcher .any leftTarget)
+    (rightView : S.apply right = .matcher (.var varId) rightTarget)
+    (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
+  cases aligned with
+  | matcherPair resolvedLeft resolvedRight capSafe _ =>
+      rw [leftView] at resolvedLeft
+      cases resolvedLeft
+      rw [rightView] at resolvedRight
+      cases resolvedRight
+      have solved := capSafe.exact.1.1
+      simp only [Cap.apply] at solved
+      have solved' := solved.symm
+      cases origin : ledger.originOf varId with
+      | rigid =>
+          have fixed := capSafe.admissible.rigid origin
+          rw [solved'] at fixed
+          cases fixed
+      | renameOnly =>
+          rcases capSafe.admissible.renameOnly_image_variable origin solved' with
+            ⟨_, imageVariable, _⟩
+          cases imageVariable
+      | structuralFlexible => exact nonStructural origin
+  | slotPair resolvedLeft _ _ _ =>
+      rw [leftView] at resolvedLeft
+      cases resolvedLeft
+  | ordinary pairClass _ =>
+      rw [leftView, rightView] at pairClass
+      cases pairClass
+
+/-- The complete checking cut inherits the same non-structural matcher/`Any`
+separation: every coercive branch requires a slot-headed expectation. -/
+theorem DDAlignWithLedger.not_of_nonStructuralMatcher_any
+    {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
+    {S' : Subst} {varId : CapVar} {rawTarget expectedTarget : Ty}
+    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (rawView : S.apply raw = .matcher (.var varId) rawTarget)
+    (expectedView : S.apply expected = .matcher .any expectedTarget)
+    (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
+  cases aligned with
+  | productMatcherLift _ slotView _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | slotTupleLift _ _ slotView _ _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | matcherToSlot _ slotView _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | slotToSlot _ slotView _ _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | ordinary _ ordinaryAligned =>
+      exact ordinaryAligned.not_of_nonStructuralMatcher_any rawView
+        expectedView nonStructural
+
+/-- Symmetric orientation of
+`DDAlignWithLedger.not_of_nonStructuralMatcher_any`. -/
+theorem DDAlignWithLedger.not_of_any_nonStructuralMatcher
+    {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
+    {S' : Subst} {varId : CapVar} {rawTarget expectedTarget : Ty}
+    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (rawView : S.apply raw = .matcher .any rawTarget)
+    (expectedView : S.apply expected = .matcher (.var varId) expectedTarget)
+    (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
+  cases aligned with
+  | productMatcherLift _ slotView _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | slotTupleLift _ _ slotView _ _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | matcherToSlot _ slotView _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | slotToSlot _ slotView _ _ =>
+      rw [expectedView] at slotView
+      cases slotView
+  | ordinary _ ordinaryAligned =>
+      exact ordinaryAligned.not_of_any_nonStructuralMatcher rawView
+        expectedView nonStructural
+
+/-- Forgetting ledger admissibility recovers ordinary equality alignment. -/
+theorem DDAlignTypesWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
+    {S' : Subst}
+    (aligned : DDAlignTypesWithLedger ledger S left right S') :
+    DDAlignTypes S left right S' := by
+  cases aligned with
+  | matcherPair leftView rightView capDelta targetDelta =>
+      exact .matcherPair leftView rightView capDelta.exact targetDelta.exact
+  | slotPair leftView rightView capDelta targetDelta =>
+      exact .slotPair leftView rightView capDelta.exact targetDelta.exact
+  | ordinary ordinaryClass delta =>
+      exact .ordinary ordinaryClass delta.exact
+
+/-- Forgetting ledger admissibility recovers the original checking cut. -/
+theorem DDAlignWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
+    {S' : Subst} (aligned : DDAlignWithLedger ledger S raw expected S') :
+    DDAlign S raw expected S' := by
+  cases aligned with
+  | productMatcherLift productView slotView delta =>
+      exact .productMatcherLift productView slotView delta.exact
+  | slotTupleLift demand productView slotView capDelta targetDelta =>
+      exact .slotTupleLift demand productView slotView capDelta.exact
+        targetDelta.exact
+  | matcherToSlot matcherView slotView delta =>
+      exact .matcherToSlot matcherView slotView delta.exact
+  | slotToSlot sourceView requestedView capDelta targetDelta =>
+      exact .slotToSlot sourceView requestedView capDelta.exact
+        targetDelta.exact
+  | ordinary demand aligned =>
+      exact .ordinary demand aligned.erase
+
 /-- Any checking cut whose derivation is not ordinary alignment already has a
 slot-headed resolved expected view: the slot-demand principle at the level of
 the judgment. -/
@@ -2059,6 +2584,127 @@ inductive DDPatternCtorCap (signature : FrozenSig)
         (patternCtorAssignmentsSupply resultVariables.eraseDups q).2 =
         some (capability, q') →
       DDPatternCtorCap signature entry q S childCaps capability q' S₁
+
+/-! ### Ledger-aware pattern-layer alignments
+
+These five relations complete the additive ledger-aware alignment surface.
+Together with `DDAlignTypesWithLedger` and `DDAlignWithLedger`, every alignment
+cut used by the expression and pattern families can state admissibility
+without changing the existing DD derivations yet.
+-/
+
+/-- Origin-safe dual alignment: capability solve followed by target
+alignment. -/
+inductive DDAlignDualWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → Dual → Dual → Subst → Prop where
+  | mk {S : Subst} {left right : Dual} {capDelta : CapSubst} {S' : Subst} :
+      OriginSafeExactCapMGU ledger (left.cap.apply S.cap)
+        (right.cap.apply S.cap) capDelta →
+      DDAlignTypesWithLedger ledger
+        (Subst.seq ⟨capDelta, TySubst.id⟩ S) left.target right.target S' →
+      DDAlignDualWithLedger ledger S left right S'
+
+/-- Origin-safe pointwise dual-list alignment. -/
+inductive DDAlignDualListWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → List Dual → List Dual → Subst → Prop where
+  | nil {S : Subst} : DDAlignDualListWithLedger ledger S [] [] S
+  | cons {S : Subst} {left right : Dual} {lefts rights : List Dual}
+      {S₁ S' : Subst} :
+      DDAlignDualWithLedger ledger S left right S₁ →
+      DDAlignDualListWithLedger ledger S₁ lefts rights S' →
+      DDAlignDualListWithLedger ledger S (left :: lefts) (right :: rights) S'
+
+/-- Origin-safe pointwise alignment of pattern-result targets. -/
+inductive DDAlignTargetListWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → List Dual → List Ty → Subst → Prop where
+  | nil {S : Subst} : DDAlignTargetListWithLedger ledger S [] [] S
+  | cons {S : Subst} {dual : Dual} {expected : Ty} {duals : List Dual}
+      {expecteds : List Ty} {S₁ S' : Subst} :
+      DDAlignTypesWithLedger ledger S dual.target expected S₁ →
+      DDAlignTargetListWithLedger ledger S₁ duals expecteds S' →
+      DDAlignTargetListWithLedger ledger S (dual :: duals)
+        (expected :: expecteds) S'
+
+/-- Origin-safe entrywise alignment of or-alternative bindings. -/
+inductive DDAlignBindingsWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → MonoCtx → MonoCtx → Subst → Prop where
+  | nil {S : Subst} : DDAlignBindingsWithLedger ledger S [] [] S
+  | cons {S : Subst} {left right : String × Ty} {lefts rights : MonoCtx}
+      {S₁ S' : Subst} :
+      left.1 = right.1 →
+      DDAlignTypesWithLedger ledger S left.2 right.2 S₁ →
+      DDAlignBindingsWithLedger ledger S₁ lefts rights S' →
+      DDAlignBindingsWithLedger ledger S (left :: lefts) (right :: rights) S'
+
+/-- Origin-safe consumer-side pattern-constructor capability alignment. -/
+inductive DDAlignCtorCapsWithLedger (ledger : CapabilityOriginLedger) :
+    Subst → List Cap → List (Option Cap) → Subst → Prop where
+  | nil {S : Subst} : DDAlignCtorCapsWithLedger ledger S [] [] S
+  | skip {S : Subst} {child : Cap} {children : List Cap}
+      {demands : List (Option Cap)} {S' : Subst} :
+      DDAlignCtorCapsWithLedger ledger S children demands S' →
+      DDAlignCtorCapsWithLedger ledger S (child :: children) (none :: demands)
+        S'
+  | solve {S : Subst} {child expected : Cap} {children : List Cap}
+      {demands : List (Option Cap)} {capDelta : CapSubst} {S' : Subst} :
+      OriginSafeExactCapMGU ledger (child.apply S.cap)
+        (expected.apply S.cap) capDelta →
+      DDAlignCtorCapsWithLedger ledger
+        (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands S' →
+      DDAlignCtorCapsWithLedger ledger S (child :: children)
+        (some expected :: demands) S'
+
+/-- Erase origin evidence from one dual alignment. -/
+theorem DDAlignDualWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : Dual}
+    {S' : Subst} (aligned : DDAlignDualWithLedger ledger S left right S') :
+    DDAlignDual S left right S' := by
+  cases aligned with
+  | mk capDelta targets => exact .mk capDelta.exact targets.erase
+
+/-- Erase origin evidence from pointwise dual alignment. -/
+theorem DDAlignDualListWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : List Dual}
+    {S' : Subst}
+    (aligned : DDAlignDualListWithLedger ledger S left right S') :
+    DDAlignDualList S left right S' := by
+  induction aligned with
+  | nil => exact .nil
+  | cons head tail tailInduction =>
+      exact .cons head.erase tailInduction
+
+/-- Erase origin evidence from pattern-result target alignment. -/
+theorem DDAlignTargetListWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {duals : List Dual}
+    {expecteds : List Ty} {S' : Subst}
+    (aligned : DDAlignTargetListWithLedger ledger S duals expecteds S') :
+    DDAlignTargetList S duals expecteds S' := by
+  induction aligned with
+  | nil => exact .nil
+  | cons head tail tailInduction =>
+      exact .cons head.erase tailInduction
+
+/-- Erase origin evidence from or-alternative binding alignment. -/
+theorem DDAlignBindingsWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {left right : MonoCtx}
+    {S' : Subst}
+    (aligned : DDAlignBindingsWithLedger ledger S left right S') :
+    DDAlignBindings S left right S' := by
+  induction aligned with
+  | nil => exact .nil
+  | cons names head tail tailInduction =>
+      exact .cons names head.erase tailInduction
+
+/-- Erase origin evidence from pattern-constructor capability alignment. -/
+theorem DDAlignCtorCapsWithLedger.erase
+    {ledger : CapabilityOriginLedger} {S : Subst} {children : List Cap}
+    {demands : List (Option Cap)} {S' : Subst}
+    (aligned : DDAlignCtorCapsWithLedger ledger S children demands S') :
+    DDAlignCtorCaps S children demands S' := by
+  induction aligned with
+  | nil => exact .nil
+  | skip tail tailInduction => exact .skip tailInduction
+  | solve delta tail tailInduction => exact .solve delta.exact tailInduction
 
 /-! ## Primitive-pattern and data-pattern layers
 
@@ -2542,21 +3188,6 @@ inductive DDClauses (signature : FrozenSig) :
 
 end
 
-/-- The public source-typing judgment.  Start from the source-scope supply and
-the identity substitution, synthesize without an expected type, and publish
-the terminal substitution applied to the raw result.
-
-`RuntimeTyping` is the internal state-free certificate used by the dynamic
-metatheory.  It is a target of state erasure, not another definition of source
-acceptance.
--/
-def DDTyping (signature : FrozenSig) (context : Context)
-    (expression : Expr) (target : Ty) : Prop :=
-  ∃ raw q' S',
-    DDSynth signature (initialSupply signature context) Subst.id context
-      expression raw q' S' ∧
-    target = S'.apply raw
-
 /-! ## Prevailing replay
 
 Every judgment output substitution is the input substitution extended by a
@@ -2597,6 +3228,29 @@ theorem ReplayExtends.trans {S₁ S₂ S₃ : Subst}
   obtain ⟨secondDeltas, secondEq⟩ := second
   exact ⟨firstDeltas ++ secondDeltas, by
     rw [replayDeltas_append, ← firstEq, secondEq]⟩
+
+/-- Equality established by an earlier prevailing substitution remains true
+after replaying any later solve deltas. -/
+private theorem replayDeltas_apply_eq
+    {S : Subst} {left right : Ty}
+    (equal : S.apply left = S.apply right) (deltas : List Subst) :
+    (replayDeltas S deltas).apply left =
+      (replayDeltas S deltas).apply right := by
+  induction deltas generalizing S with
+  | nil => exact equal
+  | cons delta deltas ih =>
+      apply ih
+      rw [Subst.seq_apply, Subst.seq_apply, equal]
+
+/-- Equality established at an earlier prevailing cut is preserved by every
+later substitution related by replay. -/
+theorem ReplayExtends.apply_eq
+    {earlier later : Subst} {left right : Ty}
+    (extension : ReplayExtends earlier later)
+    (equal : earlier.apply left = earlier.apply right) :
+    later.apply left = later.apply right := by
+  obtain ⟨deltas, rfl⟩ := extension
+  exact replayDeltas_apply_eq equal deltas
 
 /-- Ordinary alignment extends the prevailing substitution by replay. -/
 theorem DDAlignTypes.replayExtends {S : Subst} {left right : Ty} {S' : Subst}
@@ -6174,19 +6828,5 @@ theorem initialSupply_context_boundedBy (signature : FrozenSig)
     refine List.mem_append.mpr (Or.inr ?_)
     refine List.mem_flatMap.mpr ⟨entry, mem, ?_⟩
     exact List.mem_append.mpr (Or.inr (List.mem_filter.mp varMem).1)
-
-/-- Every published demand-directed type is bounded by the terminal supply
-of its derivation, which extends the initial supply. -/
-theorem DDTyping.published_boundedBy {signature : FrozenSig}
-    {context : Context} {expression : Expr} {target : Ty}
-    (typed : DDTyping signature context expression target)
-    (closed : signature.SchemesClosed) :
-    ∃ q', SupplyExtends (Inference.initialSupply signature context) q' ∧
-      Ty.BoundedBy q' target := by
-  obtain ⟨raw, q', S', derived, htarget⟩ := typed
-  obtain ⟨S'b, rawB⟩ := derived.boundedBy closed
-    (Subst.boundedBy_id _)
-    (initialSupply_context_boundedBy signature context)
-  exact ⟨q', derived.supplyExtends, htarget ▸ S'b.apply rawB⟩
 
 end TypePM

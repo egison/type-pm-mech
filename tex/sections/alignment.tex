@@ -1,132 +1,126 @@
 \section{一回の checking cut}
 
-\subsection{制約を解く関係}
+\subsection{二つの alignment 判断}
 
-$\DDAlignTypes(S,\tau,\rho,S')$ は coercion を伴わない equality alignment，
-$\DDAlign(S,\tau,\rho,S')$ は checking cut 全体である．どちらも入力 $S$ を
-破壊せず，constraint を解く局所 delta を $S$ の後へ合成して $S'$ を得る．
+coercion を伴わない equality alignment と checking cut 全体を，それぞれ
+\[
+S;\Omega\vdash\tau\doteq\rho\dashv S',
+\qquad
+S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'
+\]
+と書く．どちらも constraint を解く局所 delta を入力 $S$ の後へ時系列順に合成する．ledger
+$\Omega$ 自体は solve では変化しないが，delta が $\Omega$ に対して admissible であることを
+要求する．
 
-$\ExactCapMGU$ と $\ExactMGU$ は，それぞれ capability と paired type constraint の
-proof-carrying MGU である．MGU の soundness と因子化に加え，constraint 外で恒等，
-range が constraint 内，solved form が冪等であることを要求する．この exactness により，
-unification と無関係な metavariable を同時に構造化する guess を除く．
-
-$\OneWayDelta(\kappa_p,\tau_p,\kappa_c,\tau_c,D)$ は producer を固定したまま
-consumer capability と target を解く exact delta である．consumer $\Any$ は wildcard，
-consumer variable は同じ raw occurrence 間で一貫した値を要求する．producer 側の
-capability を consumer demand に合わせて強化してはならない．
+$\ExactCapMGU_\Omega$ と $\ExactMGU_\Omega$ は，capability と paired type constraint の
+proof-carrying MGU に origin admissibility を加えたものである．MGU の soundness と因子化に加え，
+constraint 外で恒等，range が constraint 内，solved form が冪等であることを要求する．さらに
+$\mathsf{rigid}$ key は固定し，$\mathsf{renameOnly}$ key は非 structural variable へしか写さない．
+$\OneWayDelta_\Omega$ は producer を固定したまま consumer capability と target を解く exact
+delta であり，同じ admissibility 条件を満たす．
 
 \subsection{通常の等価整合}
 
-matcher 同士または slot 同士では capability を先に解き，その delta を target へ作用させて
-から target constraint を解く．それ以外の型は paired type 全体を一度に解く．
+matcher 同士または slot 同士では capability を先に解き，その delta を target へ作用させてから
+target constraint を解く．それ以外の型は paired type 全体を一度に解く．
 \begin{mathpar}
 \inferrule{
   S\tau=\Matcher{\kappa_1}{\tau_1}\quad
   S\rho=\Matcher{\kappa_2}{\tau_2} \\
-  \ExactCapMGU(\kappa_1,\kappa_2,C) \\
-  \ExactMGU(C\tau_1,C\tau_2,T)
+  \ExactCapMGU_\Omega(\kappa_1,\kappa_2,C) \\
+  \ExactMGU_\Omega(C\tau_1,C\tau_2,T)
 }{
-  \DDAlignTypes(S,\tau,\rho,
-    \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S)))
+  S;\Omega\vdash\tau\doteq\rho\dashv
+  \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S))
 }\rn{ALIGN-MATCHER}
 
 \inferrule{
   S\tau=\MatcherSlot{\kappa_1}{\tau_1}\quad
   S\rho=\MatcherSlot{\kappa_2}{\tau_2} \\
-  \ExactCapMGU(\kappa_1,\kappa_2,C) \\
-  \ExactMGU(C\tau_1,C\tau_2,T)
+  \ExactCapMGU_\Omega(\kappa_1,\kappa_2,C) \\
+  \ExactMGU_\Omega(C\tau_1,C\tau_2,T)
 }{
-  \DDAlignTypes(S,\tau,\rho,
-    \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S)))
+  S;\Omega\vdash\tau\doteq\rho\dashv
+  \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S))
 }\rn{ALIGN-SLOT}
 
 \inferrule{
   \mathsf{alignPairClass}(S\tau,S\rho)=\mathsf{ordinary} \\
-  \ExactMGU(S\tau,S\rho,D)
+  \ExactMGU_\Omega(S\tau,S\rho,D)
 }{
-  \DDAlignTypes(S,\tau,\rho,\mathsf{seq}(D,S))
+  S;\Omega\vdash\tau\doteq\rho\dashv\mathsf{seq}(D,S)
 }\rn{ALIGN-ORDINARY-TYPES}
 \end{mathpar}
 
 \subsection{Demand classifier と coercion の選択}
 
-$\dclass(S\tau,S\rho)$ は resolved type だけから次の五つの class を決める．
-product of matchers，product of slots の順に調べるため，空 product は
-$\mathsf{productMatcherLift}$ が優先される．
-\[
-\mathsf{productMatcherLift},\quad
-\mathsf{slotTupleLift},\quad
-\mathsf{matcherToSlot},\quad
-\mathsf{slotToSlot},\quad
-\mathsf{ordinary}.
-\]
+$\dclass(S\tau,S\rho)$ は resolved type だけから
+$\mathsf{productMatcherLift}$，$\mathsf{slotTupleLift}$，
+$\mathsf{matcherToSlot}$，$\mathsf{slotToSlot}$，$\mathsf{ordinary}$ のいずれかを決める．
+product of matchers，product of slots の順に調べるため，空 product は前者が優先される．
 
 \begin{mathpar}
 \inferrule{
-  \mathsf{productMatcherDuals?}(S\tau)=
-    \mathsf{some}\;\overline\eta \\
+  \mathsf{productMatcherDuals?}(S\tau)=\mathsf{some}\;\overline\eta \\
   S\rho=\MatcherSlot{\kappa}{\upsilon} \\
-  \OneWayDelta((\overline{\eta.\kappa}),
+  \OneWayDelta_\Omega((\overline{\eta.\kappa}),
     (\overline{\eta.\tau}),\kappa,\upsilon,D)
 }{
-  \DDAlign(S,\tau,\rho,\mathsf{seq}(D,S))
+  S;\Omega\vdash\tau\preccurlyeq\rho\dashv\mathsf{seq}(D,S)
 }\rn{ALIGN-PRODUCT-MATCHER}
 
 \inferrule{
   \dclass(S\tau,S\rho)=\mathsf{slotTupleLift} \\
-  \mathsf{productSlotDuals?}(S\tau)=
-    \mathsf{some}\;\overline\eta \\
+  \mathsf{productSlotDuals?}(S\tau)=\mathsf{some}\;\overline\eta \\
   S\rho=\MatcherSlot{\kappa}{\upsilon} \\
-  \ExactCapMGU((\overline{\eta.\kappa}),\kappa,C) \\
-  \ExactMGU(C(\overline{\eta.\tau}),C\upsilon,T)
+  \ExactCapMGU_\Omega((\overline{\eta.\kappa}),\kappa,C) \\
+  \ExactMGU_\Omega(C(\overline{\eta.\tau}),C\upsilon,T)
 }{
-  \DDAlign(S,\tau,\rho,
-    \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S)))
+  S;\Omega\vdash\tau\preccurlyeq\rho\dashv
+  \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S))
 }\rn{ALIGN-SLOT-TUPLE}
-\end{mathpar}
 
-\begin{mathpar}
 \inferrule{
   S\tau=\Matcher{\kappa_p}{\tau_p}\quad
   S\rho=\MatcherSlot{\kappa_c}{\tau_c} \\
-  \OneWayDelta(\kappa_p,\tau_p,\kappa_c,\tau_c,D)
+  \OneWayDelta_\Omega(\kappa_p,\tau_p,\kappa_c,\tau_c,D)
 }{
-  \DDAlign(S,\tau,\rho,\mathsf{seq}(D,S))
+  S;\Omega\vdash\tau\preccurlyeq\rho\dashv\mathsf{seq}(D,S)
 }\rn{ALIGN-MATCHER-SLOT}
 
 \inferrule{
   S\tau=\MatcherSlot{\kappa_1}{\tau_1}\quad
   S\rho=\MatcherSlot{\kappa_2}{\tau_2} \\
-  \ExactCapMGU(\kappa_1,\kappa_2,C)\quad
-  \ExactMGU(C\tau_1,C\tau_2,T)
+  \ExactCapMGU_\Omega(\kappa_1,\kappa_2,C)\quad
+  \ExactMGU_\Omega(C\tau_1,C\tau_2,T)
 }{
-  \DDAlign(S,\tau,\rho,
-    \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S)))
+  S;\Omega\vdash\tau\preccurlyeq\rho\dashv
+  \mathsf{seq}(T,\mathsf{seq}((C,\mathsf{id}),S))
 }\rn{ALIGN-SLOT-SLOT}
 
 \inferrule{
   \dclass(S\tau,S\rho)=\mathsf{ordinary} \\
-  \DDAlignTypes(S,\tau,\rho,S')
+  S;\Omega\vdash\tau\doteq\rho\dashv S'
 }{
-  \DDAlign(S,\tau,\rho,S')
+  S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'
 }\rn{ALIGN-ORDINARY}
 \end{mathpar}
 
-product-of-matchers branch は，whole-product matcher の生成と matcher-to-slot 消費という
-二 primitive step を一つの checking cut で行う．別の構文位置でもう一度 coercion する
-規則ではない．non-ordinary class はすべて resolved expected head が slot の場合だけである．
-matcher-headed expected type は必ず ordinary alignment へ退化する．
+product-of-matchers branch は whole-product matcher の生成と matcher-to-slot 消費を一つの
+checking cut で行う．non-ordinary class は resolved expected head が slot の場合だけであり，
+matcher-headed expected type は ordinary alignment へ退化する．
 
 \subsection{唯一の checking 規則}
 
-式の checking 規則は次の一つだけである．expected type は synthesis の入力にならず，
-synthesis が返したその cut の $S_1$ でだけ alignment を選ぶ．
+expected type は synthesis の入力にならず，synthesis が返した cut の $S_1,\Omega_1$ でだけ
+alignment を選ぶ．
 \begin{mathpar}
 \inferrule{
-  q;S;\Gamma\vdash e\Rightarrow\tau\dashv q_1;S_1 \\
-  \DDAlign(S_1,\tau,\rho,S')
+  q;S;\Omega;\Gamma\vdash e\Rightarrow\tau
+    \dashv q_1;S_1;\Omega_1 \\
+  S_1;\Omega_1\vdash\tau\preccurlyeq\rho\dashv S'
 }{
-  q;S;\Gamma\vdash e\Leftarrow\rho\dashv q_1;S'
+  q;S;\Omega;\Gamma\vdash e\Leftarrow\rho
+    \dashv q_1;S';\Omega_1
 }\rn{DD-CHECK}
 \end{mathpar}

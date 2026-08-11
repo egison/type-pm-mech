@@ -76,7 +76,10 @@ freeze され，canonical signature の一部になる．
 q=(q_\kappa,q_\tau)
   & \text{next capability／target variable numbers},\\
 S=(C,T)
-  & \text{prevailing paired substitution}.
+  & \text{prevailing paired substitution},\\
+\Omega:\chi\rightharpoonup
+  \{\mathsf{rigid},\mathsf{renameOnly},\mathsf{structuralFlexible}\}
+  & \text{capability-origin ledger}.
 \end{array}
 \]
 \newpage
@@ -107,35 +110,45 @@ substitution delta は $\mathsf{seq}$ で時系列順に prevailing substitution
 後段の capability action は前段の target range 内部にも作用するため，二 component を
 独立に合成しない．
 
+$\Omega$ は capability variable がどこで生成され，現在どの solve を許すかを記録する．未登録の
+key は $\mathsf{rigid}$ である．scheme／dual instance の binder image は
+$\mathsf{renameOnly}$，constructor／primitive instance と fresh consumer は
+$\mathsf{structuralFlexible}$ になる．export は外へ残る像の structural leaf だけを
+$\mathsf{renameOnly}$ へ移す．matcher finalization は最終 capability に現れる全 DD-owned
+explicit ledger key を調べるため，matcher 開始前の owned placeholder も freeze の対象となる．
+
 \subsection{判断の一覧}
 
 \begin{center}
 \small
-\begin{tabular}{>{$}l<{$} l}
+\begin{tabular}{>{$}l<{$} p{0.38\linewidth}}
 \toprule
-\DDSynth_{\Sighat}(q,S,\Gamma,e,\tau,q',S')
+q;S;\Omega;\Gamma\vdash e\Rightarrow\tau\dashv q';S';\Omega'
   & expression synthesis \\
-\DDCheck_{\Sighat}(q,S,\Gamma,e,\rho,q',S')
+q;S;\Omega;\Gamma\vdash e\Leftarrow\rho\dashv q';S';\Omega'
   & expression checking \\
-\DDSynths_{\Sighat},\;\DDChecks_{\Sighat}
+q;S;\Omega;\Gamma\vdash\overline e\Rightarrow\overline\tau
+  \dashv q';S';\Omega'
   & expression-list traversal \\
-\DDPattern_{\Sighat}(q,S,\Gamma,\Phi,\Delta,p,
-  \eta,\Delta',q',S')
+q;S;\Omega;\Gamma;\Phi;\Delta\vdash p\Rightarrow
+  \eta;\Delta'\dashv q';S';\Omega'
   & user-pattern synthesis \\
-\DDPPat_{\Sighat}(q,S,pp,\tau,\overline\eta,
-  \Delta,q',S')
+q;S;\Omega\vdash pp\Leftarrow\tau\Rightarrow
+  \overline\eta;\Delta\dashv q';S';\Omega'
   & primitive-pattern checking \\
-\DDDPat_{\Sighat}(q,S,dp,\tau,\Delta,q',S')
+q;S;\Omega\vdash dp\Leftarrow\tau\Rightarrow
+  \Delta\dashv q';S';\Omega'
   & data-pattern checking \\
-\DDClause_{\Sighat}(q,S,\Gamma,cl,\tau,
-  \overline\eta,q',S')
+q;S;\Omega;\Gamma\vdash cl\Leftarrow\tau\Rightarrow
+  \overline\eta\dashv q';S';\Omega'
   & matcher-clause inference \\
-\DDArms_{\Sighat},\;\DDClauses_{\Sighat}
+q;S;\Omega;\cdots\vdash\overline a\ \text{or}\ \overline{cl}
+  \dashv q';S';\Omega'
   & arm／clause-list traversal \\
 \bottomrule
 \end{tabular}
 \end{center}
-list judgment は空列で $q,S$ をそのまま返す．cons では head の出力を tail の入力にし，
+list judgment は空列で $q,S,\Omega$ をそのまま返す．cons では head の出力を tail の入力にし，
 binding context も左から右へ延長する．lookup または規則中の部分関数が失敗した場合，
 その規則は適用できない．
 
@@ -143,9 +156,10 @@ binding context も左から右へ延長する．lookup または規則中の部
 
 $\Inst_q$ と $\InstDual_q$ は supply-indexed に量化 binder を fresh variable へ置き換え，
 次 supply も返す．expression context と pattern-function signature の量化 capability binder は
-capability variable へだけ instantiate される．利用側の demand を根拠に producer capability を
-constructor や product へ変えることはできない．一方，data／pattern constructor と primitive の
-scheme は通常の binder-supported structural instance を許す．
+capability variable へだけ instantiate され，その像を $\Omega$ に $\mathsf{renameOnly}$ として
+登録する．一方，data／pattern constructor と primitive の scheme binder は
+$\mathsf{structuralFlexible}$ として登録し，局所的な structural instance を許す．利用側の demand
+だけを根拠に producer capability を constructor や product へ変えることはできない．
 
 $\Gen$ は signature と context に自由な variable を除いて量化する．
 \[
@@ -155,3 +169,9 @@ $\Gen$ は signature と context に自由な variable を除いて量化する�
 \]
 scheme binder は局所的であり，後段の substitution が導入した同番号の自由 variable を
 捕捉しない．$\mathtt{let}$ は value の synthesis 直後の $S\Gamma,S\tau$ を一般化する．
+さらに body の終端 substitution $S'$ に対して
+\[
+S'\sigma=\Gen(\Sighat,S'\Gamma,S'\tau)
+\]
+が成り立つことを Origin certificate に要求する．これは generalization 後の binder を後続 solve
+が遡及的に構造化しないための terminal stability 条件である．

@@ -29,35 +29,56 @@ matcher literal の各 clause は primitive pattern，next-matcher expression，
 
 ## 2. 唯一の source typing: DDTyping
 
-[`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) が source typing を定義する．式層は
-次の三 family からなる．
+[`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) が raw な DD family を，
+[`TypePM/DemandTypingOrigin.lean`](../TypePM/DemandTypingOrigin.lean) が各 raw derivation と同じ形の
+intrinsic Origin certificateを定義する．式層は次の二判断とalignmentからなる．
 
 ```text
-DDSynth Σ q S Γ e τraw q' S'
-DDCheck Σ q S Γ e τexpected q' S'
-DDAlign q S τraw τexpected q' S'
+q; S; Ω; Γ ⊢ e ⇒ τraw      ⊣ q'; S'; Ω'    synthesis
+q; S; Ω; Γ ⊢ e ⇐ τexpected ⊣ q'; S'; Ω'    checking
+S; Ω ⊢ τraw ≼ τexpected    ⊣ S'             alignment
 ```
 
-`DDTyping Σ Γ e τ` は `initialSupply Σ Γ` と `Subst.id` から `DDSynth` を開始し，終端
-substitution を raw result に適用した型だけを公開する closed wrapper である．
+`DDTyping Σ Γ e τ` は `initialSupply Σ Γ`，`Subst.id`，空ledgerから上のsynthesisを開始し，
+終端substitutionをraw resultへ適用した型だけを公開するwrapperである．Lean上ではraw derivation
+とOrigin certificateを別のinductive familyにすることで，既存のtyping構造を複製せずにledgerの
+履歴をintrinsicに対応付けている．source acceptance はこの二つを常に組にするため，Origin情報を
+忘れた公開wrapperは持たない．
 
-### 2.1 fresh supply と prevailing substitution
+### 2.1 三つの状態：fresh supply，substitution，origin ledger
 
 `q = (nextCap, nextTy)` は二 sort の fresh counter である．capability metavariable を一つ
 生成すれば `nextCap` だけ，target metavariableを一つ生成すれば `nextTy` だけ進む．`S` は
-その構文位置までに確定した paired substitution である．子 judgment の出力 `q'; S'` は
-左から右に次の子へ渡される．
+その構文位置までに確定した paired substitution である．`Ω` はcapability variableの由来と，
+そのcutで許されるsolveを記録するledgerである．子judgmentの出力 `q'; S'; Ω'` は左から右に
+次の子へ渡される．未登録のkeyはrigidとして扱う．
 
-lambda は fresh domain と codomain を生成する．application は function synthesis，function
-type との ordinary alignment，argument checking の順で state を渡す．`let` は value の
-終端型を prevailing context に対して一般化し，body lookup ごとに fresh instance を作る．
+| origin | 意味 | 許される像 |
+|---|---|---|
+| `rigid` | signature／入力context由来 | 恒等のみ |
+| `renameOnly` | 外部へ流れるproducer instance | 非structural variableへのrename |
+| `structuralFlexible` | constructor内部またはconsumer demandの局所変数 | cut内のstructural solve |
+
+expression schemeとpattern-function dual schemeのbinder imageはinstance生成時から
+`renameOnly` になる．constructor／primitive instance，fresh pattern hole，`fixMatcher`
+placeholderなどDD内部の局所変数は `structuralFlexible` として生成される．constructor exportは
+公開payloadに残る像のstructural leafだけを選択的にfreezeする．matcher finalizationは最終
+capabilityに現れる全DD-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
+生成された `fixMatcher` placeholderのowned leafも対象になる．
+
+lambda は fresh domain を生成する．application は fresh domain／codomain pair を用意し，function
+synthesis，function typeとのordinary alignment，argument checkingの順でstateを渡す．`let` はvalueの
+終端型を prevailing context に対して一般化し，body lookup ごとに fresh instance を作る．さらに
+Origin certificateは，bodyの終端substitutionを適用しても同じschemeが得られること，すなわち
+`S' σ = Gen(Σ, S' Γ, S' τ1)` を要求する．これにより一般化後のproducer binderを後続solveで
+遡及的に構造化できない．
 
 ### 2.2 synthesis-first checking
 
 `DDCheck` の規則は一つだけである．
 
 1. expected type を使わず `DDSynth` する．
-2. synthesis の出力 cut で `DDAlign` を一回行う．
+2. synthesis の出力 cut でalignmentを一回行う．
 
 このため matcher producer と slot demand の対応は，特定の source constructor ではなく
 expected type が現れる任意の checking cut で起こる．関数引数，`matchAll` の matcher 引数，
@@ -87,7 +108,9 @@ solve が失敗すれば judgment は成立しない．
 - solved form，すなわち冪等であること
 
 `OneWayDelta` は producer capability を保持し，consumer slot 側だけを producer に合わせる
-exact solution である．
+exact solution である．ordinary equalityとone-way solveはいずれも，そのcutの `Ω` に対して
+admissibleでなければならない．特に `renameOnly` keyはvariableへのrenameしか許さず，
+`structuralFlexible` keyだけがconstructor，product，`Any` などへ構造化できる．
 
 ### 2.4 pattern，arm，clause
 
@@ -100,14 +123,18 @@ pattern constructor は target instance と capability projection を同じ sign
 literal は全 clause の共有 target を生成し，shape，catch-all order，data-arm exhaustiveness，
 primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を finalization で要求する．
 
-### 2.5 DDTyping の証明済み性質
+### 2.5 DDTyping と ledger の証明済み性質
 
-- `DDAlign` の非 ordinary branch なら expected type は slot-headed である．
+- alignmentの非 ordinary branchならexpected typeはslot-headedである．
 - matcher-headed expected type の derivation は ordinary equality に限られる．
 - 各 family の出力 supply は入力 supply を拡張する．
 - 出力 substitution は入力 substitution と solve delta の chronological replay に分解できる．
 - 公開型，dual，bindings，hole ledger の flexible variable は終端 supply で有界である．
 - exact MGU は constraint 外の fresh variable を slot や matcher に構造化しない．
+- 全expression／pattern／arm／clause familyにraw derivationと同型のOrigin certificateがある．
+- ledger transitionは入力ledgerを保ち，fresh supplyの範囲内だけを追加・freezeする．
+- scheme／dual instance，constructor／fresh allocation，selective export，matcher finalizationの
+  origin policyがcertificateのconstructorに固定されている．
 
 ## 3. executable inference
 
@@ -116,9 +143,11 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
 capability-origin ledger を持つ．`infer` は `inferRaw` の結果を有限の `wBridgeCheck` で検査し，
 失敗時は `none` を返す．
 
-origin ledger の各 capability variable は `rigid`，`renameOnly`，`structuralFlexible` のいずれか
-である．consumer demand のために生成した variable は structural solve を許せるが，value-flow
-instance や export 後の producer image は variable-only に freeze される．
+executable traversalのorigin ledgerとDD側のintrinsic Origin certificateは，同じ三originと
+freeze policyを別々の役割で記録する．前者はsolverを実行時にfail closedにする状態，後者は
+関係的なDD derivationで各solveが許可されたことを証明する履歴である．consumer demandのために
+生成したvariableはstructural solveを許せるが，value-flow instanceやexport後のproducer imageは
+variable-onlyにfreezeされる．
 
 推論 proof modules の役割は次の通りである．
 
@@ -171,25 +200,28 @@ specification として使えないことだけを示す．`DDTyping` の princi
 
 ## 5. capability freeze と未完成の state erasure
 
-現行 DD family は supply と substitution を持つが origin ledger を持たない．そのため，通常
-equality solve が value-flow producer 由来の fresh capability を構造化する derivation を DD 側
-だけでは排除できない．
+capability-origin ledgerは現行DD familyへ統合済みである．raw derivationと同じ構造のOrigin
+certificateが，instance，fresh allocation，selective export，matcher finalization，solve
+admissibility，`let` terminal generalization stabilityを追跡する．public `DDTyping` は空ledgerから
+このcertificateを構成できるderivationだけを受理する．
 
-`DemandTypingRegression` の二例がこの不足を固定する．
+`DemandTypingRegression` の二例は，Origin情報を追跡しない局所導出で起きる境界を固定する．
 
-- `capFreezeProgram`: context の量化 matcher scheme の fresh capability instance が後続 solve
-  で `Any` に構造化される．
-- `letCapFreezeProgram`: lambda domain の capability meta が `let` generalization で束縛され，
-  body の二つの lookup が別々の構造へ instance 化される．
+- `capFreezeProgram`: context の量化 matcher scheme の fresh capability instance を後続solveが
+  `Any`へ構造化するraw derivation．
+- `letCapFreezeProgram`: lambda domain のcapability metaを `let` generalizationで束縛し，bodyの
+  lookup後に別の構造へ強化するraw derivation．
 
-どちらも現在の raw DD rules では閉じるが，value-flow variable-only 条件を満たす
-`RuntimeTyping` certificate は作れない．従って無条件の `DDTyping → RuntimeTyping` は現定義の
-ままでは偽である．
+これらは現行public `DDTyping` の正例ではない．Origin-awareな局所solveが該当deltaを拒否することは
+証明済みである．一方，プログラム全体について `¬ DDTyping capFreezeProgram` と
+`¬ DDTyping letCapFreezeProgram` を閉じるnegative regressionはまだ未完成である．or-pattern，
+delegating matcher，let-polymorphic producerのpositive Origin certificateは構成済みである．
 
-解決には，producer capability の生成，scheme instance，`let` generalization，export freeze
-を追跡する provenance を DD family 自体へ統合する必要がある．その後，この provenance を
-帰納的に消去して `RuntimeTyping` を構成する．`RuntimeTyping` derivation の存在を DD の premise
-にする定義は循環するため採らない．
+state erasureの本質的な残課題はledgerの追加ではなく，Origin derivationの各constructorから
+`RuntimeTyping` constructorへ情報を射影する相互帰納証明である．この射影ではsupply，prevailing
+substitution，ledgerを消去しつつ，scheme instanceのvariable-only条件，matcher final capability，
+terminal hole capability，`let` generalizationを回収する．`RuntimeTyping` derivationの存在を
+DDのpremiseにする定義は循環するため採らない．
 
 ## 6. dynamics と安全性
 
@@ -218,7 +250,7 @@ global 条件は `FrozenSigWF` だけである．`SignatureChecker` の `frozenS
 
 ```text
 DDTyping + FrozenSigWF
-  → RuntimeTyping          state erasure（未完成）
+  → RuntimeTyping          Origin derivationの射影（未完成）
   → runtime safety         証明済み
 ```
 
@@ -234,7 +266,7 @@ DDTyping + FrozenSigWF
 
 ## 8. 回帰の読み方
 
-- `DemandTypingRegression`: DD の正負例，state replay，supply boundedness，freeze 境界．
+- `DemandTypingRegression`: raw DD の旧freeze反例，局所Origin拒否，state replay，supply boundedness．
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
@@ -250,6 +282,16 @@ DDTyping + FrozenSigWF
 
 正例と負例は設計境界を対で固定する．変更時は受理結果だけでなく，DD derivation，raw trace，
 runtime certificate，実行結果のどの層を検査する回帰かを確認する．
+
+DD関連moduleの役割は次のとおりである．
+
+| module | 役割 |
+|---|---|
+| `DemandTyping` | raw DD family，ledger-aware alignment，pure ledger transition |
+| `DemandTypingOrigin` | 全raw derivationに対応するintrinsic Origin certificateとpublic `DDTyping` wrapper |
+| `DemandTypingLedgerMetatheory` | ledger extension，freeze，supply-scoped transition補題 |
+| `DemandTypingOriginMetatheory` | 全Origin familyのledger evolution定理 |
+| `DemandTypingRegression` | raw境界，Origin-aware局所solve，DD回帰 |
 
 ## 9. 検証条件
 

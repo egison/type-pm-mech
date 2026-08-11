@@ -126,6 +126,24 @@ theorem originOf_setOrigins_of_mem
             originOf_setOrigin_of_ne _ head varId same]
           exact inductionHypothesis ledger membership
 
+/-- Batch override lookup in one equation: members receive the new origin,
+while every variable outside the batch keeps its previous origin. -/
+theorem originOf_setOrigins_eq
+    (ledger : CapabilityOriginLedger) (varIds : List CapVar)
+    (varId : CapVar) (origin : CapabilityOrigin) :
+    (ledger.setOrigins varIds origin).originOf varId =
+      if varId ∈ varIds then origin else ledger.originOf varId := by
+  induction varIds generalizing ledger with
+  | nil => rfl
+  | cons head rest inductionHypothesis =>
+      rw [setOrigins]
+      by_cases same : head = varId
+      · subst head
+        simp
+      · rw [originOf_setOrigin_of_ne _ head varId same,
+          inductionHypothesis]
+        simp [Ne.symm same]
+
 @[simp]
 theorem originOf_markStructuralFlexible_same
     (ledger : CapabilityOriginLedger) (varId : CapVar) :
@@ -321,6 +339,22 @@ theorem renameOnly
       post varId = .var image ∧
         ledger.originOf image ≠ .structuralFlexible := by
   simpa [AdmissibleCapPost, origin] using admissible varId
+
+/-- Eliminate a known image of a rename-only variable.  The image must be a
+capability variable whose ledger origin is itself non-structural; in
+particular it cannot be `Any`, a skolem, a constructor, or a product. -/
+theorem renameOnly_image_variable
+    {ledger : CapabilityOriginLedger} {post : CapSubst} {varId : CapVar}
+    {image : Cap}
+    (admissible : AdmissibleCapPost ledger post)
+    (origin : ledger.originOf varId = .renameOnly)
+    (imageEquation : post varId = image) :
+    ∃ imageVar,
+      image = .var imageVar ∧
+        ledger.originOf imageVar ≠ .structuralFlexible := by
+  rcases admissible.renameOnly origin with
+    ⟨imageVar, variableEquation, imageSafe⟩
+  exact ⟨imageVar, imageEquation.symm.trans variableEquation, imageSafe⟩
 
 /-- A rename-only variable always has a variable-valued image. -/
 theorem renameOnly_variable
