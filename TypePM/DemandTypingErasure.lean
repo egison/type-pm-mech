@@ -9,6 +9,7 @@ import TypePM.DemandTypingRuntimeErasureExpr
 import TypePM.DemandTypingRuntimeErasurePatterns
 import TypePM.DemandTypingRuntimeErasurePurePatterns
 import TypePM.DemandTypingRuntimeErasureUserPatterns
+import TypePM.DemandTypingRuntimeErasureMatchAll
 
 /-!
 # Demand-typing state erasure
@@ -34,6 +35,8 @@ This is the public facade for the state-erasure development:
   for the data- and primitive-pattern families that contain no expressions.
 - `DemandTypingRuntimeErasureUserPatterns` extends the invariant through the
   expression-independent user-pattern fragment and matcher arms.
+- `DemandTypingRuntimeErasureMatchAll` composes target, user-pattern,
+  matcher, and body invariants at the common final cut.
 
 The remaining roadmap theorem closes expression-side `RuntimeErasureUnder`
 mutually with user patterns, arms, and clauses.  Its variable and `let`

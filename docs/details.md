@@ -237,21 +237,27 @@ literal，`something`，lambda，tuple，fix，application，`fixMatcher`，cons
 expression list，checking cut／listへ拡張済みであり，data／primitive patternの4 familyは無前提の
 相互closureまで完成している．user patternのexpression-independentなleaf／tuple／listとmatcher armの
 再帰合成も同じlater-cut invariantを持ち，value patternはchild expressionのlater-cut erasureから
-構造的に合成できる．
+構造的に合成できる．and／or，pattern-function application，pattern constructorにもchild invariant
+からの構造補題があり，`matchAll`もtarget／pattern／matcher／bodyの4 child invariantとfactorizationを
+共通の最終cutへ合成する構造補題を持つ．pattern constructorでは後続cutの`CapCompatible`安定性が
+明示的な残余条件として分離されている．
 
 本質的な残課題は，完成したstate factorizationを使い，Origin derivationの各constructorから
 `RuntimeTyping` constructorへ情報を射影する相互帰納証明を完成することである．この射影では
 supply，prevailing substitution，ledgerを
 消去しつつ，scheme instanceのvariable-only条件，matcher final capability，terminal hole capability，
 `let` generalizationを回収する．variable leafではactual marked ledgerからfresh binder imageの
-variable-only性を回収できるが，capture-avoidingな`Scheme.applySubst`の合成則は
+variable-only性を回収できるが，binder-maskingによる`Scheme.applySubst`の合成則は
 `AdmissiblePostBetween`だけからは従わない．context／schemeと前後のsubstitutionのboundedness，
 solved form，actual marked ledgerへのadmissibilityをすべて満たしながら合成則が壊れるbinder-capture
 反例もLeanで固定した．そのため，局所的なscheme compositionを明示する健全なtransport補題までを
 切り出した．必要十分なrange hygieneの3経路を表す`Scheme.NoCapture`から逐次合成則を証明済みで
 あるが，lookup時点がno-captureでも後続のadmissible suffixがcaptureを起こしてvalue-flow instanceを
 失わせる第二反例がある．したがって，context中のschemeごとのavoidanceを後続solveで保存する状態が
-必要であり，過去のleaf-local premiseだけでは足りない．clauseには
+必要であり，過去のleaf-local premiseだけでは足りない．
+`Context.NoCapture`，context substitutionの逐次合成，binder-local instance composition，canonical
+value-flow transportは証明済みであり，variable transportの残余はlookup前後の2つの`NoCapture`へ
+簡約されている．clauseには
 matcher finalizationが選ぶcapability／shape evidence，matcher producerにはscoped rename-only postを
 total renamingへ拡張する補題が必要である．cut以上をidentityでmaskするtotalizationとbounded object上の
 agreementは証明済みだが，producer外のstructural leafには適用できない．`RuntimeTyping` derivationの

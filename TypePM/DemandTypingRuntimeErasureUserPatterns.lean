@@ -52,6 +52,51 @@ theorem DDAlignBindingsWithLedger.output_equal
       rw [entryEquality]
       congr 1
 
+theorem ReplayExtends.applyDual_eq
+    {earlier later : Subst} {left right : Dual}
+    (extension : ReplayExtends earlier later)
+    (equality : left.applySubst earlier = right.applySubst earlier) :
+    left.applySubst later = right.applySubst later := by
+  have capAtEarlier := congrArg Dual.cap equality
+  have targetAtEarlier := congrArg Dual.target equality
+  simp only [Dual.applySubst, Dual.apply] at capAtEarlier targetAtEarlier
+  have capAtLaterTy := extension.apply_eq
+    (left := Ty.matcher left.cap .unit) (right := Ty.matcher right.cap .unit)
+    (by simpa only [Subst.apply_matcher, Subst.apply_unit] using
+      congrArg (fun capability => Ty.matcher capability .unit) capAtEarlier)
+  have capAtLater : left.cap.apply later.cap = right.cap.apply later.cap :=
+    (Ty.matcher.inj capAtLaterTy).1
+  have targetAtLater := extension.apply_eq targetAtEarlier
+  cases left
+  cases right
+  simp only [Dual.applySubst, Dual.apply] at capAtLater targetAtLater ⊢
+  rw [capAtLater, targetAtLater]
+
+theorem DDAlignDualListWithLedger.output_equal
+    {ledger : CapabilityOriginLedger} {S S' : Subst}
+    {left right : List Dual}
+    (aligned : DDAlignDualListWithLedger ledger S left right S') :
+    left.map (Dual.applySubst S') = right.map (Dual.applySubst S') := by
+  induction aligned with
+  | nil => rfl
+  | cons head tail ih =>
+      have headAtFinal := tail.erase.replayExtends.applyDual_eq
+        head.output_equal
+      simp only [List.map_cons]
+      rw [headAtFinal, ih]
+
+theorem DDAlignTargetListWithLedger.output_equal
+    {ledger : CapabilityOriginLedger} {S S' : Subst}
+    {duals : List Dual} {targets : List Ty}
+    (aligned : DDAlignTargetListWithLedger ledger S duals targets S') :
+    (duals.map Dual.target).map S'.apply = targets.map S'.apply := by
+  induction aligned with
+  | nil => rfl
+  | cons head tail ih =>
+      have headAtFinal := tail.erase.replayExtends.apply_eq head.output_equal
+      simp only [List.map_cons]
+      rw [headAtFinal, ih]
+
 private theorem liftDualEquality
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {left right : Dual}
@@ -61,6 +106,27 @@ private theorem liftDualEquality
   rcases factorization with ⟨post, rfl, _admissible⟩
   simpa only [Dual.applySubst_seq] using
     congrArg (Dual.applySubst post) equality
+
+private theorem liftDualListEquality
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {left right : List Dual}
+    (factorization : DDErasure.StateFactorization q S ledger q' S' ledger')
+    (equality : left.map (Dual.applySubst S) =
+      right.map (Dual.applySubst S)) :
+    left.map (Dual.applySubst S') = right.map (Dual.applySubst S') := by
+  rcases factorization with ⟨post, rfl, _admissible⟩
+  simpa only [Dual.map_applySubst_seq] using
+    congrArg (List.map (Dual.applySubst post)) equality
+
+private theorem liftTyListEquality
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {left right : List Ty}
+    (factorization : DDErasure.StateFactorization q S ledger q' S' ledger')
+    (equality : left.map S.apply = right.map S.apply) :
+    left.map S'.apply = right.map S'.apply := by
+  rcases factorization with ⟨post, rfl, _admissible⟩
+  simpa only [Subst.map_apply_seq] using
+    congrArg (List.map post.apply) equality
 
 private theorem liftBindingsEquality
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -83,6 +149,83 @@ private theorem admissible_before_markFreshCap
     (SupplyExtends.bumpCap q 1)
     (DDLedger.RefinesBelow.markFreshCap q ledger)
   simpa only [Subst.seq_id_right] using allocation.seq admissible
+
+private theorem freezeExportFactorization
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} (capImages : List CapVar)
+    (payload : Ty) :
+    DDErasure.StateFactorization q S ledger q S
+      (DDLedger.freezeExport ledger S capImages payload) :=
+  DDErasure.StateFactorization.ofTransition
+    (SupplyExtends.refl q)
+    (DDLedger.RefinesBelow.freezeExport q ledger S capImages payload)
+
+private theorem closedDualSchemeInstanceUnder
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {name : String} {scheme : DualScheme}
+    (lookup : signature.findPatternFun name = some scheme)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    (Sb : S.BoundedBy q)
+    {final : InferenceBase.FreshSupply} {finalSubst : Subst}
+    {ledger finalLedger : CapabilityOriginLedger}
+    (factorization : DDErasure.StateFactorization
+      (InferenceBase.instantiateDualScheme q scheme).supply S
+      (DDLedger.markDualInstance ledger q scheme)
+      final finalSubst finalLedger) :
+    scheme.ValueFlowInst
+      ((InferenceBase.instantiateDualScheme q scheme).value.1.map
+        (Dual.applySubst finalSubst))
+      ((InferenceBase.instantiateDualScheme q scheme).value.2.applySubst
+        finalSubst) := by
+  rcases factorization with ⟨post, terminalEquation, admissible⟩
+  apply (DualScheme.instantiateVariableInstAt q scheme).transportResult
+  · intro varId membership
+    rw [(closed.patternFuns lookup).1] at membership
+    contradiction
+  · intro varId membership
+    rw [(closed.patternFuns lookup).2] at membership
+    contradiction
+  · intro binder binderMem image imageEquation
+    have canonicalEquation :
+        (InferenceBase.instantiateDualScheme q scheme).subst.cap binder =
+          .var ⟨q.nextCap + binder.id⟩ := by
+      simp [InferenceBase.instantiateDualScheme,
+        InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
+        binderMem]
+    have imageEquality : image = ⟨q.nextCap + binder.id⟩ := by
+      rw [canonicalEquation] at imageEquation
+      exact Cap.var.inj imageEquation.symm
+    subst image
+    rcases admissible.dualInstanceImageVariable binderMem with
+      ⟨finalImage, postEquation⟩
+    refine ⟨finalImage, ?_⟩
+    rw [terminalEquation]
+    change (S.cap ⟨q.nextCap + binder.id⟩).apply post.cap =
+      .var finalImage
+    rw [Sb.capFixedAbove ⟨q.nextCap + binder.id⟩
+      (Nat.le_add_right q.nextCap binder.id)]
+    simpa only [Cap.apply] using postEquation
+
+private theorem closedPatternCtorInstance
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {name : String}
+    {entry : PatternCtorScheme signature.observability}
+    (lookup : signature.findPatternCtor name = some entry)
+    (q : InferenceBase.FreshSupply) (post : Subst) :
+    entry.Inst
+      ((InferenceBase.instantiateCtorScheme q entry.scheme).value.1.map
+        post.apply)
+      (post.apply
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2) := by
+  apply CtorScheme.Inst.transport
+    (InferenceBase.instantiateCtorScheme_sound q entry.scheme)
+  apply CtorScheme.instCompositionAdm_of_free_fixed
+  · intro varId membership
+    rw [(closed.patternCtors lookup).1] at membership
+    contradiction
+  · intro varId membership
+    rw [(closed.patternCtors lookup).2] at membership
+    contradiction
 
 namespace DDPatternOrigin
 
@@ -265,6 +408,210 @@ theorem runtimeErasureUnder_ptuple_of_children
   simpa only [Dual.map_cap_applySubst, Dual.map_target_applySubst,
     Cap.apply_prod, Cap.applyList_eq_map, Subst.apply_prod] using
     TerminalPatternResolution.tuple childrenAtFinal
+
+theorem runtimeErasureUnder_pand_of_children
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
+    {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {rightDual : Dual}
+    {bindings' : MonoCtx} {q₂ : InferenceBase.FreshSupply} {S₂ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {leftRaw : DDPattern signature q S context parameters bindings left
+      leftDual leftBindings q₁ S₁}
+    (leftOrigin : DDPatternOrigin signature leftRaw ledger ledger₁)
+    {rightRaw : DDPattern signature q₁ S₁ context parameters leftBindings
+      right rightDual bindings' q₂ S₂}
+    (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
+    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S')
+    (leftUnder : RuntimeErasureUnder leftOrigin)
+    (rightUnder : RuntimeErasureUnder rightOrigin)
+    (rightFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q₂ S₂ ledger₂)
+    (alignmentFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
+      q₂ S' ledger₂) :
+    RuntimeErasureUnder
+      (DDPatternOrigin.pand leftOrigin rightOrigin aligned) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  let later : DDErasure.StateFactorization q₂ S' ledger₂ final
+      finalSubst finalLedger := ⟨post, terminalEquation, admissible⟩
+  rcases (rightFactorization.trans alignmentFactorization).trans later with
+    ⟨leftPost, leftEquation, leftAdmissible⟩
+  have leftAtFinal := leftUnder leftEquation leftAdmissible
+  rcases alignmentFactorization.trans later with
+    ⟨rightPost, rightEquation, rightAdmissible⟩
+  have rightAtFinal := rightUnder rightEquation rightAdmissible
+  have dualEquality := liftDualEquality later aligned.output_equal
+  have capEquality := congrArg Dual.cap dualEquality
+  have targetEquality := congrArg Dual.target dualEquality
+  simp only [Dual.applySubst, Dual.apply] at capEquality targetEquality
+  rw [← capEquality, ← targetEquality] at rightAtFinal
+  exact TerminalPatternResolution.and leftAtFinal rightAtFinal
+
+theorem runtimeErasureUnder_por_of_children
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
+    {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {rightDual : Dual}
+    {rightBindings : MonoCtx} {q₂ : InferenceBase.FreshSupply}
+    {S₂ S₃ S' : Subst} {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {leftRaw : DDPattern signature q S context parameters bindings left
+      leftDual leftBindings q₁ S₁}
+    (leftOrigin : DDPatternOrigin signature leftRaw ledger ledger₁)
+    {rightRaw : DDPattern signature q₁ S₁ context parameters bindings
+      right rightDual rightBindings q₂ S₂}
+    (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
+    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+      leftBindings rightBindings S')
+    (leftUnder : RuntimeErasureUnder leftOrigin)
+    (rightUnder : RuntimeErasureUnder rightOrigin)
+    (rightFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q₂ S₂ ledger₂)
+    (dualsFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
+      q₂ S₃ ledger₂)
+    (bindingsFactorization : DDErasure.StateFactorization q₂ S₃ ledger₂
+      q₂ S' ledger₂) :
+    RuntimeErasureUnder
+      (DDPatternOrigin.por leftOrigin rightOrigin dualsAligned
+        bindingsAligned) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  let later : DDErasure.StateFactorization q₂ S' ledger₂ final
+      finalSubst finalLedger := ⟨post, terminalEquation, admissible⟩
+  rcases (((rightFactorization.trans dualsFactorization).trans
+      bindingsFactorization).trans later) with
+    ⟨leftPost, leftEquation, leftAdmissible⟩
+  have leftAtFinal := leftUnder leftEquation leftAdmissible
+  rcases ((dualsFactorization.trans bindingsFactorization).trans later) with
+    ⟨rightPost, rightEquation, rightAdmissible⟩
+  have rightAtFinal := rightUnder rightEquation rightAdmissible
+  have dualEquality := liftDualEquality
+    (bindingsFactorization.trans later) dualsAligned.output_equal
+  have bindingsEquality := liftBindingsEquality later
+    bindingsAligned.output_equal
+  have capEquality := congrArg Dual.cap dualEquality
+  have targetEquality := congrArg Dual.target dualEquality
+  simp only [Dual.applySubst, Dual.apply] at capEquality targetEquality
+  rw [← capEquality, ← targetEquality, ← bindingsEquality] at rightAtFinal
+  exact TerminalPatternResolution.or leftAtFinal rightAtFinal
+
+theorem runtimeErasureUnder_papp_of_children
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {name : String} {patterns : List Pattern} {scheme : DualScheme}
+    {duals : List Dual} {bindings' : MonoCtx}
+    {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger}
+    (lookup : signature.findPatternFun name = some scheme)
+    {children : DDPatterns signature
+      (InferenceBase.instantiateDualScheme q scheme).supply S context
+      parameters bindings patterns duals bindings' q₁ S₁}
+    (childrenOrigin : DDPatternsOrigin signature children
+      (DDLedger.markDualInstance ledger q scheme) ledger₁)
+    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateDualScheme q scheme).value.1 S')
+    (childrenUnder : DDPatternsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenFactorization : DDErasure.StateFactorization
+      (InferenceBase.instantiateDualScheme q scheme).supply S
+      (DDLedger.markDualInstance ledger q scheme) q₁ S₁ ledger₁)
+    (alignmentFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q₁ S' ledger₁)
+    (closed : signature.SchemesClosed) (Sb : S.BoundedBy q) :
+    RuntimeErasureUnder
+      (DDPatternOrigin.papp lookup childrenOrigin aligned) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  let later : DDErasure.StateFactorization q₁ S' ledger₁ final
+      finalSubst finalLedger := ⟨post, terminalEquation, admissible⟩
+  rcases alignmentFactorization.trans later with
+    ⟨childrenPost, childrenEquation, childrenAdmissible⟩
+  have childrenAtFinal := childrenUnder childrenEquation childrenAdmissible
+  have dualEquality := liftDualListEquality later aligned.output_equal
+  have instanceAtFinal := closedDualSchemeInstanceUnder closed lookup Sb
+    ((childrenFactorization.trans alignmentFactorization).trans later)
+  rw [← dualEquality] at instanceAtFinal
+  exact TerminalPatternResolution.app lookup childrenAtFinal instanceAtFinal
+
+theorem runtimeErasureUnder_pctor_of_children
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {name : String} {patterns : List Pattern}
+    {entry : PatternCtorScheme signature.observability}
+    {duals : List Dual} {bindings' : MonoCtx}
+    {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
+    {capability : Cap} {q₂ : InferenceBase.FreshSupply} {S₃ : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    (lookup : signature.findPatternCtor name = some entry)
+    {children : DDPatterns signature
+      (InferenceBase.instantiateCtorScheme q entry.scheme).supply S context
+      parameters bindings patterns duals bindings' q₁ S₁}
+    (childrenOrigin : DDPatternsOrigin signature children
+      (DDLedger.markCtorInstance ledger q entry.scheme) ledger₁)
+    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
+    {capRaw : DDPatternCtorCap signature entry q₁ S₂
+      (duals.map Dual.cap) capability q₂ S₃}
+    (capOrigin : DDPatternCtorCapOrigin signature entry capRaw ledger₁ ledger₂)
+    (compatibleCheck : Inference.capCompatibleCheck entry
+      ((duals.map Dual.cap).map fun child => child.apply S₃.cap)
+      (capability.apply S₃.cap) = true)
+    (childrenUnder : DDPatternsOrigin.RuntimeErasureUnder childrenOrigin)
+    (targetsFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
+      q₁ S₂ ledger₁)
+    (capFactorization : DDErasure.StateFactorization q₁ S₂ ledger₁
+      q₂ S₃ ledger₂)
+    (closed : signature.SchemesClosed)
+    (compatibleUnder :
+      ∀ {final : InferenceBase.FreshSupply} {finalSubst post : Subst}
+          {finalLedger : CapabilityOriginLedger},
+        finalSubst = Subst.seq post S₃ →
+        DDErasure.AdmissiblePostBetween q₂ final
+          (DDLedger.freezeExport ledger₂ S₃
+            (Inference.freshCapImages q entry.scheme.capBinders)
+            (Inference.capabilityExportPayload [capability]
+              ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+                bindings'.map fun binding => binding.2)))
+          finalLedger post →
+        entry.CapCompatible
+          ((duals.map (Dual.applySubst finalSubst)).map Dual.cap)
+          (capability.apply finalSubst.cap)) :
+    RuntimeErasureUnder
+      (DDPatternOrigin.pctor lookup childrenOrigin targetsAligned capOrigin
+        compatibleCheck) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have freezing := freezeExportFactorization
+    (q := q₂) (S := S₃) (ledger := ledger₂)
+    (Inference.freshCapImages q entry.scheme.capBinders)
+    (Inference.capabilityExportPayload [capability]
+      ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+        bindings'.map fun binding => binding.2))
+  let later : DDErasure.StateFactorization q₂ S₃
+      (DDLedger.freezeExport ledger₂ S₃
+        (Inference.freshCapImages q entry.scheme.capBinders)
+        (Inference.capabilityExportPayload [capability]
+          ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+            bindings'.map fun binding => binding.2)))
+      final finalSubst finalLedger := ⟨post, terminalEquation, admissible⟩
+  rcases (((targetsFactorization.trans capFactorization).trans freezing).trans
+      later) with ⟨childrenPost, childrenEquation, childrenAdmissible⟩
+  have childrenAtFinal := childrenUnder childrenEquation childrenAdmissible
+  have targetEquality := liftTyListEquality
+    ((capFactorization.trans freezing).trans later)
+    targetsAligned.output_equal
+  have instanceAtFinal := closedPatternCtorInstance closed lookup q finalSubst
+  rw [← targetEquality] at instanceAtFinal
+  have compatibleAtFinal := compatibleUnder terminalEquation admissible
+  change TerminalPatternResolution signature finalSubst
+    (context.applySubst finalSubst) (parameters.applySubst finalSubst)
+    (bindings.applySubst finalSubst) (.pctor name patterns)
+    (capability.apply finalSubst.cap)
+    (finalSubst.apply
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.2)
+    (bindings'.applySubst finalSubst)
+  exact TerminalPatternResolution.ctor
+    (result := ⟨capability.apply finalSubst.cap,
+      finalSubst.apply
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩)
+    lookup childrenAtFinal compatibleAtFinal
+      (by simpa only [Dual.map_target_applySubst] using instanceAtFinal)
 
 end DDPatternOrigin
 

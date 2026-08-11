@@ -231,7 +231,10 @@ ledgerから局所的にtransportする補題と，variable／literal／`somethi
 listの構造規則に加え，expression leafを持たないdata／primitive patternの4 familyについて無前提の
 相互closureまで閉じている．user patternもvariable／wildcard／embed／tuple／listまで，matcher armも
 pattern・body・tailの再帰合成まで拡張済みであり，value patternもchild expressionのlater-cut
-erasureから構造的に合成できる．この整理に合わせ，
+erasureから構造的に合成できる．and／or，pattern-function application，pattern constructorにも
+child invariantからの構造補題があり，`matchAll`もtarget，pattern，matcher，bodyの4 child invariantと
+各factorizationだけから最終cutへ合成できる．pattern constructorだけは，後続cutでの
+`CapCompatible`安定性が明示的な残余条件である．この整理に合わせ，
 `RuntimeTyping`と`ValueTy`から実装solverの
 raw certificateとglobal `VariablePost`を除き，matcher-to-slotは終端`CapabilityDemand`，
 slot-to-slotは終端型等式だけへ消去した．variable leafでは，fresh instanceのcapability binderが
@@ -245,13 +248,17 @@ scheme substitutionの逐次合成を得る定理を実装済みである．一�
 後続のadmissible suffixが新たにbinder captureを起こしてvalue-flow instanceを失わせる第二反例も
 固定している．したがって，過去のleaf-local premiseでは足りず，context中の各scheme／free variable
 ごとのavoidanceを後続solve全体で保存する必要がある．
+この境界は`Context.NoCapture`，context substitutionの逐次合成，binder-local instance composition，
+canonical value-flow transportとして補題化済みであり，variable leafの従来のscheme equality／
+`InstCompositionAt`／binder equation premiseは，lookup前後の2つの`NoCapture`条件へ簡約できている．
 clause側ではfinal matcher capabilityとshape evidenceをmatcher finalizationから渡す必要があり，
 matcher本体ではscoped rename-only postをshape／clause transportが使うtotal renamingへ持ち上げる補題が
 必要である．supply cut未満でvariable-onlyなpostをcut以上identityのtotal postへ拡張し，boundedな
 capability／type／scheme／context上で元のpostと一致する補題は実装済みである．ただしproducerに
 現れないstructural leafまでfreezeされるわけではないため，matcher全体へ適用するには有限な関連leaf
 だけを追跡するか，clauseを最終cutで直接再構成する必要がある．これらを解決して残るuser pattern，
-clause，matcherを相互に閉じることが次のcutである．
+clause，matcherを相互に閉じることが次のcutである．pattern constructorについてはchild／result
+capabilityをexport freezeへ含め，`CapCompatible`をrenaming transportできる provenance が必要である．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
