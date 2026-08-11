@@ -218,6 +218,18 @@ theorem traceTypeAlignmentCheck_sound
       exact ⟨startStop, stopBound, localLeftEq, localRightEq, finalEq⟩
   | _ => trivial
 
+/-- The semantic ordinary-alignment conditions are exactly sufficient for
+the corresponding finite event check. -/
+theorem traceTypeAlignmentCheck_complete
+    {state : InferState}
+    (conditions : TraceTypeAlignmentConditions state) :
+    traceTypeAlignmentCheck state = true := by
+  unfold traceTypeAlignmentCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event <;> simp_all [typeAlignmentEventCheck]
+
 private def dualAlignmentEventCheck
     (state : InferState) : TraceEvent -> Bool
   | .dualAlignment start stop rawLeft rawRight localLeft localRight =>
@@ -247,6 +259,18 @@ theorem traceDualAlignmentCheck_sound
         ⟨⟨⟨⟨startStop, stopBound⟩, localLeftEq⟩, localRightEq⟩, finalEq⟩
       exact ⟨startStop, stopBound, localLeftEq, localRightEq, finalEq⟩
   | _ => trivial
+
+/-- The semantic dual-alignment conditions are exactly sufficient for the
+corresponding finite event check. -/
+theorem traceDualAlignmentCheck_complete
+    {state : InferState}
+    (conditions : TraceDualAlignmentConditions state) :
+    traceDualAlignmentCheck state = true := by
+  unfold traceDualAlignmentCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event <;> simp_all [dualAlignmentEventCheck]
 
 /-! ## Expected-type slot alignments -/
 
@@ -457,6 +481,33 @@ theorem traceFinalizationSuffixCheck_sound
           exact ⟨shape, caps, catchAll, binders, exhaustive, coverage⟩
   | _ => trivial
 
+/-- Terminal matcher facts are sufficient for the exact finite
+finalization check. -/
+theorem traceFinalizationSuffixCheck_complete
+    {signature : FrozenSig} {state : InferState}
+    (conditions : TraceFinalizationSuffixConditions signature state) :
+    traceFinalizationSuffixCheck signature state = true := by
+  unfold traceFinalizationSuffixCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event with
+  | matcherFinalization solveCount clauses rawTarget rawHoleLists localTarget
+      localHoleLists localEvidence localCapability =>
+      simp only [InferState.prevailing] at accepted
+      rcases accepted with
+        ⟨solveBound, localTargetEq, localHolesEq, evidence, collected,
+          shape, caps, catchAll, binders, exhaustive, coverage⟩
+      simp only [finalizationSuffixEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      refine ⟨⟨⟨solveBound, localTargetEq⟩, localHolesEq⟩, ?_⟩
+      simp only [finalizationAtCheck, List.take_length]
+      rw [collected]
+      simp only [Bool.and_eq_true, decide_eq_true_eq]
+      exact ⟨⟨⟨⟨⟨shape, caps⟩, catchAll⟩, binders⟩, exhaustive⟩,
+        coverage⟩
+  | _ => rfl
+
 /-! ## Terminal let generalization -/
 
 private def generalizationEventCheck
@@ -494,6 +545,27 @@ theorem traceGeneralizationCheck_sound
         ⟨⟨⟨⟨solveBound, contextEq⟩, targetEq⟩, schemeEq⟩, terminalEq⟩
       exact ⟨solveBound, contextEq, targetEq, schemeEq, terminalEq⟩
   | _ => trivial
+
+/-- Terminal let facts are sufficient for the exact finite generalization
+check. -/
+theorem traceGeneralizationCheck_complete
+    {signature : FrozenSig} {state : InferState}
+    (conditions : TraceGeneralizationConditions signature state) :
+    traceGeneralizationCheck signature state = true := by
+  unfold traceGeneralizationCheck
+  apply List.all_eq_true.mpr
+  intro event membership
+  have accepted := conditions event membership
+  cases event with
+  | letGeneralization solveCount name rawContext rawTarget context target
+      scheme =>
+      rcases accepted with
+        ⟨solveBound, contextEq, targetEq, schemeEq, terminalEq⟩
+      simp only [generalizationEventCheck, Bool.and_eq_true,
+        decide_eq_true_eq]
+      exact ⟨⟨⟨⟨solveBound, contextEq⟩, targetEq⟩, schemeEq⟩,
+        terminalEq⟩
+  | _ => rfl
 
 /-! ## Complete public terminal audit -/
 

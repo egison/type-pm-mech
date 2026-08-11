@@ -33,9 +33,10 @@ specialized matcher and legacy protected-producer bridge; the
 nested-capability boundary example (`nestedCapProgram`) remains an intended
 rejection under the demand-directed coercion discipline.  Both substitution
 components carry finite-support certificates, and the kernels prove
-factorization relative to admissible competitors.  Unrestricted most
-generality and solvability completeness are not claimed; successful runs are
-preserved by larger fuel.
+factorization relative to admissible competitors.  The capability wrapper is
+also complete for origin-admissible competitors at an input-directed complete
+fuel.  Solvability completeness for the paired target wrapper is not yet
+claimed; successful runs of either kernel are preserved by larger fuel.
 -/
 
 namespace TypePM
@@ -3160,6 +3161,475 @@ private theorem completeOrientedCapListFuelAux_cons_ne
     completeOrientedCapListFuelAux.eq_2 ledger leftHead leftTail rightHead
       rightTail remaining
 
+private theorem orientedCapResult_varCert
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : OrientedCapResult ledger left right) (hne : left ≠ right) :
+    CapRange result.subst (left.fcv ++ right.fcv) ∧
+      ∃ v, v ∈ left.fcv ++ right.fcv ∧ CapElim result.subst v := by
+  constructor
+  · exact fun x y hy => result.inputRange x y hy
+  · cases hs : result.capSupportVars with
+    | nil =>
+        exfalso
+        apply hne
+        have hid : result.subst = CapSubst.id := by
+          funext candidate
+          exact result.capSupport candidate (by simp [hs])
+        simpa [hid, Cap.apply_id] using result.sound
+    | cons v vs =>
+        refine ⟨v, result.supportInput v (by simp [hs]), ?_⟩
+        exact fun candidate => result.supportElim v (by simp [hs]) candidate
+
+private theorem admissible_unifier_var_nonvar_flexible
+    {ledger : CapabilityOriginLedger} {varId : CapVar} {right : Cap}
+    (hnvar : ∀ candidate, right ≠ .var candidate)
+    (U : CapSubst) (hadmissible : AdmissibleCapPost ledger U)
+    (hunify : (Cap.var varId).apply U = right.apply U) :
+    ledger.originOf varId = .structuralFlexible := by
+  cases horigin : ledger.originOf varId with
+  | structuralFlexible => rfl
+  | rigid =>
+      have himage := hadmissible.rigid horigin
+      rw [Cap.apply, himage] at hunify
+      cases right <;> simp [Cap.apply] at hunify
+      exact False.elim (hnvar _ rfl)
+  | renameOnly =>
+      obtain ⟨image, himage, _⟩ := hadmissible.renameOnly horigin
+      rw [Cap.apply, himage] at hunify
+      cases right <;> simp [Cap.apply] at hunify
+      exact False.elim (hnvar _ rfl)
+
+private theorem solveCap_var_var_complete
+    (ledger : CapabilityOriginLedger) (varId otherId : CapVar)
+    (hne : Cap.var varId ≠ Cap.var otherId)
+    (U : CapSubst) (hadmissible : AdmissibleCapPost ledger U)
+    (hunify : U varId = U otherId) :
+    ∃ result : OrientedCapResult ledger (.var varId) (.var otherId),
+      solveCap 1 ledger (.var varId) (.var otherId) = some result := by
+  cases hleft : ledger.originOf varId with
+  | structuralFlexible =>
+      have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+          true := by rw [solveCap, dif_neg hne]; simp [hleft]
+      cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+      | none => simp [hrun] at hs
+      | some result => exact ⟨result, rfl⟩
+  | renameOnly =>
+      cases hright : ledger.originOf otherId with
+      | structuralFlexible =>
+          have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+              true := by rw [solveCap, dif_neg hne]; simp [hleft, hright]
+          cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+          | none => simp [hrun] at hs
+          | some result => exact ⟨result, rfl⟩
+      | renameOnly =>
+          have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+              true := by rw [solveCap, dif_neg hne]; simp [hleft, hright]
+          cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+          | none => simp [hrun] at hs
+          | some result => exact ⟨result, rfl⟩
+      | rigid =>
+          have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+              true := by rw [solveCap, dif_neg hne]; simp [hleft, hright]
+          cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+          | none => simp [hrun] at hs
+          | some result => exact ⟨result, rfl⟩
+  | rigid =>
+      cases hright : ledger.originOf otherId with
+      | structuralFlexible =>
+          have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+              true := by rw [solveCap, dif_neg hne]; simp [hleft, hright]
+          cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+          | none => simp [hrun] at hs
+          | some result => exact ⟨result, rfl⟩
+      | renameOnly =>
+          have hs : (solveCap 1 ledger (.var varId) (.var otherId)).isSome =
+              true := by rw [solveCap, dif_neg hne]; simp [hleft, hright]
+          cases hrun : solveCap 1 ledger (.var varId) (.var otherId) with
+          | none => simp [hrun] at hs
+          | some result => exact ⟨result, rfl⟩
+      | rigid =>
+          have himageLeft := hadmissible.rigid hleft
+          have himageRight := hadmissible.rigid hright
+          have hids : varId = otherId := by
+            simpa [himageLeft, himageRight] using hunify
+          exact False.elim (hne (by rw [hids]))
+
+private theorem solveCap_var_left_complete
+    (ledger : CapabilityOriginLedger) (varId : CapVar) (right : Cap)
+    (hnvar : ∀ candidate, right ≠ .var candidate)
+    (hflex : ledger.originOf varId = .structuralFlexible)
+    (hoccurs : varId ∉ right.fcv) :
+    ∃ result : OrientedCapResult ledger (.var varId) right,
+      solveCap 1 ledger (.var varId) right = some result := by
+  have hne : Cap.var varId ≠ right := by
+    intro equation
+    cases right <;> cases equation
+    exact hnvar _ rfl
+  have hs : (solveCap 1 ledger (.var varId) right).isSome = true := by
+    rw [solveCap, dif_neg hne]
+    cases right with
+    | var candidate => exact False.elim (hnvar candidate rfl)
+    | any | skolem | con | prod => simp [hflex, hoccurs]
+  cases hrun : solveCap 1 ledger (.var varId) right with
+  | none => simp [hrun] at hs
+  | some result => exact ⟨result, rfl⟩
+
+private theorem solveCap_var_right_complete
+    (ledger : CapabilityOriginLedger) (left : Cap) (varId : CapVar)
+    (hnvar : ∀ candidate, left ≠ .var candidate)
+    (hflex : ledger.originOf varId = .structuralFlexible)
+    (hoccurs : varId ∉ left.fcv) :
+    ∃ result : OrientedCapResult ledger left (.var varId),
+      solveCap 1 ledger left (.var varId) = some result := by
+  have hne : left ≠ Cap.var varId := by
+    intro equation
+    cases left <;> cases equation
+    exact hnvar _ rfl
+  have hs : (solveCap 1 ledger left (.var varId)).isSome = true := by
+    rw [solveCap, dif_neg hne]
+    cases left with
+    | var candidate => exact False.elim (hnvar candidate rfl)
+    | any | skolem | con | prod => simp [hflex, hoccurs]
+  cases hrun : solveCap 1 ledger left (.var varId) with
+  | none => simp [hrun] at hs
+  | some result => exact ⟨result, rfl⟩
+
+mutual
+
+/-- Every origin-admissibly unifiable capability constraint succeeds at the
+input-directed complete fuel. -/
+theorem solveCap_completeOrientedFuel
+    (budget : List CapVar) (ledger : CapabilityOriginLedger)
+    (left right : Cap)
+    (hbudget : ∀ v, v ∈ left.fcv ++ right.fcv → v ∈ budget)
+    (U : CapSubst) (hadmissible : AdmissibleCapPost ledger U)
+    (hunify : left.apply U = right.apply U) :
+    ∃ result : OrientedCapResult ledger left right,
+      solveCap (completeOrientedCapFuelAux ledger budget.length left right)
+        ledger left right = some result := by
+  by_cases hequal : left = right
+  · subst right
+    exact ⟨_, by
+      rw [completeOrientedCapFuelAux_self, solveCap, dif_pos rfl]⟩
+  · match left, right with
+    | .var varId, .var otherId =>
+        rw [completeOrientedCapFuelAux_var_left]
+        exact solveCap_var_var_complete ledger varId otherId hequal U
+          hadmissible (by simpa [Cap.apply] using hunify)
+    | .var varId, .any =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible hunify
+        rw [completeOrientedCapFuelAux_var_left]
+        exact solveCap_var_left_complete ledger varId .any
+            (fun candidate equation => by cases equation) hflex
+              (by simp [Cap.fcv])
+    | .var varId, .skolem name =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible hunify
+        rw [completeOrientedCapFuelAux_var_left]
+        exact solveCap_var_left_complete ledger varId (.skolem name)
+            (fun candidate equation => by cases equation) hflex
+              (by simp [Cap.fcv])
+    | .var varId, .con name children =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible hunify
+        by_cases hoccurs : varId ∈ (Cap.con name children).fcv
+        · exact absurd hunify
+            (Unification.Cap.not_unifiable_of_occurs varId _
+              (Ne.symm hequal) hoccurs U)
+        · rw [completeOrientedCapFuelAux_var_left]
+          exact solveCap_var_left_complete ledger varId (.con name children)
+              (fun candidate equation => by cases equation) hflex hoccurs
+    | .var varId, .prod components =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible hunify
+        by_cases hoccurs : varId ∈ (Cap.prod components).fcv
+        · exact absurd hunify
+            (Unification.Cap.not_unifiable_of_occurs varId _
+              (Ne.symm hequal) hoccurs U)
+        · rw [completeOrientedCapFuelAux_var_left]
+          exact solveCap_var_left_complete ledger varId (.prod components)
+              (fun candidate equation => by cases equation) hflex hoccurs
+    | .any, .var varId =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible
+              hunify.symm
+        rw [completeOrientedCapFuelAux_var_right]
+        exact solveCap_var_right_complete ledger .any varId
+            (fun candidate equation => by cases equation) hflex
+              (by simp [Cap.fcv])
+    | .skolem name, .var varId =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible
+              hunify.symm
+        rw [completeOrientedCapFuelAux_var_right]
+        exact solveCap_var_right_complete ledger (.skolem name) varId
+            (fun candidate equation => by cases equation) hflex
+              (by simp [Cap.fcv])
+    | .con name children, .var varId =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible
+              hunify.symm
+        by_cases hoccurs : varId ∈ (Cap.con name children).fcv
+        · exact absurd hunify.symm
+            (Unification.Cap.not_unifiable_of_occurs varId _ hequal
+              hoccurs U)
+        · rw [completeOrientedCapFuelAux_var_right]
+          exact solveCap_var_right_complete ledger (.con name children) varId
+              (fun candidate equation => by cases equation) hflex hoccurs
+    | .prod components, .var varId =>
+        have hflex : ledger.originOf varId = .structuralFlexible :=
+          admissible_unifier_var_nonvar_flexible
+            (fun candidate equation => by cases equation) U hadmissible
+              hunify.symm
+        by_cases hoccurs : varId ∈ (Cap.prod components).fcv
+        · exact absurd hunify.symm
+            (Unification.Cap.not_unifiable_of_occurs varId _ hequal
+              hoccurs U)
+        · rw [completeOrientedCapFuelAux_var_right]
+          exact solveCap_var_right_complete ledger (.prod components) varId
+              (fun candidate equation => by cases equation) hflex hoccurs
+    | .con leftName leftChildren, .con rightName rightChildren =>
+        simp only [Cap.apply, Cap.con.injEq] at hunify
+        obtain ⟨hname, hchildrenU⟩ := hunify
+        obtain ⟨childResult, hchildren⟩ :=
+          solveCapList_completeOrientedFuel budget ledger
+            leftChildren rightChildren (fun v hv => hbudget v hv)
+            U hadmissible hchildrenU
+        exact ⟨_, by
+          rw [completeOrientedCapFuelAux.eq_1, if_neg hequal, if_pos hname]
+          rw [solveCap, dif_neg hequal]
+          simp only []
+          rw [dif_pos hname, hchildren]⟩
+    | .prod leftComponents, .prod rightComponents =>
+        simp only [Cap.apply, Cap.prod.injEq] at hunify
+        obtain ⟨componentResult, hcomponents⟩ :=
+          solveCapList_completeOrientedFuel budget ledger
+            leftComponents rightComponents (fun v hv => hbudget v hv)
+            U hadmissible hunify
+        exact ⟨_, by
+          rw [completeOrientedCapFuelAux.eq_2, if_neg hequal]
+          rw [solveCap, dif_neg hequal]
+          simp only []
+          rw [hcomponents]⟩
+    | .any, .any => exact absurd rfl hequal
+    | .any, .skolem _ => simp [Cap.apply] at hunify
+    | .any, .con _ _ => simp [Cap.apply] at hunify
+    | .any, .prod _ => simp [Cap.apply] at hunify
+    | .skolem _, .any => simp [Cap.apply] at hunify
+    | .skolem _, .skolem _ => simp_all [Cap.apply]
+    | .skolem _, .con _ _ => simp [Cap.apply] at hunify
+    | .skolem _, .prod _ => simp [Cap.apply] at hunify
+    | .con _ _, .any => simp [Cap.apply] at hunify
+    | .con _ _, .prod _ => simp [Cap.apply] at hunify
+    | .prod _, .any => simp [Cap.apply] at hunify
+    | .prod _, .skolem _ => simp [Cap.apply] at hunify
+    | .prod _, .con _ _ => simp [Cap.apply] at hunify
+termination_by
+  (budget.length,
+    Unification.Cap.unificationWeight left +
+      Unification.Cap.unificationWeight right)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.right
+  all_goals simp only [Unification.Cap.unificationWeight]
+  all_goals omega
+
+/-- Every origin-admissibly unifiable capability-list constraint succeeds at
+the input-directed complete fuel. -/
+theorem solveCapList_completeOrientedFuel
+    (budget : List CapVar) (ledger : CapabilityOriginLedger)
+    (left right : List Cap)
+    (hbudget : ∀ v, v ∈ Cap.fcvList left ++ Cap.fcvList right → v ∈ budget)
+    (U : CapSubst) (hadmissible : AdmissibleCapPost ledger U)
+    (hunify : Cap.applyList U left = Cap.applyList U right) :
+    ∃ result : OrientedCapListResult ledger left right,
+      solveCapList
+        (completeOrientedCapListFuelAux ledger budget.length left right)
+        ledger left right = some result := by
+  match left, right with
+  | [], [] => exact ⟨_, by
+      rw [completeOrientedCapListFuelAux_nil, solveCapList]⟩
+  | [], _ :: _ => simp [Cap.applyList] at hunify
+  | _ :: _, [] => simp [Cap.applyList] at hunify
+  | leftHead :: leftTail, rightHead :: rightTail =>
+      simp only [Cap.applyList, List.cons.injEq] at hunify
+      obtain ⟨hheadU, htailU⟩ := hunify
+      let fuelHead :=
+        completeOrientedCapFuelAux ledger budget.length leftHead rightHead
+      obtain ⟨headResult, hheadRun⟩ :=
+        solveCap_completeOrientedFuel budget ledger leftHead rightHead
+          (fun v hv => hbudget v (by
+            simp only [Cap.fcvList, List.mem_append] at hv ⊢
+            rcases hv with h | h
+            · exact Or.inl (Or.inl h)
+            · exact Or.inr (Or.inl h))) U hadmissible hheadU
+      change solveCap fuelHead ledger leftHead rightHead =
+        some headResult at hheadRun
+      have headRange : CapRange headResult.subst
+          (leftHead.fcv ++ rightHead.fcv) :=
+        fun x y hy => headResult.inputRange x y hy
+      have hfactor := headResult.universal U hadmissible hheadU
+      rw [hfactor, Cap.applyList_comp, Cap.applyList_comp] at htailU
+      by_cases hheadEq : leftHead = rightHead
+      · subst rightHead
+        have hfuelHead : fuelHead = 1 := by simp [fuelHead]
+        have hid := solveCap_eq_self hheadRun
+        rw [hid, Cap.applyList_id, Cap.applyList_id] at htailU
+        let fuelTail := completeOrientedCapListFuelAux ledger budget.length
+          leftTail rightTail
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveCapList_completeOrientedFuel budget ledger leftTail rightTail
+            (fun v hv => hbudget v (by
+              simp only [Cap.fcvList, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inr h)
+              · exact Or.inr (Or.inr h))) U hadmissible htailU
+        change solveCapList fuelTail ledger leftTail rightTail =
+          some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveCap_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : OrientedCapListResult ledger
+            (Cap.applyList headResult'.subst leftTail)
+            (Cap.applyList headResult'.subst rightTail),
+            solveCapList (fuelHead + fuelTail) ledger
+                (Cap.applyList headResult'.subst leftTail)
+                (Cap.applyList headResult'.subst rightTail) = some resultP := by
+          rw [hheadSubst', hid, Cap.applyList_id, Cap.applyList_id]
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveCapList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have houter : ∃ outerResult : OrientedCapListResult ledger
+            (leftHead :: leftTail) (leftHead :: rightTail),
+            solveCapList (fuelHead + fuelTail + 1) ledger
+              (leftHead :: leftTail) (leftHead :: rightTail) =
+                some outerResult := by
+          rw [solveCapList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [completeOrientedCapListFuelAux_cons_eq]
+        simpa [hfuelHead, fuelTail] using houterRun
+      · obtain ⟨_, ⟨v, hvmem, hvelim⟩⟩ :=
+          orientedCapResult_varCert headResult hheadEq
+        have hvBudget : v ∈ budget := by
+          refine hbudget v ?_
+          simp only [List.mem_append] at hvmem
+          simp only [Cap.fcvList, List.mem_append]
+          rcases hvmem with h | h
+          · exact Or.inl (Or.inl h)
+          · exact Or.inr (Or.inl h)
+        let remaining := (budget.erase v).length
+        have hbudgetLength : budget.length = remaining + 1 := by
+          dsimp [remaining]
+          have herase := List.length_erase_of_mem hvBudget
+          have hpositive := List.length_pos_of_mem hvBudget
+          omega
+        let fuelTail := completeOrientedCapListFuelAux ledger remaining
+          (Cap.applyList headResult.subst leftTail)
+          (Cap.applyList headResult.subst rightTail)
+        obtain ⟨tailResult, htailRun⟩ :=
+          solveCapList_completeOrientedFuel (budget.erase v) ledger
+            (Cap.applyList headResult.subst leftTail)
+            (Cap.applyList headResult.subst rightTail)
+            (fun w hw => by
+              have hwne : w ≠ v := by
+                rintro rfl
+                rcases List.mem_append.mp hw with hw | hw
+                · exact hvelim.not_mem_applyList _ hw
+                · exact hvelim.not_mem_applyList _ hw
+              have hwBudget : w ∈ budget := by
+                refine hbudget w ?_
+                rcases List.mem_append.mp hw with hw | hw
+                · rcases headRange.applyList_mem hw with h | h
+                  · simp only [Cap.fcvList, List.mem_append]
+                    exact Or.inl (Or.inr h)
+                  · simp only [Cap.fcvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+                · rcases headRange.applyList_mem hw with h | h
+                  · simp only [Cap.fcvList, List.mem_append]
+                    exact Or.inr (Or.inr h)
+                  · simp only [Cap.fcvList, List.mem_append]
+                    rcases List.mem_append.mp h with h | h
+                    · exact Or.inl (Or.inl h)
+                    · exact Or.inr (Or.inl h)
+              exact (List.mem_erase_of_ne hwne).mpr hwBudget)
+            U hadmissible htailU
+        change solveCapList fuelTail ledger
+            (Cap.applyList headResult.subst leftTail)
+            (Cap.applyList headResult.subst rightTail) =
+              some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solveCap_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : OrientedCapListResult ledger
+            (Cap.applyList headResult'.subst leftTail)
+            (Cap.applyList headResult'.subst rightTail),
+            solveCapList (fuelHead + fuelTail) ledger
+                (Cap.applyList headResult'.subst leftTail)
+                (Cap.applyList headResult'.subst rightTail) = some resultP := by
+          rw [hheadSubst']
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solveCapList_mono_le (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have hheadRunRemaining :
+            solveCap
+              (completeOrientedCapFuelAux ledger (remaining + 1)
+                leftHead rightHead) ledger leftHead rightHead =
+              some headResult := by
+          rw [← hbudgetLength]
+          exact hheadRun
+        have hfuelHead :
+            completeOrientedCapFuelAux ledger (remaining + 1)
+                leftHead rightHead = fuelHead := by
+          rw [← hbudgetLength]
+        have houter : ∃ outerResult : OrientedCapListResult ledger
+            (leftHead :: leftTail) (rightHead :: rightTail),
+            solveCapList (fuelHead + fuelTail + 1) ledger
+              (leftHead :: leftTail) (rightHead :: rightTail) =
+                some outerResult := by
+          rw [solveCapList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [hbudgetLength,
+          completeOrientedCapListFuelAux_cons_ne ledger remaining
+            leftHead rightHead leftTail rightTail hheadEq headResult
+            hheadRunRemaining,
+          hfuelHead]
+        change solveCapList (fuelHead + fuelTail + 1) ledger
+          (leftHead :: leftTail) (rightHead :: rightTail) = some outerResult
+        exact houterRun
+termination_by
+  (budget.length,
+    Unification.Cap.unificationWeightList left +
+      Unification.Cap.unificationWeightList right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right
+       simp only [Unification.Cap.unificationWeightList]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       exact Nat.sub_lt (List.length_pos_of_mem hvBudget) (by omega))
+
+end
+
 /-! ## Complete input-directed fuel for the paired kernel -/
 
 mutual
@@ -3297,25 +3767,25 @@ def mguPairedTyListCompleteFuel
 
 /-! ## Public wrappers -/
 
-/-- Structural-fuel wrapper of the origin-oriented capability solver. -/
+/-- Complete-fuel wrapper of the origin-oriented capability solver. -/
 def mguOrientedCap
     (ledger : CapabilityOriginLedger) (left right : Cap) : Option CapSubst :=
-  (solveCap (Unification.capFuel left right) ledger left right).map
+  (solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right).map
     OrientedCapResult.subst
 
 /-- Finite capability-support ledger returned by the same oriented run. -/
 def mguOrientedCapSupport
     (ledger : CapabilityOriginLedger) (left right : Cap) : List CapVar :=
-  match solveCap (Unification.capFuel left right) ledger left right with
+  match solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right with
   | none => []
   | some result => result.capSupportVars
 
-/-- Any successful run within the public structural fuel bound is replayed by
+/-- Any successful run within the public complete fuel bound is replayed by
 the oriented capability wrapper with the same substitution. -/
 theorem mguOrientedCap_of_fuel_le
     {fuel : Nat} {ledger : CapabilityOriginLedger} {left right : Cap}
     {result : OrientedCapResult ledger left right}
-    (hle : fuel ≤ Unification.capFuel left right)
+    (hle : fuel ≤ mguOrientedCapCompleteFuel ledger left right)
     (hrun : solveCap fuel ledger left right = some result) :
     mguOrientedCap ledger left right = some result.subst := by
   obtain ⟨result', hrun', hsubst⟩ := solveCap_mono_le hle hrun
@@ -3328,14 +3798,28 @@ fuel and return the identity substitution. -/
 @[simp] theorem mguOrientedCap_self
     (ledger : CapabilityOriginLedger) (capability : Cap) :
     mguOrientedCap ledger capability capability = some CapSubst.id := by
-  have hle : 1 ≤ Unification.capFuel capability capability := by
-    simp only [Unification.capFuel]
-    omega
+  have hle : 1 ≤ mguOrientedCapCompleteFuel ledger capability capability := by
+    simp [mguOrientedCapCompleteFuel]
   cases hrun : solveCap 1 ledger capability capability with
   | none => simp [solveCap] at hrun
   | some result =>
       have hsubst := solveCap_eq_self hrun
       simpa [hsubst] using mguOrientedCap_of_fuel_le hle hrun
+
+/-- Every constraint solved by an origin-admissible competitor is accepted by
+the executable oriented capability wrapper. -/
+theorem mguOrientedCap_complete_of_admissible
+    {ledger : CapabilityOriginLedger} {left right : Cap} {U : CapSubst}
+    (competitorAdmissible : AdmissibleCapPost ledger U)
+    (competitorSound : left.apply U = right.apply U) :
+    ∃ C : CapSubst, mguOrientedCap ledger left right = some C := by
+  obtain ⟨result, hrun⟩ :=
+    solveCap_completeOrientedFuel (left.fcv ++ right.fcv) ledger left right
+      (fun _ membership => membership) U competitorAdmissible competitorSound
+  refine ⟨result.subst, ?_⟩
+  unfold mguOrientedCap mguOrientedCapCompleteFuel
+  rw [hrun]
+  rfl
 
 /-- Every substitution returned by oriented capability unification is sound. -/
 theorem mguOrientedCap_sound
@@ -3343,7 +3827,7 @@ theorem mguOrientedCap_sound
     (hsuccess : mguOrientedCap ledger left right = some C) :
     left.apply C = right.apply C := by
   unfold mguOrientedCap at hsuccess
-  cases hsolve : solveCap (Unification.capFuel left right) ledger left right with
+  cases hsolve : solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right with
   | none => simp [hsolve] at hsuccess
   | some result =>
       have heq : result.subst = C := by
@@ -3357,7 +3841,7 @@ theorem mguOrientedCap_admissible
     (hsuccess : mguOrientedCap ledger left right = some C) :
     AdmissibleCapPost ledger C := by
   unfold mguOrientedCap at hsuccess
-  cases hsolve : solveCap (Unification.capFuel left right) ledger left right with
+  cases hsolve : solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right with
   | none => simp [hsolve] at hsuccess
   | some result =>
       have heq : result.subst = C := by
@@ -3376,7 +3860,7 @@ theorem mguOrientedCap_universal
     ∃ R : CapSubst,
       AdmissibleCapPost ledger R ∧ U = CapSubst.comp R C := by
   unfold mguOrientedCap at hsuccess
-  cases hsolve : solveCap (Unification.capFuel left right) ledger left right with
+  cases hsolve : solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right with
   | none => simp [hsolve] at hsuccess
   | some result =>
       have heq : result.subst = C := by
@@ -3392,7 +3876,7 @@ theorem mguOrientedCap_support
     C.SupportWithin (mguOrientedCapSupport ledger left right) := by
   unfold mguOrientedCap at hsuccess
   unfold mguOrientedCapSupport
-  cases hsolve : solveCap (Unification.capFuel left right) ledger left right with
+  cases hsolve : solveCap (mguOrientedCapCompleteFuel ledger left right) ledger left right with
   | none => simp [hsolve] at hsuccess
   | some result =>
       have heq : result.subst = C := by
