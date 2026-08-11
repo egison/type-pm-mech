@@ -12,6 +12,21 @@ below the original cut.
 -/
 
 namespace TypePM
+
+/-- A closed frozen signature and a bounded expected target make the next
+capability metavariable fresh for `PP-HOLE`.  The signature projection covers
+the complete table representation, while boundedness excludes the next
+counter from the target. -/
+theorem FrozenSig.SchemesClosed.freshCapForNext
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {expected : Ty}
+    (closed : signature.SchemesClosed)
+    (bounded : expected.BoundedBy q) :
+    signature.FreshCapFor ⟨q.nextCap⟩ expected := by
+  constructor
+  · rw [closed.signatureCaps]
+    simp
+  · intro membership
+    exact Nat.lt_irrefl q.nextCap (bounded.caps ⟨q.nextCap⟩ membership)
 namespace DDLedger
 
 /-- The two ledger invariants carried through an origin certificate. -/

@@ -226,12 +226,17 @@ clauseを含む全14 familyのfactorizationを，`SchemesClosed`と入力bounded
 ledgerから局所的にtransportする補題と，variable／literal／`something`／lambda／tupleから
 `RuntimeTyping`を得る初期erasure補題もある．さらに，全expression／pattern／arm／clause familyの
 終端state-free命題とconstructor-wise合成補題を分離し，checking alignmentの全5分岐を終端の
-意味的な`RuntimeAlignment`へ射影した．後続cutを量化する`RuntimeErasureUnder`はvariable，literal，
-`something`について閉じている．この整理に合わせ，`RuntimeTyping`と`ValueTy`から実装solverの
+意味的な`RuntimeAlignment`へ射影した．後続cutを量化する`RuntimeErasureUnder`はliteral，
+`something`，lambda，tuple，fix，expression listの構造規則に加え，expression leafを持たない
+data／primitive patternの4 familyについて無前提の相互closureまで閉じている．この整理に合わせ，
+`RuntimeTyping`と`ValueTy`から実装solverの
 raw certificateとglobal `VariablePost`を除き，matcher-to-slotは終端`CapabilityDemand`，
-slot-to-slotは終端型等式だけへ消去した．未完了なのは，`RuntimeErasureUnder`をrecursive expression，
-pattern，arm，clauseへ相互に拡張する部分であり，特に`let`のgeneralized bindingとmatcher
-finalizationの終端fixednessが次のcutである．
+slot-to-slotは終端型等式だけへ消去した．variable leafでは，fresh instanceのcapability binderが
+後続cutでもvariableであることはledgerから回収できる一方，`Scheme.applySubst`のbinder maskingを
+またぐcontext schemeの合成は無条件には成り立たないことを分離した．未完了なのは，この
+scheme-composition条件を入力boundednessとgeneralization provenanceから導き，
+`RuntimeErasureUnder`を残るexpression，user pattern，arm，clauseへ相互に拡張する部分である．
+`let`のgeneralized bindingとmatcher finalizationの終端fixednessも同じ次段のcutに属する．
 
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：

@@ -218,69 +218,6 @@ theorem Scheme.instantiate_applySubst_value_fixed
     (Scheme.applySubst_fcv_fixed_of_idempotent idem raw)
     (Scheme.applySubst_ftv_fixed_of_idempotent idem raw)
 
-/-! ## Minimal context certificate for canonical lookup transport -/
-
-/--
-Algebraic context transport needed by a canonical DD variable leaf.
-
-This certificate mentions neither `RuntimeTyping` nor a recursively erased
-expression.  It says only that each selected source scheme has a selected
-target scheme which admits the post-image of the canonical instance allocated
-at this cut.  It is strictly weaker than `Context.FlowsUnder`, whose scheme
-component quantifies over every value-flow instance and every agreeing post.
--/
-def Context.CanonicalInstanceFlowAt
-    (q : InferenceBase.FreshSupply) (post : Subst)
-    (source target : Context) : Prop :=
-  ∀ {name scheme}, source.find? name = some scheme →
-    ∃ targetScheme,
-      target.find? name = some targetScheme ∧
-      targetScheme.ValueFlowInst
-        (post.apply (InferenceBase.instantiateScheme q scheme).value)
-
-/-- The stronger existing context-flow invariant supplies the canonical
-lookup certificate whenever the post is globally variable-valued. -/
-theorem Context.FlowsUnder.toCanonicalInstanceFlowAt
-    {q : InferenceBase.FreshSupply} {post : Subst}
-    {source target : Context}
-    (flow : Context.FlowsUnder post source target)
-    (postVariable : VariablePost post) :
-    Context.CanonicalInstanceFlowAt q post source target := by
-  intro name scheme lookup
-  rcases flow.find? lookup with ⟨targetScheme, targetLookup, schemeFlow⟩
-  refine ⟨targetScheme, targetLookup, ?_⟩
-  apply schemeFlow postVariable
-  · intros
-    rfl
-  · intros
-    rfl
-  · refine ⟨(InferenceBase.instantiateScheme q scheme).subst.cap,
-      (InferenceBase.instantiateScheme q scheme).subst.target, ?_⟩
-    refine
-      { capSupport := InferenceBase.instantiateBinders_cap_support q
-          scheme.capBinders scheme.tyBinders
-        tySupport := InferenceBase.instantiateBinders_ty_support q
-          scheme.capBinders scheme.tyBinders
-        capBinderVariable := ?_
-        result := rfl }
-    intro binder binderMem
-    exact ⟨⟨q.nextCap + binder.id⟩, by
-      simp [InferenceBase.instantiateScheme,
-        InferenceBase.instantiateBinders,
-        InferenceBase.freshCapSubst, binderMem]⟩
-
-/-- A canonical context-flow certificate is exactly sufficient to construct
-the transported runtime variable leaf. -/
-theorem Context.CanonicalInstanceFlowAt.runtimeVar
-    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {post : Subst}
-    {source targetContext : Context} {name : String} {scheme : Scheme}
-    (flow : Context.CanonicalInstanceFlowAt q post source targetContext)
-    (lookup : source.find? name = some scheme) :
-    RuntimeTyping signature targetContext (.var name)
-      (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
-  rcases flow lookup with ⟨targetScheme, targetLookup, instanceTyping⟩
-  exact RuntimeTyping.var targetLookup instanceTyping
-
 /-! ## Binder-image-local value-flow transport -/
 
 /--
@@ -534,6 +471,39 @@ theorem Scheme.instantiateValueFlowUnderAdmissible
   subst image
   exact admissible.schemeInstanceImageVariable binderMem
 
+/-- Transport the canonical instance to the externally substituted scheme.
+
+The composition witness contains the ordinary capture-avoiding substitution
+algebra.  The additional equation identifies its binder component with the
+actual post-image of the fresh canonical binder.  Origin admissibility at the
+exact post-instantiation cut then proves that this component is variable-only;
+no context-wide flow assumption is involved. -/
+theorem Scheme.instantiateAppliedValueFlowUnderAdmissible
+    {ledger finalLedger : CapabilityOriginLedger}
+    {q final : InferenceBase.FreshSupply} {scheme : Scheme} {post : Subst}
+    (admissible : DDErasure.AdmissiblePostBetween
+      (InferenceBase.instantiateScheme q scheme).supply final
+      (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
+    (composition : scheme.InstCompositionAt post
+      (InferenceBase.instantiateScheme q scheme).subst.cap
+      (InferenceBase.instantiateScheme q scheme).subst.target)
+    (composedCapEquation : ∀ binder, binder ∈ scheme.capBinders →
+      composition.composedCap binder =
+        ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
+          post.cap) :
+    (scheme.applySubst post).ValueFlowInst
+      (post.apply (InferenceBase.instantiateScheme q scheme).value) := by
+  apply (Scheme.instantiateVariableInstAt q scheme).transportApplied
+      composition
+  intro binder binderMem
+  rcases admissible.schemeInstanceImageVariable binderMem with
+    ⟨finalImage, finalEquation⟩
+  refine ⟨finalImage, ?_⟩
+  rw [composedCapEquation binder binderMem]
+  simp [InferenceBase.instantiateScheme,
+    InferenceBase.instantiateBinders, InferenceBase.freshCapSubst,
+    binderMem, Cap.apply, finalEquation]
+
 /-- Canonical pattern-function instance transport under the corresponding
 rename-only origin policy. -/
 theorem DualScheme.instantiateValueFlowUnderAdmissible
@@ -612,29 +582,57 @@ theorem runtimeErasure_var_of_bounded_idempotent
   exact runtimeErasure_var_of_instanceFixed signature q S context name scheme
     ledger lookup fixed
 
-/-- Transport a canonical variable leaf across one accumulated parent suffix.
-The only context-side premise is the algebraic canonical-instance certificate;
-the source instance's absorption into `S' = post ∘ S` follows from the same
-bounded/solved invariants as local variable erasure. -/
-theorem runtimeVar_afterPost_of_canonicalContextFlow
-    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S post S' : Subst}
-    {context targetContext : Context} {name : String} {scheme : Scheme}
-    (lookup : (context.applySubst S).find? name = some scheme)
+/-- Transport one canonical variable leaf across its actual accumulated
+parent suffix.
+
+`rawLookup`, `sourceSchemeEquation`, and `terminalSchemeEquation` are the
+leaf-local lookup algebra: they identify the selected scheme before the
+prevailing substitution, at the lookup cut, and in the terminal context.
+The composition premises concern that one selected scheme only.  The marked
+origin ledger, rather than a context-wide flow oracle, discharges the semantic
+requirement that canonical capability-binder images remain variables. -/
+theorem runtimeVar_afterPost_of_admissible
+    {signature : FrozenSig} {q final : InferenceBase.FreshSupply}
+    {S post S' : Subst} {context : Context} {name : String}
+    {rawScheme scheme : Scheme}
+    {ledger finalLedger : CapabilityOriginLedger}
+    (rawLookup : context.find? name = some rawScheme)
+    (sourceSchemeEquation : rawScheme.applySubst S = scheme)
+    (terminalSchemeEquation :
+      rawScheme.applySubst S' = scheme.applySubst post)
     (bounded : S.BoundedBy q) (idem : S.Idempotent)
     (terminalEquation : S' = Subst.seq post S)
-    (contextFlow : Context.CanonicalInstanceFlowAt q post
-      (context.applySubst S) targetContext) :
-    RuntimeTyping signature targetContext (.var name)
+    (admissible : DDErasure.AdmissiblePostBetween
+      (InferenceBase.instantiateScheme q scheme).supply final
+      (DDLedger.markSchemeInstance ledger q scheme) finalLedger post)
+    (composition : scheme.InstCompositionAt post
+      (InferenceBase.instantiateScheme q scheme).subst.cap
+      (InferenceBase.instantiateScheme q scheme).subst.target)
+    (composedCapEquation : ∀ binder, binder ∈ scheme.capBinders →
+      composition.composedCap binder =
+        ((InferenceBase.instantiateScheme q scheme).subst.cap binder).apply
+          post.cap) :
+    RuntimeTyping signature (context.applySubst S') (.var name)
       (S'.apply (InferenceBase.instantiateScheme q scheme).value) := by
+  subst S'
+  have terminalLookup :
+      (context.applySubst (Subst.seq post S)).find? name =
+      some (scheme.applySubst post) := by
+    rw [Context.find?_applySubst, rawLookup]
+    simpa using congrArg some terminalSchemeEquation
+  have instanceTyping := Scheme.instantiateAppliedValueFlowUnderAdmissible
+    admissible composition composedCapEquation
   have sourceFixed : S.apply
       (InferenceBase.instantiateScheme q scheme).value =
         (InferenceBase.instantiateScheme q scheme).value := by
-    rcases Context.find?_applySubst_some_origin S context name scheme lookup with
-      ⟨rawScheme, _rawLookup, schemeEquation⟩
-    rw [← schemeEquation]
+    rw [← sourceSchemeEquation]
     exact Scheme.instantiate_applySubst_value_fixed rawScheme bounded idem
-  have transported := contextFlow.runtimeVar (signature := signature) lookup
-  rw [terminalEquation, Subst.seq_apply, sourceFixed]
+  have transported : RuntimeTyping signature
+      (context.applySubst (Subst.seq post S))
+      (.var name)
+      (post.apply (InferenceBase.instantiateScheme q scheme).value) :=
+    RuntimeTyping.var terminalLookup instanceTyping
+  rw [Subst.seq_apply, sourceFixed]
   exact transported
 
 end DDSynthOrigin

@@ -6091,6 +6091,12 @@ structure FrozenSig.SchemesClosed (signature : FrozenSig) : Prop where
     signature.findPatternFun name = some scheme → scheme.Closed
   primitives : ∀ {op : PrimOp} {scheme : CtorScheme},
     signature.findPrimitive op = some scheme → scheme.Closed
+  /-- The complete table representation carries no free capability
+  metavariables, including entries shadowed by lookup. -/
+  signatureCaps : signature.fcv = []
+  /-- Ordinary free metavariables are absent from the complete table
+  representation as well. -/
+  signatureTargets : signature.ftv = []
 
 /-- Entry-wise sufficient condition for signature closedness: for a
 concrete frozen signature every table is a finite literal, so each
@@ -6102,7 +6108,7 @@ theorem FrozenSig.SchemesClosed.of_entries {signature : FrozenSig}
     (funClosed : ∀ entry ∈ signature.patternFuns, entry.2.Closed)
     (primClosed : ∀ entry ∈ signature.primitives, entry.2.Closed) :
     signature.SchemesClosed := by
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro name scheme hfind
     unfold FrozenSig.findDataCtor at hfind
     cases hlist : List.find? (fun entry => entry.1 == name)
@@ -6139,6 +6145,46 @@ theorem FrozenSig.SchemesClosed.of_entries {signature : FrozenSig}
         rw [hlist] at hfind
         cases hfind
         exact primClosed entry (List.mem_of_find?_eq_some hlist)
+  · apply List.eq_nil_iff_forall_not_mem.mpr
+    intro varId membership
+    simp only [FrozenSig.fcv, List.mem_append] at membership
+    rcases membership with ((dataMem | patternMem) | funMem) | primMem
+    · rcases List.mem_flatMap.mp dataMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(dataClosed entry entryMem).1] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp patternMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(patternClosed entry entryMem).1] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp funMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(funClosed entry entryMem).1] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp primMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(primClosed entry entryMem).1] at varMem
+      contradiction
+  · apply List.eq_nil_iff_forall_not_mem.mpr
+    intro varId membership
+    simp only [FrozenSig.ftv, List.mem_append] at membership
+    rcases membership with ((dataMem | patternMem) | funMem) | primMem
+    · rcases List.mem_flatMap.mp dataMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(dataClosed entry entryMem).2] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp patternMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(patternClosed entry entryMem).2] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp funMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(funClosed entry entryMem).2] at varMem
+      contradiction
+    · rcases List.mem_flatMap.mp primMem with
+        ⟨entry, entryMem, varMem⟩
+      rw [(primClosed entry entryMem).2] at varMem
+      contradiction
 
 /-! ### Boundedness of contexts -/
 

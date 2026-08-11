@@ -232,14 +232,19 @@ user pattern，primitive pattern，data pattern，arm，clauseを含む全14 Ori
 `SchemesClosed`と入力boundednessだけからfactorizationを得る無前提の相互定理がある．canonical
 scheme／dual-scheme instanceについては，rename-only ledgerからbinder imageだけのvariable-only
 transportを回収する補題もある．また，variable，literal，`something`，lambda，tupleについては
-state-freeな`RuntimeTyping`への初期erasure補題を構成済みである．
+state-freeな`RuntimeTyping`への初期erasure補題を構成済みである．後続cutを量化した強いerasureは，
+literal，`something`，lambda，tuple，fix，application，expression list，checking cutへ拡張済みで
+あり，data／primitive patternの4 familyは無前提の相互closureまで完成している．
 
 本質的な残課題は，完成したstate factorizationを使い，Origin derivationの各constructorから
 `RuntimeTyping` constructorへ情報を射影する相互帰納証明を完成することである．この射影では
 supply，prevailing substitution，ledgerを
 消去しつつ，scheme instanceのvariable-only条件，matcher final capability，terminal hole capability，
-`let` generalizationを回収する．`RuntimeTyping` derivationの存在をDDのpremiseにする定義は循環する
-ため採らない．
+`let` generalizationを回収する．variable leafではactual marked ledgerからfresh binder imageの
+variable-only性を回収できるが，capture-avoidingな`Scheme.applySubst`の合成則は
+`AdmissiblePostBetween`だけからは従わない．そのため，局所的なscheme compositionを明示する健全な
+transport補題までを切り出し，入力boundednessとgeneralization provenanceからその代数条件を導く
+部分を残している．`RuntimeTyping` derivationの存在をDDのpremiseにする定義は循環するため採らない．
 
 ## 6. dynamics と安全性
 

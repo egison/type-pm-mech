@@ -101,6 +101,34 @@ private theorem Subst.apply_productSlots
   simp [Subst.apply_prod, List.map_map, Dual.applySubst, Dual.apply,
     Function.comp_def]
 
+/-- A later common substitution preserves a normalized runtime alignment. -/
+theorem RuntimeAlignment.apply
+    {raw expected : Ty} (post : Subst)
+    (alignment : RuntimeAlignment raw expected) :
+    RuntimeAlignment (post.apply raw) (post.apply expected) := by
+  cases alignment with
+  | equal equality => exact .equal (congrArg post.apply equality)
+  | @matcherToSlot producer consumer target demand =>
+      simpa only [Subst.apply_matcher, Subst.apply_slot] using
+        (RuntimeAlignment.matcherToSlot (demand.apply post.cap))
+  | @productMatcherToSlot duals consumer demand =>
+      have mappedDemand : CapabilityDemand
+          (.prod ((duals.map (Dual.applySubst post)).map Dual.cap))
+          (consumer.apply post.cap) := by
+        simpa [Dual.applySubst, Dual.apply, List.map_map,
+          Function.comp_def] using demand.apply post.cap
+      rw [Subst.apply_productMatchers, Subst.apply_slot, Subst.apply_prod]
+      simpa only [Dual.map_target_applySubst] using
+        (RuntimeAlignment.productMatcherToSlot
+          (duals := duals.map (Dual.applySubst post)) mappedDemand)
+  | @slotTuple duals =>
+      rw [Subst.apply_productSlots, Subst.apply_slot, Cap.apply_prod,
+        Subst.apply_prod]
+      simpa only [Cap.applyList_eq_map, Dual.map_cap_applySubst,
+        Dual.map_target_applySubst] using
+        (RuntimeAlignment.slotTuple
+          (duals := duals.map (Dual.applySubst post)))
+
 /-- Every ledger-aware checking alignment determines its normalized runtime
 action without an expression-typing premise. -/
 theorem DDAlignWithLedger.runtimeCertificate
@@ -284,11 +312,10 @@ namespace DDSynthOrigin
 /--
 Runtime erasure stable under any later origin-admissible suffix.
 
-`Context.CanonicalInstanceFlowAt` is the only context-side certificate.  It
-records the canonical scheme instance selected at this traversal's input
-supply, not a typing derivation.  This strengthened conclusion is what a
-sequential parent uses for an earlier child; the local `RuntimeErasure`
-property alone stops at the child's own terminal substitution.
+The invariant quantifies only the actual origin-admissible suffix beginning at
+this derivation's output cut.  In particular it does not assume a global
+context-flow oracle.  Variable leaves must recover their selected scheme
+instance from the `markSchemeInstance` policy carried by that exact suffix.
 -/
 def RuntimeErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
@@ -301,27 +328,8 @@ def RuntimeErasureUnder
       {finalLedger : CapabilityOriginLedger},
     finalSubst = Subst.seq post S' ->
     DDErasure.AdmissiblePostBetween q' final ledger' finalLedger post ->
-    Context.CanonicalInstanceFlowAt q post (context.applySubst S)
-      (context.applySubst finalSubst) ->
     RuntimeTyping signature (context.applySubst finalSubst) expression
       (finalSubst.apply target)
-
-/-- The strengthened invariant closes at a variable leaf without a typing
-oracle.  Bounded solved form absorbs the input substitution; canonical
-context flow transports exactly the selected fresh instance. -/
-theorem runtimeErasureUnder_var
-    (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
-    (context : Context) (name : String) (scheme : Scheme)
-    (ledger : CapabilityOriginLedger)
-    (lookup : (context.applySubst S).find? name = some scheme)
-    (bounded : S.BoundedBy q) (idem : S.Idempotent) :
-    RuntimeErasureUnder
-      (DDSynthOrigin.var (signature := signature) (q := q)
-        (ledger := ledger) lookup) := by
-  intro final finalSubst post finalLedger terminalEquation _admissible
-    contextFlow
-  exact runtimeVar_afterPost_of_canonicalContextFlow lookup bounded idem
-    terminalEquation contextFlow
 
 /-- Literals are stable under every later suffix. -/
 theorem runtimeErasureUnder_lit
@@ -330,7 +338,7 @@ theorem runtimeErasureUnder_lit
     RuntimeErasureUnder
       (DDSynthOrigin.lit (signature := signature) (q := q) (S := S)
         (context := context) (value := value) (ledger := ledger)) := by
-  intro final finalSubst post finalLedger terminalEquation admissible contextFlow
+  intro final finalSubst post finalLedger terminalEquation admissible
   simp only [Subst.apply_int]
   exact RuntimeTyping.lit
 
@@ -341,9 +349,315 @@ theorem runtimeErasureUnder_something
     RuntimeErasureUnder
       (DDSynthOrigin.something (signature := signature) (q := q) (S := S)
         (context := context) (ledger := ledger)) := by
-  intro final finalSubst post finalLedger terminalEquation admissible contextFlow
+  intro final finalSubst post finalLedger terminalEquation admissible
   simp only [Subst.apply_matcher, Cap.apply]
   exact RuntimeTyping.something
+
+/-- Lambda erasure is structural under the same actual later suffix as its
+body; the monomorphic parameter is normalized with the final substitution. -/
+theorem runtimeErasureUnder_lam
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {name : String} {body : Expr} {bodyTarget : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger}
+    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
+      ((name, Scheme.mono (.var q.nextTy)) :: context) body bodyTarget q' S'}
+    (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger')
+    (bodyUnder : RuntimeErasureUnder bodyOrigin) :
+    RuntimeErasureUnder (DDSynthOrigin.lam bodyOrigin) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have bodyTyping := bodyUnder terminalEquation admissible
+  simp only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+    Subst.apply_fn] at bodyTyping ⊢
+  exact RuntimeTyping.lam bodyTyping
+
+end DDSynthOrigin
+
+namespace DDSynthsOrigin
+
+/-- Later-post-stable erasure for a synthesis traversal. -/
+def RuntimeErasureUnder
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDSynths signature q S context expressions targets q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    (_origin : DDSynthsOrigin signature raw ledger ledger') : Prop :=
+  ∀ {final : InferenceBase.FreshSupply} {finalSubst post : Subst}
+      {finalLedger : CapabilityOriginLedger},
+    finalSubst = Subst.seq post S' ->
+    DDErasure.AdmissiblePostBetween q' final ledger' finalLedger post ->
+    ExprsTy signature (context.applySubst finalSubst) expressions
+      (targets.map finalSubst.apply)
+
+theorem runtimeErasureUnder_nil
+    (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
+    (context : Context) (ledger : CapabilityOriginLedger) :
+    RuntimeErasureUnder
+      (DDSynthsOrigin.nil (signature := signature) (q := q) (S := S)
+        (context := context) (ledger := ledger)) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  exact ExprsTy.nil
+
+/-- A list cons composes the tail factorization with the external suffix to
+transport the earlier head directly to the common final cut. -/
+theorem runtimeErasureUnder_cons
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expression : Expr} {expressions : List Expr}
+    {target : Ty} {targets : List Ty}
+    {q1 q' : InferenceBase.FreshSupply} {S1 S' : Subst}
+    {ledger ledger1 ledger' : CapabilityOriginLedger}
+    {head : DDSynth signature q S context expression target q1 S1}
+    {tail : DDSynths signature q1 S1 context expressions targets q' S'}
+    (headOrigin : DDSynthOrigin signature head ledger ledger1)
+    (tailOrigin : DDSynthsOrigin signature tail ledger1 ledger')
+    (headUnder : DDSynthOrigin.RuntimeErasureUnder headOrigin)
+    (tailUnder : RuntimeErasureUnder tailOrigin)
+    (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context) :
+    RuntimeErasureUnder (DDSynthsOrigin.cons headOrigin tailOrigin) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  obtain ⟨S1b, _headBounded⟩ :=
+    headOrigin.erase.boundedBy closed Sb contextBounded
+  have tailFactor := DDSynthsOrigin.factorize tailOrigin closed S1b
+    (contextBounded.mono headOrigin.erase.supplyExtends)
+  rcases tailFactor with ⟨tailPost, tailEquation, tailAdmissible⟩
+  have headEquation : finalSubst =
+      Subst.seq (Subst.seq post tailPost) S1 := by
+    rw [terminalEquation, tailEquation]
+    exact PhasedPost.seq_assoc post tailPost S1
+  have headTyping := headUnder headEquation
+    (tailAdmissible.seq admissible)
+  have tailTyping := tailUnder terminalEquation admissible
+  exact ExprsTy.cons headTyping tailTyping
+
+end DDSynthsOrigin
+
+namespace DDSynthOrigin
+
+/-- Tuple synthesis inherits the later-post-stable erasure of its ordered
+child traversal. -/
+theorem runtimeErasureUnder_tuple
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expressions : List Expr} {targets : List Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger}
+    {children : DDSynths signature q S context expressions targets q' S'}
+    (childrenOrigin : DDSynthsOrigin signature children ledger ledger')
+    (childrenUnder : DDSynthsOrigin.RuntimeErasureUnder childrenOrigin) :
+    RuntimeErasureUnder (DDSynthOrigin.tuple childrenOrigin) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have childrenTyping := childrenUnder terminalEquation admissible
+  simp only [Subst.apply_prod]
+  exact RuntimeTyping.tuple childrenTyping
+
+/-- Monomorphic recursion composes the body's alignment factor with the later
+parent suffix; no terminal body typing premise is needed. -/
+theorem runtimeErasureUnder_fix
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {self argument : String} {body : Expr}
+    {bodyTarget : Ty} {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
+    {ledger ledger1 : CapabilityOriginLedger}
+    (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
+    (nonMatcher : NonMatcherBody body)
+    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context)
+      body bodyTarget q1 S1}
+    (bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger1)
+    (aligned : DDAlignTypesWithLedger ledger1 S1 bodyTarget
+      (.var (q.nextTy + 1)) S')
+    (bodyUnder : RuntimeErasureUnder bodyOrigin)
+    (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context) :
+    RuntimeErasureUnder
+      (DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  have extension := SupplyExtends.bumpTy q 2
+  have domainB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
+      (.var q.nextTy) := Ty.BoundedBy.varOf
+    (show q.nextTy < q.nextTy + 2 by omega)
+  have codomainB : Ty.BoundedBy { q with nextTy := q.nextTy + 2 }
+      (.var (q.nextTy + 1)) := Ty.BoundedBy.varOf
+    (show q.nextTy + 1 < q.nextTy + 2 by omega)
+  have bodyContextB : Context.BoundedBy
+      { q with nextTy := q.nextTy + 2 }
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context) :=
+    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainB)
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf domainB codomainB))
+        (contextBounded.mono extension))
+  obtain ⟨S1b, bodyB⟩ := bodyOrigin.erase.boundedBy closed
+    (Sb.mono extension) bodyContextB
+  rcases aligned.factorPost S1b bodyB
+      (codomainB.mono bodyOrigin.erase.supplyExtends) with
+    ⟨alignPost, alignEquation, alignAdmissible⟩
+  have bodyEquation : finalSubst =
+      Subst.seq (Subst.seq post alignPost) S1 := by
+    rw [terminalEquation, alignEquation]
+    exact PhasedPost.seq_assoc post alignPost S1
+  have bodyTyping := bodyUnder bodyEquation
+    (alignAdmissible.seq admissible)
+  have finalResultEquality : finalSubst.apply bodyTarget =
+      finalSubst.apply (.var (q.nextTy + 1)) := by
+    rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
+    exact congrArg post.apply aligned.output_equal
+  have bodyExpected : RuntimeTyping signature
+      (Context.applySubst finalSubst
+        ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: context))
+      body (finalSubst.apply (.var (q.nextTy + 1))) := by
+    rw [← finalResultEquality]
+    exact bodyTyping
+  have bodyExpected' : RuntimeTyping signature
+      ((argument, Scheme.mono (finalSubst.apply (.var q.nextTy))) ::
+        (self, Scheme.mono
+          (.fn (finalSubst.apply (.var q.nextTy))
+            (finalSubst.apply (.var (q.nextTy + 1))))) ::
+        context.applySubst finalSubst)
+      body (finalSubst.apply (.var (q.nextTy + 1))) := by
+    simpa only [Context.applySubst, List.map_cons, Scheme.applySubst_mono,
+      Subst.apply_fn] using bodyExpected
+  exact RuntimeTyping.fixE distinct direct bodyExpected'
+
+end DDSynthOrigin
+
+namespace DDCheckOrigin
+
+/-- Later-post-stable erasure for one checking derivation. -/
+def RuntimeErasureUnder
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expression : Expr} {expected : Ty}
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {raw : DDCheck signature q S context expression expected q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    (_origin : DDCheckOrigin signature raw ledger ledger') : Prop :=
+  ∀ {final : InferenceBase.FreshSupply} {finalSubst post : Subst}
+      {finalLedger : CapabilityOriginLedger},
+    finalSubst = Subst.seq post S' ->
+    DDErasure.AdmissiblePostBetween q' final ledger' finalLedger post ->
+    RuntimeTyping signature (context.applySubst finalSubst) expression
+      (finalSubst.apply expected)
+
+/-- Checking composes synthesis with its own alignment factor and then applies
+the normalized runtime action at the final cut. -/
+theorem runtimeErasureUnder_mk
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {expression : Expr} {expected raw : Ty}
+    {q1 : InferenceBase.FreshSupply} {S1 S' : Subst}
+    {ledger ledger1 : CapabilityOriginLedger}
+    {synthesized : DDSynth signature q S context expression raw q1 S1}
+    (synthOrigin : DDSynthOrigin signature synthesized ledger ledger1)
+    (aligned : DDAlignWithLedger ledger1 S1 raw expected S')
+    (synthUnder : DDSynthOrigin.RuntimeErasureUnder synthOrigin)
+    (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context)
+    (expectedBounded : expected.BoundedBy q) :
+    RuntimeErasureUnder (DDCheckOrigin.mk synthOrigin aligned) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  obtain ⟨S1b, rawB⟩ :=
+    synthOrigin.erase.boundedBy closed Sb contextBounded
+  have expectedB := expectedBounded.mono synthOrigin.erase.supplyExtends
+  rcases aligned.factorPost S1b rawB expectedB with
+    ⟨alignPost, alignEquation, alignAdmissible⟩
+  have synthEquation : finalSubst =
+      Subst.seq (Subst.seq post alignPost) S1 := by
+    rw [terminalEquation, alignEquation]
+    exact PhasedPost.seq_assoc post alignPost S1
+  have synthTyping := synthUnder synthEquation
+    (alignAdmissible.seq admissible)
+  have finalAlignment : RuntimeAlignment (finalSubst.apply raw)
+      (finalSubst.apply expected) := by
+    have transported := aligned.runtimeCertificate.apply post
+    simpa only [terminalEquation, Subst.seq_apply] using transported
+  exact finalAlignment.transport synthTyping
+
+end DDCheckOrigin
+
+namespace DDSynthOrigin
+
+/-- Application transports the function child across the shape-allocation,
+alignment, argument-checking, and external suffixes.  The argument already
+starts after the function-shape alignment, so it uses only the external
+suffix. -/
+theorem runtimeErasureUnder_app
+    {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
+    {context : Context} {function argument : Expr} {functionTarget : Ty}
+    {q1 : InferenceBase.FreshSupply} {S1 S2 : Subst}
+    {q2 : InferenceBase.FreshSupply} {S3 : Subst}
+    {ledger ledger1 ledger3 : CapabilityOriginLedger}
+    {functionRaw : DDSynth signature q S context function functionTarget q1 S1}
+    (functionOrigin : DDSynthOrigin signature functionRaw ledger ledger1)
+    (aligned : DDAlignTypesWithLedger ledger1 S1 functionTarget
+      (.fn (.var q1.nextTy) (.var (q1.nextTy + 1))) S2)
+    {argumentRaw : DDCheck signature
+      { q1 with nextTy := q1.nextTy + 2 } S2 context argument
+      (.var q1.nextTy) q2 S3}
+    (argumentOrigin : DDCheckOrigin signature argumentRaw ledger1 ledger3)
+    (functionUnder : RuntimeErasureUnder functionOrigin)
+    (argumentUnder : DDCheckOrigin.RuntimeErasureUnder argumentOrigin)
+    (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
+    (contextBounded : Context.BoundedBy q context) :
+    RuntimeErasureUnder
+      (DDSynthOrigin.app functionOrigin aligned argumentOrigin) := by
+  intro final finalSubst post finalLedger terminalEquation admissible
+  obtain ⟨S1b, functionB⟩ := functionOrigin.erase.boundedBy closed Sb
+    contextBounded
+  have extension := SupplyExtends.bumpTy q1 2
+  have domainB : Ty.BoundedBy { q1 with nextTy := q1.nextTy + 2 }
+      (.var q1.nextTy) := Ty.BoundedBy.varOf
+    (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) (Nat.le_succ _))
+  have codomainB : Ty.BoundedBy { q1 with nextTy := q1.nextTy + 2 }
+      (.var (q1.nextTy + 1)) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
+  have shapeB : Ty.BoundedBy { q1 with nextTy := q1.nextTy + 2 }
+      (.fn (.var q1.nextTy) (.var (q1.nextTy + 1))) :=
+    Ty.BoundedBy.fnOf domainB codomainB
+  have S2b := aligned.erase.boundedBy (S1b.mono extension)
+    (functionB.mono extension) shapeB
+  have argumentFactor := DDCheckOrigin.factorize argumentOrigin closed S2b
+    (contextBounded.mono
+      (functionOrigin.erase.supplyExtends.trans extension)) domainB
+  have allocation := DDErasure.StateFactorization.ofTransition
+    (S := S1) extension (DDLedger.RefinesBelow.refl q1 ledger1)
+  have alignment := DDErasure.StateFactorization.ofAlignTypes aligned
+    (S1b.mono extension) (functionB.mono extension) shapeB
+  have remainderFactor := (allocation.trans alignment).trans argumentFactor
+  rcases argumentFactor with
+    ⟨argumentPost, argumentEquation, argumentAdmissible⟩
+  rcases remainderFactor with
+    ⟨remainderPost, remainderEquation, remainderAdmissible⟩
+  have functionEquation : finalSubst =
+      Subst.seq (Subst.seq post remainderPost) S1 := by
+    rw [terminalEquation, remainderEquation]
+    exact PhasedPost.seq_assoc post remainderPost S1
+  have functionTyping := functionUnder functionEquation
+    (remainderAdmissible.seq admissible)
+  have argumentTyping := argumentUnder terminalEquation admissible
+  have functionShapeAtS3 : S3.apply functionTarget =
+      S3.apply (.fn (.var q1.nextTy) (.var (q1.nextTy + 1))) := by
+    rw [argumentEquation, Subst.seq_apply, Subst.seq_apply]
+    exact congrArg argumentPost.apply aligned.output_equal
+  have finalFunctionShape : finalSubst.apply functionTarget =
+      finalSubst.apply (.fn (.var q1.nextTy)
+        (.var (q1.nextTy + 1))) := by
+    rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
+    exact congrArg post.apply functionShapeAtS3
+  have functionExpectedRaw : RuntimeTyping signature
+      (context.applySubst finalSubst) function
+      (finalSubst.apply
+        (.fn (.var q1.nextTy) (.var (q1.nextTy + 1)))) := by
+    rw [← finalFunctionShape]
+    exact functionTyping
+  have functionExpected : RuntimeTyping signature
+      (context.applySubst finalSubst) function
+      (.fn (finalSubst.apply (.var q1.nextTy))
+        (finalSubst.apply (.var (q1.nextTy + 1)))) := by
+    simpa only [Subst.apply_fn] using functionExpectedRaw
+  exact RuntimeTyping.app functionExpected argumentTyping
 
 theorem runtimeErasure_fix_of_terminal_body
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
