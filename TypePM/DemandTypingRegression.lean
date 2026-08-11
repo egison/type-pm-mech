@@ -2136,7 +2136,7 @@ def delegatingMatcher_ddSynthOrigin :
     DDSynthOrigin emptySignature delegatingMatcher_ddSynth []
       delegatingLedger₁ := by
   simpa [delegatingMatcher, DDLedger.freezeMatcherProducer,
-    DDLedger.matcherProducerLeaves,
+    DDLedger.matcherProducerLeaves, Inference.matcherProducerLedgerLeaves,
     Cap.fcv, CapabilityOriginLedger.setOrigins] using
     (DDSynthOrigin.matcher (signature := emptySignature)
       (evidence := [.unseen]) (capability := .any)

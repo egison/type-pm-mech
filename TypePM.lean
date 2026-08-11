@@ -87,7 +87,8 @@ import TypePM.SchemeBoundedness
 import TypePM.DemandTypingLedgerMetatheory
 import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
-import TypePM.DemandTypingInferenceSoundness
+import TypePM.DemandTypingInferenceSoundnessPublic
+import TypePM.DemandTypingInferenceSoundnessRegression
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
@@ -103,4 +104,6 @@ value typing and the dynamic metatheory but does not define source acceptance.
 `DemandTypingErasure` is the facade for scoped state factorization,
 idempotence preservation, the terminal-audit tree, full fixed-terminal
 erasure, and the closed-program bridge to that internal judgment.
+`DemandTypingInferenceSoundnessPublic` exposes the converse-facing soundness
+boundary from successful executable inference to `DDTyping`.
 -/
