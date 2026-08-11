@@ -3027,6 +3027,274 @@ private theorem solvePairedTy_eq_self
       cases hrun
       rfl
 
+/-! ## Complete fuel for the origin-oriented capability kernel -/
+
+mutual
+
+/-- Input-directed sufficient fuel for one origin-oriented capability
+constraint, relative to a remaining capability-variable budget. -/
+def completeOrientedCapFuelAux :
+    (ledger : CapabilityOriginLedger) -> (budget : Nat) ->
+      (left right : Cap) -> Nat
+  | ledger, budget, left, right =>
+      if left = right then
+        1
+      else
+        match left, right with
+        | .con leftName leftChildren, .con rightName rightChildren =>
+            if leftName = rightName then
+              completeOrientedCapListFuelAux ledger budget
+                leftChildren rightChildren + 1
+            else
+              1
+        | .prod leftComponents, .prod rightComponents =>
+            completeOrientedCapListFuelAux ledger budget
+              leftComponents rightComponents + 1
+        | _, _ => 1
+termination_by
+  ledger budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.right <;> omega
+
+/-- Input-directed sufficient fuel for origin-oriented capability-list
+unification.  An unequal successful head consumes one variable from the
+remaining budget before its substitution is followed into the tail. -/
+def completeOrientedCapListFuelAux :
+    (ledger : CapabilityOriginLedger) -> (budget : Nat) ->
+      (left right : List Cap) -> Nat
+  | ledger, budget, leftHead :: leftTail, rightHead :: rightTail =>
+      if leftHead = rightHead then
+        1 + completeOrientedCapListFuelAux ledger budget
+          leftTail rightTail + 1
+      else
+        match budget with
+        | 0 => 1
+        | remaining + 1 =>
+            let headFuel :=
+              completeOrientedCapFuelAux ledger (remaining + 1)
+                leftHead rightHead
+            match solveCap headFuel ledger leftHead rightHead with
+            | none => 1
+            | some headResult =>
+                headFuel +
+                  completeOrientedCapListFuelAux ledger remaining
+                    (Cap.applyList headResult.subst leftTail)
+                    (Cap.applyList headResult.subst rightTail) + 1
+  | _, _, _, _ => 1
+termination_by
+  ledger budget left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; omega)
+    | (apply Prod.Lex.left; omega)
+
+end
+
+/-- Complete input-directed fuel for one public origin-oriented capability
+constraint. -/
+def mguOrientedCapCompleteFuel
+    (ledger : CapabilityOriginLedger) (left right : Cap) : Nat :=
+  completeOrientedCapFuelAux ledger (left.fcv ++ right.fcv).length left right
+
+/-- Complete input-directed fuel for an origin-oriented capability-list
+constraint. -/
+def mguOrientedCapListCompleteFuel
+    (ledger : CapabilityOriginLedger) (left right : List Cap) : Nat :=
+  completeOrientedCapListFuelAux ledger
+    (Cap.fcvList left ++ Cap.fcvList right).length left right
+
+@[simp] private theorem completeOrientedCapFuelAux_self
+    (ledger : CapabilityOriginLedger) (budget : Nat) (capability : Cap) :
+    completeOrientedCapFuelAux ledger budget capability capability = 1 := by
+  cases capability <;> rw [completeOrientedCapFuelAux] <;> simp
+
+@[simp] private theorem completeOrientedCapFuelAux_var_left
+    (ledger : CapabilityOriginLedger) (budget : Nat)
+    (varId : CapVar) (right : Cap) :
+    completeOrientedCapFuelAux ledger budget (.var varId) right = 1 := by
+  simpa using completeOrientedCapFuelAux.eq_3 ledger budget (.var varId) right
+    (by simp) (by simp)
+
+@[simp] private theorem completeOrientedCapFuelAux_var_right
+    (ledger : CapabilityOriginLedger) (budget : Nat)
+    (left : Cap) (varId : CapVar) :
+    completeOrientedCapFuelAux ledger budget left (.var varId) = 1 := by
+  simpa using completeOrientedCapFuelAux.eq_3 ledger budget left (.var varId)
+    (by simp) (by simp)
+
+@[simp] private theorem completeOrientedCapListFuelAux_nil
+    (ledger : CapabilityOriginLedger) (budget : Nat) :
+    completeOrientedCapListFuelAux ledger budget [] [] = 1 := by
+  exact completeOrientedCapListFuelAux.eq_3 ledger budget [] [] (by simp)
+
+private theorem completeOrientedCapListFuelAux_cons_eq
+    (ledger : CapabilityOriginLedger) (budget : Nat) (head : Cap)
+    (leftTail rightTail : List Cap) :
+    completeOrientedCapListFuelAux ledger budget
+        (head :: leftTail) (head :: rightTail) =
+      1 + completeOrientedCapListFuelAux ledger budget leftTail rightTail + 1 := by
+  cases budget with
+  | zero => simpa using
+      completeOrientedCapListFuelAux.eq_1 ledger head leftTail head rightTail
+  | succ remaining => simpa using
+      (completeOrientedCapListFuelAux.eq_2 ledger head leftTail head rightTail
+        remaining)
+
+private theorem completeOrientedCapListFuelAux_cons_ne
+    (ledger : CapabilityOriginLedger) (remaining : Nat)
+    (leftHead rightHead : Cap) (leftTail rightTail : List Cap)
+    (hne : leftHead ≠ rightHead)
+    (headResult : OrientedCapResult ledger leftHead rightHead)
+    (hrun : solveCap
+      (completeOrientedCapFuelAux ledger (remaining + 1) leftHead rightHead)
+      ledger leftHead rightHead = some headResult) :
+    completeOrientedCapListFuelAux ledger (remaining + 1)
+        (leftHead :: leftTail) (rightHead :: rightTail) =
+      completeOrientedCapFuelAux ledger (remaining + 1) leftHead rightHead +
+        completeOrientedCapListFuelAux ledger remaining
+          (Cap.applyList headResult.subst leftTail)
+          (Cap.applyList headResult.subst rightTail) + 1 := by
+  simpa [hne, hrun] using
+    completeOrientedCapListFuelAux.eq_2 ledger leftHead leftTail rightHead
+      rightTail remaining
+
+/-! ## Complete input-directed fuel for the paired kernel -/
+
+mutual
+
+/-- Sufficient fuel calculated for one origin-aware paired target constraint,
+relative to the number of still available variables of both sorts. -/
+private def completePairedTyFuelAux :
+    (budget : Nat) → (ledger : CapabilityOriginLedger) →
+      (left right : Ty) → Nat
+  | budget, ledger, left, right =>
+      if left = right then
+        1
+      else
+        match left, right with
+        | .data leftName leftFields, .data rightName rightFields =>
+            if leftName = rightName then
+              completePairedTyListFuelAux budget ledger leftFields
+                  rightFields + 1
+            else
+              1
+        | .prod leftComponents, .prod rightComponents =>
+            completePairedTyListFuelAux budget ledger leftComponents
+                rightComponents + 1
+        | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
+            if leftDomain = rightDomain then
+              1 + completePairedTyFuelAux budget ledger leftCodomain
+                  rightCodomain + 1
+            else
+              match budget with
+              | 0 => 1
+              | remaining + 1 =>
+                  let domainFuel :=
+                    completePairedTyFuelAux (remaining + 1) ledger
+                      leftDomain rightDomain
+                  match solvePairedTy domainFuel ledger leftDomain
+                      rightDomain with
+                  | none => 1
+                  | some domainResult =>
+                      domainFuel +
+                        completePairedTyFuelAux remaining ledger
+                          (domainResult.subst.apply leftCodomain)
+                          (domainResult.subst.apply rightCodomain) + 1
+        | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
+            if leftCap = rightCap then
+              1 + completePairedTyFuelAux budget ledger leftTarget
+                  rightTarget + 1
+            else
+              match budget with
+              | 0 => 1
+              | remaining + 1 =>
+                  let capFuel := mguOrientedCapCompleteFuel ledger
+                    leftCap rightCap
+                  match solveCap capFuel ledger leftCap rightCap with
+                  | none => 1
+                  | some capResult =>
+                      capFuel +
+                        completePairedTyFuelAux remaining ledger
+                          (leftTarget.applyCapability capResult.subst)
+                          (rightTarget.applyCapability capResult.subst) + 1
+        | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+            if leftCap = rightCap then
+              1 + completePairedTyFuelAux budget ledger leftTarget
+                  rightTarget + 1
+            else
+              match budget with
+              | 0 => 1
+              | remaining + 1 =>
+                  let capFuel := mguOrientedCapCompleteFuel ledger
+                    leftCap rightCap
+                  match solveCap capFuel ledger leftCap rightCap with
+                  | none => 1
+                  | some capResult =>
+                      capFuel +
+                        completePairedTyFuelAux remaining ledger
+                          (leftTarget.applyCapability capResult.subst)
+                          (rightTarget.applyCapability capResult.subst) + 1
+        | _, _ => 1
+termination_by
+  budget ledger left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; omega)
+    | (apply Prod.Lex.left; omega)
+
+/-- Sufficient fuel calculated for origin-aware paired target-list
+unification. -/
+private def completePairedTyListFuelAux :
+    (budget : Nat) → (ledger : CapabilityOriginLedger) →
+      (left right : List Ty) → Nat
+  | budget, ledger, leftHead :: leftTail, rightHead :: rightTail =>
+      if leftHead = rightHead then
+        1 + completePairedTyListFuelAux budget ledger leftTail rightTail + 1
+      else
+        match budget with
+        | 0 => 1
+        | remaining + 1 =>
+            let headFuel :=
+              completePairedTyFuelAux (remaining + 1) ledger leftHead
+                rightHead
+            match solvePairedTy headFuel ledger leftHead rightHead with
+            | none => 1
+            | some headResult =>
+                headFuel +
+                  completePairedTyListFuelAux remaining ledger
+                    (leftTail.map headResult.subst.apply)
+                    (rightTail.map headResult.subst.apply) + 1
+  | _, _, _, _ => 1
+termination_by
+  budget ledger left right => (budget, sizeOf left + sizeOf right)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; omega)
+    | (apply Prod.Lex.left; omega)
+
+end
+
+/-- Complete input-directed fuel for one origin-aware paired target
+constraint.  The budget contains variables of both sorts because an unequal
+subconstraint can make progress in either component. -/
+def mguPairedTyCompleteFuel
+    (ledger : CapabilityOriginLedger) (left right : Ty) : Nat :=
+  completePairedTyFuelAux
+    ((left.ftv ++ right.ftv).length + (left.fcv ++ right.fcv).length)
+    ledger left right
+
+/-- Complete input-directed fuel for origin-aware paired target lists. -/
+def mguPairedTyListCompleteFuel
+    (ledger : CapabilityOriginLedger) (left right : List Ty) : Nat :=
+  completePairedTyListFuelAux
+    ((Ty.ftvList left ++ Ty.ftvList right).length +
+      (Ty.fcvList left ++ Ty.fcvList right).length)
+    ledger left right
+
 /-! ## Public wrappers -/
 
 /-- Structural-fuel wrapper of the origin-oriented capability solver. -/
