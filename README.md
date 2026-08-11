@@ -324,7 +324,8 @@ raw target-equality stepの双方へ公開した．ordinary equalityのうちann
 1-solve分岐に加え，matcher／matcherとslot／slotのcapability-then-target 2-solve分岐も
 exact-stateな`DDAlignTypesWithLedger`へ再構成済みであり，ordinary type alignmentの3分類を閉じた．
 event-onlyな`alignTypes` wrapperと`alignAtSlot`のordinary fallbackもexact-state certificateへ
-持ち上げ済みである．次はslot-tuple liftとslot-to-slotを再構成し，checking alignment全体を完成する．
+持ち上げ済みであり，slot-to-slotのcapability-then-target 2-solve分岐も再構成した．次は
+slot-tuple liftを再構成し，checking alignment全体を完成する．
 
 中心定理：
 

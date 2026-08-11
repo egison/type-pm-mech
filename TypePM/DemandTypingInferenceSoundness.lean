@@ -474,6 +474,63 @@ theorem alignAtSlot_matcherToSlot_ddAlignRun
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
 
+/-- Reconstruct raw slot-to-slot checking from its capability solve followed
+by the capability-adjusted target solve. -/
+theorem alignAtSlot_slotToSlot_ddAlignRun
+    {state final : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty} {sourceCap requestedCap : Cap}
+    {sourceTarget requestedTarget : Ty}
+    (rawView : state.prevailing.apply raw =
+      .slot sourceCap sourceTarget)
+    (expectedView : state.prevailing.apply expected =
+      .slot requestedCap requestedTarget)
+    (success : alignAtSlot state origin raw expected = some final) :
+    DDAlignRun raw expected state final := by
+  unfold alignAtSlot at success
+  simp only [rawView, expectedView] at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨middle, capSuccess, targetBranchSuccess⟩
+  rcases runResolvedConstraint_capEq_exact capSuccess with
+    ⟨capStep, _, middleEq, capTargetId, exactCap⟩
+  subst middle
+  split at targetBranchSuccess <;> try contradiction
+  rename_i afterSource afterRequested ignoredSourceCap adjustedSourceTarget
+    ignoredRequestedCap adjustedRequestedTarget afterSourceView
+    afterRequestedView
+  rcases runResolvedConstraint_targetEq_exact targetBranchSuccess with
+    ⟨targetStep, _, finalEq, exactTarget⟩
+  subst final
+  have capDeltaEq : capStep.delta =
+      ⟨capStep.delta.cap, TySubst.id⟩ := by
+    rw [← capTargetId]
+  have adjustedSourceEq :
+      adjustedSourceTarget =
+        sourceTarget.applyCapability capStep.delta.cap := by
+    have applied :
+        (state.recordSolve capStep).prevailing.apply raw =
+          capStep.delta.apply (state.prevailing.apply raw) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [rawView, afterSourceView] at applied
+    simp only [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+    exact Ty.slot.inj applied |>.2
+  have adjustedRequestedEq :
+      adjustedRequestedTarget =
+        requestedTarget.applyCapability capStep.delta.cap := by
+    have applied :
+        (state.recordSolve capStep).prevailing.apply expected =
+          capStep.delta.apply (state.prevailing.apply expected) := by
+      rw [InferState.prevailing_recordSolve, Subst.seq_apply]
+    rw [expectedView, afterRequestedView] at applied
+    simp only [Subst.apply, Ty.applyCapability, capTargetId,
+      Ty.applyTarget_id] at applied
+    exact Ty.slot.inj applied |>.2
+  refine ⟨rfl, rfl, ?_⟩
+  rw [InferState.prevailing_recordSolve,
+    InferState.prevailing_recordSolve, capDeltaEq]
+  exact DDAlignWithLedger.slotToSlot rawView expectedView exactCap
+    (adjustedSourceEq ▸ adjustedRequestedEq ▸ exactTarget)
+
 /-- A raw product-matcher view is preserved by the prevailing paired
 substitution, with that substitution applied pointwise to its duals. -/
 theorem productMatcherDuals?_apply
