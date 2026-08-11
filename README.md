@@ -180,6 +180,32 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 
 記号は `[x]` が完了，`[~]` が一部完了，`[ ]` が未完了を表す．
 
+### 進捗サマリ
+
+全7 milestoneのうち，完了2，一部完了2，未着手3である．
+
+| milestone | 状態 | 完了した中心部分 | 残る中心部分 |
+|---|---|---|---|
+| 0. 基盤 | 完了 | DD判断，exact solve，runtime certificate，既存動的安全性 | なし |
+| 1. freeze provenance | 完了 | Origin ledger，public正例／負例回帰 | なし |
+| 2. DD state erasure | 一部完了 | 全14 familyのfactorization，多くのconstructor-wise erasure | variable／`let`のno-capture保存，matcher／clause終端再構成，pattern-constructorの終端compatibility |
+| 3. infer success → DDTyping | 一部完了 | exact solver bridge，checking alignment全分岐，通常expression constructorの大半 | `fixMatcher`，`letE`，`matcher`，`matchAll`，pattern／arm／clause相互再構成，public中心定理 |
+| 4. DDの公開安全性 | 未着手 | 利用するpreservation／progressは既存 | milestone 2のclosed-program erasure後に公開定理を合成 |
+| 5. DDTyping → infer success | 未着手 | 完全性に必要なexact solver基盤は既存 | traversal完全性，terminal validator完全性 |
+| 6. 受理同値 | 未着手 | なし | milestone 3と5の合成 |
+
+現在のcritical pathは次の二本である．
+
+1. milestone 3のmatcher／pattern／clause相互再構成を閉じ，`infer success → DDTyping`を完成する．
+2. milestone 2のno-captureとmatcher終端再構成を閉じ，その後milestone 4を合成する．
+
+milestone 5は1と2に依存しないが，現在はsource soundnessと公開安全性の完成を
+優先するため未着手とする．
+
+なお，現時点でも `infer` 成功から `RuntimeTyping` を再構成する既存定理はある．未完了なのは，
+そのruntime certificateを経由せず，successful traceから唯一のsource typingである `DDTyping` を
+直接再構成し，さらに `DDTyping` 自体から公開動的安全性を導く新しい経路である．
+
 ### [x] 0. 現在の基盤
 
 次は完成済みの出発点であり，後続 milestone で維持する不変量である．
@@ -221,6 +247,20 @@ ledger-aware な DD derivation から，supply，prevailing substitution，origi
 user pattern，primitive pattern，data pattern，arm，clause の相互 family 全体について射影を
 証明する．`let` では一般化 scheme の binder-local value-flow instance，matcher literalでは
 共有 target と terminal hole capability の一致を回収する．
+
+進捗：
+
+- [x] 全14 DD familyの無前提`StateFactorization`を構成する．
+- [x] checking alignment全5分岐を終端`RuntimeAlignment`へ射影する．
+- [x] expressionの主要構造規則と，data／primitive patternの構造的erasureを構成する．
+- [x] scheme substitutionのno-capture条件とbinder-local instance compositionを定式化する．
+- [ ] variable／`let`で，後続solve全体が`Context.NoCapture`を保存することを示す．
+- [ ] matcher／clauseを終端cutで相互に再構成する．
+- [ ] pattern constructorの`CapCompatible`を早期freezeせず，終端consumerの証拠から回収する．
+- [ ] `DDTyping signature [] e τ → RuntimeTyping signature [] e τ`を公開定理として閉じる．
+
+<details>
+<summary>state erasureの実装状況，反例，設計判断の詳細</summary>
 
 現在は，入力cutより前のorigin policyだけを制約するsupply-scopedな
 `AdmissiblePostBetween` と，終端substitutionを安全なpostへ分解する`StateFactorization`を定義し，
@@ -270,6 +310,8 @@ capabilityを局所cutで一律にexport freezeする案は採れない．`Dynam
 state erasureでも，pattern constructor単体を早期freezeするのではなく，最終consumer cutの
 compatibility evidenceを直接渡す，またはpattern consumer全体の完了まで検査を遅延する必要がある．
 
+</details>
+
 一般の context では，raw derivationに対応するOrigin certificateを仮定し，終端 substitutionを
 contextに適用した `RuntimeTyping` を構成する．そのclosed-program corollaryが中心定理である：
 
@@ -290,6 +332,44 @@ DDTyping signature [] e τ →
 derivation へ再構成する．`inferRaw` の fresh allocation 順，solve cut，generalization，matcher
 finalization を対応する DD constructor へ写し，terminal validator が確認した freeze event を
 DD ledger へ反映する．
+
+#### 現在の進捗
+
+帰納不変量は `Inference.DDSynthRun`，`DDSynthsRun`，`DDCheckRun`，`DDChecksRun` である．
+これらは raw target と実行状態の supply／prevailing substitution／origin ledger を，DD derivation
+の入出力 index に正確に一致させる．
+
+完了済み：
+
+- [x] target／capability／paired solver を，DD が要求する exact MGU 契約へ接続した．
+- [x] matcher-to-slot，product-matcher lift，slot-to-slot，slot-tuple lift，ordinary equality を含む
+  checking alignment の全分岐を `DDAlignRun`／`DDCheckRun` へ再構成した．
+- [x] variable，literal，`something`，lambda，tuple，application，constructor，primitive，
+  non-matcher `fix` を `DDSynth`／`DDSynthOrigin` へ再構成した．
+- [x] synthesis list と checking list の nil／cons traversal を再構成した．
+- [x] constructor instance，capability export freeze，direct-self gate，2-target recursive placeholder を，
+  実行 state と DD ledger transition の exact index で一致させた．
+- [x] batch capability freshening の ledger 順を実行時の head-insertion 順へ canonicalize し，
+  2-variable exact-order 回帰と旧表現との `originOf` 同値を証明した．
+- [x] public `infer` 成功から `inferRaw` 成功を取り出す入口と，initial run から `DDTyping` への射影を
+  用意した．
+
+未完了：
+
+- [ ] `fixMatcher`：stateful／supply-indexed skeleton freshening の3つの相互 family を，
+  olean 生成可能な明示再帰証明として構成する．
+- [ ] `matcher`／pattern／arm／clause：各 successful traversal を対応する DD Origin family へ
+  相互再構成する．
+- [ ] `matchAll`：target，pattern，matcher checking，body の相互 certificate を thread する．
+- [ ] `letE`：Origin certificate が要求する terminal generalization stability を実行成功から回収する．
+- [ ] 上記を fuel に関する相互帰納定理へ統合し，public `infer success → DDTyping` を閉じる．
+
+`fixMatcher` の一括証明は Lean の対話的検査には通ったが，olean 生成が150秒以上収束しなかったため
+採用していない．証明対象が偽なのではなく，3つの相互 family を明示的な再帰補題へ分割する必要がある．
+`letE` の generalization stability は，これとは独立した証明課題である．
+
+<details>
+<summary>実装経緯と solver certificate の詳細</summary>
 
 最初の帰納不変量として`Inference.DDSynthRun`を定義済みである．これはsuccessful traversalの
 raw targetと，実行状態のsupply／prevailing substitution／origin ledgerに正確に一致する
@@ -343,6 +423,10 @@ stateful／supply-indexed skeleton対応は，3 mutual familyを明示再帰で�
 Origin certificateが要求するterminal generalization stabilityは，現状の実行成功だけから回収する
 bridgeがまだない．したがって以後はmatcher／pattern／clause相互再構成とgeneralization stabilityを
 独立milestoneとして進める．
+
+</details>
+
+#### 完了条件
 
 中心定理：
 
