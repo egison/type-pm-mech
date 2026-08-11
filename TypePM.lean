@@ -3,6 +3,7 @@ import TypePM.Term
 import TypePM.Substitution
 import TypePM.PolySyntax
 import TypePM.PolyScheme
+import TypePM.SchemeEquality
 import TypePM.PolyCloseLaws
 import TypePM.PolyFreeVars
 import TypePM.PolyGeneralization
@@ -11,6 +12,7 @@ import TypePM.PolyInstantiationTransport
 import TypePM.PolySubstitutionLaws
 import TypePM.PolyFreshInstantiation
 import TypePM.SchemeOpeningLists
+import TypePM.SchemeContext
 import TypePM.Relation
 import TypePM.Annotation
 import TypePM.CapMatch
