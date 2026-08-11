@@ -236,6 +236,9 @@ list normalizationは旧scheme relationから独立したmoduleへ分離して�
 poly schemeのfree-variable traversalは`mvar`だけを収集し，`bound`を直接除外するため，旧来の
 binder-list filterを必要としない．bound indexと同じ自然数を持つfree metavariableだけがfree集合へ
 残るcollision回帰を固定している．
+named solver metavariableをfinite indexへcloseし，同じ入力binder listの要素でopenし直すと元の
+ordinary syntaxへ戻る．この左逆則は二sortとそのlist traversalについて証明済みであり，binder listの
+`Nodup`さえ必要としない．
 ambient substitution transportは，選択済みcapability opening像が後続作用でもvariableへ写る
 `ValueOpening.Post`だけを要求する．poly payload上の構造帰納により，substituted schemeのopeningと
 opened ordinary typeへの作用が一致することを証明済みであり，binder support，`RangeFixed`，

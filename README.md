@@ -265,6 +265,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
   `PolyScheme`へcloseするgeneralizationを構成する．
 - [x] poly payloadのfree solver metavariableをbound indexと構造的に区別し，binder listの
   subtractionを使わないscheme free-variable traversalを構成する．
+- [x] named metavariableをcloseし，同じbinder listの像でopenすると元の通常型へ戻る
+  close／open左逆則を構成する．
 - [x] 実際のcapability opening像が後続作用でもvariableに留まるという局所条件だけで，
   openingとambient substitutionのtransportを構成する．
 - [x] binder capture条件なしでpoly scheme substitutionのidentity／composition則を構成する．
