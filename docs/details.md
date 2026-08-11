@@ -222,6 +222,10 @@ scheme captureの表現上の解消に向け，`Syntax`／`PolySyntax`にscheme�
 `PolyScheme`は二つのbinder数とdependentな`PolyTy` payloadだけを保持する．named binder listは
 `PolyScheme.close`の入力に限られ，閉じたschemeには保存されない．具体化はcaller-suppliedな
 `Fin` openingを通じてのみ通常の`Ty`へ戻る．
+expression schemeの宣言的具体化は`ValueOpening`，inference用のdistinctなfresh割当は
+`FreshOpening`，ambient scopeからのfreshnessは`FreshFor`に分離した．capability像のcodomainは
+`CapVar`なのでvariable-only性は命題fieldではなく型で保証され，openingを通常`Subst`として
+solverへ渡す経路はない．
 旧binder-collision形について，同じ自然数番号のsubstitution imageが`bound`ではなく`mvar`に留まり，
 後続substitutionとの逐次適用でもbound nodeが固定される回帰を構成済みである．`Fin` indexにより
 payloadは構成時からalpha-normal formであり，substitutionごとのfresh nominal renameを必要としない．

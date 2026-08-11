@@ -257,6 +257,8 @@ user pattern，primitive pattern，data pattern，arm，clause の相互 family 
 - [x] solver metavariableとscheme bound variableを型レベルで分離する，scheme専用の
   `PolyCap`／`PolyTy`，canonical `PolyScheme`，close／open境界と旧collisionの
   capture不能回帰を構成する．
+- [x] expression schemeのvalue-flow／fresh具体化を通常`Subst`から分離し，
+  capability像のvariable-only性とfresh assignmentのinjectivityを型で表すopening APIを構成する．
 - [ ] expression `Scheme`を`PolyTy` payloadへ移行し，mask／`NoCapture`依存を除去する．
 - [ ] migration後の無条件なpoly-substitution合成を使い，variable／`let`のtransportを閉じる．
 - [ ] matcher／clauseを終端cutで相互に再構成する．
