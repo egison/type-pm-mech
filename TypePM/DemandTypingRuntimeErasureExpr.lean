@@ -1158,7 +1158,7 @@ theorem runtimeErasure_let_of_terminal_children
     (valueAtTerminal : RuntimeTyping signature (context.applySubst S')
       value (S'.apply valueTarget))
     (bodyErasure : RuntimeErasure bodyOrigin) :
-    RuntimeErasure (DDSynthOrigin.letE valueOrigin bodyOrigin stable) := by
+    RuntimeErasure (DDSynthOrigin.letE valueOrigin bodyOrigin) := by
   unfold RuntimeErasure at bodyErasure |- 
   change RuntimeTyping signature
     ((name, (signature.generalize (context.applySubst S1)

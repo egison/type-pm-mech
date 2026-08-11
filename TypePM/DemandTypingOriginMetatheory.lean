@@ -269,7 +269,7 @@ theorem DDSynthOrigin.ledgerEvolution
           ((childrenEvolution.2.trans
             ((RefinesBelow.freezeExport q' _ _ _ _).restrict
               childrenOrigin.erase.supplyExtends)).restrict extension)⟩
-  | .letE valueOrigin bodyOrigin stable =>
+  | .letE valueOrigin bodyOrigin =>
       have valueEvolution := DDSynthOrigin.ledgerEvolution valueOrigin below
       valueEvolution.trans valueOrigin.erase.supplyExtends
         (DDSynthOrigin.ledgerEvolution bodyOrigin valueEvolution.1)

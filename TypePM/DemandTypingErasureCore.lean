@@ -771,15 +771,10 @@ theorem stateFactorization_let_of_children
       ((name, signature.generalize (context.applySubst S₁)
         (S₁.apply valueTarget)) :: context) body bodyTarget q' S'}
     (bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger')
-    (stable :
-      (signature.generalize (context.applySubst S₁)
-          (S₁.apply valueTarget)).applyMeta S' =
-      signature.generalize (context.applySubst S')
-        (S'.apply valueTarget))
     (valueFactorization : StateFactorization valueOrigin)
     (bodyFactorization : StateFactorization bodyOrigin) :
     StateFactorization
-      (DDSynthOrigin.letE valueOrigin bodyOrigin stable) := by
+      (DDSynthOrigin.letE valueOrigin bodyOrigin) := by
   exact valueFactorization.trans bodyFactorization
 
 /-- Shared allocation/check/freeze skeleton for data constructors and

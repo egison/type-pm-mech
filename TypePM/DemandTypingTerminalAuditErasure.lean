@@ -443,7 +443,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
           contradiction
       exact RuntimeTyping.prim lookup instanceAt childrenTyping
   | letE valueAudit bodyAudit facts =>
-      rename_i name value body valueTarget q1 S1 ledger1 valueRaw stable
+      rename_i name value body valueTarget q1 S1 ledger1 valueRaw
         bodyRaw valueOrigin bodyOrigin
       obtain ⟨S1b, valueB⟩ := valueOrigin.erase.boundedBy closed Sb
         contextBounded

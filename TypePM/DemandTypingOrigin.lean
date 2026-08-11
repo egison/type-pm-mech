@@ -439,12 +439,7 @@ inductive DDSynthOrigin (signature : FrozenSig) :
         ((name, signature.generalize (context.applySubst S₁)
           (S₁.apply valueTarget)) :: context) body bodyTarget q' S'}
       (bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger')
-      (stable :
-        (signature.generalize (context.applySubst S₁)
-          (S₁.apply valueTarget)).applyMeta S' =
-        signature.generalize (context.applySubst S')
-          (S'.apply valueTarget)) :
-      DDSynthOrigin signature (.letE valueRaw bodyRaw) ledger ledger'
+      : DDSynthOrigin signature (.letE valueRaw bodyRaw) ledger ledger'
   | something
       {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {ledger : CapabilityOriginLedger} :

@@ -62,17 +62,12 @@ inductive DDSynthTerminalAudit (terminal : Subst) (signature : FrozenSig) :
           (valueSubst.apply valueTarget)) :: context)
         bodyExpr bodyTarget q' S'}
       {bodyOrigin : DDSynthOrigin signature bodyRaw ledger1 ledger'}
-      {stable :
-        (signature.generalize (context.applySubst valueSubst)
-          (valueSubst.apply valueTarget)).applyMeta S' =
-        signature.generalize (context.applySubst S')
-          (S'.apply valueTarget)}
       (value : DDSynthTerminalAudit terminal signature valueOrigin)
       (body : DDSynthTerminalAudit terminal signature bodyOrigin)
       (facts : DDTerminalAudit.LetFacts terminal signature context valueTarget
         valueSubst) :
       DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.letE valueOrigin bodyOrigin stable)
+        (DDSynthOrigin.letE valueOrigin bodyOrigin)
   | something :
       DDSynthTerminalAudit terminal signature DDSynthOrigin.something
   | matcher

@@ -601,8 +601,7 @@ theorem dmLet_ddSynth :
 
 theorem dmLet_ddSynthOrigin :
     DDSynthOrigin emptySignature dmLet_ddSynth [] [] := by
-  refine .letE identity_ddSynthOrigin dmOuterApp_ddSynthOrigin ?_
-  native_decide
+  exact .letE identity_ddSynthOrigin dmOuterApp_ddSynthOrigin
 
 def dmInnerFunction_terminalAudit :
     DDSynthTerminalAudit dmLetTerminal emptySignature
@@ -689,7 +688,7 @@ def dmLet_terminalAudit :
       (.fn (.var 0) (.var 0)) Subst.id := ⟨by simpa using stable⟩
   exact DDSynthTerminalAudit.transportBuilt
     (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.letE (stable := stable)
+      (DDSynthTerminalAudit.letE
         (identity_terminalAudit dmLetTerminal) dmOuterApp_terminalAudit facts))
 
 /-- The polymorphic-`let` witness closes at `Int` through the demand-directed
@@ -921,10 +920,9 @@ theorem nestedCapLetProgram_ddSynth :
 
 theorem nestedCapLetProgram_ddSynthOrigin :
     DDSynthOrigin emptySignature nestedCapLetProgram_ddSynth [] [] := by
-  refine .letE nestedCapLetValue_ddSynthOrigin
+  exact .letE nestedCapLetValue_ddSynthOrigin
     (.tuple (.cons nestedCapLetFirstApp_ddSynthOrigin
-      (.cons nestedCapLetSecondApp_ddSynthOrigin .nil))) ?_
-  native_decide
+      (.cons nestedCapLetSecondApp_ddSynthOrigin .nil)))
 
 def nestedCapLetFirstFunction_terminalAudit :
     DDSynthTerminalAudit nestedCapLetTerminal emptySignature
@@ -1083,7 +1081,7 @@ def nestedCapLetProgram_terminalAudit :
       (.fn (.var 0) (.var 0)) Subst.id := ⟨by simpa using stable⟩
   exact DDSynthTerminalAudit.transportBuilt
     (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.letE (stable := stable)
+      (DDSynthTerminalAudit.letE
         nestedCapLetValue_terminalAudit bodyAudit facts))
 
 /-- The `let`-polymorphic pairing of the two producers closes in the

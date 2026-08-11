@@ -1187,7 +1187,7 @@ theorem DDSynthOrigin.factorize
         childrenOrigin (DDChecksOrigin.factorize childrenOrigin closed
           (Sb.mono ext) (contextBounded.mono ext) instB.1)
   | @DDSynthOrigin.letE _ q S context name _ _ valueTarget q₁ S₁ _ _ _ ledger _ _ _
-      valueOrigin _ bodyOrigin stable => by
+      valueOrigin _ bodyOrigin => by
       obtain ⟨S₁b, valueB⟩ := valueOrigin.erase.boundedBy closed Sb
         contextBounded
       have bodyContextB : Context.BoundedBy q₁
@@ -1196,7 +1196,7 @@ theorem DDSynthOrigin.factorize
         (FrozenSig.generalize_boundedBy (S₁b.apply valueB))
         (contextBounded.mono valueOrigin.erase.supplyExtends)
       exact DDSynthOrigin.stateFactorization_let_of_children valueOrigin
-        bodyOrigin stable
+        bodyOrigin
         (DDSynthOrigin.factorize valueOrigin closed Sb contextBounded)
         (DDSynthOrigin.factorize bodyOrigin closed S₁b bodyContextB)
   | .something => DDSynthOrigin.stateFactorization_something _ _ _ _ _
