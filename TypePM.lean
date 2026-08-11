@@ -81,6 +81,7 @@ import TypePM.Soundness
 import TypePM.RecursiveExamples
 import TypePM.PatternCtorCapabilityRegression
 import TypePM.DemandTyping
+import TypePM.SchemeBoundedness
 import TypePM.DemandTypingLedgerMetatheory
 import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
