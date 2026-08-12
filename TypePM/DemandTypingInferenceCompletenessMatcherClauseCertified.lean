@@ -1,4 +1,6 @@
-import TypePM.DemandTypingInferenceCompletenessCertifiedRun
+import TypePM.DemandTypingInferenceCompletenessPrimitivePatternCertified
+import TypePM.DemandTypingInferenceCompletenessMatcherDPat
+import TypePM.DemandTypingInferenceCompletenessMatcherPPat
 
 /-!
 # Validator-certified matcher-clause composition
@@ -16,9 +18,142 @@ open Inference
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessMatcherTraversal
+open DemandTypingInferenceCompletenessMatcherMain
 open DemandTypingInferenceCompletenessCertifiedRun
+open DemandTypingInferenceCompletenessPrimitivePatternCertified
+open DemandTypingInferenceCompletenessSignatureBounds
+
+/-! ## Certified checking boundary -/
+
+/-- Terminal-audited checking at one fuel, carrying the validator chronology
+needed by a surrounding matcher clause. -/
+abbrev CertifiedMatcherCheckCompletenessAt
+    (terminal : Subst) (signature : FrozenSig) (fuel : Nat) : Prop :=
+  ∀ {declarativeContext executableContext : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
+    {declarativeExpected executableExpected : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDCheck signature q S declarativeContext expression
+      declarativeExpected q' S'}
+    {origin : DDCheckOrigin signature raw ledger ledger'},
+    (before : TraversalStateCorrespondence q S ledger state) →
+    SignatureVarsBelow q signature →
+    ContextBisimulation before.prevailing declarativeContext
+      executableContext →
+    TyBisimulation before.prevailing declarativeExpected executableExpected →
+    declarativeContext.BoundedBy q → executableContext.BoundedBy q →
+    declarativeExpected.BoundedBy q → executableExpected.BoundedBy q →
+    DDCheckTerminalAudit terminal signature origin →
+    MatcherCheckBudgetAdequate fuel expression →
+    Nonempty (CertifiedStateRunCompletion terminal signature before
+      (checkExprFuel fuel signature executableContext selfEnv path expression
+        executableExpected state) q' S' ledger')
+
+abbrev CertifiedMatcherCheckCompletenessBelow
+    (terminal : Subst) (signature : FrozenSig) (bound : Nat) : Prop :=
+  ∀ {fuel : Nat}, fuel < bound →
+    CertifiedMatcherCheckCompletenessAt terminal signature fuel
+
+theorem CertifiedMatcherCheckCompletenessBelow.lower
+    {terminal : Subst} {signature : FrozenSig} {bound : Nat}
+    (below : CertifiedMatcherCheckCompletenessBelow terminal signature
+      (bound + 1)) :
+    CertifiedMatcherCheckCompletenessBelow terminal signature bound := by
+  intro fuel fuelLt
+  exact below (Nat.lt_trans fuelLt (Nat.lt_succ_self bound))
+
+/-- Certified left-to-right checking-list reconstruction. -/
+theorem checksOrigin_complete_certified_below
+    {terminal : Subst} {signature : FrozenSig}
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {expressions : List Expr}
+    {declarativeExpecteds executableExpecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (checkBelow : CertifiedMatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (contextBounded : context.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
+      expected.BoundedBy q)
+    (executableExpectedsBounded : ∀ expected ∈ executableExpecteds,
+      expected.BoundedBy q)
+    (expectedsRelated : TyListBisimulation before.prevailing
+      declarativeExpecteds executableExpecteds)
+    {raw : DDChecks signature q S context expressions declarativeExpecteds q' S'}
+    {origin : DDChecksOrigin signature raw ledger ledger'}
+    (audit : DDChecksTerminalAudit terminal signature origin)
+    (adequate : MatcherChecksBudgetAdequate fuel expressions) :
+    Nonempty (CertifiedStateRunCompletion terminal signature before
+      (checkExprsFuel fuel signature context selfEnv parent index expressions
+        executableExpecteds state) q' S' ledger') := by
+  cases fuel with
+  | zero => simp [MatcherChecksBudgetAdequate] at adequate
+  | succ fuel =>
+      cases audit with
+      | nil =>
+          cases expectedsRelated
+          exact ⟨⟨checkExprsFuel_nil_complete fuel signature context selfEnv
+            parent index before,
+            ValidatorRunExtension.refl terminal signature state⟩⟩
+      | cons headAudit tailAudit =>
+          rename_i expression expected q₁ S₁ ledger₁ expressions expecteds
+            headRaw tailRaw headOrigin tailOrigin
+          cases expectedsRelated with
+          | cons expectedRelated tailRelated =>
+              rename_i executableExpected executableExpecteds
+              have headAdequate :
+                  MatcherCheckBudgetAdequate fuel expression := by
+                simp only [MatcherChecksBudgetAdequate,
+                  MatcherCheckBudgetAdequate, exprListTraversalFuel]
+                  at adequate ⊢
+                omega
+              have tailAdequate :
+                  MatcherChecksBudgetAdequate fuel expressions := by
+                simp only [MatcherChecksBudgetAdequate,
+                  exprListTraversalFuel] at adequate ⊢
+                omega
+              have expectedBounded := expectedsBounded expected (by simp)
+              have executableExpectedBounded :=
+                executableExpectedsBounded executableExpected (by simp)
+              let headRun := Classical.choice
+                (checkBelow (Nat.lt_succ_self fuel)
+                  (selfEnv := selfEnv) (path := index :: parent) before
+                  signatureBelow
+                  (ContextBisimulation.same before.prevailing context)
+                  expectedRelated contextBounded contextBounded expectedBounded
+                  executableExpectedBounded headAudit headAdequate)
+              have tailContextBounded : context.BoundedBy q₁ :=
+                contextBounded.mono headOrigin.erase.supplyExtends
+              have tailExpectedsBounded :
+                  ∀ item ∈ expecteds, item.BoundedBy q₁ := by
+                intro item membership
+                exact (expectedsBounded item (by simp [membership])).mono
+                  headOrigin.erase.supplyExtends
+              have tailExecutableExpectedsBounded :
+                  ∀ item ∈ executableExpecteds, item.BoundedBy q₁ := by
+                intro item membership
+                exact (executableExpectedsBounded item
+                  (by simp [membership])).mono
+                    headOrigin.erase.supplyExtends
+              let tailRun := Classical.choice
+                (checksOrigin_complete_certified_below
+                  (selfEnv := selfEnv) (parent := parent)
+                  (index := index + 1) fuel checkBelow.lower
+                  headRun.run.completion
+                  (signatureBelow.mono headOrigin.erase.supplyExtends)
+                  tailContextBounded tailExpectedsBounded
+                  tailExecutableExpectedsBounded
+                  (headRun.run.transition.transportTyList tailRelated) tailAudit
+                  tailAdequate)
+              exact ⟨⟨checkExprsFuel_cons_complete before headRun.run tailRun.run,
+                headRun.validation.trans tailRun.validation⟩⟩
+termination_by fuel
 
 /-! ## One clause -/
 
