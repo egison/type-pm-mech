@@ -438,6 +438,182 @@ theorem ctor
   DemandTypingInferenceCompletenessValidationMain.patternCtor lookup closed
     children targetAlignment capabilitySolve facts
 
+/-! ## Certified raw-pattern packaging -/
+
+/-- Package the raw variable-pattern completion with its exact chronology. -/
+def certifiedPatternPVarOrigin_complete
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    (freshName : name ∉ declarativeBindings.names) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path (.pvar name) state)
+      { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+      (DDLedger.markFreshCap ledger q)
+      ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩
+      (declarativeBindings ++ [(name, .var q.nextTy)]) := by
+  let bounded := boundedPatternPVarOrigin_complete
+    (signature := signature) (declarativeContext := declarativeContext)
+    (executableContext := executableContext)
+    (declarativeParameters := declarativeParameters)
+    (executableParameters := executableParameters) (selfEnv := selfEnv)
+    (path := path) fuel before bindings executableBindingsBounded freshName
+  refine ⟨bounded, ?_⟩
+  have executableAbsent : name ∉ executableBindings.names := by
+    rw [← bindings.names_eq]
+    exact freshName
+  let afterCap := (state.freshCap
+    (freshOrigin .pattern path "pattern-variable-capability")).2
+  let afterFresh := (afterCap.freshTy
+    (freshOrigin .pattern path "pattern-variable-target")).2
+  let resultDual := Dual.mk
+    (state.freshCap
+      (freshOrigin .pattern path "pattern-variable-capability")).1
+    (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-variable-target")).1
+  let resultBindings := executableBindings ++ [(name, resultDual.target)]
+  let final := (visit (afterFresh.recordEvent (.patternVarFresh
+    executableContext executableParameters executableBindings
+    ⟨state.supply.nextCap⟩ state.supply.nextTy)) .patternVar path).recordEvent
+      (.inferredPattern (.pvar name) resultDual resultBindings path)
+  have stateEq : final = bounded.run.result.state := by
+    have mapped := congrArg (Option.map PatternResult.state)
+      bounded.run.success
+    simpa [inferPatternFuel, executableAbsent, final, resultDual,
+      resultBindings, afterFresh, afterCap, InferState.freshCap,
+      InferState.freshTy, InferenceBase.freshCapMeta,
+      InferenceBase.freshTyMeta] using mapped
+  rw [← stateEq]
+  exact
+    (variableLeaf (terminal := terminal) (signature := signature)
+      (initial := state) (context := executableContext)
+      (parameters := executableParameters) (bindings := executableBindings)
+      (path := path) (name := name) (by simpa [before.supply_eq] using
+        signatureBelow) (by simpa [before.supply_eq] using
+        executableContextBounded) (by simpa [before.supply_eq] using
+        executableParametersBounded) (by simpa [before.supply_eq] using
+        executableBindingsBounded))
+
+/-- Package the raw wildcard-pattern completion with its exact chronology. -/
+def certifiedPatternWildOrigin_complete
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path .wild state)
+      { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+      (DDLedger.markFreshCap ledger q)
+      ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ declarativeBindings := by
+  let bounded := boundedPatternWildOrigin_complete
+    (signature := signature) (declarativeContext := declarativeContext)
+    (executableContext := executableContext)
+    (declarativeParameters := declarativeParameters)
+    (executableParameters := executableParameters) (selfEnv := selfEnv)
+    (path := path) fuel before bindings executableBindingsBounded
+  refine ⟨bounded, ?_⟩
+  let afterCap := (state.freshCap
+    (freshOrigin .pattern path "pattern-wild-capability")).2
+  let afterFresh := (afterCap.freshTy
+    (freshOrigin .pattern path "pattern-wild-target")).2
+  let resultDual := Dual.mk
+    (state.freshCap
+      (freshOrigin .pattern path "pattern-wild-capability")).1
+    (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-wild-target")).1
+  let final := (visit (afterFresh.recordEvent (.patternWildFresh
+    executableContext executableParameters executableBindings
+    ⟨state.supply.nextCap⟩ state.supply.nextTy)) .patternWild path).recordEvent
+      (.inferredPattern .wild resultDual executableBindings path)
+  have stateEq : final = bounded.run.result.state := by
+    have mapped := congrArg (Option.map PatternResult.state)
+      bounded.run.success
+    simp only [inferPatternFuel] at mapped
+    exact Option.some.inj mapped
+  rw [← stateEq]
+  exact
+    (wildcardLeaf (terminal := terminal) (signature := signature)
+      (initial := state) (context := executableContext)
+      (parameters := executableParameters) (bindings := executableBindings)
+      (path := path) (by simpa [before.supply_eq] using signatureBelow)
+      (by simpa [before.supply_eq] using executableContextBounded)
+      (by simpa [before.supply_eq] using executableParametersBounded)
+      (by simpa [before.supply_eq] using executableBindingsBounded))
+
+/-- Embedded parameters emit only their visit and common result event. -/
+noncomputable def certifiedPatternEmbedOrigin_complete
+    {terminal : Subst} {signature : FrozenSig} {context : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String} {dual : Dual}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (parameters : PatternCtxBisimulation before.prevailing
+      declarativeParameters executableParameters)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    (lookup : declarativeParameters.find? name = some dual) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature context executableParameters
+        executableBindings selfEnv path (.embed name) state)
+      q S ledger dual declarativeBindings := by
+  let bounded := boundedPatternEmbedOrigin_complete
+    (signature := signature) (context := context) (selfEnv := selfEnv)
+    (path := path) fuel before parameters executableParametersBounded bindings
+    executableBindingsBounded lookup
+  refine ⟨bounded, ?_⟩
+  exact leaf (ValidatorRunExtension.visit terminal signature state
+    .patternEmbed path)
+
+/-- A certified child-list gives a certified tuple-pattern completion without
+reopening the raw tuple construction. -/
+def certifiedPatternTuple_complete
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {context : Context} {parameters : PatternCtx}
+    {executableBindings : MonoCtx} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {patterns : List Pattern} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger' : CapabilityOriginLedger}
+    {state : InferState} {duals : List Dual} {bindings : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children : BoundedCertifiedPatternsRunCompletion terminal signature
+      (before.visit .patternTuple path)
+      (inferPatternsFuel fuel signature context parameters executableBindings
+        selfEnv path 0 patterns (visit state .patternTuple path))
+      q' S' ledger' duals bindings) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.ptuple patterns) state)
+      q' S' ledger'
+      ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings :=
+  ⟨boundedPatternTuple_complete before children.bounded,
+    tuple children.validation⟩
+
 /-! ## Certified list dispatch -/
 
 /-- Pattern-list traversal preserves the exact validator chronology supplied
