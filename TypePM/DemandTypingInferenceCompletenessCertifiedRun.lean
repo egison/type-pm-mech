@@ -536,6 +536,218 @@ theorem ValidatorRunExtension.ofAlignPatternTargets
             (terminal := terminal) (signature := signature) headSuccess).trans
               (induction tailSuccess)
 
+/-! ## Pattern-constructor capability solving -/
+
+mutual
+
+/-- Freshening one structural skeleton emits only the fresh-capability events
+at its observable unknown leaves. -/
+theorem ValidatorRunExtension.ofFreshenSkeleton
+    {terminal : Subst} {signature : FrozenSig}
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidence : Shape.Evidence} {state result : InferState} {capability : Cap}
+    (success : freshenSkeleton observable origin evidence state =
+      some (capability, result)) :
+    ValidatorRunExtension terminal signature state result := by
+  cases evidence with
+  | unseen =>
+      simp only [freshenSkeleton, Option.some.injEq, Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ValidatorRunExtension.freshCap terminal signature state origin
+  | known leaf =>
+      simp only [freshenSkeleton, Option.some.injEq, Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ValidatorRunExtension.refl terminal signature state
+  | con name children =>
+      simp only [freshenSkeleton] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨mask, maskSuccess, rest⟩
+      rcases Option.bind_eq_some_iff.mp rest with
+        ⟨pair, childrenSuccess, finished⟩
+      rcases pair with ⟨capabilities, middle⟩
+      have resultEq : middle = result := by
+        exact (Prod.mk.inj (Option.some.inj finished)).2
+      subst result
+      exact ValidatorRunExtension.ofFreshenSkeletonMasked childrenSuccess
+  | prod components =>
+      simp only [freshenSkeleton] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨pair, componentsSuccess, finished⟩
+      rcases pair with ⟨capabilities, middle⟩
+      have resultEq : middle = result := by
+        exact (Prod.mk.inj (Option.some.inj finished)).2
+      subst result
+      exact ValidatorRunExtension.ofFreshenSkeletonList componentsSuccess
+
+/-- Product skeleton freshening composes its component histories. -/
+theorem ValidatorRunExtension.ofFreshenSkeletonList
+    {terminal : Subst} {signature : FrozenSig}
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidences : List Shape.Evidence} {state result : InferState}
+    {capabilities : List Cap}
+    (success : freshenSkeletonList observable origin evidences state =
+      some (capabilities, result)) :
+    ValidatorRunExtension terminal signature state result := by
+  cases evidences with
+  | nil =>
+      simp only [freshenSkeletonList, Option.some.injEq, Prod.mk.injEq]
+        at success
+      rcases success with ⟨_, rfl⟩
+      exact ValidatorRunExtension.refl terminal signature state
+  | cons evidence rest =>
+      simp only [freshenSkeletonList] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨headPair, headSuccess, remaining⟩
+      rcases headPair with ⟨head, middle⟩
+      rcases Option.bind_eq_some_iff.mp remaining with
+        ⟨tailPair, tailSuccess, finished⟩
+      rcases tailPair with ⟨tail, last⟩
+      have resultEq : last = result := by
+        exact (Prod.mk.inj (Option.some.inj finished)).2
+      subst result
+      exact (ValidatorRunExtension.ofFreshenSkeleton headSuccess).trans
+        (ValidatorRunExtension.ofFreshenSkeletonList tailSuccess)
+
+/-- Masked constructor skeleton freshening skips unobservable fields and
+recurses through observable ones. -/
+theorem ValidatorRunExtension.ofFreshenSkeletonMasked
+    {terminal : Subst} {signature : FrozenSig}
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {mask : List Bool} {evidences : List Shape.Evidence}
+    {state result : InferState} {capabilities : List Cap}
+    (success : freshenSkeletonMasked observable origin mask evidences state =
+      some (capabilities, result)) :
+    ValidatorRunExtension terminal signature state result := by
+  cases mask with
+  | nil =>
+      cases evidences with
+      | nil =>
+          simp only [freshenSkeletonMasked, Option.some.injEq, Prod.mk.injEq]
+            at success
+          rcases success with ⟨_, rfl⟩
+          exact ValidatorRunExtension.refl terminal signature state
+      | cons _ _ => simp [freshenSkeletonMasked] at success
+  | cons observableHead mask =>
+      cases evidences with
+      | nil => simp [freshenSkeletonMasked] at success
+      | cons evidence rest =>
+          cases observableHead with
+          | false =>
+              simp [freshenSkeletonMasked] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, last⟩
+              have resultEq : last = result := by
+                exact (Prod.mk.inj (Option.some.inj finished)).2
+              subst result
+              exact ValidatorRunExtension.ofFreshenSkeletonMasked tailSuccess
+          | true =>
+              simp only [freshenSkeletonMasked, ↓reduceIte] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨headPair, headSuccess, remaining⟩
+              rcases headPair with ⟨head, middle⟩
+              rcases Option.bind_eq_some_iff.mp remaining with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, last⟩
+              have resultEq : last = result := by
+                exact (Prod.mk.inj (Option.some.inj finished)).2
+              subst result
+              exact (ValidatorRunExtension.ofFreshenSkeleton
+                headSuccess).trans
+                (ValidatorRunExtension.ofFreshenSkeletonMasked tailSuccess)
+
+end
+
+/-- Allocate the shared fallback assignments in list order. -/
+theorem ValidatorRunExtension.ofFreshPatternCtorAssignments
+    {terminal : Subst} {signature : FrozenSig}
+    {origin : ConstraintOrigin} {variables : List TyVar}
+    {state result : InferState} {assignments : Projection.Assignments}
+    (success : freshPatternCtorAssignments origin variables state =
+      (assignments, result)) :
+    ValidatorRunExtension terminal signature state result := by
+  induction variables generalizing state assignments result with
+  | nil =>
+      simp only [freshPatternCtorAssignments, Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ValidatorRunExtension.refl terminal signature state
+  | cons varId variables ih =>
+      simp only [freshPatternCtorAssignments] at success
+      let middle := (state.freshCap origin).2
+      rcases tailEq : freshPatternCtorAssignments origin variables middle with
+        ⟨tailAssignments, last⟩
+      have resultEq : last = result := by
+        simp [middle, tailEq] at success
+        exact success.2
+      subst result
+      exact (ValidatorRunExtension.freshCap terminal signature state
+        origin).trans (ih tailEq)
+
+/-- Child-capability alignment contains only resolved capability equations. -/
+theorem ValidatorRunExtension.ofAlignPatternCtorCapabilities
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {children : List Cap} {demands : List (Option Cap)}
+    (success : alignPatternCtorCapabilities state origin children demands =
+      some result) :
+    ValidatorRunExtension terminal signature state result := by
+  induction children generalizing state result demands with
+  | nil =>
+      cases demands with
+      | nil =>
+          simp only [alignPatternCtorCapabilities, Option.some.injEq] at success
+          subst result
+          exact ValidatorRunExtension.refl terminal signature state
+      | cons _ _ => simp [alignPatternCtorCapabilities] at success
+  | cons child children induction =>
+      cases demands with
+      | nil => simp [alignPatternCtorCapabilities] at success
+      | cons demand demands =>
+          cases demand with
+          | none =>
+              simp only [alignPatternCtorCapabilities] at success
+              exact induction success
+          | some expected =>
+              simp only [alignPatternCtorCapabilities] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨middle, headSuccess, tailSuccess⟩
+              exact (ValidatorRunExtension.ofRunResolvedConstraint
+                (terminal := terminal) (signature := signature)
+                headSuccess).trans (induction tailSuccess)
+
+/-- Both the direct projection and fallback branches of constructor
+capability solving are validator-complete. -/
+theorem ValidatorRunExtension.ofSolvePatternCtorCapability
+    {terminal : Subst} {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {origin : ConstraintOrigin} {childCaps : List Cap}
+    {state result : InferState} {capability : Cap}
+    (success : solvePatternCtorCapability signature entry origin childCaps
+      state = some (capability, result)) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold solvePatternCtorCapability at success
+  simp only at success
+  split at success
+  · exact ValidatorRunExtension.ofFreshenSkeleton success
+  · rcases Option.bind_eq_some_iff.mp success with
+      ⟨resultVariables, _, remaining⟩
+    rcases allocationEq : freshPatternCtorAssignments origin
+        resultVariables.eraseDups state with
+      ⟨assignments, allocated⟩
+    simp only [allocationEq] at remaining
+    rcases Option.bind_eq_some_iff.mp remaining with
+      ⟨demands, demandsSuccess, remaining⟩
+    rcases Option.bind_eq_some_iff.mp remaining with
+      ⟨aligned, alignmentSuccess, remaining⟩
+    rcases Option.bind_eq_some_iff.mp remaining with
+      ⟨projected, _, skeletonSuccess⟩
+    exact (ValidatorRunExtension.ofFreshPatternCtorAssignments
+      (terminal := terminal) (signature := signature) allocationEq).trans
+      ((ValidatorRunExtension.ofAlignPatternCtorCapabilities
+        (terminal := terminal) (signature := signature)
+        alignmentSuccess).trans
+        (ValidatorRunExtension.ofFreshenSkeleton skeletonSuccess))
+
 theorem ValidatorRunExtension.finishExpectedAlignment
     {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
     {expressionResult : ExprResult} {expected : Ty} {aligned : InferState}
