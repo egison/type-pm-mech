@@ -8,8 +8,279 @@ namespace TypePM
 namespace DemandTypingInferenceCompletenessFixMatcher
 
 open Inference
+open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessPatternCtorCapability
 open DemandTypingInferenceCompletenessCertifiedRun
+
+private theorem setOrigins_append (ledger : CapabilityOriginLedger)
+    (left right : List CapVar) (origin : CapabilityOrigin) :
+    ledger.setOrigins (left ++ right) origin =
+      (ledger.setOrigins right origin).setOrigins left origin := by
+  induction left with
+  | nil => rfl
+  | cons head tail induction =>
+      simp only [List.cons_append, CapabilityOriginLedger.setOrigins]
+      rw [induction]
+
+/-- Consecutive pure fresh-capability ranges compose in executable stack
+order. -/
+private theorem markCapRange_trans
+    (ledger : CapabilityOriginLedger)
+    (q middle final : InferenceBase.FreshSupply)
+    (front : SupplyExtends q middle) (back : SupplyExtends middle final) :
+    DDLedger.markCapRange (DDLedger.markCapRange ledger q middle)
+        middle final =
+      DDLedger.markCapRange ledger q final := by
+  rcases front with ⟨frontCap, frontTy⟩
+  rcases back with ⟨backCap, backTy⟩
+  unfold DDLedger.markCapRange
+  dsimp only
+  let frontCount := middle.nextCap - q.nextCap
+  let backCount := final.nextCap - middle.nextCap
+  have middleEq : q.nextCap + frontCount = middle.nextCap := by
+    dsimp [frontCount]
+    omega
+  have totalEq : final.nextCap - q.nextCap = frontCount + backCount := by
+    dsimp [frontCount, backCount]
+    omega
+  rw [totalEq, List.range_add, List.map_append, List.reverse_append,
+    setOrigins_append]
+  congr 2
+  rw [List.map_map]
+  apply List.map_congr_left
+  intro offset membership
+  simp only [Function.comp_apply]
+  congr 1
+  omega
+
+private theorem freshenSkeletonMasked_supplyExtends
+    {observable : Shape.Observability} {origin : ConstraintOrigin} :
+    ∀ {mask : List Bool} {evidences : List Shape.Evidence}
+      {state final : InferState} {capabilities : List Cap},
+      Inference.freshenSkeletonMasked observable origin mask evidences state =
+        some (capabilities, final) →
+      SupplyExtends state.supply final.supply := by
+  intro mask
+  induction mask with
+  | nil =>
+      intro evidences state final capabilities success
+      cases evidences with
+      | nil =>
+          simp only [Inference.freshenSkeletonMasked, Option.some.injEq,
+            Prod.mk.injEq] at success
+          rcases success with ⟨_, rfl⟩
+          exact SupplyExtends.refl _
+      | cons _ _ => simp [Inference.freshenSkeletonMasked] at success
+  | cons observableHead mask induction =>
+      intro evidences state final capabilities success
+      cases evidences with
+      | nil => simp [Inference.freshenSkeletonMasked] at success
+      | cons evidence rest =>
+          cases observableHead with
+          | false =>
+              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, result⟩
+              have resultEq : result = final :=
+                (Prod.mk.inj (Option.some.inj finished)).2
+              subst final
+              exact induction tailSuccess
+          | true =>
+              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨headPair, headSuccess, remaining⟩
+              rcases headPair with ⟨head, middle⟩
+              rcases Option.bind_eq_some_iff.mp remaining with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, result⟩
+              have resultEq : result = final :=
+                (Prod.mk.inj (Option.some.inj finished)).2
+              subst final
+              let headExtension := freshenSkeleton_stateExtension headSuccess
+              exact SupplyExtends.trans
+                ⟨headExtension.supplyCap, headExtension.supplyTy⟩
+                (induction tailSuccess)
+
+/-! ## Solve-free skeleton traversal -/
+
+mutual
+
+/-- Skeleton freshening preserves the complete DD/executable traversal
+correspondence, including its exact structural capability range. -/
+theorem TraversalStateCorrespondence.freshenSkeleton
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state final : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidence : Shape.Evidence} {capability : Cap}
+    (success : Inference.freshenSkeleton observable origin evidence state =
+      some (capability, final)) :
+    Nonempty (TraversalStateCorrespondence final.supply S
+      (DDLedger.markCapRange ledger q final.supply) final) := by
+  cases evidence with
+  | unseen =>
+      simp only [Inference.freshenSkeleton, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ⟨by
+        simpa [DDLedger.markCapRange, DDLedger.markFreshCap,
+          CapabilityOriginLedger.markStructuralFlexible,
+          CapabilityOriginLedger.setOrigins,
+          before.supply_eq, InferState.freshCap,
+          InferenceBase.freshCapMeta, InferState.recordEvent] using
+          DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
+            before origin⟩
+  | known leaf =>
+      simp only [Inference.freshenSkeleton, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ⟨by
+        simpa [DDLedger.markCapRange, CapabilityOriginLedger.setOrigins,
+          before.supply_eq] using before⟩
+  | con name children =>
+      simp only [Inference.freshenSkeleton] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨mask, _, remaining⟩
+      rcases Option.bind_eq_some_iff.mp remaining with
+        ⟨pair, maskedSuccess, finished⟩
+      rcases pair with ⟨capabilities, result⟩
+      have resultEq : result = final :=
+        (Prod.mk.inj (Option.some.inj finished)).2
+      subst final
+      exact
+        DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeletonMasked
+          before maskedSuccess
+  | prod components =>
+      simp only [Inference.freshenSkeleton] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨pair, listedSuccess, finished⟩
+      rcases pair with ⟨capabilities, result⟩
+      have resultEq : result = final :=
+        (Prod.mk.inj (Option.some.inj finished)).2
+      subst final
+      exact
+        DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeletonList
+          before listedSuccess
+
+/-- Left-to-right skeleton-list freshening composes adjacent structural
+capability ranges. -/
+theorem TraversalStateCorrespondence.freshenSkeletonList
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state final : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidences : List Shape.Evidence} {capabilities : List Cap}
+    (success : Inference.freshenSkeletonList observable origin evidences state =
+      some (capabilities, final)) :
+    Nonempty (TraversalStateCorrespondence final.supply S
+      (DDLedger.markCapRange ledger q final.supply) final) := by
+  cases evidences with
+  | nil =>
+      simp only [Inference.freshenSkeletonList, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨_, rfl⟩
+      exact ⟨by
+        simpa [DDLedger.markCapRange, CapabilityOriginLedger.setOrigins,
+          before.supply_eq] using before⟩
+  | cons evidence rest =>
+      simp only [Inference.freshenSkeletonList] at success
+      rcases Option.bind_eq_some_iff.mp success with
+        ⟨headPair, headSuccess, remaining⟩
+      rcases headPair with ⟨head, middle⟩
+      rcases Option.bind_eq_some_iff.mp remaining with
+        ⟨tailPair, tailSuccess, finished⟩
+      rcases tailPair with ⟨tail, result⟩
+      have resultEq : result = final :=
+        (Prod.mk.inj (Option.some.inj finished)).2
+      subst final
+      let headRun := Classical.choice
+        (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+          before headSuccess)
+      let tailRun := Classical.choice
+        (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeletonList
+          headRun tailSuccess)
+      have front : SupplyExtends q middle.supply := by
+        have pure := (freshenSkeleton_supplyExact headSuccess).1
+        simpa [before.supply_eq] using SupplyExtends.freshenSkeleton pure
+      have back : SupplyExtends middle.supply result.supply := by
+        have wrapped : Inference.freshenSkeleton observable origin (.prod rest)
+            middle = some (.prod tail, result) := by
+          simp [Inference.freshenSkeleton, tailSuccess]
+        let extension := freshenSkeleton_stateExtension wrapped
+        exact ⟨extension.supplyCap, extension.supplyTy⟩
+      exact ⟨by
+        simpa [markCapRange_trans ledger q middle.supply result.supply
+          front back] using tailRun⟩
+
+/-- Masked skeleton freshening skips unobservable fields without changing the
+range-composition argument. -/
+theorem TraversalStateCorrespondence.freshenSkeletonMasked
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state final : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {mask : List Bool} {evidences : List Shape.Evidence}
+    {capabilities : List Cap}
+    (success : Inference.freshenSkeletonMasked observable origin mask evidences
+      state = some (capabilities, final)) :
+    Nonempty (TraversalStateCorrespondence final.supply S
+      (DDLedger.markCapRange ledger q final.supply) final) := by
+  cases mask with
+  | nil =>
+      cases evidences with
+      | nil =>
+          simp only [Inference.freshenSkeletonMasked, Option.some.injEq,
+            Prod.mk.injEq] at success
+          rcases success with ⟨_, rfl⟩
+          exact ⟨by
+            simpa [DDLedger.markCapRange,
+              CapabilityOriginLedger.setOrigins, before.supply_eq] using before⟩
+      | cons _ _ => simp [Inference.freshenSkeletonMasked] at success
+  | cons observableHead mask =>
+      cases evidences with
+      | nil => simp [Inference.freshenSkeletonMasked] at success
+      | cons evidence rest =>
+          cases observableHead with
+          | false =>
+              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, result⟩
+              have resultEq : result = final :=
+                (Prod.mk.inj (Option.some.inj finished)).2
+              subst final
+              exact
+                DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeletonMasked
+                  before tailSuccess
+          | true =>
+              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              rcases Option.bind_eq_some_iff.mp success with
+                ⟨headPair, headSuccess, remaining⟩
+              rcases headPair with ⟨head, middle⟩
+              rcases Option.bind_eq_some_iff.mp remaining with
+                ⟨tailPair, tailSuccess, finished⟩
+              rcases tailPair with ⟨tail, result⟩
+              have resultEq : result = final :=
+                (Prod.mk.inj (Option.some.inj finished)).2
+              subst final
+              let headRun := Classical.choice
+                (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+                  before headSuccess)
+              let tailRun := Classical.choice
+                (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeletonMasked
+                  headRun tailSuccess)
+              have front : SupplyExtends q middle.supply := by
+                have pure := (freshenSkeleton_supplyExact headSuccess).1
+                simpa [before.supply_eq] using
+                  SupplyExtends.freshenSkeleton pure
+              have back : SupplyExtends middle.supply result.supply := by
+                exact freshenSkeletonMasked_supplyExtends tailSuccess
+              exact ⟨by
+                simpa [markCapRange_trans ledger q middle.supply result.supply
+                  front back] using tailRun⟩
+
+end
 
 /-- The executable recursive-matcher placeholder exists whenever its pure
 supply twin succeeds.  The already-proved forward correspondence then pins
