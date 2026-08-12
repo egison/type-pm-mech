@@ -18,6 +18,8 @@ open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessProtected
+open DemandTypingInferenceCompletenessProtectedTrace
+open DemandTypingInferenceCompletenessProtectedTrace
 
 /-- Checking is synthesis followed by the executable expected-type cut. -/
 def checkExprFuel_complete
@@ -49,7 +51,8 @@ def checkExprFuel_complete
       executable_ledger_below := aligned.executable_ledger_below
       protected_origins := aligned.protected_origins
       protected_below := aligned.protected_below
-      allocated_recorded := aligned.allocated_recorded }
+      allocated_recorded := aligned.allocated_recorded
+      protected_safe := aligned.protected_safe }
   simp only [checkExprFuel]
   rw (occs := .pos [1]) [synth.success]
   exact aligned.success
@@ -76,7 +79,8 @@ def checkExprsFuel_nil_complete
       executable_ledger_below := before.executable_ledger_below
       protected_origins := before.protected_origins
       protected_below := before.protected_below
-      allocated_recorded := before.allocated_recorded }
+      allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe }
 
 def checkExprsFuel_cons_complete
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -109,7 +113,8 @@ def checkExprsFuel_cons_complete
       executable_ledger_below := tail.executable_ledger_below
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
-      allocated_recorded := tail.allocated_recorded }
+      allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe }
   simp only [checkExprsFuel]
   rw (occs := .pos [1]) [head.success]
   exact tail.success
@@ -138,7 +143,8 @@ def checkArmsFuel_nil_complete
       executable_ledger_below := before.executable_ledger_below
       protected_origins := before.protected_origins
       protected_below := before.protected_below
-      allocated_recorded := before.allocated_recorded }
+      allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe }
 
 def checkArmsFuel_cons_complete
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -192,7 +198,8 @@ def checkArmsFuel_cons_complete
       executable_ledger_below := tail.executable_ledger_below
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
-      allocated_recorded := tail.allocated_recorded }
+      allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe }
   simp only [checkArmsFuel]
   rw (occs := .pos [1]) [data.success]
   simp only [checked, if_true]
@@ -223,6 +230,7 @@ structure ClauseRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   target : TyBisimulation transition.after target result.target
   holes : DualListBisimulation transition.after holes result.rawHoles
 
@@ -293,6 +301,7 @@ structure ClausesRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   target : TyBisimulation transition.after target result.target
   holes : DualListsBisimulation transition.after holeLists
     result.rawHoleLists
@@ -310,7 +319,7 @@ def ClauseRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def ClausesRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -325,7 +334,7 @@ def ClausesRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 /-! ## Clause traversal composition -/
 
@@ -392,6 +401,7 @@ def inferClauseFuel_complete
       protected_origins := armsRun.protected_origins
       protected_below := armsRun.protected_below
       allocated_recorded := armsRun.allocated_recorded
+      protected_safe := armsRun.protected_safe
       target := transition.transportTy targetRelated
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
@@ -428,6 +438,7 @@ def inferClausesFuel_nil_complete
       protected_origins := before.protected_origins
       protected_below := before.protected_below
       allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe
       target := targetRelated
       holes := .nil }
 
@@ -471,6 +482,7 @@ def inferClausesFuel_cons_complete
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
       allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe
       target := transition.transportTy targetRelated
       holes := .cons
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
