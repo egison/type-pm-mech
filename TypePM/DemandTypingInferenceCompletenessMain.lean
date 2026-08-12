@@ -2056,5 +2056,102 @@ theorem auditedSynthTuple_complete_nonempty
       childrenAudit childrenAdequate)
   exact ⟨boundedSynthTuple_complete before childrenRun⟩
 
+/-- Context-bisimulation-aware checking-list reconstruction used by
+constructor and primitive application.  This is the global counterpart of
+the matcher-local list dispatcher: executable contexts need not be
+syntactically identical to their DD contexts after let generalization. -/
+theorem auditedChecks_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr}
+    {declarativeExpecteds executableExpecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
+      expected.BoundedBy q)
+    (executableExpectedsBounded : ∀ expected ∈ executableExpecteds,
+      expected.BoundedBy q)
+    (expectedsRelated : TyListBisimulation before.prevailing
+      declarativeExpecteds executableExpecteds)
+    {raw : DDChecks signature q S declarativeContext expressions
+      declarativeExpecteds q' S'}
+    {origin : DDChecksOrigin signature raw ledger ledger'}
+    (audit : DDChecksTerminalAudit terminal signature origin)
+    (adequate : MatcherChecksBudgetAdequate fuel expressions) :
+    Nonempty (StateRunCompletion before
+      (checkExprsFuel fuel signature executableContext selfEnv parent index
+        expressions executableExpecteds state) q' S' ledger') := by
+  cases fuel with
+  | zero => simp [MatcherChecksBudgetAdequate] at adequate
+  | succ inner =>
+      cases audit with
+      | nil =>
+          cases expectedsRelated
+          exact ⟨checkExprsFuel_nil_complete inner signature
+            executableContext selfEnv parent index before⟩
+      | cons headAudit tailAudit =>
+          rename_i expression expected q₁ S₁ ledger₁ expressions expecteds
+            headRaw tailRaw headOrigin tailOrigin
+          cases executableExpecteds with
+          | nil => cases expectedsRelated
+          | cons executableExpected executableExpecteds =>
+              cases expectedsRelated with
+              | cons expectedRelated tailRelated =>
+                have headAdequate : MatcherCheckBudgetAdequate inner
+                    expression := by
+                  simp only [MatcherChecksBudgetAdequate,
+                    MatcherCheckBudgetAdequate, exprListTraversalFuel]
+                    at adequate ⊢
+                  omega
+                have tailAdequate : MatcherChecksBudgetAdequate inner
+                    expressions := by
+                  simp only [MatcherChecksBudgetAdequate,
+                    exprListTraversalFuel] at adequate ⊢
+                  omega
+                have childBelow : AuditedSynthCompletenessBelow terminal
+                    signature inner := synthBelow.mono (Nat.le_succ inner)
+                let headRun := Classical.choice
+                  (auditedCheckCompletenessAt_of_synthBelow closed childBelow
+                    (selfEnv := selfEnv) (path := index :: parent)
+                    before contexts expectedRelated contextBounded
+                    (expectedsBounded expected (by simp))
+                    (executableExpectedsBounded executableExpected (by simp))
+                    headAudit headAdequate)
+                have tailContexts : ContextBisimulation
+                    headRun.completion.prevailing declarativeContext
+                    executableContext :=
+                  contexts.transport headRun.transition
+                have tailContextBounded : declarativeContext.BoundedBy q₁ :=
+                  contextBounded.mono headOrigin.erase.supplyExtends
+                have tailExpectedsBounded : ∀ item ∈ expecteds,
+                    item.BoundedBy q₁ := by
+                  intro item membership
+                  exact (expectedsBounded item (by simp [membership])).mono
+                    headOrigin.erase.supplyExtends
+                have tailExecutableExpectedsBounded :
+                    ∀ item ∈ executableExpecteds, item.BoundedBy q₁ := by
+                  intro item membership
+                  exact (executableExpectedsBounded item
+                    (by simp [membership])).mono
+                    headOrigin.erase.supplyExtends
+                let tailRun := Classical.choice
+                  (auditedChecks_complete_nonempty closed inner childBelow
+                    (selfEnv := selfEnv) (parent := parent)
+                    (index := index + 1) headRun.completion tailContexts
+                    tailContextBounded tailExpectedsBounded
+                    tailExecutableExpectedsBounded
+                    (headRun.transition.transportTyList tailRelated)
+                    tailAudit tailAdequate)
+                exact ⟨checkExprsFuel_cons_complete before headRun tailRun⟩
+termination_by fuel
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
