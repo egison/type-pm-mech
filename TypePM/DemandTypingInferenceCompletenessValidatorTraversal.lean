@@ -824,6 +824,125 @@ theorem slotEventCondition
     ⟨by simp [CanonicalInstanceEventCondition]⟩, ⟨?_⟩⟩
   exact ⟨startStop, stopBound, canonical⟩
 
+/-! ## Canonical slot suffix transport -/
+
+/-- On a target whose capability leaves remain variable-valued, the
+validator's canonical variable post agrees exactly with full suffix replay. -/
+theorem terminalVariableReplay_apply_eq_replay
+    {steps : List SolveStep} {target : Ty}
+    (capVariable : ∀ varId, varId ∈ target.fcv →
+      ∃ image, (replay steps).cap varId = .var image) :
+    (terminalVariableReplay steps).apply target =
+      (replay steps).apply target := by
+  apply Subst.apply_eq_of_free_agree
+  · intro varId membership
+    rcases capVariable varId membership with ⟨image, equation⟩
+    simp [terminalVariableReplay, terminalVariableCapCandidate, equation]
+  · intro varId _membership
+    rfl
+
+/-- The canonical slot witness for a matcher-to-slot step followed by an
+arbitrary solver suffix.  Only the capability leaves occurring after the
+coercion step must remain variable-valued; unrelated structural solves are
+discarded by `terminalVariableReplay`. -/
+theorem canonicalSlotAlignment_matcherToSlot_suffix
+    {step : SolveStep} {suffix : List SolveStep}
+    {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    (constraintEq : step.constraint = .producerToSlot producerCap
+      producerTarget consumerCap consumerTarget)
+    (rangeFixed : step.delta.RangeFixed)
+    (producerVariables : ∀ varId,
+      varId ∈ (step.delta.apply
+        (.matcher producerCap producerTarget)).fcv →
+        ∃ image, (replay suffix).cap varId = .var image)
+    (consumerVariables : ∀ varId,
+      varId ∈ (step.delta.apply
+        (.slot consumerCap consumerTarget)).fcv →
+        ∃ image, (replay suffix).cap varId = .var image) :
+    CanonicalSlotAlignmentAtTerminal [step] ([step] ++ suffix)
+      (.matcher producerCap producerTarget)
+      (.slot consumerCap consumerTarget) := by
+  apply CanonicalSlotAlignmentAtTerminal.matcherToSlot
+      (step := step) rfl rfl rfl constraintEq rangeFixed
+  · simp only [List.cons_append, List.nil_append, applyDeltas,
+      List.tail_cons]
+    calc
+      applyDeltas suffix
+          (step.delta.apply (.matcher producerCap producerTarget)) =
+        (replay suffix).apply
+          (step.delta.apply (.matcher producerCap producerTarget)) := by
+            have equation := replayFrom_apply Subst.id suffix
+              (step.delta.apply (.matcher producerCap producerTarget))
+            rw [Subst.apply_id] at equation
+            exact equation.symm
+      _ = (terminalVariableReplay suffix).apply
+          (step.delta.apply (.matcher producerCap producerTarget)) :=
+        (terminalVariableReplay_apply_eq_replay producerVariables).symm
+      _ = _ := by simp [Subst.apply_matcher]
+  · simp only [List.cons_append, List.nil_append, applyDeltas,
+      List.tail_cons]
+    calc
+      applyDeltas suffix
+          (step.delta.apply (.slot consumerCap consumerTarget)) =
+        (replay suffix).apply
+          (step.delta.apply (.slot consumerCap consumerTarget)) := by
+            have equation := replayFrom_apply Subst.id suffix
+              (step.delta.apply (.slot consumerCap consumerTarget))
+            rw [Subst.apply_id] at equation
+            exact equation.symm
+      _ = (terminalVariableReplay suffix).apply
+          (step.delta.apply (.slot consumerCap consumerTarget)) :=
+        (terminalVariableReplay_apply_eq_replay consumerVariables).symm
+      _ = _ := by simp [Subst.apply_slot]
+
+/-- Package a terminal equality as the exact event condition consumed by the
+slot validator. -/
+theorem canonicalSlotEventCondition_equal
+    {state : InferState} {start stop : Nat} {inferred requested : Ty}
+    (startStop : start ≤ stop)
+    (stopBound : stop ≤ state.trace.solves.length)
+    (aligned : applyDeltas
+        (solveSlice state.trace start state.trace.solves.length) inferred =
+      applyDeltas
+        (solveSlice state.trace start state.trace.solves.length) requested) :
+    CanonicalSlotEventCondition state
+      (.slotAlignment start stop inferred requested) := by
+  exact ⟨startStop, stopBound,
+    CanonicalSlotAlignmentAtTerminal.equal aligned⟩
+
+/-- Package the one-step matcher-to-slot transport above at concrete trace
+indices.  Slice identification and variable-image safety are the only facts
+the surrounding traversal must provide. -/
+theorem canonicalSlotEventCondition_matcherToSlot
+    {state : InferState} {start stop : Nat} {step : SolveStep}
+    {suffix : List SolveStep} {producerCap consumerCap : Cap}
+    {producerTarget consumerTarget : Ty}
+    (startStop : start ≤ stop)
+    (stopBound : stop ≤ state.trace.solves.length)
+    (localSlice : solveSlice state.trace start stop = [step])
+    (terminalSlice :
+      solveSlice state.trace start state.trace.solves.length =
+        [step] ++ suffix)
+    (constraintEq : step.constraint = .producerToSlot producerCap
+      producerTarget consumerCap consumerTarget)
+    (rangeFixed : step.delta.RangeFixed)
+    (producerVariables : ∀ varId,
+      varId ∈ (step.delta.apply
+        (.matcher producerCap producerTarget)).fcv →
+        ∃ image, (replay suffix).cap varId = .var image)
+    (consumerVariables : ∀ varId,
+      varId ∈ (step.delta.apply
+        (.slot consumerCap consumerTarget)).fcv →
+        ∃ image, (replay suffix).cap varId = .var image) :
+    CanonicalSlotEventCondition state
+      (.slotAlignment start stop (.matcher producerCap producerTarget)
+        (.slot consumerCap consumerTarget)) := by
+  refine ⟨startStop, stopBound, ?_⟩
+  rw [localSlice, terminalSlice]
+  exact canonicalSlotAlignment_matcherToSlot_suffix constraintEq rangeFixed
+    producerVariables consumerVariables
+
 /-! ## Direct executable leaf branches -/
 
 /-- The executable primitive-hole branch preserves the complete hole fold.

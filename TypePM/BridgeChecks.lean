@@ -15,16 +15,37 @@ namespace TypePM
 namespace Inference
 namespace Reconstruction
 
-/-! ## A target-only declarative view of a solver suffix -/
+/-! ## A variable-capability declarative view of a solver suffix -/
 
-def targetOnlyReplay (steps : List SolveStep) : Subst :=
-  Subst.mk CapSubst.id (replay steps).target
+/-- Retain a terminal capability image exactly when it is a variable; on an
+unrelated structurally specialized variable, use identity.  This projection
+accepts safe alpha-renaming while remaining globally variable-valued. -/
+def terminalVariableCapCandidate
+    (steps : List SolveStep) : CapSubst :=
+  fun varId =>
+    match (replay steps).cap varId with
+    | .var image => .var image
+    | _ => .var varId
 
-theorem targetOnlyReplay_variable (steps : List SolveStep) :
-    VariablePost (targetOnlyReplay steps) := by
+/-- Canonical variable-valued post selected by the finite slot checker.
+Target specialization is replayed completely; capability specialization is
+projected to its variable-valued fragment. -/
+def terminalVariableReplay (steps : List SolveStep) : Subst :=
+  Subst.mk (terminalVariableCapCandidate steps) (replay steps).target
+
+theorem terminalVariableReplay_variable (steps : List SolveStep) :
+    VariablePost (terminalVariableReplay steps) := by
   constructor
   intro varId
-  exact ⟨varId, rfl⟩
+  change ∃ image,
+    terminalVariableCapCandidate steps varId = .var image
+  unfold terminalVariableCapCandidate
+  cases equation : (replay steps).cap varId with
+  | var image => exact ⟨image, rfl⟩
+  | any => exact ⟨varId, rfl⟩
+  | skolem name => exact ⟨varId, rfl⟩
+  | con name children => exact ⟨varId, rfl⟩
+  | prod children => exact ⟨varId, rfl⟩
 
 /-! ## Terminal fresh-instance reconstruction -/
 
@@ -376,7 +397,7 @@ private def slotAlignmentAtTerminalCheck
     | .matcher producerCap producerTarget,
         .slot consumerCap consumerTarget, [step] =>
         let suffix := terminalSteps.tail
-        let post := targetOnlyReplay suffix
+        let post := terminalVariableReplay suffix
         match step.constraint with
         | .producerToSlot rawProducerCap rawProducerTarget rawConsumerCap
             rawConsumerTarget =>
@@ -402,7 +423,7 @@ private def slotAlignmentAtTerminalCheck
 
 /-- Exact terminal witness selected by the executable slot checker.  Unlike
 the reconstruction-facing `SlotAlignmentAtTerminal`, the coercion branch
-fixes its suffix witness to `targetOnlyReplay terminalSteps.tail`. -/
+fixes its suffix witness to `terminalVariableReplay terminalSteps.tail`. -/
 inductive CanonicalSlotAlignmentAtTerminal
     (localSteps terminalSteps : List SolveStep)
     (inferred requested : Ty) : Prop where
@@ -422,12 +443,12 @@ inductive CanonicalSlotAlignmentAtTerminal
       (rangeFixed : step.delta.RangeFixed)
       (producerResult :
         applyDeltas terminalSteps (.matcher producerCap producerTarget) =
-          (targetOnlyReplay terminalSteps.tail).apply
+          (terminalVariableReplay terminalSteps.tail).apply
             (.matcher (producerCap.apply step.delta.cap)
               (step.delta.apply producerTarget)))
       (consumerResult :
         applyDeltas terminalSteps (.slot consumerCap consumerTarget) =
-          (targetOnlyReplay terminalSteps.tail).apply
+          (terminalVariableReplay terminalSteps.tail).apply
             (.slot (consumerCap.apply step.delta.cap)
               (step.delta.apply consumerTarget))) :
       CanonicalSlotAlignmentAtTerminal localSteps terminalSteps inferred
@@ -517,9 +538,9 @@ private theorem slotAlignmentAtTerminalCheck_sound
                     subst rawConsumerCap
                     subst rawConsumerTarget
                     let suffix := terminalSteps.tail
-                    let post := targetOnlyReplay suffix
+                    let post := terminalVariableReplay suffix
                     have postVariable : VariablePost post :=
-                      targetOnlyReplay_variable suffix
+                      terminalVariableReplay_variable suffix
                     have rangeFixed : step.delta.RangeFixed :=
                       rangeFixedOnCheck_sound step.targetSupport rangeChecked
                     rcases solveStep_producerToSlot_raw constraintForm
