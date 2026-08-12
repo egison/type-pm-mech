@@ -1,4 +1,4 @@
-import TypePM.DemandTyping
+import TypePM.DemandTypingLedgerMetatheory
 
 /-!
 # Terminal protected-producer completeness boundary
@@ -169,6 +169,151 @@ def AllocatedCapsBelowSupply (state : InferState) : Prop :=
   ∀ varId, varId ∈ state.trace.allocatedCapVars →
     varId.id < state.supply.nextCap
 
+/-- Every trace-owned capability allocation has a corresponding executable
+ledger entry.  Together with `DDLedger.LedgerBelow`, this discharges the
+fresh-cut obligation without inspecting chronological events again. -/
+def AllocatedCapsRecorded (state : InferState) : Prop :=
+  ∀ varId, varId ∈ state.trace.allocatedCapVars →
+    varId ∈ state.capabilityOrigins.map Prod.fst
+
+private theorem mem_keys_setOrigins
+    (ledger : CapabilityOriginLedger) (varIds : List CapVar)
+    (origin : CapabilityOrigin) (varId : CapVar) :
+    varId ∈ (ledger.setOrigins varIds origin).map Prod.fst ↔
+      varId ∈ varIds ∨ varId ∈ ledger.map Prod.fst := by
+  induction varIds generalizing ledger with
+  | nil => simp [CapabilityOriginLedger.setOrigins]
+  | cons head rest inductionHypothesis =>
+      simp only [CapabilityOriginLedger.setOrigins,
+        CapabilityOriginLedger.setOrigin, List.map_cons, List.mem_cons]
+      rw [inductionHypothesis]
+      simp [or_assoc]
+
+theorem initialState_allocatedCapsRecorded
+    (signature : FrozenSig) (context : Context) :
+    AllocatedCapsRecorded (initialState signature context) := by
+  simp [AllocatedCapsRecorded, initialState, InferState.empty,
+    InferTrace.allocatedCapVars]
+
+theorem AllocatedCapsRecorded.recordEvent
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (event : TraceEvent)
+    (eventRecorded : ∀ varId, varId ∈ event.allocatedCapVars →
+      varId ∈ state.capabilityOrigins.map Prod.fst) :
+    AllocatedCapsRecorded (state.recordEvent event) := by
+  intro varId membership
+  simp only [InferState.recordEvent, InferTrace.allocatedCapVars,
+    List.flatMap_append, List.flatMap_singleton, List.mem_append] at membership
+  rcases membership with oldMembership | eventMembership
+  · exact recorded varId oldMembership
+  · exact eventRecorded varId eventMembership
+
+theorem AllocatedCapsRecorded.recordSolve
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (step : SolveStep) : AllocatedCapsRecorded (state.recordSolve step) := by
+  intro varId membership
+  exact recorded varId membership
+
+theorem AllocatedCapsRecorded.recordSource
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (source : ProducerSource) :
+    AllocatedCapsRecorded (state.recordSource source) := by
+  simpa [AllocatedCapsRecorded, InferState.recordSource] using recorded
+
+theorem AllocatedCapsRecorded.freshTy
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (origin : ConstraintOrigin) :
+    AllocatedCapsRecorded (state.freshTy origin).2 := by
+  apply recorded.recordEvent
+  simp [TraceEvent.allocatedCapVars]
+
+theorem AllocatedCapsRecorded.freshCap
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (origin : ConstraintOrigin) :
+    AllocatedCapsRecorded (state.freshCap origin).2 := by
+  intro varId membership
+  simp only [InferState.freshCap, InferState.recordEvent,
+    InferTrace.allocatedCapVars, List.flatMap_append, List.flatMap_singleton,
+    TraceEvent.allocatedCapVars, List.mem_append, List.mem_singleton]
+    at membership
+  rcases membership with oldMembership | same
+  · change varId ∈
+      ((⟨state.supply.nextCap⟩, .structuralFlexible) ::
+        state.capabilityOrigins).map Prod.fst
+    simp only [List.map_cons, List.mem_cons]
+    exact Or.inr (recorded varId oldMembership)
+  · subst varId
+    change ⟨state.supply.nextCap⟩ ∈
+      ((⟨state.supply.nextCap⟩, .structuralFlexible) ::
+        state.capabilityOrigins).map Prod.fst
+    simp
+
+theorem AllocatedCapsRecorded.protectMatcherCapability
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (capability : Cap) :
+    AllocatedCapsRecorded (state.protectMatcherCapability capability) := by
+  intro varId membership
+  change varId ∈
+    (state.capabilityOrigins.setOrigins
+      (matcherProducerLedgerLeaves state.capabilityOrigins capability)
+      .renameOnly).map Prod.fst
+  exact (mem_keys_setOrigins _ _ _ _).2
+    (Or.inr (recorded varId membership))
+
+theorem AllocatedCapsRecorded.freezeCapabilityExport
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (capImages : List CapVar) (exportedPayload : Ty) :
+    AllocatedCapsRecorded
+      (state.freezeCapabilityExport capImages exportedPayload) := by
+  intro varId membership
+  have oldMembership : varId ∈ state.trace.allocatedCapVars := by
+    simpa [InferState.freezeCapabilityExport, InferState.recordEvent,
+      InferTrace.allocatedCapVars, TraceEvent.allocatedCapVars] using membership
+  change varId ∈
+    (state.capabilityOrigins.setOrigins
+      (capabilityExportLeaves state capImages exportedPayload)
+      .renameOnly).map Prod.fst
+  exact (mem_keys_setOrigins _ _ _ _).2
+    (Or.inr (recorded varId oldMembership))
+
+private theorem capabilityOrigin_eq_structural_of_beq
+    (origin : CapabilityOrigin)
+    (checked : (origin == .structuralFlexible) = true) :
+    origin = .structuralFlexible := by
+  cases origin with
+  | rigid =>
+      change false = true at checked
+      contradiction
+  | renameOnly =>
+      change false = true at checked
+      contradiction
+  | structuralFlexible => rfl
+
+theorem allocatedCapsBelowSupply_of_recorded
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (ledgerBelow : DDLedger.LedgerBelow state.supply
+      state.capabilityOrigins) :
+    AllocatedCapsBelowSupply state := by
+  intro varId membership
+  exact ledgerBelow varId (recorded varId membership)
+
+/-- Export leaves are selected only when their origin is structural, hence
+they must occur in the explicit ledger and are below any well-formed supply. -/
+theorem capabilityExportLeaves_below
+    {state : InferState}
+    (ledgerBelow : DDLedger.LedgerBelow state.supply
+      state.capabilityOrigins)
+    (capImages : List CapVar) (exportedPayload : Ty) :
+    ∀ varId,
+      varId ∈ capabilityExportLeaves state capImages exportedPayload →
+        varId.id < state.supply.nextCap := by
+  intro varId membership
+  have structural : state.capabilityOrigins.originOf varId =
+      .structuralFlexible := by
+    exact capabilityOrigin_eq_structural_of_beq _
+      (List.mem_filter.mp membership).2
+  exact ledgerBelow varId (originOf_eq_structural_mem_keys structural)
+
 theorem ProtectedCapsBelowSupply.recordEvent_of_allocated
     {state : InferState} (below : ProtectedCapsBelowSupply state)
     (event : TraceEvent) :
@@ -226,6 +371,16 @@ theorem ProtectedCapsBelowSupply.freezeCapabilityExport
   rcases membership with oldMembership | leafMembership
   · exact below varId oldMembership
   · exact leavesBelow varId leafMembership
+
+theorem ProtectedCapsBelowSupply.freezeCapabilityExport_of_ledgerBelow
+    {state : InferState} (below : ProtectedCapsBelowSupply state)
+    (ledgerBelow : DDLedger.LedgerBelow state.supply
+      state.capabilityOrigins)
+    (capImages : List CapVar) (exportedPayload : Ty) :
+    ProtectedCapsBelowSupply
+      (state.freezeCapabilityExport capImages exportedPayload) :=
+  below.freezeCapabilityExport capImages exportedPayload
+    (capabilityExportLeaves_below ledgerBelow capImages exportedPayload)
 
 /-! ## Batched instantiation updates -/
 
