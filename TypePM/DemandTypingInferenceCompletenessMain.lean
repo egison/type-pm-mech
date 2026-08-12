@@ -2153,5 +2153,141 @@ theorem auditedChecks_complete_nonempty
                 exact ⟨checkExprsFuel_cons_complete before headRun tailRun⟩
 termination_by fuel
 
+/-- Constructor synthesis instantiates the frozen signature entry once, then
+checks all arguments against that single instance before freezing its export
+capabilities. -/
+theorem auditedSynthCtor_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {expressions : List Expr}
+    {scheme : CtorScheme} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (lookup : signature.findDataCtor name = some scheme)
+    {childrenRaw : DDChecks signature
+      (InferenceBase.instantiateCtorScheme q scheme).supply S
+      declarativeContext expressions
+      (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
+    {childrenOrigin : DDChecksOrigin signature childrenRaw
+      (DDLedger.markCtorInstance ledger q scheme) ledger₁}
+    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.ctor name expressions)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.ctor name expressions) state) q' S'
+      (DDLedger.freezeExport ledger₁ S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2) := by
+  have childrenAdequate : MatcherChecksBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, MatcherChecksBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let instantiated := instantiateCtorInState_complete
+    (before.visit .exprCtor path) scheme
+  have instanceBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.dataCtors lookup).boundedBy)
+  have instanceExtension := SupplyExtends.instantiateCtorScheme q scheme
+  have childrenContextBounded : declarativeContext.BoundedBy
+      (InferenceBase.instantiateCtorScheme q scheme).supply :=
+    contextBounded.mono instanceExtension
+  have childrenContexts : ContextBisimulation
+      instantiated.correspondence.prevailing declarativeContext
+      executableContext :=
+    (contexts.transport (before.visitExtension .exprCtor path)).transport
+      instantiated.transition
+  have childBelow : AuditedSynthCompletenessBelow terminal signature fuel :=
+    synthBelow.mono (Nat.le_succ fuel)
+  have executableArgumentsBounded : ∀ expected ∈
+      (instantiateCtorInState (visit state .exprCtor path) scheme).1.1,
+      expected.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply := by
+    intro expected membership
+    apply instanceBounded.1 expected
+    simpa [Inference.instantiateCtorInState, visit, before.supply_eq] using
+      membership
+  let childrenRun := Classical.choice
+    (auditedChecks_complete_nonempty closed fuel childBelow
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      instantiated.correspondence childrenContexts childrenContextBounded
+      instanceBounded.1 executableArgumentsBounded
+      instantiated.arguments childrenAudit childrenAdequate)
+  exact ⟨boundedSynthCtor_complete closed before lookup childrenRun
+    childrenOrigin.erase.supplyExtends⟩
+
+/-- Primitive application has the same audited reconstruction shape as data
+constructor application, differing only in the frozen-signature lookup and
+trace event. -/
+theorem auditedSynthPrim_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {op : PrimOp} {expressions : List Expr}
+    {scheme : CtorScheme} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (lookup : signature.findPrimitive op = some scheme)
+    {childrenRaw : DDChecks signature
+      (InferenceBase.instantiateCtorScheme q scheme).supply S
+      declarativeContext expressions
+      (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
+    {childrenOrigin : DDChecksOrigin signature childrenRaw
+      (DDLedger.markCtorInstance ledger q scheme) ledger₁}
+    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.prim op expressions)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.prim op expressions) state) q' S'
+      (DDLedger.freezeExport ledger₁ S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2) := by
+  have childrenAdequate : MatcherChecksBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, MatcherChecksBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let instantiated := instantiateCtorInState_complete
+    (before.visit .exprPrim path) scheme
+  have instanceBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.primitives lookup).boundedBy)
+  have instanceExtension := SupplyExtends.instantiateCtorScheme q scheme
+  have childrenContextBounded : declarativeContext.BoundedBy
+      (InferenceBase.instantiateCtorScheme q scheme).supply :=
+    contextBounded.mono instanceExtension
+  have childrenContexts : ContextBisimulation
+      instantiated.correspondence.prevailing declarativeContext
+      executableContext :=
+    (contexts.transport (before.visitExtension .exprPrim path)).transport
+      instantiated.transition
+  have childBelow : AuditedSynthCompletenessBelow terminal signature fuel :=
+    synthBelow.mono (Nat.le_succ fuel)
+  have executableArgumentsBounded : ∀ expected ∈
+      (instantiateCtorInState (visit state .exprPrim path) scheme).1.1,
+      expected.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply := by
+    intro expected membership
+    apply instanceBounded.1 expected
+    simpa [Inference.instantiateCtorInState, visit, before.supply_eq] using
+      membership
+  let childrenRun := Classical.choice
+    (auditedChecks_complete_nonempty closed fuel childBelow
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      instantiated.correspondence childrenContexts childrenContextBounded
+      instanceBounded.1 executableArgumentsBounded
+      instantiated.arguments childrenAudit childrenAdequate)
+  exact ⟨boundedSynthPrim_complete closed before lookup childrenRun
+    childrenOrigin.erase.supplyExtends⟩
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
