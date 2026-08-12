@@ -26,6 +26,8 @@ open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
+open DemandTypingInferenceCompletenessAlignmentTraversal
+open DemandTypingInferenceCompletenessAlignmentFamilies
 
 /-- The expression budget used at the value-pattern boundary. -/
 abbrev PatternSynthBudgetAdequate (fuel : Nat) (expression : Expr) : Prop :=
@@ -681,6 +683,132 @@ noncomputable def boundedPatternOr_complete
     exact leftRun.rawDualBounded.mono rightExtends
   · change leftRun.run.result.bindings.BoundedBy q₂
     exact leftRun.rawBindingsBounded.mono rightExtends
+
+/-! ## Pattern constructors -/
+
+structure BoundedPatternCtorCapRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option (Cap × InferState))
+    (q' : InferenceBase.FreshSupply) (declarative : Subst)
+    (ledger : CapabilityOriginLedger) (capability : Cap) : Type where
+  run : PatternCtorCapRunCompletion before operation q' declarative ledger
+    capability
+  rawCapabilityBounded : run.result.1.BoundedBy q'
+
+noncomputable def boundedPatternCtor_complete
+    {fuel : Nat} {signature : FrozenSig}
+    {context : Context} {parameters : PatternCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath}
+    {name : String} {patterns : List Pattern}
+    {entry : PatternCtorScheme signature.observability}
+    (lookup : signature.findPatternCtor name = some entry)
+    (closed : signature.SchemesClosed)
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {state : InferState} {executableBindings : MonoCtx}
+    {duals : List Dual} {bindings' : MonoCtx} {capability : Cap}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children :
+      let instantiation := instantiateCtorInState_complete before entry.scheme
+      BoundedPatternsRunCompletion
+        (instantiation.correspondence.visit .patternCtor path)
+        (inferPatternsFuel fuel signature context parameters
+          executableBindings selfEnv path 0 patterns
+          (visit (instantiateCtorInState state entry.scheme).2
+            .patternCtor path))
+        q₁ S₁ ledger₁ duals bindings')
+    (childrenExtends : SupplyExtends
+      (InferenceBase.instantiateCtorScheme q entry.scheme).supply q₁)
+    (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
+    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
+    (capRun :
+      let instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.patternCtors lookup).boundedBy)
+      let declarativeTargetsBounded : ∀ target ∈
+          (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+          target.BoundedBy q₁ := fun target membership =>
+        (instBounded.1 target membership).mono childrenExtends
+      let executableTargetsBounded : ∀ target ∈
+          (instantiateCtorInState state entry.scheme).1.1,
+          target.BoundedBy q₁ := fun target membership =>
+        (by
+          have argumentEq : (instantiateCtorInState state entry.scheme).1.1 =
+              (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 := by
+            simp [Inference.instantiateCtorInState, before.supply_eq]
+          rw [argumentEq] at membership
+          have atInst : target.BoundedBy
+              (InferenceBase.instantiateCtorScheme q entry.scheme).supply := by
+            exact instBounded.1 target membership
+          exact atInst.mono childrenExtends)
+      let targetAlignment := ddAlignTargetListWithLedger_complete
+        (origin := freshOrigin .pattern path "pattern-constructor-fields")
+        children.run.completion children.run.duals
+        (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+          ((instantiateCtorInState_complete before entry.scheme).correspondence.visitExtension
+            .patternCtor path |>.seq children.run.transition)
+          (instantiateCtorInState_complete before entry.scheme).arguments)
+        declarativeDualsBounded declarativeTargetsBounded
+        children.rawDualsBounded executableTargetsBounded targetsAligned
+      BoundedPatternCtorCapRunCompletion targetAlignment.completion
+        (solvePatternCtorCapability signature entry
+          (freshOrigin .pattern path "pattern-constructor-capability")
+          (children.run.result.duals.map Dual.cap) targetAlignment.result)
+        q₂ S₃ ledger₂ capability)
+    (childrenToCapExtends : SupplyExtends q₁ q₂)
+    (compatible : capCompatibleCheck entry
+      ((children.run.result.duals.map Dual.cap).map fun child =>
+        child.apply capRun.run.result.2.prevailing.cap)
+      (capRun.run.result.1.apply capRun.run.result.2.prevailing.cap) = true) :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pctor name patterns) state)
+      q₂ S₃
+      (DDLedger.freezeExport ledger₂ S₃
+        (freshCapImages q entry.scheme.capBinders)
+        (capabilityExportPayload [capability]
+          ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+            bindings'.map fun binding => binding.2)))
+      ⟨capability,
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩
+      bindings' := by
+  let instBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.patternCtors lookup).boundedBy)
+  have declarativeTargetsBounded : ∀ target ∈
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+      target.BoundedBy q₁ := by
+    intro target membership
+    exact (instBounded.1 target membership).mono childrenExtends
+  have executableTargetsBounded : ∀ target ∈
+      (instantiateCtorInState state entry.scheme).1.1,
+      target.BoundedBy q₁ := by
+    intro target membership
+    have argumentEq : (instantiateCtorInState state entry.scheme).1.1 =
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 := by
+      simp [Inference.instantiateCtorInState, before.supply_eq]
+    rw [argumentEq] at membership
+    have atInst : target.BoundedBy
+        (InferenceBase.instantiateCtorScheme q entry.scheme).supply := by
+      exact instBounded.1 target membership
+    exact atInst.mono childrenExtends
+  let run := patternCtor_complete fuel signature context parameters selfEnv path
+    name patterns lookup before executableBindings children.run
+    declarativeDualsBounded declarativeTargetsBounded children.rawDualsBounded
+    executableTargetsBounded targetsAligned capRun.run compatible
+  refine ⟨run, ?_, ?_⟩
+  · change (⟨capRun.run.result.1,
+      (instantiateCtorInState state entry.scheme).1.2⟩ : Dual).BoundedBy q₂
+    constructor
+    · exact capRun.rawCapabilityBounded
+    · have atInst : (instantiateCtorInState state entry.scheme).1.2.BoundedBy
+          (InferenceBase.instantiateCtorScheme q entry.scheme).supply := by
+        simpa [Inference.instantiateCtorInState, before.supply_eq] using
+          instBounded.2
+      exact atInst.mono (childrenExtends.trans childrenToCapExtends)
+  · change children.run.result.bindings.BoundedBy q₂
+    exact children.rawBindingsBounded.mono childrenToCapExtends
 
 end DemandTypingInferenceCompletenessPatternMain
 end TypePM
