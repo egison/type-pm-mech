@@ -508,6 +508,57 @@ private theorem targetOnly_admissible
     AdmissiblePost ledger (Subst.mk CapSubst.id target) :=
   { cap := AdmissibleCapPost.id ledger }
 
+/-- Any paired post solving a target constraint absorbs an exact target MGU.
+We intentionally prove absorption directly rather than selecting the raw
+residual returned by ordinary MGU universality: that total-function residual
+is unconstrained outside the finite input and need not be bounded.  Direct
+absorption retains the already bounded competitor as the residual. -/
+theorem ExactTargetMGU.paired_absorbs
+    {left right : Ty} {target : TySubst} (exact : ExactTargetMGU left right target)
+    {post : Subst} (sound : post.apply left = post.apply right) :
+    post = Subst.seq post (Subst.mk CapSubst.id target) := by
+  obtain ⟨algorithm, algorithmSuccess⟩ :=
+    Unification.mguTy_complete exact.1.1
+  have algorithmAbsorbs :=
+    Unification.mguTy_paired_absorbs algorithmSuccess sound
+  obtain ⟨residual, algorithmFactors⟩ :=
+    exact.1.2 algorithm (Unification.mguTy_sound algorithmSuccess)
+  let exactPair := Subst.mk CapSubst.id target
+  let residualPair := Subst.mk CapSubst.id residual
+  have liftedFactor : Subst.mk CapSubst.id algorithm =
+      Subst.seq residualPair exactPair := by
+    apply PhasedPost.subst_ext
+    · funext varId
+      exact (Cap.apply_id (CapSubst.id varId)).symm
+    · funext varId
+      simpa [residualPair, exactPair, Subst.seq, Subst.apply,
+        Ty.applyCapability_id, TySubst.comp] using
+        congrFun algorithmFactors varId
+  have factors : post = Subst.seq (Subst.seq post residualPair) exactPair := by
+    calc
+      post = Subst.seq post (Subst.mk CapSubst.id algorithm) :=
+        algorithmAbsorbs
+      _ = Subst.seq post (Subst.seq residualPair exactPair) := by
+        rw [← liftedFactor]
+      _ = Subst.seq (Subst.seq post residualPair) exactPair :=
+        PhasedPost.seq_assoc post residualPair exactPair
+  have exactPairIdempotent : Subst.seq exactPair exactPair = exactPair := by
+    apply PhasedPost.subst_ext
+    · funext varId
+      exact Cap.apply_id (CapSubst.id varId)
+    · funext varId
+      simpa only [exactPair, Subst.seq, Subst.apply, Ty.applyCapability_id,
+        Ty.applyCapability, Ty.applyTarget] using
+        exact.2.2.2.2 (.var varId)
+  calc
+    post = Subst.seq (Subst.seq post residualPair) exactPair := factors
+    _ = Subst.seq (Subst.seq post residualPair)
+        (Subst.seq exactPair exactPair) := by rw [exactPairIdempotent]
+    _ = Subst.seq
+        (Subst.seq (Subst.seq post residualPair) exactPair) exactPair :=
+      PhasedPost.seq_assoc (Subst.seq post residualPair) exactPair exactPair
+    _ = Subst.seq post exactPair := by rw [← factors]
+
 /-- The solver correspondence itself is a delta bisimulation with identity
 incoming residuals. -/
 noncomputable def OneWaySolverCorrespondence.deltaBisimulation
@@ -553,6 +604,24 @@ structure OneWayCutCompletion
   solverRelation : OneWaySolverCorrespondence executableDelta step
   transition : BisimulationExtension before ledger
     (Subst.seq declarativeDelta declarative) (state.recordSolve step)
+
+/-- Traversal-facing strengthening: every substitution introduced by the
+one-way cut, including the two derived state residuals, stays below the
+current fresh supply. -/
+structure BoundedOneWayCutCompletion
+    {ledger : CapabilityOriginLedger}
+    {declarative declarativeDelta : Subst} {state : InferState}
+    (before : StateBisimulation ledger declarative state)
+    (producerCap : Cap) (producerTarget : Ty)
+    (consumerCap : Cap) (consumerTarget : Ty)
+    (solveCount : Nat) (origin : ConstraintOrigin)
+    (q : InferenceBase.FreshSupply) : Type
+    extends OneWayCutCompletion (declarativeDelta := declarativeDelta) before
+      producerCap producerTarget consumerCap consumerTarget solveCount origin where
+  declarativeDeltaBounded : declarativeDelta.BoundedBy q
+  executableDeltaBounded : executableDelta.BoundedBy q
+  forwardBounded : transition.after.forward.BoundedBy q
+  reverseBounded : transition.after.reverse.BoundedBy q
 
 /-- Positive local transport theorem used by the coercive `DDAlign` branch.
 It simultaneously obtains the executable origin-safe delta, the actual
@@ -719,11 +788,6 @@ noncomputable def oneWayCut_complete
       change forwardLater.target varId =
         forwardLater.apply (executableTarget varId) at atVar
       exact atVar
-  let ddSolverWitness := solveProducerToSlotWithLedger_complete dd solveCount origin
-  let ddStep := Classical.choose ddSolverWitness
-  have ddSolverProof := Classical.choose_spec ddSolverWitness
-  have ddStepSuccess := ddSolverProof.1
-  have ddSolverRelation := ddSolverProof.2
   let reverseLater := Subst.seq executableDelta before.reverse
   have reverseDemand : DemandMatches reverseLater.cap
       (declarativeProducerCap.apply reverseLater.cap)
@@ -732,13 +796,13 @@ noncomputable def oneWayCut_complete
       oneWayAt_forward_postDemand resolved.producerCapReverse
         resolved.consumerCapReverse resolved.consumerCapForward executableOneWay
   have reverseCapAbsorbs : reverseLater.cap =
-      CapSubst.comp reverseLater.cap ddStep.delta.cap := by
-    rw [ddSolverRelation.capabilityEq, ddCapEq]
+      CapSubst.comp reverseLater.cap declarativeDelta.cap := by
+    rw [ddCapEq]
     exact capMatchRestricted_absorbed ddMatched reverseLater.cap reverseDemand
   have reverseReplay (target : Ty) :
-      reverseLater.apply (target.applyCapability ddStep.delta.cap) =
+      reverseLater.apply (target.applyCapability declarativeDelta.cap) =
         reverseLater.apply target := by
-    change ((target.applyCapability ddStep.delta.cap).applyCapability
+    change ((target.applyCapability declarativeDelta.cap).applyCapability
         reverseLater.cap).applyTarget reverseLater.target =
       (target.applyCapability reverseLater.cap).applyTarget reverseLater.target
     rw [← Ty.applyCapability_comp, ← reverseCapAbsorbs]
@@ -750,33 +814,29 @@ noncomputable def oneWayCut_complete
     exact Unification.mguTy_sound targetSuccess
   have reverseTargetSound :
       reverseLater.apply
-          (declarativeProducerTarget.applyCapability ddStep.delta.cap) =
+          (declarativeProducerTarget.applyCapability declarativeDelta.cap) =
         reverseLater.apply
-          (declarativeConsumerTarget.applyCapability ddStep.delta.cap) := by
+          (declarativeConsumerTarget.applyCapability declarativeDelta.cap) := by
     rw [reverseReplay, reverseReplay]
     exact reverseRawSound
-  have reverseAbsorbs : reverseLater = Subst.seq reverseLater ddStep.delta :=
-    solveProducerToSlotWithLedger_absorbs ddStepSuccess reverseCapAbsorbs
-      reverseTargetSound
-  let reverseResidualTarget := Classical.choose
-    (DemandTypingInferenceCompletenessOneWayTransport.OneWaySolverCorrespondence.executable_delta_factorization
-      ddSolverRelation)
-  have ddStepFactor := Classical.choose_spec
-    (DemandTypingInferenceCompletenessOneWayTransport.OneWaySolverCorrespondence.executable_delta_factorization
-      ddSolverRelation)
-  let reverseAfter := Subst.seq reverseLater
-    (Subst.mk CapSubst.id reverseResidualTarget)
+  have reverseTargetAbsorbs : reverseLater = Subst.seq reverseLater
+      (Subst.mk CapSubst.id declarativeDelta.target) :=
+    ExactTargetMGU.paired_absorbs ddTargetExact reverseTargetSound
+  have reverseAbsorbs : reverseLater =
+      Subst.seq reverseLater declarativeDelta := by
+    apply PhasedPost.subst_ext
+    · exact reverseCapAbsorbs
+    · funext varId
+      have atVar := congrFun (congrArg Subst.target reverseTargetAbsorbs) varId
+      change reverseLater.target varId =
+        reverseLater.apply (declarativeDelta.target varId)
+      change reverseLater.target varId =
+        reverseLater.apply (declarativeDelta.target varId) at atVar
+      exact atVar
+  let reverseAfter := reverseLater
   have reverseEquation : Subst.seq executableDelta before.reverse =
       Subst.seq reverseAfter declarativeDelta := by
-    change reverseLater = Subst.seq reverseAfter declarativeDelta
-    calc
-      reverseLater = Subst.seq reverseLater ddStep.delta := reverseAbsorbs
-      _ = Subst.seq reverseLater
-          (Subst.seq (Subst.mk CapSubst.id reverseResidualTarget)
-            declarativeDelta) := by rw [← ddStepFactor]
-      _ = Subst.seq reverseAfter declarativeDelta :=
-        PhasedPost.seq_assoc reverseLater
-          (Subst.mk CapSubst.id reverseResidualTarget) declarativeDelta
+    exact reverseAbsorbs
   let transportedRelation : OneWayDeltaBisimulation ledger
       state.capabilityOrigins before.forward before.reverse declarativeDelta
       executableDelta :=
@@ -787,9 +847,7 @@ noncomputable def oneWayCut_complete
       reverseEquation := reverseEquation
       reverseAdmissible :=
         (AdmissiblePostBetween.ofAdmissible executableSafe.admissible).seq
-          before.ledgerBisimulation.reverseBetween |>.seq
-            (AdmissiblePostBetween.ofAdmissible
-              (targetOnly_admissible ledger reverseResidualTarget)) }
+          before.ledgerBisimulation.reverseBetween }
   have declarativeAfterIdempotent :
       (Subst.seq declarativeDelta declarative).Idempotent :=
     DemandTypingIdempotence.OneWayDelta.seq_idempotent_of_fixed
