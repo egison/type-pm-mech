@@ -25,6 +25,7 @@ namespace DemandTypingInferenceCompletenessTraversal
 
 open Inference
 open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessSolver
 open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessContext
@@ -39,13 +40,14 @@ structure TraversalStateCorrespondence
     (q : InferenceBase.FreshSupply) (declarative : Subst)
     (ledger : CapabilityOriginLedger) (executable : InferState) : Type where
   supply_eq : executable.supply = q
-  ledger_eq : executable.capabilityOrigins = ledger
   prevailing : StateBisimulation ledger declarative executable
   declarative_bounded : declarative.BoundedBy q
   executable_bounded : executable.prevailing.BoundedBy q
   forward_bounded : prevailing.forward.BoundedBy q
   reverse_bounded : prevailing.reverse.BoundedBy q
   ledger_below : DDLedger.LedgerBelow q ledger
+  executable_ledger_below :
+    DDLedger.LedgerBelow q executable.capabilityOrigins
   protected_origins : ProtectedCapOrigins executable
   protected_below : ProtectedCapsBelowSupply executable
   allocated_recorded : AllocatedCapsRecorded executable
@@ -96,6 +98,140 @@ private theorem freshCapImages_above
   simp only [Inference.freshCapImages] at membership
   rcases List.mem_map.mp membership with ⟨binder, _, rfl⟩
   exact Nat.le_add_right q.nextCap binder.id
+
+private theorem originOf_ne_rigid_mem_keys
+    {ledger : CapabilityOriginLedger} {varId : CapVar}
+    (nonrigid : ledger.originOf varId ≠ .rigid) :
+    varId ∈ ledger.map Prod.fst := by
+  induction ledger with
+  | nil => simp [CapabilityOriginLedger.originOf] at nonrigid
+  | cons entry rest ih =>
+      rcases entry with ⟨candidate, candidateOrigin⟩
+      by_cases same : candidate = varId
+      · subst candidate
+        simp
+      · simp only [CapabilityOriginLedger.originOf, same, if_false] at nonrigid
+        simp [ih nonrigid]
+
+/-- Adding the same fresh rename-only batch to both sides preserves a
+cross-ledger policy map.  Boundedness keeps images of old rename-only
+variables below the fresh cut. -/
+theorem admissiblePostBetween_setFreshRenameOnly_of_bounded
+    {q : InferenceBase.FreshSupply}
+    {source destination : CapabilityOriginLedger} {post : Subst}
+    {fresh : List CapVar}
+    (between : AdmissiblePostBetween source destination post)
+    (bounded : post.BoundedBy q)
+    (sourceBelow : DDLedger.LedgerBelow q source)
+    (freshAbove : ∀ varId, varId ∈ fresh → q.nextCap ≤ varId.id) :
+    AdmissiblePostBetween
+      (source.setOrigins fresh .renameOnly)
+      (destination.setOrigins fresh .renameOnly) post := by
+  constructor
+  intro varId
+  rw [CapabilityOriginLedger.originOf_setOrigins_eq]
+  by_cases selected : varId ∈ fresh
+  · rw [if_pos selected]
+    have fixed := bounded.capFixedAbove varId (freshAbove varId selected)
+    exact ⟨varId, fixed, by
+      rw [CapabilityOriginLedger.originOf_setOrigins_of_mem _ _ _ _ selected]
+      simp⟩
+  · rw [if_neg selected]
+    cases sourceOrigin : source.originOf varId with
+    | rigid =>
+        rcases (by simpa [sourceOrigin] using between.cap varId) with
+          ⟨fixed, destinationRigid⟩
+        exact ⟨fixed, by
+          rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+            if_neg selected]
+          exact destinationRigid⟩
+    | renameOnly =>
+        rcases (by simpa [sourceOrigin] using between.cap varId) with
+          ⟨image, imageEquation, imageSafe⟩
+        have varBelow : varId.id < q.nextCap :=
+          sourceBelow varId (originOf_ne_rigid_mem_keys (by simp [sourceOrigin]))
+        have imageBelow : image.id < q.nextCap := by
+          apply bounded.capImagesBounded varId varBelow image
+          rw [imageEquation]
+          simp [Cap.fcv]
+        have imageNotSelected : image ∉ fresh := by
+          intro membership
+          exact Nat.not_le_of_lt imageBelow (freshAbove image membership)
+        exact ⟨image, imageEquation, by
+          rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+            if_neg imageNotSelected]
+          exact imageSafe⟩
+    | structuralFlexible => trivial
+
+/-- Structural allocation on the same fresh batch preserves a cross-ledger
+policy map: freshly selected source variables impose no restriction. -/
+theorem admissiblePostBetween_setFreshStructural_of_bounded
+    {q : InferenceBase.FreshSupply}
+    {source destination : CapabilityOriginLedger} {post : Subst}
+    {fresh : List CapVar}
+    (between : AdmissiblePostBetween source destination post)
+    (bounded : post.BoundedBy q)
+    (sourceBelow : DDLedger.LedgerBelow q source)
+    (freshAbove : ∀ varId, varId ∈ fresh → q.nextCap ≤ varId.id) :
+    AdmissiblePostBetween
+      (source.setOrigins fresh .structuralFlexible)
+      (destination.setOrigins fresh .structuralFlexible) post := by
+  constructor
+  intro varId
+  rw [CapabilityOriginLedger.originOf_setOrigins_eq]
+  by_cases selected : varId ∈ fresh
+  · simp [selected]
+  · rw [if_neg selected]
+    cases sourceOrigin : source.originOf varId with
+    | rigid =>
+        rcases (by simpa [sourceOrigin] using between.cap varId) with
+          ⟨fixed, destinationRigid⟩
+        exact ⟨fixed, by
+          rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+            if_neg selected]
+          exact destinationRigid⟩
+    | renameOnly =>
+        rcases (by simpa [sourceOrigin] using between.cap varId) with
+          ⟨image, imageEquation, imageSafe⟩
+        have varBelow : varId.id < q.nextCap :=
+          sourceBelow varId (originOf_ne_rigid_mem_keys (by simp [sourceOrigin]))
+        have imageBelow : image.id < q.nextCap := by
+          apply bounded.capImagesBounded varId varBelow image
+          rw [imageEquation]
+          simp [Cap.fcv]
+        have imageNotSelected : image ∉ fresh := by
+          intro membership
+          exact Nat.not_le_of_lt imageBelow (freshAbove image membership)
+        exact ⟨image, imageEquation, by
+          rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+            if_neg imageNotSelected]
+          exact imageSafe⟩
+    | structuralFlexible => trivial
+
+theorem admissiblePostBetween_markSchemeInstance_of_bounded
+    {q : InferenceBase.FreshSupply}
+    {source destination : CapabilityOriginLedger} {post : Subst}
+    (between : AdmissiblePostBetween source destination post)
+    (bounded : post.BoundedBy q)
+    (sourceBelow : DDLedger.LedgerBelow q source) (scheme : Scheme) :
+    AdmissiblePostBetween
+      (DDLedger.markSchemeInstance source q scheme)
+      (DDLedger.markSchemeInstance destination q scheme) post := by
+  exact admissiblePostBetween_setFreshRenameOnly_of_bounded between bounded
+    sourceBelow (fun varId membership =>
+      (Scheme.mem_canonicalCapImages_bounds membership).1)
+
+theorem admissiblePostBetween_markCtorInstance_of_bounded
+    {q : InferenceBase.FreshSupply}
+    {source destination : CapabilityOriginLedger} {post : Subst}
+    (between : AdmissiblePostBetween source destination post)
+    (bounded : post.BoundedBy q)
+    (sourceBelow : DDLedger.LedgerBelow q source) (scheme : CtorScheme) :
+    AdmissiblePostBetween
+      (DDLedger.markCtorInstance source q scheme)
+      (DDLedger.markCtorInstance destination q scheme) post := by
+  exact admissiblePostBetween_setFreshStructural_of_bounded between bounded
+    sourceBelow (freshCapImages_above q scheme.capBinders)
 
 /-- Structural ctor-instance allocation also preserves bounded residual
 admissibility.  A residual image of an old variable is itself below the old
@@ -185,10 +321,10 @@ def TraversalStateCorrespondence.recordEvent
       (state.recordEvent event) := by
   let extension := relation.prevailing.recordEventExtension event
   exact
-    ⟨relation.supply_eq, relation.ledger_eq, extension.after,
+    ⟨relation.supply_eq, extension.after,
       relation.declarative_bounded, relation.executable_bounded,
       relation.forward_bounded, relation.reverse_bounded,
-      relation.ledger_below,
+      relation.ledger_below, relation.executable_ledger_below,
       relation.protected_origins.recordEvent event,
       relation.protected_below.recordEvent_of_allocated event,
       relation.allocated_recorded.recordEvent event eventRecorded⟩
@@ -205,12 +341,11 @@ def stateBisimulationRecordSourceExtension
     { forward := relation.forward
       forwardEquation := by simpa [InferState.prevailing,
         InferState.recordSource] using relation.forwardEquation
-      forwardAdmissible := relation.forwardAdmissible
+      ledgerBisimulation := relation.ledgerBisimulation
       declarativeIdempotent := relation.declarativeIdempotent
       reverse := relation.reverse
       reverseEquation := by simpa [InferState.prevailing,
         InferState.recordSource] using relation.reverseEquation
-      reverseAdmissible := relation.reverseAdmissible
       executableIdempotent := relation.executableIdempotent }
   transportTy := by
     intro declarativeTarget executableTarget related
@@ -229,10 +364,10 @@ def TraversalStateCorrespondence.recordSource
   let extension := stateBisimulationRecordSourceExtension
     relation.prevailing source
   exact
-    ⟨relation.supply_eq, relation.ledger_eq, extension.after,
+    ⟨relation.supply_eq, extension.after,
       relation.declarative_bounded, relation.executable_bounded,
       relation.forward_bounded, relation.reverse_bounded,
-      relation.ledger_below,
+      relation.ledger_below, relation.executable_ledger_below,
       relation.protected_origins.recordSource source,
       relation.protected_below.recordSource source,
       relation.allocated_recorded.recordSource source⟩
@@ -277,13 +412,12 @@ def stateBisimulationFreshTyExtension
       forwardEquation := by
         change declarative = Subst.seq before.forward state.prevailing
         exact before.forwardEquation
-      forwardAdmissible := before.forwardAdmissible
+      ledgerBisimulation := before.ledgerBisimulation
       declarativeIdempotent := before.declarativeIdempotent
       reverse := before.reverse
       reverseEquation := by
         change state.prevailing = Subst.seq before.reverse declarative
         exact before.reverseEquation
-      reverseAdmissible := before.reverseAdmissible
       executableIdempotent := before.executableIdempotent }
   transportTy := by
     intro declarativeTarget executableTarget related
@@ -306,7 +440,7 @@ def TraversalStateCorrespondence.afterVisitFreshTy
     let entered := relation.visit kind path
     let extension := SupplyExtends.bumpTy q 1
     refine
-      ⟨?_, relation.ledger_eq,
+      ⟨?_,
         (stateBisimulationFreshTyExtension
           (relation.visitExtension kind path).after origin).after,
         entered.declarative_bounded.mono extension,
@@ -314,6 +448,7 @@ def TraversalStateCorrespondence.afterVisitFreshTy
         entered.forward_bounded.mono extension,
         entered.reverse_bounded.mono extension,
         entered.ledger_below.mono extension,
+        entered.executable_ledger_below.mono extension,
         entered.protected_origins.freshTy origin,
         entered.protected_below.freshTy origin,
         entered.allocated_recorded.freshTy origin⟩
@@ -372,13 +507,14 @@ def TraversalStateCorrespondence.freshTy
     exact congrArg (fun supply : InferenceBase.FreshSupply =>
       Ty.var supply.nextTy) relation.supply_eq
   · refine
-      ⟨?_, relation.ledger_eq,
+      ⟨?_,
         (stateBisimulationFreshTyExtension relation.prevailing origin).after,
         relation.declarative_bounded.mono extension,
         relation.executable_bounded.mono extension,
         relation.forward_bounded.mono extension,
         relation.reverse_bounded.mono extension,
         relation.ledger_below.mono extension,
+        relation.executable_ledger_below.mono extension,
         relation.protected_origins.freshTy origin,
         relation.protected_below.freshTy origin,
         relation.allocated_recorded.freshTy origin⟩
@@ -407,9 +543,9 @@ def TraversalStateCorrespondence.refl
     (allocatedRecorded : AllocatedCapsRecorded state) :
     TraversalStateCorrespondence state.supply state.prevailing
       state.capabilityOrigins state :=
-  let prevailing := StateBisimulation.refl _ _ idempotent
-  ⟨rfl, rfl, prevailing, bounded, bounded,
-    Subst.boundedBy_id _, Subst.boundedBy_id _, ledgerBelow,
+  let prevailing := StateBisimulation.refl state idempotent
+  ⟨rfl, prevailing, bounded, bounded,
+    Subst.boundedBy_id _, Subst.boundedBy_id _, ledgerBelow, ledgerBelow,
     protectedOrigins, protectedBelow, allocatedRecorded⟩
 
 /-- Output relation for one raw synthesized type.  The two raw types need not
@@ -535,13 +671,14 @@ structure SchemeInstantiationCompletion
     (result : Ty × InferState) (q' : InferenceBase.FreshSupply)
     (ledger' : CapabilityOriginLedger) (target : Ty) : Type where
   supply_eq : result.2.supply = q'
-  ledger_eq : result.2.capabilityOrigins = ledger'
   transition : BisimulationExtension before.prevailing ledger' S result.2
   declarative_bounded : S.BoundedBy q'
   executable_bounded : result.2.prevailing.BoundedBy q'
   forward_bounded : transition.after.forward.BoundedBy q'
   reverse_bounded : transition.after.reverse.BoundedBy q'
   ledger_below : DDLedger.LedgerBelow q' ledger'
+  executable_ledger_below :
+    DDLedger.LedgerBelow q' result.2.capabilityOrigins
   protected_origins : ProtectedCapOrigins result.2
   protected_below : ProtectedCapsBelowSupply result.2
   allocated_recorded : AllocatedCapsRecorded result.2
@@ -576,6 +713,11 @@ def instantiateSchemeInState_complete
   let ledger' := DDLedger.markSchemeInstance ledger q declarativeScheme
   have supplyExtension : SupplyExtends q q' := by
     exact SupplyExtends.instantiateScheme q declarativeScheme
+  have schemeImagesEq :
+      Scheme.canonicalCapImages q declarativeScheme =
+        Scheme.canonicalCapImages q executableScheme := by
+    rw [forwardScheme]
+    simp
   let after : StateBisimulation ledger' S operation.2 :=
     { forward := before.prevailing.forward
       forwardEquation := by
@@ -583,10 +725,19 @@ def instantiateSchemeInState_complete
         simpa [operation, Inference.instantiateSchemeInState,
           InferState.prevailing, InferState.recordEvent] using
           before.prevailing.forwardEquation
-      forwardAdmissible :=
-        admissiblePost_markSchemeInstance_of_bounded
-          before.prevailing.forwardAdmissible before.forward_bounded
-          declarativeScheme
+      ledgerBisimulation := by
+        constructor
+        · simpa [ledger', operation, Inference.instantiateSchemeInState,
+            before.supply_eq, DDLedger.markSchemeInstance, schemeImagesEq] using
+            admissiblePostBetween_markSchemeInstance_of_bounded
+              before.prevailing.ledgerBisimulation.forwardBetween
+              before.forward_bounded before.executable_ledger_below
+              declarativeScheme
+        · simpa [ledger', operation, Inference.instantiateSchemeInState,
+            before.supply_eq, DDLedger.markSchemeInstance, schemeImagesEq] using
+            admissiblePostBetween_markSchemeInstance_of_bounded
+              before.prevailing.ledgerBisimulation.reverseBetween
+              before.reverse_bounded before.ledger_below declarativeScheme
       declarativeIdempotent := before.prevailing.declarativeIdempotent
       reverse := before.prevailing.reverse
       reverseEquation := by
@@ -594,10 +745,6 @@ def instantiateSchemeInState_complete
         simpa [operation, Inference.instantiateSchemeInState,
           InferState.prevailing, InferState.recordEvent] using
           before.prevailing.reverseEquation
-      reverseAdmissible :=
-        admissiblePost_markSchemeInstance_of_bounded
-          before.prevailing.reverseAdmissible before.reverse_bounded
-          declarativeScheme
       executableIdempotent := before.prevailing.executableIdempotent }
   let transition : BisimulationExtension before.prevailing ledger' S
       operation.2 :=
@@ -625,7 +772,6 @@ def instantiateSchemeInState_complete
     rfl
   refine
     { supply_eq := ?_
-      ledger_eq := ?_
       transition := transition
       declarative_bounded := before.declarative_bounded.mono supplyExtension
       executable_bounded := ?_
@@ -633,6 +779,7 @@ def instantiateSchemeInState_complete
       reverse_bounded := before.reverse_bounded.mono supplyExtension
       ledger_below := DDLedger.LedgerBelow.markSchemeInstance declarativeScheme
         before.ledger_below
+      executable_ledger_below := ?_
       protected_origins := before.protected_origins.instantiateSchemeInState
         signature rawContext normalizedContext name executableScheme
       protected_below := before.protected_below.instantiateSchemeInState
@@ -642,11 +789,14 @@ def instantiateSchemeInState_complete
       target := ?_ }
   · simpa [operation, Inference.instantiateSchemeInState,
       before.supply_eq] using schemeSupplyEq
-  · simp [DDLedger.markSchemeInstance, Inference.instantiateSchemeInState,
-      before.supply_eq, before.ledger_eq, forwardScheme]
   · change initial.prevailing.BoundedBy
       (InferenceBase.instantiateScheme q declarativeScheme).supply
     exact before.executable_bounded.mono supplyExtension
+  · have actualBelow := DDLedger.LedgerBelow.markSchemeInstance
+      executableScheme before.executable_ledger_below
+    rw [schemeSupplyEq] at actualBelow
+    simpa [operation, Inference.instantiateSchemeInState, before.supply_eq,
+      DDLedger.markSchemeInstance] using actualBelow
   · rw [actualTarget]
     exact transition.transportTy canonical
 
@@ -661,13 +811,14 @@ structure CtorInstantiationCompletion
     (q' : InferenceBase.FreshSupply) (ledger' : CapabilityOriginLedger)
     (arguments : List Ty) (target : Ty) : Type where
   supply_eq : result.2.supply = q'
-  ledger_eq : result.2.capabilityOrigins = ledger'
   transition : BisimulationExtension before.prevailing ledger' S result.2
   declarative_bounded : S.BoundedBy q'
   executable_bounded : result.2.prevailing.BoundedBy q'
   forward_bounded : transition.after.forward.BoundedBy q'
   reverse_bounded : transition.after.reverse.BoundedBy q'
   ledger_below : DDLedger.LedgerBelow q' ledger'
+  executable_ledger_below :
+    DDLedger.LedgerBelow q' result.2.capabilityOrigins
   protected_origins : ProtectedCapOrigins result.2
   protected_below : ProtectedCapsBelowSupply result.2
   allocated_recorded : AllocatedCapsRecorded result.2
@@ -700,9 +851,18 @@ def instantiateCtorInState_complete
         simpa [operation, Inference.instantiateCtorInState,
           InferState.prevailing, InferState.recordEvent] using
           before.prevailing.forwardEquation
-      forwardAdmissible :=
-        admissiblePost_markCtorInstance_of_bounded
-          before.prevailing.forwardAdmissible before.forward_bounded scheme
+      ledgerBisimulation := by
+        constructor
+        · simpa [ledger', operation, Inference.instantiateCtorInState,
+            before.supply_eq, DDLedger.markCtorInstance] using
+            admissiblePostBetween_markCtorInstance_of_bounded
+              before.prevailing.ledgerBisimulation.forwardBetween
+              before.forward_bounded before.executable_ledger_below scheme
+        · simpa [ledger', operation, Inference.instantiateCtorInState,
+            before.supply_eq, DDLedger.markCtorInstance] using
+            admissiblePostBetween_markCtorInstance_of_bounded
+              before.prevailing.ledgerBisimulation.reverseBetween
+              before.reverse_bounded before.ledger_below scheme
       declarativeIdempotent := before.prevailing.declarativeIdempotent
       reverse := before.prevailing.reverse
       reverseEquation := by
@@ -710,9 +870,6 @@ def instantiateCtorInState_complete
         simpa [operation, Inference.instantiateCtorInState,
           InferState.prevailing, InferState.recordEvent] using
           before.prevailing.reverseEquation
-      reverseAdmissible :=
-        admissiblePost_markCtorInstance_of_bounded
-          before.prevailing.reverseAdmissible before.reverse_bounded scheme
       executableIdempotent := before.prevailing.executableIdempotent }
   let transition : BisimulationExtension before.prevailing ledger' S
       operation.2 :=
@@ -738,9 +895,6 @@ def instantiateCtorInState_complete
   refine
     { supply_eq := by
         simp [Inference.instantiateCtorInState, before.supply_eq]
-      ledger_eq := by
-        simp [DDLedger.markCtorInstance, Inference.instantiateCtorInState,
-          before.supply_eq, before.ledger_eq]
       transition := transition
       declarative_bounded := before.declarative_bounded.mono supplyExtension
       executable_bounded := ?_
@@ -748,6 +902,11 @@ def instantiateCtorInState_complete
       reverse_bounded := before.reverse_bounded.mono supplyExtension
       ledger_below := DDLedger.LedgerBelow.markCtorInstance scheme
         before.ledger_below
+      executable_ledger_below := by
+        simpa [operation, Inference.instantiateCtorInState, before.supply_eq,
+          DDLedger.markCtorInstance]
+          using (DDLedger.LedgerBelow.markCtorInstance scheme
+            before.executable_ledger_below)
       protected_origins := before.protected_origins.instantiateCtorInState
         before.protected_below scheme
       protected_below := before.protected_below.instantiateCtorInState scheme
@@ -776,7 +935,6 @@ structure SynthRunCompletion
   result : ExprResult
   success : operation = some result
   supply_eq : result.state.supply = q'
-  ledger_eq : result.state.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
   declarative_bounded : declarative.BoundedBy q'
@@ -784,6 +942,8 @@ structure SynthRunCompletion
   forward_bounded : transition.after.forward.BoundedBy q'
   reverse_bounded : transition.after.reverse.BoundedBy q'
   ledger_below : DDLedger.LedgerBelow q' ledger
+  executable_ledger_below :
+    DDLedger.LedgerBelow q' result.state.capabilityOrigins
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
@@ -800,7 +960,6 @@ structure SynthsRunCompletion
   result : ExprsResult
   success : operation = some result
   supply_eq : result.state.supply = q'
-  ledger_eq : result.state.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
   declarative_bounded : declarative.BoundedBy q'
@@ -808,6 +967,8 @@ structure SynthsRunCompletion
   forward_bounded : transition.after.forward.BoundedBy q'
   reverse_bounded : transition.after.reverse.BoundedBy q'
   ledger_below : DDLedger.LedgerBelow q' ledger
+  executable_ledger_below :
+    DDLedger.LedgerBelow q' result.state.capabilityOrigins
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
@@ -822,9 +983,10 @@ def SynthRunCompletion.completion
     {declarative : Subst} {ledger : CapabilityOriginLedger} {target : Ty}
     (run : SynthRunCompletion before operation q' declarative ledger target) :
     SynthCompletion q' declarative ledger target run.result :=
-  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after,
+  ⟨⟨run.supply_eq, run.transition.after,
       run.declarative_bounded, run.executable_bounded,
       run.forward_bounded, run.reverse_bounded, run.ledger_below,
+      run.executable_ledger_below,
       run.protected_origins, run.protected_below, run.allocated_recorded⟩,
     run.target⟩
 
@@ -837,9 +999,10 @@ def SynthsRunCompletion.completion
     {targets : List Ty}
     (run : SynthsRunCompletion before operation q' declarative ledger targets) :
     SynthsCompletion q' declarative ledger targets run.result :=
-  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after,
+  ⟨⟨run.supply_eq, run.transition.after,
       run.declarative_bounded, run.executable_bounded,
       run.forward_bounded, run.reverse_bounded, run.ledger_below,
+      run.executable_ledger_below,
       run.protected_origins, run.protected_below, run.allocated_recorded⟩,
     run.targets⟩
 
@@ -853,7 +1016,6 @@ structure StateRunCompletion
   result : InferState
   success : operation = some result
   supply_eq : result.supply = q'
-  ledger_eq : result.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result
   declarative_bounded : declarative.BoundedBy q'
@@ -861,6 +1023,8 @@ structure StateRunCompletion
   forward_bounded : transition.after.forward.BoundedBy q'
   reverse_bounded : transition.after.reverse.BoundedBy q'
   ledger_below : DDLedger.LedgerBelow q' ledger
+  executable_ledger_below :
+    DDLedger.LedgerBelow q' result.capabilityOrigins
   protected_origins : ProtectedCapOrigins result
   protected_below : ProtectedCapsBelowSupply result
   allocated_recorded : AllocatedCapsRecorded result
@@ -873,9 +1037,10 @@ def StateRunCompletion.completion
     {declarative : Subst} {ledger : CapabilityOriginLedger}
     (run : StateRunCompletion before operation q' declarative ledger) :
     TraversalStateCorrespondence q' declarative ledger run.result :=
-  ⟨run.supply_eq, run.ledger_eq, run.transition.after,
+  ⟨run.supply_eq, run.transition.after,
     run.declarative_bounded, run.executable_bounded,
     run.forward_bounded, run.reverse_bounded, run.ledger_below,
+    run.executable_ledger_below,
     run.protected_origins, run.protected_below, run.allocated_recorded⟩
 
 /-! ## Ordinary paired alignment -/
@@ -897,10 +1062,11 @@ noncomputable def runResolvedTargetEq_complete_of_step
     (executableRightBounded : executableRight.BoundedBy q)
     (dd : OriginSafeExactPairedMGU ledger
       (S.apply declarativeLeft) (S.apply declarativeRight) delta)
-    (solver : PairedUnification.PairedResult ledger
+    (solver : PairedUnification.PairedResult initial.capabilityOrigins
       (initial.prevailing.apply executableLeft)
       (initial.prevailing.apply executableRight))
-    (stepSuccess : solveResolvedWithLedger ledger initial.trace.solves.length
+    (stepSuccess : solveResolvedWithLedger initial.capabilityOrigins
+      initial.trace.solves.length
       origin (.targetEq (initial.prevailing.apply executableLeft)
         (initial.prevailing.apply executableRight)) = some step)
     (stepDelta : step.delta = solver.subst) :
@@ -924,18 +1090,18 @@ noncomputable def runResolvedTargetEq_complete_of_step
     { result := result
       success := ?_
       supply_eq := relation.supply_eq
-      ledger_eq := relation.ledger_eq
       transition := transition
       declarative_bounded := ddDeltaBounded.seq relation.declarative_bounded
       executable_bounded := ?_
       forward_bounded := ?_
       reverse_bounded := ?_
       ledger_below := relation.ledger_below
+      executable_ledger_below := relation.executable_ledger_below
       protected_origins := relation.protected_origins.recordSolve step
       protected_below := relation.protected_below.recordSolve step
       allocated_recorded := relation.allocated_recorded.recordSolve step }
   · unfold runResolvedConstraint
-    rw [relation.ledger_eq, stepSuccess]
+    rw [stepSuccess]
     rfl
   · rw [InferState.prevailing_recordSolve, stepDelta]
     exact executableDeltaBounded.seq relation.executable_bounded
@@ -967,23 +1133,31 @@ noncomputable def runResolvedTargetEq_complete
           (initial.prevailing.apply executableRight))) q
       (Subst.seq delta S) ledger := by
   let combined := Subst.seq delta relation.prevailing.forward
-  have combinedAdmissible : AdmissiblePost ledger combined :=
-    AdmissiblePost.seq dd.admissible relation.prevailing.forwardAdmissible
+  let transported := Subst.seq relation.prevailing.reverse combined
+  have transportedAdmissible :
+      AdmissiblePost initial.capabilityOrigins transported := by
+    exact relation.prevailing.ledgerBisimulation.transportAdmissible
+      dd.admissible
   have combinedSound :
       combined.apply (initial.prevailing.apply executableLeft) =
         combined.apply (initial.prevailing.apply executableRight) := by
     simp only [combined, Subst.seq_apply, ← left.forward, ← right.forward]
     exact dd.exact.1.1
+  have transportedSound :
+      transported.apply (initial.prevailing.apply executableLeft) =
+        transported.apply (initial.prevailing.apply executableRight) := by
+    simp only [transported, Subst.seq_apply]
+    exact congrArg relation.prevailing.reverse.apply combinedSound
   have solverExists :=
-    solveTargetEqWithLedger_complete_of_admissible combinedAdmissible
-      combinedSound initial.trace.solves.length origin
+    solveTargetEqWithLedger_complete_of_admissible transportedAdmissible
+      transportedSound initial.trace.solves.length origin
   let solver := Classical.choose solverExists
   have stepExists := Classical.choose_spec solverExists
   let step := Classical.choose stepExists
   have stepFacts := Classical.choose_spec stepExists
   have solverSuccess := stepFacts.1
   have stepDelta := stepFacts.2
-  have stepSuccess : solveResolvedWithLedger ledger
+  have stepSuccess : solveResolvedWithLedger initial.capabilityOrigins
       initial.trace.solves.length origin
       (.targetEq (initial.prevailing.apply executableLeft)
         (initial.prevailing.apply executableRight)) = some step := by
@@ -1035,13 +1209,13 @@ noncomputable def alignTypes_ordinary_complete
     { result := result
       success := ?_
       supply_eq := core.supply_eq
-      ledger_eq := core.ledger_eq
       transition := core.transition.seq finishExtension
       declarative_bounded := core.declarative_bounded
       executable_bounded := core.executable_bounded
       forward_bounded := core.forward_bounded
       reverse_bounded := core.reverse_bounded
       ledger_below := core.ledger_below
+      executable_ledger_below := core.executable_ledger_below
       protected_origins := core.protected_origins.recordEvent _
       protected_below := core.protected_below.recordEvent_of_allocated _
       allocated_recorded := core.allocated_recorded.recordEvent _
@@ -1096,13 +1270,13 @@ def inferExprFuel_lit_complete
     { result := result
       success := ?_
       supply_eq := relation.supply_eq
-      ledger_eq := relation.ledger_eq
       transition := visitExtension.seq finishExtension
       declarative_bounded := finalRelation.declarative_bounded
       executable_bounded := finalRelation.executable_bounded
       forward_bounded := finalRelation.forward_bounded
       reverse_bounded := finalRelation.reverse_bounded
       ledger_below := finalRelation.ledger_below
+      executable_ledger_below := finalRelation.executable_ledger_below
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
@@ -1171,13 +1345,14 @@ noncomputable def inferExprFuel_var_complete
           (InferenceBase.instantiateScheme q declarativeScheme).supply S
           (DDLedger.markSchemeInstance ledger q declarativeScheme)
           instantiated.2 :=
-        ⟨instantiationComplete.supply_eq, instantiationComplete.ledger_eq,
+        ⟨instantiationComplete.supply_eq,
           instantiationComplete.transition.after,
           instantiationComplete.declarative_bounded,
           instantiationComplete.executable_bounded,
           instantiationComplete.forward_bounded,
           instantiationComplete.reverse_bounded,
           instantiationComplete.ledger_below,
+          instantiationComplete.executable_ledger_below,
           instantiationComplete.protected_origins,
           instantiationComplete.protected_below,
           instantiationComplete.allocated_recorded⟩
@@ -1197,7 +1372,6 @@ noncomputable def inferExprFuel_var_complete
             { result := result
               success := ?_
               supply_eq := finalRelation.supply_eq
-              ledger_eq := finalRelation.ledger_eq
               transition :=
                 (visitExtension.seq instantiationComplete.transition).seq
                   finishExtension
@@ -1206,6 +1380,7 @@ noncomputable def inferExprFuel_var_complete
               forward_bounded := finalRelation.forward_bounded
               reverse_bounded := finalRelation.reverse_bounded
               ledger_below := finalRelation.ledger_below
+              executable_ledger_below := finalRelation.executable_ledger_below
               protected_origins := finalRelation.protected_origins
               protected_below := finalRelation.protected_below
               allocated_recorded := finalRelation.allocated_recorded
@@ -1235,7 +1410,6 @@ noncomputable def inferExprFuel_var_complete
             { result := result
               success := ?_
               supply_eq := finalRelation.supply_eq
-              ledger_eq := finalRelation.ledger_eq
               transition :=
                 (((visitExtension.seq instantiationComplete.transition).seq
                     selfEventExtension).seq selfSourceExtension).seq
@@ -1245,6 +1419,7 @@ noncomputable def inferExprFuel_var_complete
               forward_bounded := finalRelation.forward_bounded
               reverse_bounded := finalRelation.reverse_bounded
               ledger_below := finalRelation.ledger_below
+              executable_ledger_below := finalRelation.executable_ledger_below
               protected_origins := finalRelation.protected_origins
               protected_below := finalRelation.protected_below
               allocated_recorded := finalRelation.allocated_recorded
@@ -1288,7 +1463,6 @@ def inferExprFuel_something_complete
     { result := result
       success := ?_
       supply_eq := allocatedRelation.state.supply_eq
-      ledger_eq := allocatedRelation.state.ledger_eq
       transition :=
         bisimulationExtensionChain3 visitExtension freshExtension finishExtension
       declarative_bounded := finalRelation.declarative_bounded
@@ -1302,6 +1476,7 @@ def inferExprFuel_something_complete
           { q with nextTy := q.nextTy + 1 }
         exact relation.reverse_bounded.mono (SupplyExtends.bumpTy q 1)
       ledger_below := finalRelation.ledger_below
+      executable_ledger_below := finalRelation.executable_ledger_below
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
@@ -1366,7 +1541,6 @@ def inferExprFuel_lam_complete
     { result := result
       success := ?_
       supply_eq := bodyComplete.supply_eq
-      ledger_eq := bodyComplete.ledger_eq
       transition := prefixExtension.seq bodyComplete.transition |>.seq
         finishExtension
       declarative_bounded := finalRelation.declarative_bounded
@@ -1374,6 +1548,7 @@ def inferExprFuel_lam_complete
       forward_bounded := finalRelation.forward_bounded
       reverse_bounded := finalRelation.reverse_bounded
       ledger_below := finalRelation.ledger_below
+      executable_ledger_below := finalRelation.executable_ledger_below
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
@@ -1410,13 +1585,13 @@ def inferExprsFuel_nil_complete
     { result := ⟨[], initial⟩
       success := ?_
       supply_eq := relation.supply_eq
-      ledger_eq := relation.ledger_eq
       transition := .refl relation.prevailing
       declarative_bounded := relation.declarative_bounded
       executable_bounded := relation.executable_bounded
       forward_bounded := relation.forward_bounded
       reverse_bounded := relation.reverse_bounded
       ledger_below := relation.ledger_below
+      executable_ledger_below := relation.executable_ledger_below
       protected_origins := relation.protected_origins
       protected_below := relation.protected_below
       allocated_recorded := relation.allocated_recorded
@@ -1452,13 +1627,13 @@ def inferExprsFuel_cons_complete
     { result := ⟨head.target :: tail.targets, tail.state⟩
       success := ?_
       supply_eq := tailComplete.supply_eq
-      ledger_eq := tailComplete.ledger_eq
       transition := headComplete.transition.seq tailComplete.transition
       declarative_bounded := tailComplete.declarative_bounded
       executable_bounded := tailComplete.executable_bounded
       forward_bounded := tailComplete.forward_bounded
       reverse_bounded := tailComplete.reverse_bounded
       ledger_below := tailComplete.ledger_below
+      executable_ledger_below := tailComplete.executable_ledger_below
       protected_origins := tailComplete.protected_origins
       protected_below := tailComplete.protected_below
       allocated_recorded := tailComplete.allocated_recorded
@@ -1496,7 +1671,6 @@ def inferExprFuel_tuple_complete
     { result := result
       success := ?_
       supply_eq := childrenComplete.supply_eq
-      ledger_eq := childrenComplete.ledger_eq
       transition := bisimulationExtensionChain3 visitExtension
         childrenComplete.transition finishExtension
       declarative_bounded := finalRelation.declarative_bounded
@@ -1504,6 +1678,7 @@ def inferExprFuel_tuple_complete
       forward_bounded := finalRelation.forward_bounded
       reverse_bounded := finalRelation.reverse_bounded
       ledger_below := finalRelation.ledger_below
+      executable_ledger_below := finalRelation.executable_ledger_below
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
