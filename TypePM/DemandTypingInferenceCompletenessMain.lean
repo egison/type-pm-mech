@@ -1578,7 +1578,8 @@ theorem ppatOrigin_complete_nonempty
       have instBounded := instantiateCtorScheme_boundedBy (q := q)
         ((closed.patternCtors lookup).boundedBy)
       refine ⟨ppatCtor_complete fuel signature path name patterns lookup closed
-        before target targetBounded aligned (children := ?_)⟩
+        before target target (before.prevailing.sameTarget target) targetBounded
+        targetBounded aligned (children := ?_)⟩
       dsimp
       intro alignment
       have executableTargetsEq :

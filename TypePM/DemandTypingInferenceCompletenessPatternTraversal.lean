@@ -1296,7 +1296,11 @@ noncomputable def ppatCtor_complete
     {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
     (before : TraversalStateCorrespondence q S ledger state)
-    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (expectedTarget executableExpectedTarget : Ty)
+    (expectedRelated : TyBisimulation before.prevailing expectedTarget
+      executableExpectedTarget)
+    (expectedBounded : expectedTarget.BoundedBy q)
+    (executableExpectedBounded : executableExpectedTarget.BoundedBy q)
     (aligned : DDAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q entry.scheme) S
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.2
@@ -1308,7 +1312,8 @@ noncomputable def ppatCtor_complete
       ∀ alignment : StateRunCompletion instantiation.correspondence
           (alignTypes (instantiateCtorInState state entry.scheme).2
             (freshOrigin .primitivePattern path "pp-constructor-result")
-            (instantiateCtorInState state entry.scheme).1.2 expectedTarget)
+            (instantiateCtorInState state entry.scheme).1.2
+            executableExpectedTarget)
           (InferenceBase.instantiateCtorScheme q entry.scheme).supply S₁
           (DDLedger.markCtorInstance ledger q entry.scheme),
         PPatsRunCompletion alignment.completion
@@ -1319,7 +1324,7 @@ noncomputable def ppatCtor_complete
           bindings) :
     PPatRunCompletion before
       (inferPPatFuel (fuel + 1) signature path (.ctor name patterns)
-        expectedTarget state)
+        executableExpectedTarget state)
       q' S'
       (DDLedger.freezeExport ledger₂ S'
         (freshCapImages q entry.scheme.capBinders)
@@ -1335,11 +1340,11 @@ noncomputable def ppatCtor_complete
     (origin := freshOrigin .primitivePattern path "pp-constructor-result")
     instantiation.correspondence instantiation.target
     (instantiation.transition.transportTy
-      (before.prevailing.sameTarget expectedTarget))
+      expectedRelated)
     instBounded.2 (expectedBounded.mono supplyExtension)
     (by simpa [Inference.instantiateCtorInState, before.supply_eq] using
       instBounded.2)
-    (expectedBounded.mono supplyExtension) aligned
+    (executableExpectedBounded.mono supplyExtension) aligned
   let childrenRun := children alignment
   let capImages := freshCapImages q entry.scheme.capBinders
   let executableHoles := childrenRun.result.holes
@@ -1350,10 +1355,13 @@ noncomputable def ppatCtor_complete
   let executablePayload := capabilityExportPayload
     (executableHoles.map Dual.cap)
     (executableHoles.map Dual.target ++
-      expectedTarget :: executableBindings.map fun item => item.2)
+      executableExpectedTarget :: executableBindings.map fun item => item.2)
+  let targetRelatedAtChildren := childrenRun.transition.transportTy
+    (alignment.transition.transportTy
+      (instantiation.transition.transportTy expectedRelated))
   let payloadRelated :=
-    DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.exportPayload
-      (target := expectedTarget) childrenRun.holes childrenRun.bindings
+    DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.exportPayloadRelated
+      targetRelatedAtChildren childrenRun.holes childrenRun.bindings
   let frozen :=
     DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelated
       childrenRun.completion capImages payloadRelated
@@ -1361,8 +1369,8 @@ noncomputable def ppatCtor_complete
     DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
       childrenRun.completion capImages payloadRelated
   let visited := frozen.visit .ppatCtor path
-  let event := TraceEvent.inferredPPat (.ctor name patterns) expectedTarget
-    executableHoles executableBindings path
+  let event := TraceEvent.inferredPPat (.ctor name patterns)
+    executableExpectedTarget executableHoles executableBindings path
   let final := visited.recordEvent event (by
     intro _ membership
     simp [event, TraceEvent.allocatedCapVars] at membership)
@@ -1374,7 +1382,8 @@ noncomputable def ppatCtor_complete
     childrenRun.transition).seq freezeExtension).seq
       (visitExtension.seq eventExtension)
   refine
-    { result := ⟨expectedTarget, executableHoles, executableBindings,
+    { result := ⟨executableExpectedTarget, executableHoles,
+        executableBindings,
         (visit (childrenRun.result.state.freezeCapabilityExport capImages
           executablePayload) .ppatCtor path).recordEvent event⟩
       success := ?_
@@ -1390,7 +1399,7 @@ noncomputable def ppatCtor_complete
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
       protected_safe := final.protected_safe
-      target := transition.after.sameTarget expectedTarget
+      target := finishExtension.transportTy targetRelatedAtChildren
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
           finishExtension childrenRun.holes
