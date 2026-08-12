@@ -1,6 +1,7 @@
 import TypePM.DemandTypingInferenceCompletenessStateMutual
 import TypePM.DemandTypingInferenceCompletenessSolver
 import TypePM.DemandTypingInferenceCompletenessContext
+import TypePM.DemandTypingInferenceCompletenessContextBisimulation
 import TypePM.DemandTypingInferenceCompletenessProtected
 import TypePM.DemandTypingInferenceCompletenessIdempotence
 import TypePM.DemandTypingOriginMetatheory
@@ -26,6 +27,8 @@ open Inference
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessSolver
 open DemandTypingInferenceCompletenessProtected
+open DemandTypingInferenceCompletenessContext
+open DemandTypingInferenceCompletenessContextBisimulation
 
 /-- State relation used at every recursive traversal boundary.  History,
 protected producer leaves, and provenance sources are append-only evidence
@@ -47,6 +50,78 @@ structure TraversalStateCorrespondence
   protected_below : ProtectedCapsBelowSupply executable
   allocated_recorded : AllocatedCapsRecorded executable
 
+/-- Extending the origin ledger with a canonical scheme-instance batch
+preserves an admissible post that is bounded at the incoming supply.  Old
+variables retain their origin, while every newly allocated variable is fixed
+by boundedness and is therefore admissible at its new rename-only origin. -/
+theorem admissiblePost_markSchemeInstance_of_bounded
+    {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}
+    {post : Subst} (admissible : AdmissiblePost ledger post)
+    (bounded : post.BoundedBy q) (scheme : Scheme) :
+    AdmissiblePost (DDLedger.markSchemeInstance ledger q scheme) post := by
+  constructor
+  intro varId
+  by_cases below : varId.id < q.nextCap
+  · have notFresh : varId ∉ Scheme.canonicalCapImages q scheme := by
+      intro membership
+      exact Nat.not_le_of_lt below
+        (Scheme.mem_canonicalCapImages_bounds membership).1
+    rw [DDLedger.markSchemeInstance,
+      CapabilityOriginLedger.originOf_setOrigins_eq, if_neg notFresh]
+    cases oldOrigin : ledger.originOf varId with
+    | rigid => exact admissible.cap.rigid oldOrigin
+    | renameOnly =>
+        rcases admissible.cap.renameOnly oldOrigin with
+          ⟨image, imageEquation, imageSafe⟩
+        refine ⟨image, imageEquation, ?_⟩
+        by_cases imageFresh : image ∈ Scheme.canonicalCapImages q scheme
+        · rw [CapabilityOriginLedger.originOf_setOrigins_of_mem _ _ _ _
+              imageFresh]
+          simp
+        · rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+            if_neg imageFresh]
+          exact imageSafe
+    | structuralFlexible => trivial
+  · have fixed := bounded.capFixedAbove varId (Nat.le_of_not_gt below)
+    cases origin : (DDLedger.markSchemeInstance ledger q scheme).originOf varId with
+    | rigid => exact fixed
+    | renameOnly => exact ⟨varId, fixed, by simp [origin]⟩
+    | structuralFlexible => trivial
+
+theorem subst_seq_self_eq_of_idempotent {substitution : Subst}
+    (idempotent : substitution.Idempotent) :
+    Subst.seq substitution substitution = substitution := by
+  apply PhasedPost.subst_ext
+  · funext varId
+    have fixed := idempotent (.matcher (.var varId) .unit)
+    have capFixed :
+        (substitution.cap varId).apply substitution.cap =
+          substitution.cap varId :=
+      (Ty.matcher.inj fixed).1
+    simpa only [Subst.seq, CapSubst.comp] using capFixed
+  · funext varId
+    change substitution.apply (substitution.target varId) =
+      substitution.target varId
+    simpa only [Subst.apply, Ty.applyCapability, Ty.applyTarget] using
+      idempotent (.var varId)
+
+/-- A scheme obtained by looking up an already-normalized context is fixed
+by the idempotent substitution used for that normalization. -/
+theorem normalizedContext_lookup_scheme_fixed
+    {substitution : Subst} {context : Context} {name : String}
+    {scheme : Scheme} (idempotent : substitution.Idempotent)
+    (lookup : (context.applySubst substitution).find? name = some scheme) :
+    scheme.applyMeta substitution = scheme := by
+  have contextFixed :
+      (context.applySubst substitution).applySubst substitution =
+        context.applySubst substitution := by
+    rw [← Context.applySubst_seq,
+      subst_seq_self_eq_of_idempotent idempotent]
+  have lookupFixed := congrArg (fun actual : Context => actual.find? name)
+    contextFixed
+  rw [Context.find?_applySubst, lookup] at lookupFixed
+  exact Option.some.inj lookupFixed
+
 /-- Trace-only events preserve a traversal boundary. -/
 def TraversalStateCorrespondence.recordEvent
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -66,6 +141,50 @@ def TraversalStateCorrespondence.recordEvent
       relation.protected_origins.recordEvent event,
       relation.protected_below.recordEvent_of_allocated event,
       relation.allocated_recorded.recordEvent event eventRecorded⟩
+
+/-- Provenance-source recording is state-neutral for the typing relation. -/
+def stateBisimulationRecordSourceExtension
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    (source : ProducerSource) :
+    BisimulationExtension relation ledger declarative
+      (state.recordSource source) where
+  after :=
+    { forward := relation.forward
+      forwardEquation := by simpa [InferState.prevailing,
+        InferState.recordSource] using relation.forwardEquation
+      forwardAdmissible := relation.forwardAdmissible
+      declarativeIdempotent := relation.declarativeIdempotent
+      reverse := relation.reverse
+      reverseEquation := by simpa [InferState.prevailing,
+        InferState.recordSource] using relation.reverseEquation
+      reverseAdmissible := relation.reverseAdmissible
+      executableIdempotent := relation.executableIdempotent }
+  transportTy := by
+    intro declarativeTarget executableTarget related
+    exact ⟨by simpa [InferState.prevailing, InferState.recordSource]
+        using related.forward,
+      by simpa [InferState.prevailing, InferState.recordSource]
+        using related.reverse⟩
+
+def TraversalStateCorrespondence.recordSource
+    {q : InferenceBase.FreshSupply} {declarative : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (relation : TraversalStateCorrespondence q declarative ledger state)
+    (source : ProducerSource) :
+    TraversalStateCorrespondence q declarative ledger
+      (state.recordSource source) := by
+  let extension := stateBisimulationRecordSourceExtension
+    relation.prevailing source
+  exact
+    ⟨relation.supply_eq, relation.ledger_eq, extension.after,
+      relation.declarative_bounded, relation.executable_bounded,
+      relation.forward_bounded, relation.reverse_bounded,
+      relation.ledger_below,
+      relation.protected_origins.recordSource source,
+      relation.protected_below.recordSource source,
+      relation.allocated_recorded.recordSource source⟩
 
 /-- Visiting one syntax node is trace-only. -/
 def TraversalStateCorrespondence.visit
@@ -353,6 +472,132 @@ def SynthsCompletion
     (result : ExprsResult) : Type :=
   TypedListTraversalStateCorrespondence q' declarative ledger targets
     result.state result.targets
+
+/-- Deterministic completion package for one context-scheme instantiation.
+It is separated from expression synthesis because variable traversal may add
+a direct-self source after instantiation, while `let` reuses the same paired
+context and canonical-opening bridge. -/
+structure SchemeInstantiationCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (result : Ty × InferState) (q' : InferenceBase.FreshSupply)
+    (ledger' : CapabilityOriginLedger) (target : Ty) : Type where
+  supply_eq : result.2.supply = q'
+  ledger_eq : result.2.capabilityOrigins = ledger'
+  transition : BisimulationExtension before.prevailing ledger' S result.2
+  declarative_bounded : S.BoundedBy q'
+  executable_bounded : result.2.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger'
+  protected_origins : ProtectedCapOrigins result.2
+  protected_below : ProtectedCapsBelowSupply result.2
+  allocated_recorded : AllocatedCapsRecorded result.2
+  target : TyBisimulation transition.after target result.1
+
+/-- Corresponding normalized schemes instantiate in lockstep.  The fresh
+images and ledger update are determined solely by binder arities; ambient
+metavariable transport affects only the instantiated body. -/
+def instantiateSchemeInState_complete
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (name : String) (declarativeScheme executableScheme : Scheme)
+    (forwardScheme : declarativeScheme =
+      executableScheme.applyMeta before.prevailing.forward)
+    (reverseScheme : executableScheme =
+      declarativeScheme.applyMeta before.prevailing.reverse)
+    (declarativeNormalized : declarativeScheme.applyMeta S =
+      declarativeScheme)
+    (executableNormalized : executableScheme.applyMeta initial.prevailing =
+      executableScheme) :
+    SchemeInstantiationCompletion before
+      (instantiateSchemeInState signature rawContext normalizedContext name
+        initial executableScheme)
+      (InferenceBase.instantiateScheme q declarativeScheme).supply
+      (DDLedger.markSchemeInstance ledger q declarativeScheme)
+      (InferenceBase.instantiateScheme q declarativeScheme).value := by
+  let operation := instantiateSchemeInState signature rawContext
+    normalizedContext name initial executableScheme
+  let q' := (InferenceBase.instantiateScheme q declarativeScheme).supply
+  let ledger' := DDLedger.markSchemeInstance ledger q declarativeScheme
+  have supplyExtension : SupplyExtends q q' := by
+    exact SupplyExtends.instantiateScheme q declarativeScheme
+  let after : StateBisimulation ledger' S operation.2 :=
+    { forward := before.prevailing.forward
+      forwardEquation := by
+        change S = Subst.seq before.prevailing.forward operation.2.prevailing
+        simpa [operation, Inference.instantiateSchemeInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.forwardEquation
+      forwardAdmissible :=
+        admissiblePost_markSchemeInstance_of_bounded
+          before.prevailing.forwardAdmissible before.forward_bounded
+          declarativeScheme
+      declarativeIdempotent := before.prevailing.declarativeIdempotent
+      reverse := before.prevailing.reverse
+      reverseEquation := by
+        change operation.2.prevailing = Subst.seq before.prevailing.reverse S
+        simpa [operation, Inference.instantiateSchemeInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.reverseEquation
+      reverseAdmissible :=
+        admissiblePost_markSchemeInstance_of_bounded
+          before.prevailing.reverseAdmissible before.reverse_bounded
+          declarativeScheme
+      executableIdempotent := before.prevailing.executableIdempotent }
+  let transition : BisimulationExtension before.prevailing ledger' S
+      operation.2 :=
+    { after := after
+      transportTy := by
+        intro declarativeTarget executableTarget related
+        exact ⟨by simpa [after, operation, Inference.instantiateSchemeInState,
+            InferState.prevailing, InferState.recordEvent]
+            using related.forward,
+          by simpa [after, operation, Inference.instantiateSchemeInState,
+            InferState.prevailing, InferState.recordEvent]
+            using related.reverse⟩ }
+  have actualTarget : operation.1 =
+      (InferenceBase.instantiateScheme q executableScheme).value := by
+    simp [operation, Inference.instantiateSchemeInState, before.supply_eq]
+  have canonical := canonicalInstantiation_tyBisimulation before.prevailing q
+    declarativeScheme executableScheme before.declarative_bounded
+    before.executable_bounded before.forward_bounded before.reverse_bounded
+    forwardScheme reverseScheme declarativeNormalized executableNormalized
+  have schemeSupplyEq :
+      (InferenceBase.instantiateScheme q executableScheme).supply = q' := by
+    dsimp [q']
+    rw [forwardScheme]
+    cases executableScheme
+    rfl
+  refine
+    { supply_eq := ?_
+      ledger_eq := ?_
+      transition := transition
+      declarative_bounded := before.declarative_bounded.mono supplyExtension
+      executable_bounded := ?_
+      forward_bounded := before.forward_bounded.mono supplyExtension
+      reverse_bounded := before.reverse_bounded.mono supplyExtension
+      ledger_below := DDLedger.LedgerBelow.markSchemeInstance declarativeScheme
+        before.ledger_below
+      protected_origins := before.protected_origins.instantiateSchemeInState
+        signature rawContext normalizedContext name executableScheme
+      protected_below := before.protected_below.instantiateSchemeInState
+        signature rawContext normalizedContext name executableScheme
+      allocated_recorded := before.allocated_recorded.instantiateSchemeInState
+        signature rawContext normalizedContext name executableScheme
+      target := ?_ }
+  · simpa [operation, Inference.instantiateSchemeInState,
+      before.supply_eq] using schemeSupplyEq
+  · simp [DDLedger.markSchemeInstance, Inference.instantiateSchemeInState,
+      before.supply_eq, before.ledger_eq, forwardScheme]
+  · change initial.prevailing.BoundedBy
+      (InferenceBase.instantiateScheme q declarativeScheme).supply
+    exact before.executable_bounded.mono supplyExtension
+  · rw [actualTarget]
+    exact transition.transportTy canonical
 
 /-- A successful executable expression run paired with its typed output
 correspondence.  The package lives in `Type` because the state bisimulation
@@ -700,6 +945,152 @@ def inferExprFuel_lit_complete
       target := ?_ }
   · simp [inferExprFuel, result, entered, finishExpr, visit]
   exact (visitExtension.seq finishExtension).after.sameTarget .int
+
+/-- Variable synthesis is complete for paired declarative/executable
+contexts.  Lookup determines corresponding normalized schemes; canonical
+fresh instantiation then advances both traversals through the same binder
+spans and origin-ledger batch. -/
+noncomputable def inferExprFuel_var_complete
+    {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {q : InferenceBase.FreshSupply}
+    {S : Subst} {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeScheme : Scheme}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (contexts : ContextBisimulation relation.prevailing declarativeContext
+      executableContext)
+    (lookup : (declarativeContext.applySubst S).find? name =
+      some declarativeScheme)
+    (fuel : Nat) :
+    SynthRunCompletion relation
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.var name) initial)
+      (InferenceBase.instantiateScheme q declarativeScheme).supply S
+      (DDLedger.markSchemeInstance ledger q declarativeScheme)
+      (InferenceBase.instantiateScheme q declarativeScheme).value := by
+  cases executableLookup :
+      (executableContext.applySubst initial.prevailing).find? name with
+  | none =>
+      have impossible := congrArg (fun context : Context => context.find? name)
+        contexts.forward
+      simp [lookup, Context.find?_applySubst, executableLookup] at impossible
+  | some executableScheme =>
+      have schemeDirections := contexts.lookup lookup executableLookup
+      have declarativeNormalized := normalizedContext_lookup_scheme_fixed
+        relation.prevailing.declarativeIdempotent lookup
+      have executableNormalized := normalizedContext_lookup_scheme_fixed
+        relation.prevailing.executableIdempotent executableLookup
+      let entered := visit initial .exprVar path
+      let enteredRelation := relation.visit .exprVar path
+      let normalizedExecutable := executableContext.applySubst entered.prevailing
+      have executableLookupEntered : normalizedExecutable.find? name =
+          some executableScheme := by
+        simpa [normalizedExecutable, entered, visit, InferState.prevailing,
+          InferState.recordEvent] using executableLookup
+      have forwardEntered : declarativeScheme =
+          executableScheme.applyMeta enteredRelation.prevailing.forward := by
+        exact schemeDirections.1
+      have reverseEntered : executableScheme =
+          declarativeScheme.applyMeta enteredRelation.prevailing.reverse := by
+        exact schemeDirections.2
+      have executableNormalizedEntered :
+          executableScheme.applyMeta entered.prevailing = executableScheme := by
+        simpa [entered, visit, InferState.prevailing, InferState.recordEvent]
+          using executableNormalized
+      let instantiated := instantiateSchemeInState signature executableContext
+        normalizedExecutable name entered executableScheme
+      let instantiationComplete := instantiateSchemeInState_complete
+        enteredRelation signature executableContext normalizedExecutable name
+        declarativeScheme executableScheme forwardEntered reverseEntered
+        declarativeNormalized executableNormalizedEntered
+      let instantiatedRelation : TraversalStateCorrespondence
+          (InferenceBase.instantiateScheme q declarativeScheme).supply S
+          (DDLedger.markSchemeInstance ledger q declarativeScheme)
+          instantiated.2 :=
+        ⟨instantiationComplete.supply_eq, instantiationComplete.ledger_eq,
+          instantiationComplete.transition.after,
+          instantiationComplete.declarative_bounded,
+          instantiationComplete.executable_bounded,
+          instantiationComplete.forward_bounded,
+          instantiationComplete.reverse_bounded,
+          instantiationComplete.ledger_below,
+          instantiationComplete.protected_origins,
+          instantiationComplete.protected_below,
+          instantiationComplete.allocated_recorded⟩
+      let visitExtension := relation.visitExtension .exprVar path
+      cases selfLookup : selfEnv.find? name with
+      | none =>
+          let finishEvent := TraceEvent.inferredExpr (.var name)
+            instantiated.1 path
+          let finishExtension :=
+            instantiationComplete.transition.after.recordEventExtension
+              finishEvent
+          let result := finishExpr (.var name) path instantiated.1
+            instantiated.2
+          let finalRelation := instantiatedRelation.recordEvent finishEvent
+            (by simp [finishEvent, TraceEvent.allocatedCapVars])
+          refine
+            { result := result
+              success := ?_
+              supply_eq := finalRelation.supply_eq
+              ledger_eq := finalRelation.ledger_eq
+              transition :=
+                (visitExtension.seq instantiationComplete.transition).seq
+                  finishExtension
+              declarative_bounded := finalRelation.declarative_bounded
+              executable_bounded := finalRelation.executable_bounded
+              forward_bounded := finalRelation.forward_bounded
+              reverse_bounded := finalRelation.reverse_bounded
+              ledger_below := finalRelation.ledger_below
+              protected_origins := finalRelation.protected_origins
+              protected_below := finalRelation.protected_below
+              allocated_recorded := finalRelation.allocated_recorded
+              target := finishExtension.transportTy
+                instantiationComplete.target }
+          simp [inferExprFuel, entered, normalizedExecutable, instantiated,
+            result, executableLookupEntered, selfLookup]
+      | some placeholder =>
+          let selfEvent := TraceEvent.directSelfReference name placeholder path
+          let selfSource := ProducerSource.selfReference name placeholder path
+          let selfEventExtension :=
+            instantiationComplete.transition.after.recordEventExtension selfEvent
+          let selfSourceExtension := stateBisimulationRecordSourceExtension
+            selfEventExtension.after selfSource
+          let referenced := recordSelfReference instantiated.2 name placeholder path
+          let finishEvent := TraceEvent.inferredExpr (.var name)
+            instantiated.1 path
+          let finishExtension := selfSourceExtension.after.recordEventExtension
+            finishEvent
+          let result := finishExpr (.var name) path instantiated.1 referenced
+          let finalRelation :=
+            ((instantiatedRelation.recordEvent selfEvent
+                (by simp [selfEvent, TraceEvent.allocatedCapVars])).recordSource
+              selfSource).recordEvent finishEvent
+                (by simp [finishEvent, TraceEvent.allocatedCapVars])
+          refine
+            { result := result
+              success := ?_
+              supply_eq := finalRelation.supply_eq
+              ledger_eq := finalRelation.ledger_eq
+              transition :=
+                (((visitExtension.seq instantiationComplete.transition).seq
+                    selfEventExtension).seq selfSourceExtension).seq
+                  finishExtension
+              declarative_bounded := finalRelation.declarative_bounded
+              executable_bounded := finalRelation.executable_bounded
+              forward_bounded := finalRelation.forward_bounded
+              reverse_bounded := finalRelation.reverse_bounded
+              ledger_below := finalRelation.ledger_below
+              protected_origins := finalRelation.protected_origins
+              protected_below := finalRelation.protected_below
+              allocated_recorded := finalRelation.allocated_recorded
+              target := finishExtension.transportTy
+                (selfSourceExtension.transportTy
+                  (selfEventExtension.transportTy
+                    instantiationComplete.target)) }
+          simp [inferExprFuel, entered, normalizedExecutable, instantiated,
+            referenced, recordSelfReference, result, executableLookupEntered,
+            selfLookup]
 
 /-- `something` performs exactly one deterministic target allocation. -/
 def inferExprFuel_something_complete
