@@ -40,6 +40,16 @@ private theorem Cap.mem_fcvList_of_mem_local
       · exact Or.inl varMem
       · exact Or.inr (induction inTail)
 
+private theorem StateBisimulation.eq_of_forward_reverse
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (left right : StateBisimulation ledger declarative state)
+    (forward : left.forward = right.forward)
+    (reverse : left.reverse = right.reverse) : left = right := by
+  cases left
+  cases right
+  simp_all
+
 /-- The canonical reverse renaming extracted from bounded constructor children
 fixes every capability identifier which may be freshly allocated at `q`. -/
 theorem reverseChildRenaming_freshAbove
@@ -430,6 +440,109 @@ theorem freshenedProjection_capBisimulation
       (capability.apply S.cap).apply before.prevailing.reverse.cap
     rw [executableFixed, declarativeFixed]
     exact reverseRenamed.symm
+
+/-! ## Direct projection completion -/
+
+/-- Complete the common projected-skeleton suffix from a correspondence whose
+child projection succeeds. -/
+noncomputable def projectedSkeleton_complete
+    {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {constraintOrigin : ConstraintOrigin}
+    {declarativeChildren executableChildren : List Cap}
+    {q q' : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    {before : TraversalStateCorrespondence q S ledger state}
+    {projected : Shape.Evidence} {capability : Cap}
+    (children : CapListBisimulation before.prevailing declarativeChildren
+      executableChildren)
+    (declarativeChildrenBounded : ∀ child ∈ declarativeChildren,
+      child.BoundedBy q)
+    (projection : Projection.projectSignature entry.projection
+      ((declarativeChildren.map fun child => child.apply S.cap).map
+        Shape.ofCap) = some projected)
+    (freshened : freshenSkeletonSupply signature.observability projected q =
+      some (capability, q')) :
+    PatternCtorCapRunCompletion before
+      (do
+        let executableProjected ← Projection.projectSignature entry.projection
+          ((executableChildren.map fun child =>
+            child.apply state.prevailing.cap).map Shape.ofCap)
+        freshenSkeleton signature.observability constraintOrigin
+          executableProjected state)
+      q' S (DDLedger.markCapRange ledger q q') capability := by
+  let bundle := Ty.matcher (.prod declarativeChildren) .unit
+  let localMap := StateBisimulation.reverseLocalRenamingOn_image
+    before.prevailing bundle
+  let rename := localMap.capImage
+  obtain ⟨executableProjection, freshAbove⟩ :=
+    projectSignature_success_scoped before children declarativeChildrenBounded
+      projection
+  have renamedFresh := freshenSkeletonSupply_applyRen
+    signature.observability rename projected q capability q' freshAbove
+    freshened
+  have renamedFreshAtState : freshenSkeletonSupply signature.observability
+      (projected.applyRen rename) state.supply =
+      some (capability.applyRen rename, q') := by
+    simpa [before.supply_eq] using renamedFresh
+  let exactRun := freshenSkeleton_complete_exact
+    (origin := constraintOrigin) renamedFreshAtState
+  let final := Classical.choose exactRun
+  have exactFacts := Classical.choose_spec exactRun
+  have executableFresh := exactFacts.1
+  have supplyEq := exactFacts.2.1
+  have prevailingEq := exactFacts.2.2.1
+  have ledgerEq := exactFacts.2.2.2
+  let rawCorrespondence := Classical.choice
+    (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+      before executableFresh)
+  let transition :=
+    DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.markCapRangeExtension
+      before (SupplyExtends.freshenSkeleton freshened) supplyEq prevailingEq
+      (by simpa [before.supply_eq] using ledgerEq)
+  let supplyExt := SupplyExtends.freshenSkeleton freshened
+  let correspondenceAtFinal : TraversalStateCorrespondence q' S
+      (DDLedger.markCapRange ledger q q') final :=
+    { supply_eq := supplyEq
+      prevailing := transition.after
+      declarative_bounded := before.declarative_bounded.mono supplyExt
+      executable_bounded := by
+        rw [prevailingEq]
+        exact before.executable_bounded.mono supplyExt
+      forward_bounded := before.forward_bounded.mono supplyExt
+      reverse_bounded := before.reverse_bounded.mono supplyExt
+      ledger_below := by simpa [supplyEq] using rawCorrespondence.ledger_below
+      executable_ledger_below := by
+        simpa [supplyEq] using rawCorrespondence.executable_ledger_below
+      protected_origins := rawCorrespondence.protected_origins
+      protected_below := rawCorrespondence.protected_below
+      allocated_recorded := rawCorrespondence.allocated_recorded
+      protected_safe := rawCorrespondence.protected_safe }
+  have capabilityRelated : CapBisimulation transition.after capability
+      (capability.applyRen rename) := by
+    have base := freshenedProjection_capBisimulation before
+      declarativeChildrenBounded projection freshened
+    constructor
+    · rw [prevailingEq]
+      simpa [transition,
+        DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.markCapRangeExtension,
+        rename, localMap, bundle, prevailingEq] using base.forward
+    · rw [prevailingEq]
+      simpa [transition,
+        DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.markCapRangeExtension,
+        rename, localMap, bundle, prevailingEq] using base.reverse
+  refine
+    { result := (capability.applyRen rename, final)
+      success := ?_
+      transition := transition
+      correspondence := correspondenceAtFinal
+      prevailing_eq := rfl
+      capability := capabilityRelated }
+  · simp only [executableProjection, Option.bind_eq_bind, Option.bind]
+    change freshenSkeleton signature.observability constraintOrigin
+      (projected.applyRen rename) state =
+        some (capability.applyRen rename, final)
+    exact executableFresh
 
 end DemandTypingInferenceCompletenessPatternCtorCapComplete
 end TypePM
