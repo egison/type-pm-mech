@@ -3,6 +3,7 @@ import TypePM.DemandTypingInferenceCompletenessDataBisimulation
 import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
 import TypePM.DemandTypingInferenceCompletenessAlignmentFamilies
 import TypePM.DemandTypingInferenceCompletenessPatternCtorCapability
+import TypePM.DemandTypingInferenceCompletenessProtectedPreservation
 
 /-!
 # Pattern traversal completeness packages
@@ -21,6 +22,8 @@ open Inference
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessProtected
+open DemandTypingInferenceCompletenessProtectedTrace
+open DemandTypingInferenceCompletenessProtectedPreservation
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessAlignmentTraversal
@@ -220,7 +223,13 @@ def instantiateDualInState_complete
         bindings scheme
       allocated_recorded := before.allocated_recorded.instantiateDualInState
         signature rawContext rawParameters rawBindings context parameters
-        bindings scheme }
+        bindings scheme
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.instantiateDualInState
+          before.protected_safe
+        (before.supply_eq ▸ before.executable_bounded)
+        signature rawContext
+        rawParameters rawBindings context parameters bindings scheme }
   have sameDual : ∀ dual,
       DualBisimulation transition.after dual dual :=
     fun dual => DualBisimulation.same transition.after dual
@@ -609,7 +618,9 @@ def TraversalStateCorrespondence.freezeCapabilityExportRelated
           rw [relation.supply_eq]
           exact relation.executable_ledger_below) capImages executablePayload
       allocated_recorded := relation.allocated_recorded.freezeCapabilityExport
-        capImages executablePayload }
+        capImages executablePayload
+      protected_safe := relation.protected_safe.freezeCapabilityExport
+        relation.prevailing.executableIdempotent capImages executablePayload }
 
 def TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -718,7 +729,12 @@ def TraversalStateCorrespondence.freshCap
       protected_origins := before.protected_origins.freshCap
         before.protected_below origin
       protected_below := before.protected_below.freshCap origin
-      allocated_recorded := before.allocated_recorded.freshCap origin }
+      allocated_recorded := before.allocated_recorded.freshCap origin
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.freshCap
+          before.protected_safe
+        (before.supply_eq ▸ before.executable_bounded)
+        before.protected_below origin }
   · change { state.supply with nextCap := state.supply.nextCap + 1 } =
       { q with nextCap := q.nextCap + 1 }
     exact congrArg (fun supply : InferenceBase.FreshSupply =>
@@ -804,6 +820,7 @@ structure PatternRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   dual : DualBisimulation transition.after dual result.dual
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
 
@@ -829,6 +846,7 @@ structure PatternsRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   duals : DualListBisimulation transition.after duals result.duals
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
 
@@ -854,6 +872,7 @@ structure PPatRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   target : TyBisimulation transition.after target result.target
   holes : DualListBisimulation transition.after holes result.holes
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
@@ -880,6 +899,7 @@ structure PPatsRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   targets : TyListBisimulation transition.after targets result.targets
   holes : DualListBisimulation transition.after holes result.holes
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
@@ -906,6 +926,7 @@ structure DPatRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   target : TyBisimulation transition.after target result.target
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
 
@@ -931,6 +952,7 @@ structure DPatsRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   targets : TyListBisimulation transition.after targets result.targets
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
 
@@ -977,7 +999,7 @@ def PatternRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def PatternsRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -992,7 +1014,7 @@ def PatternsRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def PPatRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -1007,7 +1029,7 @@ def PPatRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def PPatsRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -1022,7 +1044,7 @@ def PPatsRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def DPatRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -1037,7 +1059,7 @@ def DPatRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 def DPatsRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -1052,7 +1074,7 @@ def DPatsRunCompletion.completion
   ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
     run.executable_bounded, run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below, run.protected_origins,
-    run.protected_below, run.allocated_recorded⟩
+    run.protected_below, run.allocated_recorded, run.protected_safe⟩
 
 /-! ## Trace-only suffixes -/
 
@@ -1111,6 +1133,7 @@ def dpatVar_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget target
       bindings := .cons (transition.after.sameTarget target) .nil }
 
@@ -1142,6 +1165,7 @@ def dpatWild_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget target
       bindings := .nil }
 
@@ -1238,6 +1262,7 @@ noncomputable def dpatCtor_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget expectedTarget
       bindings :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
@@ -1335,6 +1360,7 @@ noncomputable def dpatTuple_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget expectedTarget
       bindings :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
@@ -1447,6 +1473,7 @@ noncomputable def ppatCtor_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget expectedTarget
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
@@ -1550,6 +1577,7 @@ noncomputable def ppatTuple_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget expectedTarget
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
@@ -1593,6 +1621,7 @@ def ppatWild_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget target
       holes := .nil
       bindings := .nil }
@@ -1627,6 +1656,7 @@ def ppatValue_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget target
       holes := .nil
       bindings := .cons (transition.after.sameTarget target) .nil }
@@ -1677,6 +1707,7 @@ def ppatHole_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       target := transition.after.sameTarget target
       holes := by
         change DualListBisimulation transition.after
@@ -1766,6 +1797,7 @@ def patternVar_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual := by
         change DualBisimulation transition.after
           ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ executableDual
@@ -1856,6 +1888,7 @@ def patternWild_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual := by
         change DualBisimulation transition.after
           ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ executableDual
@@ -1940,6 +1973,7 @@ def patternValue_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual := by
         change DualBisimulation transition.after
           ⟨.var ⟨q₁.nextCap⟩, target⟩ executableDual
@@ -2005,6 +2039,7 @@ noncomputable def patternEmbed_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
           transition dualRelated
@@ -2072,6 +2107,7 @@ def patternTuple_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual := ⟨caps, targets⟩
       bindings :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
@@ -2140,6 +2176,7 @@ noncomputable def patternAnd_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
           (alignment.transition.seq finishExtension) leftAtRight
@@ -2235,6 +2272,7 @@ noncomputable def patternOr_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
           suffix leftDualAtRight
@@ -2398,6 +2436,7 @@ noncomputable def patternCtor_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual := ⟨
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           suffix capabilityAtCap,
@@ -2522,6 +2561,7 @@ noncomputable def patternApp_complete
       protected_origins := final.protected_origins
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
       dual :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
           ((instantiation.correspondence.visitExtension .patternApp path).seq
@@ -2564,6 +2604,7 @@ def patternsNil_complete
       protected_origins := before.protected_origins
       protected_below := before.protected_below
       allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe
       duals := .nil
       bindings := bindings }
 
@@ -2589,6 +2630,7 @@ def ppatsNil_complete
       protected_origins := before.protected_origins
       protected_below := before.protected_below
       allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe
       targets := .nil
       holes := .nil
       bindings := .nil }
@@ -2615,6 +2657,7 @@ def dpatsNil_complete
       protected_origins := before.protected_origins
       protected_below := before.protected_below
       allocated_recorded := before.allocated_recorded
+      protected_safe := before.protected_safe
       targets := .nil
       bindings := .nil }
 
@@ -2658,6 +2701,7 @@ def patternsCons_complete
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
       allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe
       duals := .cons
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
           tail.transition head.dual) tail.duals
@@ -2711,6 +2755,7 @@ def ppatsCons_complete
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
       allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe
       targets := .cons (tail.transition.transportTy head.target) tail.targets
       holes :=
         DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.append
@@ -2765,6 +2810,7 @@ def dpatsCons_complete
       protected_origins := tail.protected_origins
       protected_below := tail.protected_below
       allocated_recorded := tail.allocated_recorded
+      protected_safe := tail.protected_safe
       targets := .cons (tail.transition.transportTy head.target) tail.targets
       bindings := DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.append transportedBindings
         tail.bindings }

@@ -97,7 +97,8 @@ private def StateRunCompletion.refl
     executable_ledger_below := relation.executable_ledger_below
     protected_origins := relation.protected_origins
     protected_below := relation.protected_below
-    allocated_recorded := relation.allocated_recorded }
+    allocated_recorded := relation.allocated_recorded
+    protected_safe := relation.protected_safe }
 
 /-- Generic completeness of the constructor-field capability solver. -/
 theorem ddAlignCtorCapsWithLedger_complete_nonempty
