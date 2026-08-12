@@ -845,6 +845,104 @@ noncomputable def certifiedPatternOr_complete
         (terminal := terminal) (signature := signature)
         bindingAlignment.success))
 
+/-- Certified pattern-function application shares the raw instantiation and
+dual-list alignment witnesses with its validator chronology. -/
+noncomputable def certifiedPatternApp_complete
+    {terminal : Subst} {fuel : Nat} {signature : FrozenSig}
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
+    {patterns : List Pattern} {scheme : DualScheme}
+    (lookup : signature.findPatternFun name = some scheme)
+    (closed : signature.SchemesClosed)
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    {duals : List Dual} {bindings' : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children :
+      let instantiation := instantiateDualInState_complete before signature
+        executableContext executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) scheme
+      BoundedCertifiedPatternsRunCompletion terminal signature
+        (instantiation.correspondence.visit .patternApp path)
+        (inferPatternsFuel fuel signature executableContext
+          executableParameters executableBindings selfEnv path 0 patterns
+          (visit (instantiateDualInState signature executableContext
+            executableParameters executableBindings
+            (executableContext.applySubst state.prevailing)
+            (executableParameters.applySubst state.prevailing)
+            (executableBindings.applySubst state.prevailing) state scheme).2
+            .patternApp path))
+        q₁ S₁ ledger₁ duals bindings')
+    (childrenExtends : SupplyExtends
+      (InferenceBase.instantiateDualScheme q scheme).supply q₁)
+    (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
+    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.papp name patterns) state)
+      q₁ S' ledger₁
+      (InferenceBase.instantiateDualScheme q scheme).value.2 bindings' := by
+  let instBounded := instantiateDualScheme_boundedBy (q := q)
+    ((closed.patternFuns lookup).boundedBy)
+  have declarativeExpectedBounded : ∀ dual ∈
+      (InferenceBase.instantiateDualScheme q scheme).value.1,
+      dual.BoundedBy q₁ := by
+    intro dual membership
+    exact (instBounded.1 dual membership).mono childrenExtends
+  have executableExpectedBounded : ∀ dual ∈
+      (instantiateDualInState signature executableContext
+        executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) state scheme).1.1,
+      dual.BoundedBy q₁ := by
+    intro dual membership
+    have argumentEq :
+        (instantiateDualInState signature executableContext
+          executableParameters executableBindings
+          (executableContext.applySubst state.prevailing)
+          (executableParameters.applySubst state.prevailing)
+          (executableBindings.applySubst state.prevailing) state scheme).1.1 =
+        (InferenceBase.instantiateDualScheme q scheme).value.1 := by
+      simp [Inference.instantiateDualInState, before.supply_eq]
+    rw [argumentEq] at membership
+    exact (instBounded.1 _ membership).mono childrenExtends
+  let alignment := ddAlignDualListWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-function-arguments")
+    children.bounded.run.completion children.bounded.run.duals
+    (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+      ((instantiateDualInState_complete before signature executableContext
+        executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) scheme).correspondence
+          |>.visitExtension .patternApp path |>.seq
+            children.bounded.run.transition)
+      (instantiateDualInState_complete before signature executableContext
+        executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) scheme).arguments)
+    declarativeDualsBounded declarativeExpectedBounded
+    children.bounded.rawDualsBounded executableExpectedBounded aligned
+  refine ⟨boundedPatternApp_complete
+    (declarativeContext := declarativeContext)
+    (executableContext := executableContext)
+    (declarativeParameters := declarativeParameters)
+    (executableParameters := executableParameters)
+    (declarativeBindings := declarativeBindings)
+    (executableBindings := executableBindings) lookup closed before
+    children.bounded childrenExtends declarativeDualsBounded aligned, ?_⟩
+  exact app (closed.patternFuns lookup) children.validation
+    (ValidatorRunExtension.ofAlignDualLists
+      (terminal := terminal) (signature := signature) alignment.success)
+
 /-! ## Certified list dispatch -/
 
 /-- Pattern-list traversal preserves the exact validator chronology supplied
