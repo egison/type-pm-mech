@@ -1994,6 +1994,14 @@ theorem demandClass_matcherExpected (source : Ty)
   unfold demandClass
   split <;> (try split) <;> simp_all
 
+/-- An unresolved expected target variable is not a coercion demand.  Until a
+previous chronological cut exposes a slot head, checking must use ordinary
+alignment and may not guess a slot structure for the variable. -/
+theorem demandClass_variableExpected (source : Ty) (varId : TyVar) :
+    demandClass source (.var varId) = .ordinary := by
+  unfold demandClass
+  split <;> (try split) <;> simp_all
+
 /-! ## State-threaded alignment relations
 
 `DemandAlignTypes` mirrors ordinary equality alignment: annotated pairs solve the
@@ -2432,6 +2440,25 @@ theorem DemandAlign.matcherExpected {S : Subst} {raw expected : Ty} {S' : Subst}
       rw [matcherView] at slotView; cases slotView
   | slotToSlot _ slotView _ _ =>
       rw [matcherView] at slotView; cases slotView
+  | ordinary _ aligned => exact aligned
+
+/-- Under an unresolved variable-headed expectation every checking-cut
+derivation degenerates to ordinary alignment.  In particular, a checking cut
+does not pre-structure a fresh lambda domain as a matcher slot. -/
+theorem DemandAlign.variableExpected {S : Subst} {raw expected : Ty} {S' : Subst}
+    {varId : TyVar}
+    (aligned : DemandAlign S raw expected S')
+    (variableView : S.apply expected = .var varId) :
+    DemandAlignTypes S raw expected S' := by
+  cases aligned with
+  | productMatcherLift _ slotView _ =>
+      rw [variableView] at slotView; cases slotView
+  | slotTupleLift _ _ slotView _ _ =>
+      rw [variableView] at slotView; cases slotView
+  | matcherToSlot _ slotView _ =>
+      rw [variableView] at slotView; cases slotView
+  | slotToSlot _ slotView _ _ =>
+      rw [variableView] at slotView; cases slotView
   | ordinary _ aligned => exact aligned
 
 /-! ## Supply-threaded deterministic allocation helpers

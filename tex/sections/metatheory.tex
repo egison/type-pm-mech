@@ -210,18 +210,53 @@ target $\upsilon$を取り出し，$R_i\tau_i=\upsilon$を得る．
 initial supply以前のmetaまで固定する強い形は一般contextでは偽である．例えば
 $f:?0\to ?0, x:?1$の下の$f\,x$では，constraint $?1\doteq ?0$のexact MGUをどちら向きに取るかで
 公開targetは$?0$にも$?1$にもなる．従って一意性は全residual metaのrenamingを法として述べる．
-型のinstance preorder上のprincipalityは別の結果であり，$\mathsf{TypingInvariant}$全体の
-principality反例を$\mathsf{SourceTyping}$へ流用しない．
+
+二sort instance preorderは，source typeに現れるfree capability／target metavariableを有限scopeとし，
+そのscope外で恒等なpaired substitutionにより
+\[
+\tau\preceq_{\mathsf{inst}}\tau'
+\quad\Longleftrightarrow\quad
+\exists S.\;\mathsf{supp}_\kappa(S)\subseteq\fcv(\tau)\land
+\mathsf{supp}_\tau(S)\subseteq\ftv(\tau)\land S\tau=\tau'
+\]
+と定める．scope restrictionはsourceへの作用を変えず，時系列合成後に元scopeへ再restrictionできるため，
+この関係は反射的かつ推移的である．局所renamingとそのinverseは両方向のinstance witnessを与える．従って
+\[
+\begin{aligned}
+&\mathsf{FrozenSigWF}(\Sighat)\land
+  \mathsf{inferType}(\Sighat,\Gamma,e)=\mathsf{some}\;\tau_p\\
+&\quad\Longrightarrow
+  \mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau_p)\land\\
+&\qquad\forall\tau.\;\mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau)
+  \Rightarrow\tau_p\preceq_{\mathsf{inst}}\tau
+\end{aligned}
+\]
+を得る．空contextへの特殊化がclosed principalityである．この証明は
+$\mathsf{TypingInvariant}$全体のprincipality反例を$\mathsf{SourceTyping}$へ流用しない．
+
+open termではraw contextのmetaをrigidにせず，contextとtargetを一つのsubstitutionで同時に比較する．
+\[
+(\Gamma,\tau)\preceq_{\mathsf{ctx}}(\Gamma',\tau')
+\quad\Longleftrightarrow\quad
+\exists S.\;S\Gamma=\Gamma'\land S\tau=\tau'
+\]
+ここでもsupportは$\Gamma$と$\tau$の二sort free-variable scopeの和に制限する．既存の
+$\mathsf{SourceTyping}$ derivationからterminal substitutionによるnormalized contextと公開targetを
+取り出す$\mathsf{TerminalPair}$ viewを定めるが，これは第二のsource judgmentではない．成功runの
+$\mathsf{ResolvedContext}$／resolved targetと，任意derivationのterminal pairは，state bisimulationの
+forward／reverse residualにより相互に$\preceq_{\mathsf{ctx}}$である．closed contextではcontext成分が
+空のままなので，上のtarget principalityへ戻る．
 
 \subsection{機械化の範囲と非主張}
 
 全expression／pattern／arm／clauseのraw family，対応するOrigin family，solverとledgerの局所代数，
 全14 familyのstate factorizationとsolved-form保存，terminal audit，実行推論との双方向接続，
-closed-program state erasure，concrete dynamic safety，受理同値，decidability，target一意性はLean~4に
-機械化済みである．主定理と一般補題に$\mathtt{sorry}$，$\mathtt{admit}$，project-defined
+closed-program state erasure，concrete dynamic safety，受理同値，decidability，target一意性，
+二sort instance preorder，target principality，context相対principalityはLean~4に機械化済みである．
+主定理と一般補題に$\mathtt{sorry}$，$\mathtt{admit}$，project-defined
 $\mathtt{axiom}$はない．
 
-一般のprogram termination，$\mathsf{SourceTyping}$のinstance preorder上のprincipality，open contextで
-入力metaをすべて固定するtarget一意性は主張しない．pattern-free direct-self Damas--Milner断片から
+一般のprogram terminationと，open contextで入力metaをすべて固定するtarget一意性は主張しない．
+pattern-free direct-self Damas--Milner断片から
 $\mathsf{TypingInvariant}$への埋込みと具体的な受理例はあるが，全$\mathsf{DM.Typing}$ derivationの
 executable acceptanceとconservativityは今後の課題である．

@@ -45,7 +45,10 @@ coercion demandとする．
 \]
 従って$\mathsf{FrozenSigWF}$の下で，一般contextのsource typabilityと公開推論の成功は同値である．
 同じsourceの二つの$\mathsf{SourceTyping}$ targetは，全residual capability／target metavariableの
-局所renamingを法として一意である．型のinstance preorder上のprincipalityはまだ主張しない．
+局所renamingを法として一意である．さらに，source targetに現れる二sort metavariableだけを変更する
+有限support substitutionでinstance preorderを定めると，$\mathsf{inferType}$の返値は一般contextでも
+principalである．open termについては，実行runのresolved context／targetと，各derivationの
+terminal-normalized context／targetを同じpaired substitutionで比較する相対principalityも成立する．
 
 \subsection{判断の役割を分ける}
 
@@ -81,7 +84,8 @@ $\mathsf{ValueTy}$とmatching judgments
 一般のprogram terminationは主張しない．recursionはsingleton direct-selfの単相$\mathtt{fix}$に
 限る．matcher literalはshape，catch-all order，binder線形性，data-arm exhaustiveness，coverageを
 すべて要求する．未解決lambda domainを複数箇所で共有したときのsource-order依存は正負回帰で
-挙動を固定しているが，恒久的な言語境界にするかは未決定である．
+固定する．これはno-guessとchronological state threadingの意図された言語境界であり，source要素の
+順序不変性は主張しない．
 
 \subsection{読み方}
 
@@ -89,7 +93,7 @@ $\mathsf{ValueTy}$とmatching judgments
 理由と，公開定理までの依存関係を示す．第3章で構文と判断を定義し，第4章で一回のchecking cutを
 定式化する．第5章は通常の式，第6章はpatternとmatcher literalの規則である．第7章は局所代数を
 traversalへ持ち上げ，soundness，acceptance completeness，state erasure，安全性，受理同値，target
-一意性へ接続する．Lean moduleと回帰の索引は\texttt{../docs/details.md}に譲る．
+一意性，principalityへ接続する．Lean moduleと回帰の索引は\texttt{../docs/details.md}に譲る．
 
 設計だけを追う読者は第2章，第4章，第7章を読めばよい．規則を実装と照合する場合は第3--6章，
 証明の依存を確認する場合は第2.4節と第7章を読む．

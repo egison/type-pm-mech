@@ -39,10 +39,13 @@ FrozenSigWF Σ →
 | `Inference.sourceTypable_iff_infer_isSome` | source typabilityと公開推論器の成功が同値である |
 | `Inference.sourceTypableDecidable` | source typabilityを公開推論器で決定できる |
 | `SourceTyping.target_unique_modulo_renaming` | 同じsourceのtargetはresidual二sortmetaのrenamingを法として一意である |
+| `Inference.inferType_principal` | `inferType`の返値は有限scope二sortinstance preorder上でprincipalである |
+| `Inference.infer_relative_principal` | open termのresolved contextとtargetを同じsubstitutionで相対比較できる |
 | `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
 
-ここで証明済みなのはtargetのrenaming一意性までであり，型のinstance preorder上のprincipalityは
-まだ主張しない．一般のprogram terminationも主張しない．
+targetのrenaming一意性に加えて，target単体のinstance preorder上のprincipalityと，open contextで
+context／targetを同時に比較する相対principalityまで証明済みである．一般のprogram terminationは
+主張しない．
 
 ## judgmentの役割
 
@@ -91,24 +94,26 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 - `nestedCapProgram`とswapped版は拒否し，or-pattern，delegating matcher，let-polymorphic matcher
   producerは受理する．これらは正負回帰で固定済みである．
 - 未解決lambda domainを複数箇所で共有すると，左から右のchecking順序が受理結果に影響し得る．
-  現在は回帰で挙動だけを固定しており，恒久的な言語境界にするかは未決定である．
+  これはno-guessとchronological state threadingから生じる意図された言語境界であり，source
+  typabilityの正負定理と実行回帰で固定する．source要素の順序不変性は主張しない．
 
 回帰ごとの対応と内部証明の構成は[`docs/details.md`](docs/details.md)，論文形式の規則とメタ理論は
 [`tex/main.tex`](tex/main.tex)に記載する．
 
 ## Roadmap
 
-完了済みのsoundness，completeness，受理同値，安全性，target一意性を基盤`F`とする．今後は
-principality系とDamas--Milner系を独立に進め，source-order依存について設計判断を行う．
+完了済みのsoundness，completeness，受理同値，安全性，target一意性を基盤`F`とする．principality系は
+完了し，今後はDamas--Milner系を進める．source-order依存は現行のno-guess calculusの意図された
+仕様として採用済みである．
 
 ```text
 [x] F. soundness / completeness / safety / target uniqueness
-    ├──→ [ ] P1. 二sort instance preorder
-    │          └──→ [ ] P2. closed principality
-    │                    └──→ [ ] P3. context相対principality
+    ├──→ [x] P1. 二sort instance preorder
+    │          └──→ [x] P2. closed principality
+    │                    └──→ [x] P3. context相対principality
     ├──→ [ ] D1. 全DM.Typingのexecutable acceptance
     │          └──→ [ ] D2. DM断片でのconservativity
-    └──→ [ ] O. source-order依存の設計判断
+    └──→ [x] O. source-order依存を現行仕様として採用
 ```
 
 | ID | 作業 | 依存 | 達成後に主張できること |
@@ -117,14 +122,18 @@ principality系とDamas--Milner系を独立に進め，source-order依存につ�
 | P2 | `inferType`が返すclosed targetのprincipalityを証明する | P1 | closed source programのprincipal typeを公開推論器が計算する |
 | P3 | contextとtargetの同時instance化を含む相対principalityを定式化する | P2 | open termでも，明示したcontext可変性の下でprincipal typeを計算する |
 | D1 | 任意の`DM.Typing` derivationから公開推論器の成功を導く | F | pattern-free let-polymorphismを推論器が取りこぼさない |
-| O | 現在のsource-order依存を採用するか，規則を変更するか決める | F | typabilityの順序依存を意図された仕様または明示した不変性定理として説明できる |
+| O | 現在のsource-order依存をno-guessとchronological state threadingの意図された帰結として仕様化する | F | typabilityの順序依存をsource judgmentの正負定理として説明できる |
 | D2 | pattern-free・capability-inert・direct-self断片でDMとの双方向対応を証明する | D1；型比較にはP2／P3 | 二sort coreが指定したDM断片の保守的拡張である |
 
 ### P1--P3: principality
 
-最初に，substitutionが変更してよい有限scopeを明示した二sort instance preorderを定義する．P2では
-空contextに限定し，`inferType`の返値中のresidual metaを暗黙に量化したprincipal monotypeを扱う．
-目標は次の形である．
+`TypeInstance`はsource typeのfree capability／target metaだけを変更できる有限supportのpaired
+substitutionでinstance関係を定める．`ScopedTypeInstance`は二つのscopeを明示する．restrictionが
+型への作用を保つことと，chronological compositionを元scopeへ再restrictionすることにより，反射性と
+推移性を証明済みである．局所二sort renamingは両方向の`TypeInstance`を与える．
+
+`Inference.inferType_principal`は一般contextで次を与え，`inferType_closed_principal`が空contextへの
+特殊化を公開する．したがってP2のclosed principal monotypeは次の形で機械化済みである．
 
 ```text
 FrozenSigWF Σ → inferType Σ [] e = some principal →
@@ -132,9 +141,13 @@ FrozenSigWF Σ → inferType Σ [] e = some principal →
   ∀ target, SourceTyping Σ [] e target → TypeInstance principal target
 ```
 
-P3でopen contextへ拡張する際は，context由来のmetaをすべてrigidにした強い形を採用しない．exact MGUの
-向きによって異なる入力metaがtargetへ残り得るため，contextとtargetの組を同じsubstitutionで比較する
-相対関係が必要である．
+open contextではcontext由来のmetaをすべてrigidにした強い形を採らない．`ContextTargetInstance`は
+normalized contextとtargetのfree metaの和を有限scopeとし，同じpaired substitutionを両方へ作用させる．
+`SourceTyping.TerminalPair`は第二のsource judgmentではなく，既存のaudited derivationからその終端
+substitutionで正規化したcontextと公開targetを取り出すviewである．`Inference.infer_relative_principal`は
+成功runの`ResolvedContext`／`resolvedTarget`と，任意の`SourceTyping` derivationのterminal pairが
+相互に`ContextTargetInstance`であることを証明する．closed specializationはcontext成分が空なので
+`TypeInstance` principalityへ戻る．
 
 ### D1--D2: Damas--Milner断片
 
@@ -148,13 +161,17 @@ D2では対象となるpattern-free fragmentを明示し，`SourceTyping`の存�
 
 ### O: source-order依存
 
-現状を採用する場合は，no-guessとchronological state threadingの意図された帰結として仕様化する．
-変更する場合は，通常単一化の失敗をcoercionの根拠に戻さず，未解決headのconstraintまたはchecking
-obligationを遅延する設計を検討する．後者は受理集合を変えるため，基盤`F`と完了済みのP／D定理を
-新しいcalculusに対して再確立する必要がある．
+現行挙動を採用した．checking cutはその時点のprevailing substitutionを適用したexpected headだけを
+観測し，未解決変数をslotへ先読みして構造化しない．listはsource順にstateを渡すため，既知のslot
+demandが先に現れるprogramは受理されても，同じ要素を逆順にしたprogramは拒否され得る．
+`AcceptanceGapRegression.source_order_affects_source_typability`はこの差を`SourceTyping`の存在と
+非存在の組として固定する．pre-scan，子の並べ替え，checking obligationの遅延，source-order
+permutation invarianceは現行仕様に含めない．
 
-推奨する順序は，calculusに依存しないP1を先に行い，次にOを決定し，その後P2とD1を進め，最後に
-P3とD2へ進む形である．
+将来この境界を変更する場合も通常単一化の失敗をcoercionの根拠に戻してはならず，未解決headの
+constraintまたはchecking obligationを遅延する別calculusとして設計する必要がある．それは受理集合を
+変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapで残る作業はD1，
+続いてD2である．
 
 ## モジュール案内
 
@@ -164,6 +181,7 @@ P3とD2へ進む形である．
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
 | source typing | `DemandTyping*` | raw規則，Origin，terminal audit，soundness／completeness，state erasure |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
+| principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
 | fragments | `DamasMilner`, `DMTerminalAcceptance` | pattern-free DM断片 |

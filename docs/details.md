@@ -100,14 +100,19 @@ resolved expected head が `MatcherSlot` の場合だけである．
 
 expected head が matcher または未解決変数なら coercion branch はない．通常 equality の失敗を
 負 premise として別 branch を選ぶこともない．branch は head から先に一意に決まり，選択した
-solve が失敗すれば judgment は成立しない．
+solve が失敗すれば judgment は成立しない．`demandClass_variableExpected`，
+`DemandAlign.variableExpected`，`expectedCoercionPlan_variableExpected`は，未解決expected variableが
+関係的規則と実行selectorの両方でordinary／raw経路に限られることを直接固定する．
 
 このno-guess方針とlistの左から右のstate threadingには観測可能な順序依存がある．well-formedな
 `use : (MatcherSlot Any Int -> Int) -> Used`を持つclosed probeでは，
 `lambda f. (use f, f something)`は最初のchecking cutが`f`のdomainをslotへ確定するため受理される．
 逆順は最初の通常適用がdomainをraw `Matcher Any ?target`へ確定し，後続の`use`と一致しないため
-拒否される．`AcceptanceGapRegression`はpublic `inferType`の正負を固定するが，この挙動を恒久的な
-設計境界とはまだ分類しない．
+拒否される．これは意図された設計境界であり，pre-scan，子の並べ替え，checking obligationの遅延，
+source-order permutation invarianceは現行calculusに含めない．`AcceptanceGapRegression`はpublic
+`inferType`の正負に加え，`demandedUseFirstProgram_sourceTyping`，
+`ordinaryUseFirstProgram_not_sourceTypable`，`source_order_affects_source_typability`でsource judgment
+レベルの正負を固定する．
 
 `ExactCapMGU`，`ExactTargetMGU`，`ExactPairedMGU` は次を要求する．
 
@@ -152,6 +157,8 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
 
 - alignmentの非 ordinary branchならexpected typeはslot-headedである．
 - matcher-headed expected type の derivation は ordinary equality に限られる．
+- unresolved variable-headed expected type の derivation も ordinary equality に限られ，実行selectorは
+  raw synthesized typeを保つ．
 - 各 family の出力 supply は入力 supply を拡張する．
 - 出力 substitution は入力 substitution と solve delta の chronological replay に分解できる．
 - 恒等 substitution から始まる全14 raw demand-directed family は solved form を保存する．より一般に，各 family
@@ -289,7 +296,38 @@ source targetと共通実行targetを両方向に写す．これは一般context
 supply以前のmetaまで固定する形は偽である．`f : ?0 -> ?0, x : ?1`のcontextで`f x`を導出すると，
 argument constraint `?1 = ?0`のexact MGUをどちら向きに取るかにより`?0`と`?1`の双方を公開できる．
 `DemandTypingTargetUniquenessRegression`は両方をterminal audit込みの`SourceTyping`として固定する．
-型のinstance preorder上のprincipalityは，このrenaming一意性とは別の定理を要する．
+
+[`TypePM/TypeInstance.lean`](../TypePM/TypeInstance.lean) は，二sort substitutionが変更できる有限scopeを
+明示する`ScopedTypeInstance`と，source type自身の`fcv`／`ftv`をscopeに取る`TypeInstance`を定義する．
+`Subst.restrict`はscope外を恒等に戻し，scopeがsourceのfree variableを含むとき型への作用を保存する．
+instance witnessのchronological compositionを元のsource scopeへrestrictすることで，`TypeInstance.refl`と
+`TypeInstance.trans`が成立する．`TargetRenaming`のforward／reverseはそれぞれinstance witnessになり，
+`TargetRenamingEquivalent`は両方向の`TypeInstance`を与える．
+
+[`TypePM/SourcePrincipality.lean`](../TypePM/SourcePrincipality.lean) の
+`Inference.inferType_principal`は一般contextについて
+
+```text
+FrozenSigWF signature → inferType signature context expression = some principal →
+  SourceTyping signature context expression principal ∧
+  ∀ target, SourceTyping signature context expression target →
+    TypeInstance principal target
+```
+
+を証明する．`inferType_closed_principal`は空contextへの公開特殊化である．この結果は
+`TypingInvariant`のprincipality反例を使わず，`SourceTyping.target_unique_modulo_renaming`と
+renamingからinstanceへの有限scope bridgeだけから従う．
+
+open termのより精密な比較は
+[`TypePM/RelativePrincipality.lean`](../TypePM/RelativePrincipality.lean) にある．
+`ContextTargetInstance Γ τ Γ' τ'`は，`Γ`と`τ`のfree capability／target metaの和だけを変更する一つの
+paired substitutionが，contextとtargetを同時に`Γ'`と`τ'`へ写すことを表す．
+`SourceTyping.TerminalPair`は新しいsource judgmentではなく，既存のaudited `SourceTyping` witnessから
+raw target，terminal substitution，Origin，terminal auditを保持したままterminal-normalized contextを
+公開するviewである．`Inference.infer_relative_principal`は，成功runの
+`ResolvedContext result.state.prevailing context`／`result.resolvedTarget`と，任意の`SourceTyping`
+derivationのterminal pairが相互に`ContextTargetInstance`であることを示す．これによりexact MGUが入力metaを
+どちら向きに解いても，contextとtargetを別々のsubstitutionで比較することなくopen principalityを述べられる．
 
 ## 4. TypingInvariant は内部 invariant である
 
@@ -460,7 +498,7 @@ source `SourceTyping`も保持し，`Inference.infer_closed_safe`はclosed infer
 
 - `DemandTypingRegression`: raw demand-directed の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher demand-directed 拒否，unresolved lambda domainの
-  source-order正負，constructor export freeze．
+  executable source-order正負とsource typability counterexample，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
 - `InferenceRegression`: 公開inference traversalと主要な成功／拒否境界．
@@ -474,6 +512,8 @@ source `SourceTyping`も保持し，`Inference.infer_closed_safe`はclosed infer
   demand-directed soundness，source typabilityの`Decidable` API．
 - `DemandTypingTargetUniquenessRegression`: open contextでsource metaを固定する一意性が偽である
   exact-MGU orientation境界．
+- `TypeInstance`／`SourcePrincipality`／`RelativePrincipality`: 有限scope二sort instance preorder，
+  `inferType`返値のtarget principality，terminal-normalized context／targetの同時相対principality．
 - `DemandTypingSafetyRegression`: closed inferenceから`SourceTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
@@ -512,6 +552,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `SourceTyping.infer_isSome`，premise-free recursive matcher回帰 |
 | `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
 | `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context `SourceTyping` target一意性，入力meta固定版の反例 |
+| `TypeInstance`／`SourcePrincipality`／`RelativePrincipality` | 有限scope二sort instance preorder，一般／closed target principality，同一postによるopen context／target相対principality |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期typing-invariant projection |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |

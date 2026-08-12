@@ -129,3 +129,9 @@ alignment を選ぶ．
     \dashv q_1;S';\Omega_1
 }\rn{demand-directed-CHECK}
 \end{mathpar}
+
+$S_1\rho$が未解決target variableである場合，slot headはまだ観測できないため，この規則の
+alignmentはordinary equalityに限られる．selectorはraw synthesis結果を保持し，後続useを見越して
+variableをslotへ構造化しない．list規則が子の出力stateをsource順に次の子へ渡すため，先行cutが
+expected headをslotへ解決したかどうかは後続cutのbranch選択に影響する．このchronologicalな順序は
+判断の一部であり，子の交換則は仮定しない．

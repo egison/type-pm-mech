@@ -1,5 +1,6 @@
 import TypePM.CertifiedInferenceRegression
 import TypePM.CoherentTyping
+import TypePM.DemandTypingInferenceEquivalence
 import TypePM.SignatureChecker
 
 /-!
@@ -43,6 +44,12 @@ result.  Since `Packed` exports no capability, this instance leaves no frozen
 leaf.  A separate structured-image regression shows that if a local image
 does survive, its prevailing leaf is frozen to `renameOnly` and cannot later
 be structurally strengthened.
+
+Finally, the unresolved-lambda-domain probe specifies chronological source
+order as an intentional part of the no-guess calculus.  The demanded-use-first
+ordering has a `SourceTyping` derivation, while swapping the tuple components
+has none; the executable `Bool`/`Option` results remain as implementation-level
+regressions for the same boundary.
 -/
 
 namespace TypePM
@@ -271,7 +278,7 @@ theorem nestedCapSwappedProgram_rejected :
       false := by
   native_decide
 
-/-! ## Source-order sensitivity of an unresolved lambda domain -/
+/-! ## Specified source-order dependence of an unresolved lambda domain -/
 
 /-- `use` fixes its argument to a function whose domain is a matcher slot.
 This gives the first tuple component a concrete expected type without adding
@@ -321,14 +328,11 @@ theorem demandedUseFirstProgram_inferType :
         (.prod [.data "Used" [], .int])) := by
   native_decide
 
-/-- The reverse ordering is currently rejected.  Its first application sees
+/-- The reverse ordering is rejected.  Its first application sees
 an unresolved domain, so the no-guess rule performs ordinary alignment and
 pins that domain to raw `Matcher Any ?target`.  The subsequent `use` check
-cannot equate this matcher-headed domain with `MatcherSlot Any Int`.
-
-This theorem records an observable consequence of chronological state
-threading; it does not classify that consequence as a permanent language
-boundary. -/
+cannot equate this matcher-headed domain with `MatcherSlot Any Int`.  This is
+the specified consequence of chronological state threading. -/
 theorem ordinaryUseFirstProgram_rejected :
     Inference.inferenceSucceeds orderProbeSignature []
       ordinaryUseFirstProgram = false := by
@@ -338,6 +342,37 @@ theorem ordinaryUseFirstProgram_inferType :
     Inference.inferType orderProbeSignature [] ordinaryUseFirstProgram =
       none := by
   native_decide
+
+/-- The concrete type reported for the demanded-use-first ordering is a
+source-facing typing derivation, not merely an executable success bit. -/
+theorem demandedUseFirstProgram_sourceTyping :
+    SourceTyping orderProbeSignature [] demandedUseFirstProgram
+      (.fn (.fn (.slot .any .int) .int)
+        (.prod [.data "Used" [], .int])) :=
+  Inference.inferType_success_sourceTyping demandedUseFirstProgram_inferType
+
+/-- The ordinary-use-first ordering has no source-facing type.  Acceptance
+equivalence reflects the executable `none` result back through the unique
+source judgment. -/
+theorem ordinaryUseFirstProgram_not_sourceTypable :
+    ¬ ∃ target, SourceTyping orderProbeSignature []
+      ordinaryUseFirstProgram target := by
+  intro typed
+  rcases (Inference.sourceTypable_iff_inferType_eq_some
+    orderProbeSignature_wf).1 typed with ⟨inferred, success⟩
+  rw [ordinaryUseFirstProgram_inferType] at success
+  cases success
+
+/-- Swapping the two tuple components changes source typability.  Source
+order is therefore an intentional part of the current no-guess calculus; no
+permutation-invariance theorem is claimed. -/
+theorem source_order_affects_source_typability :
+    (∃ target, SourceTyping orderProbeSignature []
+        demandedUseFirstProgram target) ∧
+      ¬ ∃ target, SourceTyping orderProbeSignature []
+        ordinaryUseFirstProgram target := by
+  exact ⟨⟨_, demandedUseFirstProgram_sourceTyping⟩,
+    ordinaryUseFirstProgram_not_sourceTypable⟩
 
 /-! ## Capability freeze: constructor instance capabilities -/
 

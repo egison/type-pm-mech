@@ -96,6 +96,9 @@ import TypePM.DemandTypingInferenceEquivalence
 import TypePM.DemandTypingInferenceEquivalenceRegression
 import TypePM.DemandTypingTargetUniqueness
 import TypePM.DemandTypingTargetUniquenessRegression
+import TypePM.TypeInstance
+import TypePM.SourcePrincipality
+import TypePM.RelativePrincipality
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression

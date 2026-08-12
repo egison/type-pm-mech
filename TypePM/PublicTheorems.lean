@@ -1,5 +1,7 @@
 import TypePM.DemandTypingInferenceEquivalence
 import TypePM.DemandTypingTargetUniqueness
+import TypePM.SourcePrincipality
+import TypePM.RelativePrincipality
 import TypePM.PrincipalityCounterexample
 import TypePM.Soundness
 
@@ -24,6 +26,10 @@ statements are introduced.
 * `SourceTyping.target_unique_modulo_renaming` — any two audited
   `SourceTyping` targets for the same source share a representative up to
   residual two-sort renaming.
+* `Inference.inferType_principal` — the type reported by public inference is
+  principal in the finite-scope two-sorted instance preorder.
+* `Inference.infer_relative_principal` — open-term principality compares the
+  resolved context and target together under one paired substitution.
 * `PrincipalityCounterexample.no_principal_type` — the internal
   `TypingInvariant` family is not a source principal-type
   specification; this is not a counterexample about `SourceTyping`.

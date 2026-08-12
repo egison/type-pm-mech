@@ -82,6 +82,10 @@ commit／pushについては次のリポジトリ固有規則を優先する．
   coercion を成立させるために λ domain や未解決 metavariable の構造を推測する
   no-guess 違反を許さない．λ domain は fresh metavariable とし，任意の `MatcherSlot`
   domain を先に選べる state-free λ certificate で `SourceTyping` を代用しない．
+- 未解決 lambda domain を共有するprogramのsource-order依存は，no-guessとchronological state
+  threadingの意図された仕様である．`demandedUseFirstProgram`はsource-typable，そのtuple要素を
+  逆順にした`ordinaryUseFirstProgram`はsource-untypableという境界を維持する．この差を消すための
+  pre-scan，子の並べ替え，checking obligationの遅延を現行calculusへ追加しない．
 - **raw visibility**（cut 時点で selector に必要な head が raw source に見えるか）と
   **capability freeze**（producer image に許される substitution／export）は demand とは
   別軸であり，受理完全性の内部不変量として別々に扱う．capability-origin ledger は coercion

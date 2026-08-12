@@ -51,8 +51,17 @@ matcher-to-slot coercion を選べる．
 したがって未解決なlambda domainを複数箇所で共有すると，左から右の処理順が受理を左右しうる．
 既知のslot domainを要求するuseが先なら後続argumentをcoerceできるが，通常適用が先にraw matcher
 domainを確定すると，後続のslot要求とはordinary equalityで一致しない．これはno-guessと状態の
-chronological threadingから従う現行挙動であり，回帰では固定するが恒久的な言語境界とはまだ
-分類しない．
+chronological threadingから従う意図された仕様である．具体的な二つのclosed program
+$e_{\mathsf{demand-first}}$と$e_{\mathsf{ordinary-first}}$について，Leanは
+\[
+\bigl(\exists\tau.\,\mathsf{SourceTyping}
+  (\Sighat_{\mathsf{probe}},\emptyset,e_{\mathsf{demand-first}},\tau)\bigr)
+\;\land\;
+\neg\bigl(\exists\tau.\,\mathsf{SourceTyping}
+  (\Sighat_{\mathsf{probe}},\emptyset,e_{\mathsf{ordinary-first}},\tau)\bigr)
+\]
+を検査する．pre-scan，子の並べ替え，checking obligationの遅延，source-order permutation invarianceは
+現行規則に含めない．
 
 変数規則のinstanceはcanonical schemeのfinite openingから計算される．state erasureでは，rootの
 終端substitutionが冪等であることとopening transportを使い，このinstanceが終端contextのlookupと

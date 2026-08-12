@@ -2162,6 +2162,16 @@ theorem expectedCoercionPlan_matcherExpected
   unfold expectedCoercionPlan
   split <;> simp_all
 
+/-- An unresolved expected target variable leaves the synthesized type raw.
+The selector does not guess a matcher-slot head before an earlier
+chronological constraint has exposed one. -/
+theorem expectedCoercionPlan_variableExpected
+    (state : InferState) (inferred expected : Ty) {varId : TyVar}
+    (variableExpected : state.prevailing.apply expected = .var varId) :
+    expectedCoercionPlan state inferred expected = .raw := by
+  unfold expectedCoercionPlan
+  split <;> simp_all
+
 /-- Execute the product-matcher branch on the already resolved component
 duals.  No prevailing substitution is applied to these local views again. -/
 def alignResolvedProductMatcherAtSlot
