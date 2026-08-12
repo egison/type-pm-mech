@@ -271,6 +271,32 @@ theorem TerminalAuditEventCoverage.recordMatcherFinalization
     (by simp only [InferState.recordEvent, List.take_length,
       InferState.prevailing]) catchAll binders facts
 
+/-- The two-event suffix emitted by matcher finalization: the coverage marker
+is ordinary, followed immediately by the terminal-sensitive finalization
+record.  This theorem matches the executable branch literally and avoids
+requiring the main recursion to expose an intermediate coverage certificate. -/
+theorem TerminalAuditEventCoverage.recordLiteralMatcherFinalization
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {clauses : List Clause} {rawTarget : Ty}
+    {rawHoleLists : List (List Dual)} {evidence : List Shape.Evidence}
+    {capability : Cap}
+    (before : TerminalAuditEventCoverage terminal signature state)
+    (catchAll : catchAllLastCheck clauses = true)
+    (binders : matcherBindersCheck clauses = true)
+    (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+      rawHoleLists capability rawTarget) :
+    let covered := state.recordEvent (.literalCoverage clauses capability)
+    TerminalAuditEventCoverage terminal signature
+      (covered.recordEvent (.matcherFinalization covered.trace.solves.length
+        clauses rawTarget rawHoleLists (covered.prevailing.apply rawTarget)
+        (resolvedHoleCaps covered.prevailing rawHoleLists) evidence
+        capability)) := by
+  let covered := state.recordEvent (.literalCoverage clauses capability)
+  have ordinary : TerminalAuditEventCoverage terminal signature covered :=
+    before.recordOrdinaryEvent (by
+      simp)
+  exact ordinary.recordMatcherFinalization catchAll binders facts
+
 /-- Record the canonical let-generalization event at the value-result cut.
 As for matcher finalization, the event's normalized operands are precisely the
 current replay images, so no reconstruction oracle is needed. -/
