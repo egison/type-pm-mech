@@ -188,6 +188,79 @@ theorem BisimulationExtension.transportOptionalCapList
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           extension head) induction
 
+theorem CapListBisimulation.wrapCon
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps)
+    (name : String) :
+    CapBisimulation relation (.con name declarativeCaps)
+      (.con name executableCaps) := by
+  constructor
+  · change declarative.apply (.matcher (.con name _) .unit) =
+      relation.forward.apply
+        (state.prevailing.apply (.matcher (.con name _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.forward
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        have tailListEq := (Cap.con.inj (Ty.matcher.inj ih).1).2
+        simp only [Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+  · change state.prevailing.apply (.matcher (.con name _) .unit) =
+      relation.reverse.apply
+        (declarative.apply (.matcher (.con name _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.reverse
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        have tailListEq := (Cap.con.inj (Ty.matcher.inj ih).1).2
+        simp only [Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+
+theorem CapListBisimulation.wrapProd
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps) :
+    CapBisimulation relation (.prod declarativeCaps)
+      (.prod executableCaps) := by
+  constructor
+  · change declarative.apply (.matcher (.prod _) .unit) =
+      relation.forward.apply
+        (state.prevailing.apply (.matcher (.prod _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.forward
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        injection ih with tailEq
+        injection tailEq with tailListEq
+        simp only [Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+  · change state.prevailing.apply (.matcher (.prod _) .unit) =
+      relation.reverse.apply
+        (declarative.apply (.matcher (.prod _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.reverse
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        injection ih with tailEq
+        injection tailEq with tailListEq
+        simp only [Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+
 /-! ## Projection transport under the state residual renaming -/
 
 /-- Resolving corresponding child capabilities on both sides leaves the DD
