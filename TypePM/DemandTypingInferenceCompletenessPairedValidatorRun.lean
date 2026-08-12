@@ -205,6 +205,61 @@ theorem PairedValidatorRunExtension.refl
     (BisimulationExtension.refl relation)
     (ValidatorRunExtension.refl terminal signature state)
 
+/-- Record a constructor-compatibility event whose trace operands are the
+executable representatives of the DD operands.  The event itself does not
+change the state relation, so the paired witness is established exactly at
+the post-recording cut and can subsequently be transported by `trans`. -/
+theorem PairedValidatorRunExtension.recordPatternCtor
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    {name : String} {entry : PatternCtorScheme signature.observability}
+    {declarativeDuals executableDuals : List Dual}
+    {declarativeCapability executableCapability : Cap}
+    (lookup : signature.findPatternCtor name = some entry)
+    (duals : DualListBisimulation relation declarativeDuals executableDuals)
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry
+      declarativeDuals declarativeCapability) :
+    let event := TraceEvent.patternCtorCompatibility
+      state.trace.solves.length name (executableDuals.map Dual.cap)
+      executableCapability
+    PairedValidatorRunExtension terminal signature
+      (relation.recordEventExtension event)
+      (state.stateExtension_recordEvent event) := by
+  dsimp only
+  let event := TraceEvent.patternCtorCompatibility
+    state.trace.solves.length name (executableDuals.map Dual.cap)
+    executableCapability
+  let transition := relation.recordEventExtension event
+  let history := state.stateExtension_recordEvent event
+  refine ⟨?_, ⟨?_⟩⟩
+  · apply OrdinaryValidatorHistoryExtension.recordEvent
+    intro future extension producerSafe
+    refine
+      { traversal := ?_
+        typeAlignment := by trivial
+        dualAlignment := by trivial }
+    exact
+      { primitiveHole := ⟨by trivial⟩
+        patternLeaf := ⟨by trivial⟩
+        canonicalInstance := ⟨by trivial⟩
+        slot := ⟨by trivial⟩ }
+  · intro candidate membership previous
+    simp only [InferState.recordEvent, List.mem_append,
+      List.mem_singleton] at membership
+    rcases membership with old | newest
+    · exact False.elim (previous old)
+    · subst candidate
+      exact .patternCtor (Nat.le_refl _) lookup
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          transition duals)
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+          transition capability)
+        facts
+
 /-- Chronological paired traversals compose along their raw bisimulation
 transitions. -/
 theorem PairedValidatorRunExtension.trans

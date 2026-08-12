@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessPatternDispatcher
 import TypePM.DemandTypingInferenceCompletenessValidationMain
+import TypePM.DemandTypingInferenceCompletenessPairedValidatorRun
 import TypePM.DemandTypingInferenceCompletenessSignatureBounds
 
 /-!
@@ -28,6 +29,7 @@ open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessPatternMain
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessCertifiedRun
+open DemandTypingInferenceCompletenessPairedValidatorRun
 open DemandTypingInferenceCompletenessSignatureBounds
 
 /-- A bounded raw pattern completion together with validator coverage for the
@@ -59,6 +61,40 @@ structure BoundedCertifiedPatternsRunCompletion
     ledger duals bindings
   validation : ValidatorRunExtension terminal signature initial
     bounded.run.result.state
+
+/-- Completeness-only wrapper whose sensitive constructor facts may retain DD
+operands paired with their executable representatives. -/
+structure BoundedPairedCertifiedPatternRunCompletion
+    (terminal : Subst) (signature : FrozenSig)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option PatternResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (dual : Dual) (bindings : MonoCtx) : Type where
+  bounded : BoundedPatternRunCompletion before operation q' declarative ledger
+    dual bindings
+  history : initial.StateExtension bounded.run.result.state
+  validation : PairedValidatorRunExtension terminal signature
+    bounded.run.transition history
+
+/-- Exact pattern validation is a special case of paired validation. -/
+def BoundedPairedCertifiedPatternRunCompletion.ofExact
+    {terminal : Subst} {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option PatternResult} {q' : InferenceBase.FreshSupply}
+    {declarative : Subst} {ledger : CapabilityOriginLedger}
+    {dual : Dual} {bindings : MonoCtx}
+    (exact : BoundedCertifiedPatternRunCompletion terminal signature before
+      operation q' declarative ledger dual bindings) :
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
+      operation q' declarative ledger dual bindings where
+  bounded := exact.bounded
+  history := exact.validation.ordinary.history
+  validation := PairedValidatorRunExtension.ofExact
+    exact.bounded.run.transition exact.validation
 
 /-- The value-pattern callback needs the raw synthesized target bound together
 with the child's validator chronology. -/
@@ -1014,9 +1050,8 @@ noncomputable def certifiedPatternCtor_complete
       ((children.bounded.run.result.duals.map Dual.cap).map fun child =>
         child.apply capRun.run.result.2.prevailing.cap)
       (capRun.run.result.1.apply capRun.run.result.2.prevailing.cap) = true)
-    (facts : DDTerminalAudit.PatternCtorFacts terminal entry
-      children.bounded.run.result.duals capRun.run.result.1) :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry duals capability) :
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.pctor name patterns) state)
       q₂ S₃
@@ -1053,15 +1088,106 @@ noncomputable def certifiedPatternCtor_complete
       (instantiateCtorInState_complete before entry.scheme).arguments)
     declarativeDualsBounded declarativeTargetsBounded
     children.bounded.rawDualsBounded executableTargetsBounded targetsAligned
-  refine ⟨boundedPatternCtor_complete lookup closed before children.bounded
-    childrenExtends declarativeDualsBounded targetsAligned capRun
-    childrenToCapExtends compatible, ?_⟩
-  exact ctor lookup (closed.patternCtors lookup) children.validation
+  let bounded := boundedPatternCtor_complete lookup closed before
+    children.bounded childrenExtends declarativeDualsBounded targetsAligned
+    capRun childrenToCapExtends compatible
+  let instantiation := instantiateCtorInState_complete before entry.scheme
+  let visitExtension := instantiation.correspondence.visitExtension
+    .patternCtor path
+  let capExtension := capRun.run.extension
+  let targetAtCap :=
+    capExtension.transportTy
+      (targetAlignment.transition.transportTy
+        ((visitExtension.seq children.bounded.run.transition).transportTy
+          instantiation.target))
+  let bindingsAtCap :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      (targetAlignment.transition.seq capExtension)
+      children.bounded.run.bindings
+  have capabilityAtCap : CapBisimulation capRun.run.correspondence.prevailing
+      capability capRun.run.result.1 := by
+    rw [capRun.run.prevailing_eq]
+    exact capRun.run.capability
+  let declarativePayload := capabilityExportPayload [capability]
+    ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+      bindings'.map fun binding => binding.2)
+  let executablePayload := capabilityExportPayload [capRun.run.result.1]
+    ((instantiateCtorInState state entry.scheme).1.2 ::
+      children.bounded.run.result.bindings.map fun binding => binding.2)
+  have payloadRelated :
+      DemandTypingInferenceCompletenessStateMutual.TyBisimulation
+        capRun.run.correspondence.prevailing
+      declarativePayload executablePayload := by
+    unfold declarativePayload executablePayload capabilityExportPayload
+    apply tyListBisimulation_prod
+    exact DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+      (.cons capabilityAtCap .nil)
+      (.cons targetAtCap
+        (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
+          bindingsAtCap))
+  let capImages := freshCapImages q entry.scheme.capBinders
+  let freezeExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
+      capRun.run.correspondence capImages payloadRelated
+  let frozen := capRun.run.result.2.freezeCapabilityExport capImages
+    executablePayload
+  let executableDualsAtFrozen :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+      (targetAlignment.transition.seq (capExtension.seq freezeExtension))
+      children.bounded.run.duals
+  let executableCapabilityAtFrozen :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+      freezeExtension capabilityAtCap
+  let compatibilityEvent := TraceEvent.patternCtorCompatibility
+    frozen.trace.solves.length name
+    (children.bounded.run.result.duals.map Dual.cap) capRun.run.result.1
+  let compatibilityExtension :=
+    freezeExtension.after.recordEventExtension compatibilityEvent
+  let inferredEvent := TraceEvent.inferredPattern (.pctor name patterns)
+    ⟨capRun.run.result.1, (instantiateCtorInState state entry.scheme).1.2⟩
+    children.bounded.run.result.bindings path
+  let inferredExtension :=
+    compatibilityExtension.after.recordEventExtension inferredEvent
+  let instantiationValidation := PairedValidatorRunExtension.ofExact
+    instantiation.transition
+    (ValidatorRunExtension.instantiateCtorInState
+      (terminal := terminal) (signature := signature) state entry.scheme
+      (closed.patternCtors lookup))
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature _ .patternCtor path)
+  let childrenValidation := PairedValidatorRunExtension.ofExact
+    children.bounded.run.transition children.validation
+  let targetValidation := PairedValidatorRunExtension.ofExact
+    targetAlignment.transition
     (ValidatorRunExtension.ofAlignPatternTargets
       (terminal := terminal) (signature := signature) targetAlignment.success)
+  let capValidation := PairedValidatorRunExtension.ofExact capExtension
     (ValidatorRunExtension.ofSolvePatternCtorCapability
       (terminal := terminal) (signature := signature) capRun.run.success)
-    facts
+  let freezeValidation := PairedValidatorRunExtension.ofExact freezeExtension
+    (ValidatorRunExtension.freezeCapabilityExport terminal signature _
+      capImages executablePayload)
+  let compatibilityValidation :=
+    PairedValidatorRunExtension.recordPatternCtor freezeExtension.after lookup
+      executableDualsAtFrozen executableCapabilityAtFrozen facts
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature)
+    inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.pctor name patterns)
+        ⟨capRun.run.result.1, (instantiateCtorInState state entry.scheme).1.2⟩
+        children.bounded.run.result.bindings path))
+  let validation := instantiationValidation.trans
+    (visitValidation.trans (childrenValidation.trans
+      (targetValidation.trans (capValidation.trans
+        (freezeValidation.trans
+          (compatibilityValidation.trans inferredValidation))))))
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-! ## Certified list dispatch -/
 
