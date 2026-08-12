@@ -1,6 +1,7 @@
 import TypePM.DemandTypingInferenceCompletenessMain
 import TypePM.DemandTypingInferenceCompletenessPairedValidatorRun
 import TypePM.DemandTypingInferenceCompletenessValidationMain
+import TypePM.DemandTypingInferenceCompletenessPairedChecking
 
 /-! # Paired certified global expression traversal
 
@@ -20,6 +21,9 @@ open DemandTypingInferenceCompletenessMain
 open DemandTypingInferenceCompletenessCertifiedRun
 open DemandTypingInferenceCompletenessPairedValidatorRun
 open DemandTypingInferenceCompletenessValidationMain
+open DemandTypingInferenceCompletenessPairedChecking
+open DemandTypingInferenceCompletenessMatcherMain
+open DemandTypingInferenceCompletenessCheckingAlignment
 
 /-- The common output of global certified synthesis. -/
 structure BoundedPairedCertifiedSynthRunCompletion
@@ -546,6 +550,160 @@ theorem auditedSynthLet_complete_paired
       bodyRun.validation |>.trans finishValidation
   refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
   exact validation
+
+/-- A paired synthesis child followed by the executable expected-type cut. -/
+theorem auditedCheck_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed) {fuel : Nat}
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr}
+    {declarativeExpected executableExpected : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDCheck signature q S declarativeContext expression
+      declarativeExpected q' S'}
+    {origin : DDCheckOrigin signature raw ledger ledger'}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (expectedRelated : TyBisimulation before.prevailing declarativeExpected
+      executableExpected)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (expectedBounded : declarativeExpected.BoundedBy q)
+    (executableExpectedBounded : executableExpected.BoundedBy q)
+    (audit : DDCheckTerminalAudit terminal signature origin)
+    (adequate : MatcherCheckBudgetAdequate fuel expression) :
+    Nonempty (PairedCertifiedStateRunCompletion terminal signature before
+      (checkExprFuel fuel signature executableContext selfEnv path expression
+        executableExpected state) q' S' ledger') := by
+  cases fuel with
+  | zero => simp [MatcherCheckBudgetAdequate] at adequate
+  | succ inner =>
+      let components := AuditedCheckComponents.ofAudit audit
+      have synthAdequate : SynthBudgetAdequate inner expression := by
+        simp only [MatcherCheckBudgetAdequate, SynthBudgetAdequate]
+          at adequate ⊢
+        omega
+      let synth := Classical.choice
+        (synthBelow (Nat.lt_succ_self inner)
+          (selfEnv := selfEnv) (path := path)
+          (origin := components.synthOrigin) before contexts contextBounded
+          executableContextBounded components.synthAudit synthAdequate)
+      obtain ⟨_, declarativeRawBounded⟩ :=
+        components.synthesized.boundedBy closed before.declarative_bounded
+          contextBounded
+      have expectedAtCut := expectedBounded.mono
+        components.synthesized.supplyExtends
+      have executableExpectedAtCut := executableExpectedBounded.mono
+        components.synthesized.supplyExtends
+      let alignedRun := ddAlignWithLedger_complete (path := path)
+        synth.raw.run.completion.state synth.raw.run.target
+        (synth.raw.run.transition.transportTy expectedRelated)
+        declarativeRawBounded expectedAtCut synth.raw.rawTargetBounded
+        executableExpectedAtCut components.aligned
+      let alignmentValidation :=
+        ValidatorRunExtension.ofAlignExprResultAtExpected
+          (terminal := terminal) (signature := signature) alignedRun.success
+      exact ⟨checkOfPairedSynth synth.raw synth.history synth.validation
+        alignedRun alignmentValidation⟩
+
+/-- Constructor and primitive argument checks are reconstructed
+left-to-right with paired validation. -/
+theorem auditedChecks_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat} {expressions : List Expr}
+    {declarativeExpecteds executableExpecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
+      expected.BoundedBy q)
+    (executableExpectedsBounded : ∀ expected ∈ executableExpecteds,
+      expected.BoundedBy q)
+    (expectedsRelated : TyListBisimulation before.prevailing
+      declarativeExpecteds executableExpecteds)
+    {raw : DDChecks signature q S declarativeContext expressions
+      declarativeExpecteds q' S'}
+    {origin : DDChecksOrigin signature raw ledger ledger'}
+    (audit : DDChecksTerminalAudit terminal signature origin)
+    (adequate : MatcherChecksBudgetAdequate fuel expressions) :
+    Nonempty (PairedCertifiedStateRunCompletion terminal signature before
+      (checkExprsFuel fuel signature executableContext selfEnv parent index
+        expressions executableExpecteds state) q' S' ledger') := by
+  cases fuel with
+  | zero => simp [MatcherChecksBudgetAdequate] at adequate
+  | succ inner =>
+      cases audit with
+      | nil =>
+          cases expectedsRelated
+          exact ⟨checksNil terminal signature inner before⟩
+      | cons headAudit tailAudit =>
+          rename_i expression expected q₁ S₁ ledger₁ expressions expecteds
+            headRaw tailRaw headOrigin tailOrigin
+          cases executableExpecteds with
+          | nil => cases expectedsRelated
+          | cons executableExpected executableExpecteds =>
+              cases expectedsRelated with
+              | cons expectedRelated tailRelated =>
+                have headAdequate : MatcherCheckBudgetAdequate inner
+                    expression := by
+                  simp only [MatcherChecksBudgetAdequate,
+                    MatcherCheckBudgetAdequate, exprListTraversalFuel]
+                    at adequate ⊢
+                  omega
+                have tailAdequate : MatcherChecksBudgetAdequate inner
+                    expressions := by
+                  simp only [MatcherChecksBudgetAdequate,
+                    exprListTraversalFuel] at adequate ⊢
+                  omega
+                let headRun := Classical.choice
+                  (auditedCheck_complete_paired closed
+                    (synthBelow.mono (Nat.le_succ inner))
+                    (selfEnv := selfEnv) (path := index :: parent)
+                    before contexts expectedRelated contextBounded
+                    executableContextBounded
+                    (expectedsBounded expected (by simp))
+                    (executableExpectedsBounded executableExpected (by simp))
+                    headAudit headAdequate)
+                have tailContexts : ContextBisimulation
+                    headRun.raw.completion.prevailing declarativeContext
+                    executableContext := contexts.transport headRun.raw.transition
+                have tailContextBounded : declarativeContext.BoundedBy q₁ :=
+                  contextBounded.mono headOrigin.erase.supplyExtends
+                have tailExpectedsBounded : ∀ item ∈ expecteds,
+                    item.BoundedBy q₁ := by
+                  intro item membership
+                  exact (expectedsBounded item (by simp [membership])).mono
+                    headOrigin.erase.supplyExtends
+                have tailExecutableExpectedsBounded :
+                    ∀ item ∈ executableExpecteds, item.BoundedBy q₁ := by
+                  intro item membership
+                  exact (executableExpectedsBounded item
+                    (by simp [membership])).mono
+                    headOrigin.erase.supplyExtends
+                let tailRun := Classical.choice
+                  (auditedChecks_complete_paired closed inner
+                    (synthBelow.mono (Nat.le_succ inner))
+                    (selfEnv := selfEnv) (parent := parent)
+                    (index := index + 1) headRun.raw.completion tailContexts
+                    tailContextBounded
+                    (executableContextBounded.mono
+                      headOrigin.erase.supplyExtends)
+                    tailExpectedsBounded tailExecutableExpectedsBounded
+                    (headRun.raw.transition.transportTyList tailRelated)
+                    tailAudit tailAdequate)
+                exact ⟨checksCons headRun tailRun⟩
+termination_by fuel
 
 end DemandTypingInferenceCompletenessGlobalCertified
 end TypePM
