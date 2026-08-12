@@ -258,5 +258,34 @@ theorem app
     ((ValidatorRunExtension.visit terminal signature _ .patternApp path).trans
       (children.trans alignment)))
 
+/-- Constructor-pattern chronology retains the sensitive compatibility event
+at the precise post-freeze cut.  The capability solver may be supplied by a
+separate certified package; this wrapper fixes the surrounding order. -/
+theorem ctor
+    {terminal : Subst} {signature : FrozenSig}
+    {initial childrenState targetAligned capSolved : InferState}
+    {path : SyntaxPath} {name : String} {patterns : List Pattern}
+    {entry : PatternCtorScheme signature.observability}
+    {duals : List Dual} {bindings : MonoCtx} {capability : Cap}
+    {capImages : List CapVar} {payload : Ty} {dual : Dual}
+    (lookup : signature.findPatternCtor name = some entry)
+    (closed : entry.scheme.Closed)
+    (children : ValidatorRunExtension terminal signature
+      (visit (instantiateCtorInState initial entry.scheme).2 .patternCtor path)
+      childrenState)
+    (targetAlignment : ValidatorRunExtension terminal signature childrenState
+      targetAligned)
+    (capabilitySolve : ValidatorRunExtension terminal signature targetAligned
+      capSolved)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry duals capability) :
+    let frozen := capSolved.freezeCapabilityExport capImages payload
+    let compatible := frozen.recordEvent (.patternCtorCompatibility
+      frozen.trace.solves.length name (duals.map Dual.cap) capability)
+    ValidatorRunExtension terminal signature initial
+      (compatible.recordEvent
+        (.inferredPattern (.pctor name patterns) dual bindings path)) :=
+  DemandTypingInferenceCompletenessValidationMain.patternCtor lookup closed
+    children targetAlignment capabilitySolve facts
+
 end DemandTypingInferenceCompletenessPatternCertified
 end TypePM
