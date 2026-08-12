@@ -1,4 +1,9 @@
 import TypePM.DemandTypingInferenceCompletenessStateMutual
+import TypePM.DemandTypingInferenceCompletenessSolver
+import TypePM.DemandTypingInferenceCompletenessContext
+import TypePM.DemandTypingInferenceCompletenessProtected
+import TypePM.DemandTypingInferenceCompletenessIdempotence
+import TypePM.DemandTypingOriginMetatheory
 
 /-!
 # Raw traversal completeness
@@ -19,6 +24,8 @@ namespace DemandTypingInferenceCompletenessTraversal
 
 open Inference
 open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessSolver
+open DemandTypingInferenceCompletenessProtected
 
 /-- State relation used at every recursive traversal boundary.  History,
 protected producer leaves, and provenance sources are append-only evidence
@@ -31,17 +38,34 @@ structure TraversalStateCorrespondence
   supply_eq : executable.supply = q
   ledger_eq : executable.capabilityOrigins = ledger
   prevailing : StateBisimulation ledger declarative executable
+  declarative_bounded : declarative.BoundedBy q
+  executable_bounded : executable.prevailing.BoundedBy q
+  forward_bounded : prevailing.forward.BoundedBy q
+  reverse_bounded : prevailing.reverse.BoundedBy q
+  ledger_below : DDLedger.LedgerBelow q ledger
+  protected_origins : ProtectedCapOrigins executable
+  protected_below : ProtectedCapsBelowSupply executable
+  allocated_recorded : AllocatedCapsRecorded executable
 
 /-- Trace-only events preserve a traversal boundary. -/
 def TraversalStateCorrespondence.recordEvent
     {q : InferenceBase.FreshSupply} {declarative : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
     (relation : TraversalStateCorrespondence q declarative ledger state)
-    (event : TraceEvent) :
+    (event : TraceEvent)
+    (eventRecorded : ∀ varId, varId ∈ event.allocatedCapVars →
+      varId ∈ state.capabilityOrigins.map Prod.fst) :
     TraversalStateCorrespondence q declarative ledger
       (state.recordEvent event) := by
   let extension := relation.prevailing.recordEventExtension event
-  exact ⟨relation.supply_eq, relation.ledger_eq, extension.after⟩
+  exact
+    ⟨relation.supply_eq, relation.ledger_eq, extension.after,
+      relation.declarative_bounded, relation.executable_bounded,
+      relation.forward_bounded, relation.reverse_bounded,
+      relation.ledger_below,
+      relation.protected_origins.recordEvent event,
+      relation.protected_below.recordEvent_of_allocated event,
+      relation.allocated_recorded.recordEvent event eventRecorded⟩
 
 /-- Visiting one syntax node is trace-only. -/
 def TraversalStateCorrespondence.visit
@@ -51,7 +75,7 @@ def TraversalStateCorrespondence.visit
     (kind : NodeKind) (path : SyntaxPath) :
     TraversalStateCorrespondence q declarative ledger
       (Inference.visit state kind path) := by
-  exact relation.recordEvent (.visit kind path)
+  exact relation.recordEvent (.visit kind path) (by simp [TraceEvent.allocatedCapVars])
 
 def TraversalStateCorrespondence.visitExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -69,8 +93,7 @@ def TraversalStateCorrespondence.afterVisit
     (kind : NodeKind) (path : SyntaxPath) :
     TraversalStateCorrespondence q declarative ledger
       (Inference.visit state kind path) :=
-  ⟨relation.supply_eq, relation.ledger_eq,
-    (relation.visitExtension kind path).after⟩
+  relation.visit kind path
 
 def stateBisimulationFreshTyExtension
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -109,14 +132,25 @@ def TraversalStateCorrespondence.afterVisitFreshTy
     (kind : NodeKind) (path : SyntaxPath) (origin : ConstraintOrigin) :
     TraversalStateCorrespondence { q with nextTy := q.nextTy + 1 }
       declarative ledger ((Inference.visit state kind path).freshTy origin).2 :=
-  let visitExtension := relation.visitExtension kind path
-  let freshExtension := stateBisimulationFreshTyExtension visitExtension.after
-    origin
-  ⟨by
-      have supplyEq := relation.supply_eq
-      subst q
-      rfl,
-    relation.ledger_eq, freshExtension.after⟩
+  by
+    let entered := relation.visit kind path
+    let extension := SupplyExtends.bumpTy q 1
+    refine
+      ⟨?_, relation.ledger_eq,
+        (stateBisimulationFreshTyExtension
+          (relation.visitExtension kind path).after origin).after,
+        entered.declarative_bounded.mono extension,
+        entered.executable_bounded.mono extension,
+        entered.forward_bounded.mono extension,
+        entered.reverse_bounded.mono extension,
+        entered.ledger_below.mono extension,
+        entered.protected_origins.freshTy origin,
+        entered.protected_below.freshTy origin,
+        entered.allocated_recorded.freshTy origin⟩
+    change { state.supply with nextTy := state.supply.nextTy + 1 } =
+      { q with nextTy := q.nextTy + 1 }
+    exact congrArg (fun supply : InferenceBase.FreshSupply =>
+      { supply with nextTy := supply.nextTy + 1 }) relation.supply_eq
 
 def bisimulationExtensionChain3
     {ledger₀ ledger₁ ledger₂ ledger₃ : CapabilityOriginLedger}
@@ -162,12 +196,26 @@ def TraversalStateCorrespondence.freshTy
     (relation : TraversalStateCorrespondence q declarative ledger state)
     (origin : ConstraintOrigin) :
     FreshTyCompletion q declarative ledger state origin := by
-  have supplyEq := relation.supply_eq
-  subst q
+  let extension := SupplyExtends.bumpTy q 1
   constructor
-  · rfl
-  · refine ⟨rfl, relation.ledger_eq, ?_⟩
-    exact (stateBisimulationFreshTyExtension relation.prevailing origin).after
+  · change Ty.var state.supply.nextTy = Ty.var q.nextTy
+    exact congrArg (fun supply : InferenceBase.FreshSupply =>
+      Ty.var supply.nextTy) relation.supply_eq
+  · refine
+      ⟨?_, relation.ledger_eq,
+        (stateBisimulationFreshTyExtension relation.prevailing origin).after,
+        relation.declarative_bounded.mono extension,
+        relation.executable_bounded.mono extension,
+        relation.forward_bounded.mono extension,
+        relation.reverse_bounded.mono extension,
+        relation.ledger_below.mono extension,
+        relation.protected_origins.freshTy origin,
+        relation.protected_below.freshTy origin,
+        relation.allocated_recorded.freshTy origin⟩
+    change { state.supply with nextTy := state.supply.nextTy + 1 } =
+      { q with nextTy := q.nextTy + 1 }
+    exact congrArg (fun supply : InferenceBase.FreshSupply =>
+      { supply with nextTy := supply.nextTy + 1 }) relation.supply_eq
 
 def TraversalStateCorrespondence.freshTyExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -180,10 +228,19 @@ def TraversalStateCorrespondence.freshTyExtension
 
 /-- Exact-state initialization is the diagonal of the traversal relation. -/
 def TraversalStateCorrespondence.refl
-    (state : InferState) (idempotent : state.prevailing.Idempotent) :
+    (state : InferState) (idempotent : state.prevailing.Idempotent)
+    (bounded : state.prevailing.BoundedBy state.supply)
+    (ledgerBelow : DDLedger.LedgerBelow state.supply
+      state.capabilityOrigins)
+    (protectedOrigins : ProtectedCapOrigins state)
+    (protectedBelow : ProtectedCapsBelowSupply state)
+    (allocatedRecorded : AllocatedCapsRecorded state) :
     TraversalStateCorrespondence state.supply state.prevailing
       state.capabilityOrigins state :=
-  ⟨rfl, rfl, StateBisimulation.refl _ _ idempotent⟩
+  let prevailing := StateBisimulation.refl _ _ idempotent
+  ⟨rfl, rfl, prevailing, bounded, bounded,
+    Subst.boundedBy_id _, Subst.boundedBy_id _, ledgerBelow,
+    protectedOrigins, protectedBelow, allocatedRecorded⟩
 
 /-- Output relation for one raw synthesized type.  The two raw types need not
 be syntactically equal (context instantiation may see differently oriented
@@ -313,6 +370,14 @@ structure SynthRunCompletion
   ledger_eq : result.state.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
+  declarative_bounded : declarative.BoundedBy q'
+  executable_bounded : result.state.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger
+  protected_origins : ProtectedCapOrigins result.state
+  protected_below : ProtectedCapsBelowSupply result.state
+  allocated_recorded : AllocatedCapsRecorded result.state
   target : TyBisimulation transition.after target result.target
 
 /-- List counterpart of `SynthRunCompletion`. -/
@@ -329,6 +394,14 @@ structure SynthsRunCompletion
   ledger_eq : result.state.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
+  declarative_bounded : declarative.BoundedBy q'
+  executable_bounded : result.state.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger
+  protected_origins : ProtectedCapOrigins result.state
+  protected_below : ProtectedCapsBelowSupply result.state
+  allocated_recorded : AllocatedCapsRecorded result.state
   targets : TyListBisimulation transition.after targets result.targets
 
 /-- Repackage a run's proof-relevant transition as the output-only relation. -/
@@ -340,7 +413,11 @@ def SynthRunCompletion.completion
     {declarative : Subst} {ledger : CapabilityOriginLedger} {target : Ty}
     (run : SynthRunCompletion before operation q' declarative ledger target) :
     SynthCompletion q' declarative ledger target run.result :=
-  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after⟩, run.target⟩
+  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after,
+      run.declarative_bounded, run.executable_bounded,
+      run.forward_bounded, run.reverse_bounded, run.ledger_below,
+      run.protected_origins, run.protected_below, run.allocated_recorded⟩,
+    run.target⟩
 
 def SynthsRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -351,7 +428,11 @@ def SynthsRunCompletion.completion
     {targets : List Ty}
     (run : SynthsRunCompletion before operation q' declarative ledger targets) :
     SynthsCompletion q' declarative ledger targets run.result :=
-  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after⟩, run.targets⟩
+  ⟨⟨run.supply_eq, run.ledger_eq, run.transition.after,
+      run.declarative_bounded, run.executable_bounded,
+      run.forward_bounded, run.reverse_bounded, run.ledger_below,
+      run.protected_origins, run.protected_below, run.allocated_recorded⟩,
+    run.targets⟩
 
 /-- State-only run package used by alignment cuts. -/
 structure StateRunCompletion
@@ -366,6 +447,14 @@ structure StateRunCompletion
   ledger_eq : result.capabilityOrigins = ledger
   transition : BisimulationExtension before.prevailing ledger declarative
     result
+  declarative_bounded : declarative.BoundedBy q'
+  executable_bounded : result.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger
+  protected_origins : ProtectedCapOrigins result
+  protected_below : ProtectedCapsBelowSupply result
+  allocated_recorded : AllocatedCapsRecorded result
 
 def StateRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -375,7 +464,10 @@ def StateRunCompletion.completion
     {declarative : Subst} {ledger : CapabilityOriginLedger}
     (run : StateRunCompletion before operation q' declarative ledger) :
     TraversalStateCorrespondence q' declarative ledger run.result :=
-  ⟨run.supply_eq, run.ledger_eq, run.transition.after⟩
+  ⟨run.supply_eq, run.ledger_eq, run.transition.after,
+    run.declarative_bounded, run.executable_bounded,
+    run.forward_bounded, run.reverse_bounded, run.ledger_below,
+    run.protected_origins, run.protected_below, run.allocated_recorded⟩
 
 /-! ## Ordinary paired alignment -/
 
@@ -390,6 +482,10 @@ noncomputable def runResolvedTargetEq_complete_of_step
     (relation : TraversalStateCorrespondence q S ledger initial)
     (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
     (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q)
     (dd : OriginSafeExactPairedMGU ledger
       (S.apply declarativeLeft) (S.apply declarativeRight) delta)
     (solver : PairedUnification.PairedResult ledger
@@ -405,24 +501,103 @@ noncomputable def runResolvedTargetEq_complete_of_step
           (initial.prevailing.apply executableRight))) q
       (Subst.seq delta S) ledger := by
   let result := initial.recordSolve step
-  refine ⟨result, ?_, relation.supply_eq, relation.ledger_eq, ?_⟩
+  let transition := relation.prevailing.pairedCut_recordSolve left right dd
+    solver stepDelta
+  have ddDeltaBounded : delta.BoundedBy q :=
+    dd.exact.boundedBy
+      (relation.declarative_bounded.apply declarativeLeftBounded)
+      (relation.declarative_bounded.apply declarativeRightBounded)
+  have executableDeltaBounded : solver.subst.BoundedBy q :=
+    solver.exactPairedMGU.boundedBy
+      (relation.executable_bounded.apply executableLeftBounded)
+      (relation.executable_bounded.apply executableRightBounded)
+  refine
+    { result := result
+      success := ?_
+      supply_eq := relation.supply_eq
+      ledger_eq := relation.ledger_eq
+      transition := transition
+      declarative_bounded := ddDeltaBounded.seq relation.declarative_bounded
+      executable_bounded := ?_
+      forward_bounded := ?_
+      reverse_bounded := ?_
+      ledger_below := relation.ledger_below
+      protected_origins := relation.protected_origins.recordSolve step
+      protected_below := relation.protected_below.recordSolve step
+      allocated_recorded := relation.allocated_recorded.recordSolve step }
   · unfold runResolvedConstraint
     rw [relation.ledger_eq, stepSuccess]
     rfl
-  · exact relation.prevailing.pairedCut_recordSolve left right dd solver
-      stepDelta
+  · rw [InferState.prevailing_recordSolve, stepDelta]
+    exact executableDeltaBounded.seq relation.executable_bounded
+  · change (Subst.seq delta relation.prevailing.forward).BoundedBy q
+    exact ddDeltaBounded.seq relation.forward_bounded
+  · change (Subst.seq solver.subst relation.prevailing.reverse).BoundedBy q
+    exact executableDeltaBounded.seq relation.reverse_bounded
 
-/-- The ordinary branch of `alignTypes` is complete once the paired solver
-step has been constructed.  Matcher/slot two-stage branches are added by the
-same state-cut lemma after capability-solver completeness is connected. -/
-noncomputable def alignTypes_ordinary_complete_of_step
+/-- A DD solution on the declarative views supplies an admissible solution on
+the bisimilar executable views.  Paired-solver completeness therefore creates
+the concrete step internally; callers need not predict its orientation. -/
+noncomputable def runResolvedTargetEq_complete
     {q : InferenceBase.FreshSupply} {S delta : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
     {declarativeLeft declarativeRight executableLeft executableRight : Ty}
-    {origin : ConstraintOrigin} {step : SolveStep}
+    {origin : ConstraintOrigin}
     (relation : TraversalStateCorrespondence q S ledger initial)
     (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
     (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q)
+    (dd : OriginSafeExactPairedMGU ledger
+      (S.apply declarativeLeft) (S.apply declarativeRight) delta) :
+    StateRunCompletion relation
+      (runResolvedConstraint initial origin
+        (.targetEq (initial.prevailing.apply executableLeft)
+          (initial.prevailing.apply executableRight))) q
+      (Subst.seq delta S) ledger := by
+  let combined := Subst.seq delta relation.prevailing.forward
+  have combinedAdmissible : AdmissiblePost ledger combined :=
+    AdmissiblePost.seq dd.admissible relation.prevailing.forwardAdmissible
+  have combinedSound :
+      combined.apply (initial.prevailing.apply executableLeft) =
+        combined.apply (initial.prevailing.apply executableRight) := by
+    simp only [combined, Subst.seq_apply, ← left.forward, ← right.forward]
+    exact dd.exact.1.1
+  have solverExists :=
+    solveTargetEqWithLedger_complete_of_admissible combinedAdmissible
+      combinedSound initial.trace.solves.length origin
+  let solver := Classical.choose solverExists
+  have stepExists := Classical.choose_spec solverExists
+  let step := Classical.choose stepExists
+  have stepFacts := Classical.choose_spec stepExists
+  have solverSuccess := stepFacts.1
+  have stepDelta := stepFacts.2
+  have stepSuccess : solveResolvedWithLedger ledger
+      initial.trace.solves.length origin
+      (.targetEq (initial.prevailing.apply executableLeft)
+        (initial.prevailing.apply executableRight)) = some step := by
+    exact solverSuccess
+  exact runResolvedTargetEq_complete_of_step relation left right
+    declarativeLeftBounded declarativeRightBounded executableLeftBounded
+    executableRightBounded dd solver stepSuccess stepDelta
+
+/-- The ordinary branch of `alignTypes` is complete.  Matcher/slot two-stage
+branches are added by the same state-cut lemma after capability-solver
+completeness is connected. -/
+noncomputable def alignTypes_ordinary_complete
+    {q : InferenceBase.FreshSupply} {S delta : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q)
     (_declarativeClass :
       alignPairClass (S.apply declarativeLeft) (S.apply declarativeRight) =
         .ordinary)
@@ -430,19 +605,13 @@ noncomputable def alignTypes_ordinary_complete_of_step
       alignPairClass (initial.prevailing.apply executableLeft)
         (initial.prevailing.apply executableRight) = .ordinary)
     (dd : OriginSafeExactPairedMGU ledger
-      (S.apply declarativeLeft) (S.apply declarativeRight) delta)
-    (solver : PairedUnification.PairedResult ledger
-      (initial.prevailing.apply executableLeft)
-      (initial.prevailing.apply executableRight))
-    (stepSuccess : solveResolvedWithLedger ledger initial.trace.solves.length
-      origin (.targetEq (initial.prevailing.apply executableLeft)
-        (initial.prevailing.apply executableRight)) = some step)
-    (stepDelta : step.delta = solver.subst) :
+      (S.apply declarativeLeft) (S.apply declarativeRight) delta) :
     StateRunCompletion relation
       (alignTypes initial origin executableLeft executableRight) q
       (Subst.seq delta S) ledger := by
-  have core := runResolvedTargetEq_complete_of_step relation left right dd
-    solver stepSuccess stepDelta
+  have core := runResolvedTargetEq_complete (origin := origin) relation left right
+    declarativeLeftBounded declarativeRightBounded executableLeftBounded
+    executableRightBounded dd
   let aligned := core.result
   let result := aligned.recordEvent (.typeAlignment
     initial.trace.solves.length aligned.trace.solves.length executableLeft
@@ -453,8 +622,21 @@ noncomputable def alignTypes_ordinary_complete_of_step
       executableLeft executableRight
       (initial.prevailing.apply executableLeft)
       (initial.prevailing.apply executableRight))
-  refine ⟨result, ?_, core.supply_eq, core.ledger_eq,
-    core.transition.seq finishExtension⟩
+  refine
+    { result := result
+      success := ?_
+      supply_eq := core.supply_eq
+      ledger_eq := core.ledger_eq
+      transition := core.transition.seq finishExtension
+      declarative_bounded := core.declarative_bounded
+      executable_bounded := core.executable_bounded
+      forward_bounded := core.forward_bounded
+      reverse_bounded := core.reverse_bounded
+      ledger_below := core.ledger_below
+      protected_origins := core.protected_origins.recordEvent _
+      protected_below := core.protected_below.recordEvent_of_allocated _
+      allocated_recorded := core.allocated_recorded.recordEvent _
+        (by simp [TraceEvent.allocatedCapVars]) }
   · have coreEq : alignTypesCore initial origin executableLeft
         executableRight =
         runResolvedConstraint initial origin
@@ -477,7 +659,8 @@ def synthCompletion_finishExpr
     SynthCompletion q' declarative ledger target
       (finishExpr expression path target state) := by
   exact TypedTraversalStateCorrespondence.of_sameRaw
-    (relation.recordEvent (.inferredExpr expression target path))
+    (relation.recordEvent (.inferredExpr expression target path)
+      (by simp [TraceEvent.allocatedCapVars]))
 
 /-! ## Solver-independent expression constructors -/
 
@@ -497,8 +680,24 @@ def inferExprFuel_lit_complete
   let visitExtension := relation.visitExtension .exprLit path
   let finishExtension := visitExtension.after.recordEventExtension
     (.inferredExpr (.lit value) .int path)
-  refine ⟨result, ?_, relation.supply_eq, relation.ledger_eq,
-    visitExtension.seq finishExtension, ?_⟩
+  let finalRelation := (relation.visit .exprLit path).recordEvent
+    (.inferredExpr (.lit value) .int path)
+    (by simp [TraceEvent.allocatedCapVars])
+  refine
+    { result := result
+      success := ?_
+      supply_eq := relation.supply_eq
+      ledger_eq := relation.ledger_eq
+      transition := visitExtension.seq finishExtension
+      declarative_bounded := finalRelation.declarative_bounded
+      executable_bounded := finalRelation.executable_bounded
+      forward_bounded := finalRelation.forward_bounded
+      reverse_bounded := finalRelation.reverse_bounded
+      ledger_below := finalRelation.ledger_below
+      protected_origins := finalRelation.protected_origins
+      protected_below := finalRelation.protected_below
+      allocated_recorded := finalRelation.allocated_recorded
+      target := ?_ }
   · simp [inferExprFuel, result, entered, finishExpr, visit]
   exact (visitExtension.seq finishExtension).after.sameTarget .int
 
@@ -527,10 +726,31 @@ def inferExprFuel_something_complete
     (freshOrigin .expression path "something-target")
   let finishExtension := freshExtension.after.recordEventExtension
     (.inferredExpr .something (.matcher .any (.var q.nextTy)) path)
-  refine ⟨result, ?_, allocatedRelation.state.supply_eq,
-    allocatedRelation.state.ledger_eq,
-    bisimulationExtensionChain3 visitExtension freshExtension finishExtension,
-    ?_⟩
+  let finalRelation := allocatedRelation.state.recordEvent
+    (.inferredExpr .something (.matcher .any (.var q.nextTy)) path)
+    (by simp [TraceEvent.allocatedCapVars])
+  refine
+    { result := result
+      success := ?_
+      supply_eq := allocatedRelation.state.supply_eq
+      ledger_eq := allocatedRelation.state.ledger_eq
+      transition :=
+        bisimulationExtensionChain3 visitExtension freshExtension finishExtension
+      declarative_bounded := finalRelation.declarative_bounded
+      executable_bounded := finalRelation.executable_bounded
+      forward_bounded := by
+        change relation.prevailing.forward.BoundedBy
+          { q with nextTy := q.nextTy + 1 }
+        exact relation.forward_bounded.mono (SupplyExtends.bumpTy q 1)
+      reverse_bounded := by
+        change relation.prevailing.reverse.BoundedBy
+          { q with nextTy := q.nextTy + 1 }
+        exact relation.reverse_bounded.mono (SupplyExtends.bumpTy q 1)
+      ledger_below := finalRelation.ledger_below
+      protected_origins := finalRelation.protected_origins
+      protected_below := finalRelation.protected_below
+      allocated_recorded := finalRelation.allocated_recorded
+      target := ?_ }
   · simp only [inferExprFuel]
     rw [show allocated.1 = .var q.nextTy by
       exact allocatedRelation.target_eq]
@@ -570,12 +790,39 @@ def inferExprFuel_lam_complete
   let visitExtension := relation.visitExtension .exprLam path
   let freshExtension := stateBisimulationFreshTyExtension visitExtension.after
     (freshOrigin .expression path "lambda-domain")
+  let prefixExtension : BisimulationExtension relation.prevailing ledger S
+      ((visit initial .exprLam path).freshTy
+        (freshOrigin .expression path "lambda-domain")).2 :=
+    { after := (relation.afterVisitFreshTy .exprLam path
+          (freshOrigin .expression path "lambda-domain")).prevailing
+      transportTy := by
+        intro declarativeTarget executableTarget related
+        have carried := freshExtension.transportTy
+          (visitExtension.transportTy related)
+        exact carried }
   let finishExtension := bodyComplete.transition.after.recordEventExtension
     (.inferredExpr (.lam name body)
       (.fn (.var q.nextTy) bodyResult.target) path)
-  refine ⟨result, ?_, bodyComplete.supply_eq, bodyComplete.ledger_eq,
-    bisimulationExtensionChain4 visitExtension freshExtension
-      bodyComplete.transition finishExtension, ?_⟩
+  let finalRelation := bodyComplete.completion.state.recordEvent
+    (.inferredExpr (.lam name body)
+      (.fn (.var q.nextTy) bodyResult.target) path)
+    (by simp [TraceEvent.allocatedCapVars])
+  refine
+    { result := result
+      success := ?_
+      supply_eq := bodyComplete.supply_eq
+      ledger_eq := bodyComplete.ledger_eq
+      transition := prefixExtension.seq bodyComplete.transition |>.seq
+        finishExtension
+      declarative_bounded := finalRelation.declarative_bounded
+      executable_bounded := finalRelation.executable_bounded
+      forward_bounded := finalRelation.forward_bounded
+      reverse_bounded := finalRelation.reverse_bounded
+      ledger_below := finalRelation.ledger_below
+      protected_origins := finalRelation.protected_origins
+      protected_below := finalRelation.protected_below
+      allocated_recorded := finalRelation.allocated_recorded
+      target := ?_ }
   · simp only [inferExprFuel]
     rw [show allocated.1 = .var q.nextTy by exact allocatedRelation.target_eq]
     rw [bodyComplete.success]
@@ -604,8 +851,21 @@ def inferExprsFuel_nil_complete
     SynthsRunCompletion relation
       (inferExprsFuel (fuel + 1) signature context selfEnv parent index []
         initial) q declarative ledger [] := by
-  refine ⟨⟨[], initial⟩, ?_, relation.supply_eq, relation.ledger_eq,
-    .refl relation.prevailing, .nil⟩
+  refine
+    { result := ⟨[], initial⟩
+      success := ?_
+      supply_eq := relation.supply_eq
+      ledger_eq := relation.ledger_eq
+      transition := .refl relation.prevailing
+      declarative_bounded := relation.declarative_bounded
+      executable_bounded := relation.executable_bounded
+      forward_bounded := relation.forward_bounded
+      reverse_bounded := relation.reverse_bounded
+      ledger_below := relation.ledger_below
+      protected_origins := relation.protected_origins
+      protected_below := relation.protected_below
+      allocated_recorded := relation.allocated_recorded
+      targets := .nil }
   simp [inferExprsFuel]
 
 /-- One expression-list cell composes the head and tail completion packages. -/
@@ -633,9 +893,21 @@ def inferExprsFuel_cons_complete
   let tail := tailComplete.result
   have headSuccess := headComplete.success
   have tailSuccess := tailComplete.success
-  refine ⟨⟨head.target :: tail.targets, tail.state⟩, ?_,
-    tailComplete.supply_eq, tailComplete.ledger_eq,
-    headComplete.transition.seq tailComplete.transition, ?_⟩
+  refine
+    { result := ⟨head.target :: tail.targets, tail.state⟩
+      success := ?_
+      supply_eq := tailComplete.supply_eq
+      ledger_eq := tailComplete.ledger_eq
+      transition := headComplete.transition.seq tailComplete.transition
+      declarative_bounded := tailComplete.declarative_bounded
+      executable_bounded := tailComplete.executable_bounded
+      forward_bounded := tailComplete.forward_bounded
+      reverse_bounded := tailComplete.reverse_bounded
+      ledger_below := tailComplete.ledger_below
+      protected_origins := tailComplete.protected_origins
+      protected_below := tailComplete.protected_below
+      allocated_recorded := tailComplete.allocated_recorded
+      targets := ?_ }
   · simp [inferExprsFuel, headSuccess, tailSuccess, head, tail]
   · exact .cons (tailComplete.transition.transportTy headComplete.target)
       tailComplete.targets
@@ -662,10 +934,25 @@ def inferExprFuel_tuple_complete
   let visitExtension := relation.visitExtension .exprTuple path
   let finishExtension := childrenComplete.transition.after.recordEventExtension
     (.inferredExpr (.tuple expressions) (.prod children.targets) path)
-  refine ⟨result, ?_, childrenComplete.supply_eq,
-    childrenComplete.ledger_eq,
-    bisimulationExtensionChain3 visitExtension childrenComplete.transition
-      finishExtension, ?_⟩
+  let finalRelation := childrenComplete.completion.state.recordEvent
+    (.inferredExpr (.tuple expressions) (.prod children.targets) path)
+    (by simp [TraceEvent.allocatedCapVars])
+  refine
+    { result := result
+      success := ?_
+      supply_eq := childrenComplete.supply_eq
+      ledger_eq := childrenComplete.ledger_eq
+      transition := bisimulationExtensionChain3 visitExtension
+        childrenComplete.transition finishExtension
+      declarative_bounded := finalRelation.declarative_bounded
+      executable_bounded := finalRelation.executable_bounded
+      forward_bounded := finalRelation.forward_bounded
+      reverse_bounded := finalRelation.reverse_bounded
+      ledger_below := finalRelation.ledger_below
+      protected_origins := finalRelation.protected_origins
+      protected_below := finalRelation.protected_below
+      allocated_recorded := finalRelation.allocated_recorded
+      target := ?_ }
   · simp [inferExprFuel, childrenSuccess, result, children]
   · exact finishExtension.transportTy
       (tyListBisimulation_prod childrenComplete.targets)

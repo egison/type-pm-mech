@@ -70,11 +70,13 @@ theorem mguPairedTy_correspondence
 
 /-! ## Concrete executable steps -/
 
-/-- Capability-only counterpart of `solveTargetEqWithLedger_complete`. -/
-theorem solveCapEqWithLedger_complete
+/-- An origin-admissible capability solution makes the executable
+capability-equality solver emit a proof-carrying step. -/
+theorem solveCapEqWithLedger_complete_of_admissible
     {ledger : CapabilityOriginLedger} {left right : Cap}
-    {declarative : CapSubst}
-    (dd : OriginSafeExactCapMGU ledger left right declarative)
+    {competitor : CapSubst}
+    (competitorAdmissible : AdmissibleCapPost ledger competitor)
+    (competitorSound : left.apply competitor = right.apply competitor)
     (solveCount : Nat) (origin : ConstraintOrigin) :
     ∃ (result : PairedUnification.OrientedCapResult ledger left right)
         (step : SolveStep),
@@ -85,8 +87,47 @@ theorem solveCapEqWithLedger_complete
   next run =>
     obtain ⟨_executable, success⟩ :=
       PairedUnification.mguOrientedCap_complete_of_admissible
-        dd.admissible dd.exact.1.1
+        competitorAdmissible competitorSound
     unfold PairedUnification.mguOrientedCap at success
+    rw [run] at success
+    contradiction
+  next result run =>
+    refine ⟨result, _, rfl, rfl⟩
+
+/-- Capability-only counterpart of `solveTargetEqWithLedger_complete`. -/
+theorem solveCapEqWithLedger_complete
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    {declarative : CapSubst}
+    (dd : OriginSafeExactCapMGU ledger left right declarative)
+    (solveCount : Nat) (origin : ConstraintOrigin) :
+    ∃ (result : PairedUnification.OrientedCapResult ledger left right)
+        (step : SolveStep),
+      solveCapEqWithLedger ledger solveCount origin left right = some step ∧
+        step.delta = ⟨result.subst, TySubst.id⟩ :=
+  solveCapEqWithLedger_complete_of_admissible
+    dd.admissible dd.exact.1.1 solveCount origin
+
+/-- Any origin-admissible solution makes the executable target-equality
+solver emit a step retaining the proof-carrying kernel result.  This is the
+form needed when the DD and executable traversals use bisimilar, rather than
+literally identical, metavariable names. -/
+theorem solveTargetEqWithLedger_complete_of_admissible
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    {competitor : Subst}
+    (competitorAdmissible : AdmissiblePost ledger competitor)
+    (competitorSound : competitor.apply left = competitor.apply right)
+    (solveCount : Nat) (origin : ConstraintOrigin) :
+    ∃ (result : PairedUnification.PairedResult ledger left right)
+        (step : SolveStep),
+      solveTargetEqWithLedger ledger solveCount origin left right = some step ∧
+        step.delta = result.subst := by
+  unfold solveTargetEqWithLedger
+  split
+  next run =>
+    obtain ⟨_executable, success⟩ :=
+      PairedUnification.mguPairedTy_complete_of_admissible
+        competitorAdmissible competitorSound
+    unfold PairedUnification.mguPairedTy at success
     rw [run] at success
     contradiction
   next result run =>
@@ -102,18 +143,9 @@ theorem solveTargetEqWithLedger_complete
     ∃ (result : PairedUnification.PairedResult ledger left right)
         (step : SolveStep),
       solveTargetEqWithLedger ledger solveCount origin left right = some step ∧
-        step.delta = result.subst := by
-  unfold solveTargetEqWithLedger
-  split
-  next run =>
-    obtain ⟨_executable, success⟩ :=
-      PairedUnification.mguPairedTy_complete_of_admissible
-        dd.admissible dd.exact.1.1
-    unfold PairedUnification.mguPairedTy at success
-    rw [run] at success
-    contradiction
-  next result run =>
-    refine ⟨result, _, rfl, rfl⟩
+        step.delta = result.subst :=
+  solveTargetEqWithLedger_complete_of_admissible
+    dd.admissible dd.exact.1.1 solveCount origin
 
 /-- Applying the DD residual after the executable result gives exactly the DD
 normal form of every type.  This is the pointwise form used to transport raw
