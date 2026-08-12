@@ -97,6 +97,72 @@ def boundedSynthsCons_complete
     exact head.rawTargetBounded.mono tailSupplyExtends
   · exact tail.rawTargetsBounded item tailMembership
 
+def boundedSynthLit_complete
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {value : Int} {q : InferenceBase.FreshSupply}
+    {S : Subst} {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state) (fuel : Nat) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path (.lit value)
+        state) q S ledger .int :=
+  ⟨inferExprFuel_lit_complete before fuel, Ty.BoundedBy.int⟩
+
+def boundedSynthSomething_complete
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {q : InferenceBase.FreshSupply}
+    {S : Subst} {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state) (fuel : Nat) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path .something state)
+      { q with nextTy := q.nextTy + 1 } S ledger
+      (.matcher .any (.var q.nextTy)) := by
+  refine ⟨inferExprFuel_something_complete before fuel,
+    Ty.BoundedBy.matcherOf ?_ ?_⟩
+  · intro varId membership
+    simp [Cap.fcv] at membership
+  · exact Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)
+
+def boundedSynthLam_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String} {bodyExpr : Expr}
+    {bodyTarget : Ty} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger' : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (bodyRun : BoundedSynthRunCompletion
+      (before.afterVisitFreshTy .exprLam path
+        (freshOrigin .expression path "lambda-domain"))
+      (inferExprFuel fuel signature
+        ((name, Scheme.mono (.var q.nextTy)) :: context)
+        (selfEnv.erase name) (0 :: path) bodyExpr
+        ((visit state .exprLam path).freshTy
+          (freshOrigin .expression path "lambda-domain")).2)
+      q' S' ledger' bodyTarget)
+    (domainBounded : Ty.BoundedBy q' (.var q.nextTy)) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.lam name bodyExpr) state) q' S' ledger'
+      (.fn (.var q.nextTy) bodyTarget) :=
+  ⟨inferExprFuel_lam_complete before bodyRun.run,
+    Ty.BoundedBy.fnOf domainBounded bodyRun.rawTargetBounded⟩
+
+def boundedSynthTuple_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expressions : List Expr}
+    {targets : List Ty} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger' : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children : BoundedSynthsRunCompletion
+      (before.afterVisit .exprTuple path)
+      (inferExprsFuel fuel signature context selfEnv path 0 expressions
+        (visit state .exprTuple path)) q' S' ledger' targets) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.tuple expressions) state) q' S' ledger' (.prod targets) :=
+  ⟨inferExprFuel_tuple_complete before children.run,
+    Ty.BoundedBy.prodOfForall children.rawTargetsBounded⟩
+
 /-- Compose the `DDCheckOrigin.mk` boundary once the recursive synthesis run
 has supplied its raw executable target and its syntactic bound.  Solver
 success and expected-coercion selection remain internal to the generic
