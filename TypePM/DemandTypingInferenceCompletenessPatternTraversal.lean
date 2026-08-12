@@ -1175,6 +1175,224 @@ noncomputable def dpatTuple_complete
   simp only [childrenRun.success]
   rfl
 
+noncomputable def ppatCtor_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath) (name : String)
+    (patterns : List PPat) {entry : PatternCtorScheme signature.observability}
+    (lookup : signature.findPatternCtor name = some entry)
+    (closed : signature.SchemesClosed)
+    {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger
+      (DDLedger.markCtorInstance ledger q entry.scheme) S
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.2
+      expectedTarget S₁)
+    {q' : InferenceBase.FreshSupply} {holes : List Dual}
+    {bindings : MonoCtx}
+    (children :
+      let instantiation := instantiateCtorInState_complete before entry.scheme
+      ∀ alignment : StateRunCompletion instantiation.correspondence
+          (alignTypes (instantiateCtorInState state entry.scheme).2
+            (freshOrigin .primitivePattern path "pp-constructor-result")
+            (instantiateCtorInState state entry.scheme).1.2 expectedTarget)
+          (InferenceBase.instantiateCtorScheme q entry.scheme).supply S₁
+          (DDLedger.markCtorInstance ledger q entry.scheme),
+        PPatsRunCompletion alignment.completion
+          (inferPPatsFuel fuel signature path 0 patterns
+            (instantiateCtorInState state entry.scheme).1.1 alignment.result)
+          q' S' ledger₂
+          (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 holes
+          bindings) :
+    PPatRunCompletion before
+      (inferPPatFuel (fuel + 1) signature path (.ctor name patterns)
+        expectedTarget state)
+      q' S'
+      (DDLedger.freezeExport ledger₂ S'
+        (freshCapImages q entry.scheme.capBinders)
+        (capabilityExportPayload (holes.map Dual.cap)
+          (holes.map Dual.target ++
+            expectedTarget :: bindings.map fun item => item.2)))
+      expectedTarget holes bindings := by
+  let instantiation := instantiateCtorInState_complete before entry.scheme
+  let instBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.patternCtors lookup).boundedBy)
+  let supplyExtension := SupplyExtends.instantiateCtorScheme q entry.scheme
+  let alignment := ddAlignTypesWithLedger_complete
+    (origin := freshOrigin .primitivePattern path "pp-constructor-result")
+    instantiation.correspondence instantiation.target
+    (instantiation.transition.transportTy
+      (before.prevailing.sameTarget expectedTarget))
+    instBounded.2 (expectedBounded.mono supplyExtension)
+    (by simpa [Inference.instantiateCtorInState, before.supply_eq] using
+      instBounded.2)
+    (expectedBounded.mono supplyExtension) aligned
+  let childrenRun := children alignment
+  let capImages := freshCapImages q entry.scheme.capBinders
+  let executableHoles := childrenRun.result.holes
+  let executableBindings := childrenRun.result.bindings
+  let declarativePayload := capabilityExportPayload (holes.map Dual.cap)
+    (holes.map Dual.target ++
+      expectedTarget :: bindings.map fun item => item.2)
+  let executablePayload := capabilityExportPayload
+    (executableHoles.map Dual.cap)
+    (executableHoles.map Dual.target ++
+      expectedTarget :: executableBindings.map fun item => item.2)
+  let payloadRelated :=
+    DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.exportPayload
+      (target := expectedTarget) childrenRun.holes childrenRun.bindings
+  let frozen :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelated
+      childrenRun.completion capImages payloadRelated
+  let freezeExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
+      childrenRun.completion capImages payloadRelated
+  let visited := frozen.visit .ppatCtor path
+  let event := TraceEvent.inferredPPat (.ctor name patterns) expectedTarget
+    executableHoles executableBindings path
+  let final := visited.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let visitExtension := frozen.visitExtension .ppatCtor path
+  let eventExtension := visitExtension.after.recordEventExtension event
+  let finishExtension := freezeExtension.seq
+    (visitExtension.seq eventExtension)
+  let transition := (((instantiation.transition.seq alignment.transition).seq
+    childrenRun.transition).seq freezeExtension).seq
+      (visitExtension.seq eventExtension)
+  refine
+    { result := ⟨expectedTarget, executableHoles, executableBindings,
+        (visit (childrenRun.result.state.freezeCapabilityExport capImages
+          executablePayload) .ppatCtor path).recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      target := transition.after.sameTarget expectedTarget
+      holes :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          finishExtension childrenRun.holes
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          finishExtension childrenRun.bindings }
+  simp only [inferPPatFuel]
+  rw [lookup]
+  simp only
+  simp only [alignment.success]
+  simp only [childrenRun.success]
+  simp [capImages, executablePayload, executableHoles, executableBindings,
+    before.supply_eq, event]
+
+noncomputable def ppatTuple_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
+    (patterns : List PPat)
+    {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger ledger S
+      (.prod (freshTargetsSupply patterns.length q).1) expectedTarget S₁)
+    {q' : InferenceBase.FreshSupply} {holes : List Dual}
+    {bindings : MonoCtx}
+    (children :
+      let fresh := freshTargets_complete before
+        (freshOrigin .primitivePattern path "pp-tuple-field") patterns.length
+      ∀ alignment : StateRunCompletion fresh.state
+          (alignTypes (freshTargets state
+              (freshOrigin .primitivePattern path "pp-tuple-field")
+              patterns.length).2
+            (freshOrigin .primitivePattern path "pp-tuple-result")
+            (.prod (freshTargets state
+              (freshOrigin .primitivePattern path "pp-tuple-field")
+              patterns.length).1)
+            expectedTarget)
+          (freshTargetsSupply patterns.length q).2 S₁ ledger,
+        PPatsRunCompletion alignment.completion
+          (inferPPatsFuel fuel signature path 0 patterns
+            (freshTargets state
+              (freshOrigin .primitivePattern path "pp-tuple-field")
+              patterns.length).1 alignment.result)
+          q' S' ledger₂ (freshTargetsSupply patterns.length q).1 holes
+          bindings) :
+    PPatRunCompletion before
+      (inferPPatFuel (fuel + 1) signature path (.tuple patterns)
+        expectedTarget state)
+      q' S' ledger₂ expectedTarget holes bindings := by
+  let fieldOrigin := freshOrigin .primitivePattern path "pp-tuple-field"
+  let resultOrigin := freshOrigin .primitivePattern path "pp-tuple-result"
+  let fresh := freshTargets_complete before fieldOrigin patterns.length
+  let supplyExtension := SupplyExtends.freshTargets patterns.length q
+  have declarativeProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargetsSupply patterns.length q).1) :=
+    Ty.BoundedBy.prodOfForall
+      (freshTargetsSupply_boundedBy patterns.length q)
+  have executableProductRelated : TyBisimulation fresh.state.prevailing
+      (.prod (freshTargetsSupply patterns.length q).1)
+      (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact fresh.state.prevailing.sameTarget _
+  have executableProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact declarativeProductBounded
+  let alignment := ddAlignTypesWithLedger_complete
+    (origin := resultOrigin) fresh.state executableProductRelated
+    (fresh.state.prevailing.sameTarget expectedTarget)
+    declarativeProductBounded (expectedBounded.mono supplyExtension)
+    executableProductBounded (expectedBounded.mono supplyExtension) aligned
+  let childrenRun := children alignment
+  let executableHoles := childrenRun.result.holes
+  let executableBindings := childrenRun.result.bindings
+  let event := TraceEvent.inferredPPat (.tuple patterns) expectedTarget
+    executableHoles executableBindings path
+  let visited := childrenRun.completion.visit .ppatTuple path
+  let final := visited.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let visitExtension := childrenRun.completion.visitExtension .ppatTuple path
+  let eventExtension := visitExtension.after.recordEventExtension event
+  let finishExtension := visitExtension.seq eventExtension
+  let transition := ((fresh.extension.seq alignment.transition).seq
+    childrenRun.transition).seq finishExtension
+  refine
+    { result := ⟨expectedTarget, executableHoles, executableBindings,
+        (visit childrenRun.result.state .ppatTuple path).recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      target := transition.after.sameTarget expectedTarget
+      holes :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          finishExtension childrenRun.holes
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          finishExtension childrenRun.bindings }
+  simp only [inferPPatFuel]
+  have alignmentSuccess := alignment.success
+  dsimp [fieldOrigin, resultOrigin] at alignmentSuccess
+  simp only [alignmentSuccess]
+  simp only [childrenRun.success]
+  rfl
+
 def ppatWild_complete
     (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
     {q : InferenceBase.FreshSupply} {S : Subst}
