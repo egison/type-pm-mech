@@ -1,6 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessPrimitivePatternCertified
 import TypePM.DemandTypingInferenceCompletenessMatcherDPat
-import TypePM.DemandTypingInferenceCompletenessMatcherPPat
 
 /-!
 # Validator-certified matcher-clause composition
@@ -15,6 +14,7 @@ namespace TypePM
 namespace DemandTypingInferenceCompletenessMatcherClauseCertified
 
 open Inference
+open DemandTypingInferenceCompletenessFuel
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessStateMutual
@@ -153,6 +153,176 @@ theorem checksOrigin_complete_certified_below
                   tailAdequate)
               exact ⟨⟨checkExprsFuel_cons_complete before headRun.run tailRun.run,
                 headRun.validation.trans tailRun.validation⟩⟩
+termination_by fuel
+
+/-! ## Certified matcher arms -/
+
+/-- Reconstruct matcher arms while retaining the validator chronology of each
+data pattern, body check, and suffix. -/
+theorem armsOrigin_complete_certified_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    {context : Context} {selfEnv : SelfEnv}
+    {ppBindings executablePPBindings : MonoCtx}
+    {parent : SyntaxPath} {index : Nat} {arms : List Arm}
+    {declarativeClauseTarget declarativeBodyTarget : Ty}
+    {executableClauseTarget executableBodyTarget : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (checkBelow : CertifiedMatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (ppRelated : MonoCtxBisimulation before.prevailing ppBindings
+      executablePPBindings)
+    (clauseTargetRelated : TyBisimulation before.prevailing
+      declarativeClauseTarget executableClauseTarget)
+    (bodyTargetRelated : TyBisimulation before.prevailing
+      declarativeBodyTarget executableBodyTarget)
+    (contextBounded : context.BoundedBy q)
+    (ppBounded : ppBindings.BoundedBy q)
+    (executablePPBounded : executablePPBindings.BoundedBy q)
+    (clauseTargetBounded : declarativeClauseTarget.BoundedBy q)
+    (bodyTargetBounded : declarativeBodyTarget.BoundedBy q)
+    (executableClauseTargetBounded : executableClauseTarget.BoundedBy q)
+    (executableBodyTargetBounded : executableBodyTarget.BoundedBy q)
+    {raw : DDArms signature q S context ppBindings arms
+      declarativeClauseTarget declarativeBodyTarget q' S'}
+    {origin : DDArmsOrigin signature raw ledger ledger'}
+    (audit : DDArmsTerminalAudit terminal signature origin)
+    (adequate : MatcherArmsBudgetAdequate fuel arms) :
+    Nonempty (CertifiedStateRunCompletion terminal signature before
+      (checkArmsFuel fuel signature context selfEnv executablePPBindings
+        parent index arms executableClauseTarget executableBodyTarget state)
+      q' S' ledger') := by
+  cases fuel with
+  | zero => simp [MatcherArmsBudgetAdequate] at adequate
+  | succ fuel =>
+      cases audit with
+      | nil =>
+          exact ⟨⟨checkArmsFuel_nil_complete fuel signature context selfEnv
+            executablePPBindings parent index executableClauseTarget
+            executableBodyTarget before,
+            ValidatorRunExtension.refl terminal signature state⟩⟩
+      | cons bodyAudit tailAudit =>
+          rename_i q₁ S₁ armBindings body q₂ S₂ ledger₁ ledger₂ arms
+            dataPattern disjoint patternRaw bodyRaw bodyOrigin tailRaw
+            patternOrigin tailOrigin
+          have dataAdequate : DPatAdequate fuel dataPattern := by
+            simp only [MatcherArmsBudgetAdequate, armListTraversalFuel,
+              armTraversalFuel, DPatAdequate] at adequate ⊢
+            omega
+          have bodyAdequate : MatcherCheckBudgetAdequate fuel body := by
+            simp only [MatcherArmsBudgetAdequate, MatcherCheckBudgetAdequate,
+              armListTraversalFuel, armTraversalFuel] at adequate ⊢
+            omega
+          have tailAdequate : MatcherArmsBudgetAdequate fuel arms := by
+            simp only [MatcherArmsBudgetAdequate, armListTraversalFuel,
+              armTraversalFuel] at adequate ⊢
+            omega
+          let dataRun := Classical.choice
+            (dpatComplete (path := 0 :: index :: parent)
+              patternRaw patternOrigin before clauseTargetRelated
+              clauseTargetBounded executableClauseTargetBounded dataAdequate)
+          have signatureBelowState : SignatureVarsBelow state.supply
+              signature := by
+            rw [before.supply_eq]
+            exact signatureBelow
+          have executableClauseTargetBoundedState :
+              executableClauseTarget.BoundedBy state.supply := by
+            rw [before.supply_eq]
+            exact executableClauseTargetBounded
+          let dataValidation := inferDPatFuel_validation
+            (terminal := terminal) closed signatureBelowState
+            executableClauseTargetBoundedState dataRun.run.success
+          have ppAtData : MonoCtxBisimulation dataRun.run.transition.after
+              ppBindings executablePPBindings :=
+            BisimulationExtension.transportMonoCtx dataRun.run.transition
+              ppRelated
+          let bodyContexts := ContextBisimulation.append
+            (ContextBisimulation.append dataRun.run.bindings.toContext
+              ppAtData.toContext)
+            (ContextBisimulation.same dataRun.run.transition.after context)
+          obtain ⟨_, armBindingsBounded⟩ :=
+            patternOrigin.erase.boundedBy closed before.declarative_bounded
+              clauseTargetBounded
+          have bodyContextBounded :
+              (armBindings.toContext ++ ppBindings.toContext ++ context).BoundedBy
+                q₁ :=
+            Context.BoundedBy.append
+              (Context.BoundedBy.append armBindingsBounded.toContext
+                (ppBounded.mono
+                  patternOrigin.erase.supplyExtends).toContext)
+              (contextBounded.mono patternOrigin.erase.supplyExtends)
+          have bodyExecutableContextBounded :
+              (dataRun.run.result.bindings.toContext ++
+                executablePPBindings.toContext ++ context).BoundedBy q₁ :=
+            Context.BoundedBy.append
+              (Context.BoundedBy.append dataRun.rawBindingsBounded.toContext
+                (executablePPBounded.mono
+                  patternOrigin.erase.supplyExtends).toContext)
+              (contextBounded.mono patternOrigin.erase.supplyExtends)
+          have bodyExpectedBounded : declarativeBodyTarget.BoundedBy q₁ :=
+            bodyTargetBounded.mono patternOrigin.erase.supplyExtends
+          let bodyRun := Classical.choice
+            (checkBelow (Nat.lt_succ_self fuel)
+              (selfEnv := selfEnv.eraseMany
+                (executablePPBindings.names ++
+                  dataRun.run.result.bindings.names))
+              (path := 1 :: index :: parent) dataRun.run.completion
+              (signatureBelow.mono patternOrigin.erase.supplyExtends)
+              bodyContexts
+              (dataRun.run.transition.transportTy bodyTargetRelated)
+              bodyContextBounded bodyExecutableContextBounded
+              bodyExpectedBounded
+              (executableBodyTargetBounded.mono
+                patternOrigin.erase.supplyExtends)
+              bodyAudit bodyAdequate)
+          let prefixExtension := patternOrigin.erase.supplyExtends.trans
+            bodyOrigin.erase.supplyExtends
+          have tailContextBounded : context.BoundedBy q₂ :=
+            contextBounded.mono prefixExtension
+          have tailPPBounded : ppBindings.BoundedBy q₂ :=
+            ppBounded.mono prefixExtension
+          have tailExecutablePPBounded : executablePPBindings.BoundedBy q₂ :=
+            executablePPBounded.mono prefixExtension
+          have tailClauseBounded : declarativeClauseTarget.BoundedBy q₂ :=
+            clauseTargetBounded.mono prefixExtension
+          have tailBodyBounded : declarativeBodyTarget.BoundedBy q₂ :=
+            bodyTargetBounded.mono prefixExtension
+          have tailExecutableClauseBounded :
+              executableClauseTarget.BoundedBy q₂ :=
+            executableClauseTargetBounded.mono prefixExtension
+          have tailExecutableBodyBounded :
+              executableBodyTarget.BoundedBy q₂ :=
+            executableBodyTargetBounded.mono prefixExtension
+          have ppAtBody : MonoCtxBisimulation bodyRun.run.transition.after
+              ppBindings executablePPBindings :=
+            BisimulationExtension.transportMonoCtx
+              (dataRun.run.transition.seq bodyRun.run.transition) ppRelated
+          let tailRun := Classical.choice
+            (armsOrigin_complete_certified_below closed dpatComplete fuel
+              checkBelow.lower
+              (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+              bodyRun.run.completion
+              (signatureBelow.mono prefixExtension) ppAtBody
+              ((dataRun.run.transition.seq bodyRun.run.transition).transportTy
+                clauseTargetRelated)
+              ((dataRun.run.transition.seq bodyRun.run.transition).transportTy
+                bodyTargetRelated)
+              tailContextBounded tailPPBounded tailExecutablePPBounded
+              tailClauseBounded tailBodyBounded tailExecutableClauseBounded
+              tailExecutableBodyBounded (origin := tailOrigin)
+              tailAudit tailAdequate)
+          exact ⟨⟨checkArmsFuel_cons_complete
+            (executableClauseTarget := executableClauseTarget)
+            (executableBodyTarget := executableBodyTarget)
+            (clauseTarget := declarativeClauseTarget)
+            (bodyTarget := declarativeBodyTarget)
+            before ppRelated dataRun.run disjoint bodyRun.run tailRun.run,
+            dataValidation.trans
+              (bodyRun.validation.trans tailRun.validation)⟩⟩
 termination_by fuel
 
 /-! ## One clause -/
