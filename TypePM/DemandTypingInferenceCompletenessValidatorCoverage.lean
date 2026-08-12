@@ -83,6 +83,7 @@ general be transported from a proof stated only at the current prefix. -/
 def OpenOrdinaryValidatorEventCoverage
     (signature : FrozenSig) (initial : InferState) : Prop :=
   ∀ terminal, initial.HistoryPrefix terminal →
+    ProtectedProducerTrace terminal →
     ∀ event, event ∈ initial.trace.events →
       OrdinaryValidatorEventCondition signature terminal event
 
@@ -90,18 +91,20 @@ def OpenOrdinaryValidatorEventCoverage
 theorem OpenOrdinaryValidatorEventCoverage.empty
     (signature : FrozenSig) (supply : InferenceBase.FreshSupply) :
     OpenOrdinaryValidatorEventCoverage signature (InferState.empty supply) := by
-  intro terminal history event membership
+  intro terminal history producerSafe event membership
   simp [InferState.empty] at membership
 
 /-- At the root terminal cut, open coverage yields exactly the three ordinary
 coverage packages consumed by validator completeness. -/
 theorem OpenOrdinaryValidatorEventCoverage.atTerminal
     {signature : FrozenSig} {state : InferState}
-    (coverage : OpenOrdinaryValidatorEventCoverage signature state) :
+    (coverage : OpenOrdinaryValidatorEventCoverage signature state)
+    (producerSafe : ProtectedProducerTrace state) :
     TraversalValidatorEventCoverage signature state ∧
       TraceTypeAlignmentConditions state ∧
       TraceDualAlignmentConditions state := by
   have terminal := coverage state (InferState.HistoryPrefix.refl state)
+    producerSafe
   refine ⟨?_, ?_, ?_⟩
   · intro event membership
     exact (terminal event membership).traversal
@@ -122,12 +125,13 @@ theorem OpenOrdinaryValidatorEventCoverage.transportExtension
     (newEvents : ∀ event,
       event ∈ later.trace.events → event ∉ earlier.trace.events →
       ∀ terminal, later.HistoryPrefix terminal →
+        ProtectedProducerTrace terminal →
         OrdinaryValidatorEventCondition signature terminal event) :
     OpenOrdinaryValidatorEventCoverage signature later := by
-  intro terminal suffix event membership
+  intro terminal suffix producerSafe event membership
   by_cases previous : event ∈ earlier.trace.events
-  · exact before terminal (history.trans suffix) event previous
-  · exact newEvents event membership previous terminal suffix
+  · exact before terminal (history.trans suffix) producerSafe event previous
+  · exact newEvents event membership previous terminal suffix producerSafe
 
 /-- Solver/allocation updates that emit no event transport open coverage
 without any additional semantic premise. -/
@@ -138,7 +142,7 @@ theorem OpenOrdinaryValidatorEventCoverage.transportNoEvents
     (eventsEq : later.trace.events = earlier.trace.events) :
     OpenOrdinaryValidatorEventCoverage signature later := by
   apply before.transportExtension history
-  intro event membership previous
+  intro event membership previous terminal suffix producerSafe
   exfalso
   apply previous
   simpa [eventsEq] using membership
@@ -151,18 +155,97 @@ theorem OpenOrdinaryValidatorEventCoverage.recordEvent
     (before : OpenOrdinaryValidatorEventCoverage signature state)
     (latest : ∀ terminal,
       (state.recordEvent event).HistoryPrefix terminal →
+        ProtectedProducerTrace terminal →
         OrdinaryValidatorEventCondition signature terminal event) :
     OpenOrdinaryValidatorEventCoverage signature
       (state.recordEvent event) := by
-  intro terminal suffix candidate membership
+  intro terminal suffix producerSafe candidate membership
   simp only [InferState.recordEvent, List.mem_append,
     List.mem_singleton] at membership
   rcases membership with previous | newest
   · exact before terminal
       ((state.historyPrefix_recordEvent event).trans suffix)
-      candidate previous
+      producerSafe candidate previous
   · subst candidate
-    exact latest terminal suffix
+    exact latest terminal suffix producerSafe
+
+/-! ## Composable successful-traversal certificates -/
+
+/-- The validator-relevant content of one successful executable traversal.
+It records append-only history and justifies precisely the event values added
+by the traversal, uniformly at every later safe terminal cut.  Each of the
+mutually recursive executable families can return this certificate alongside
+its ordinary result without mentioning the final root validator. -/
+structure OrdinaryValidatorHistoryExtension
+    (signature : FrozenSig) (earlier later : InferState) : Prop where
+  history : earlier.HistoryPrefix later
+  newEvents : ∀ event,
+    event ∈ later.trace.events → event ∉ earlier.trace.events →
+    ∀ terminal, later.HistoryPrefix terminal →
+      ProtectedProducerTrace terminal →
+      OrdinaryValidatorEventCondition signature terminal event
+
+/-- A traversal which does not change state contributes no event. -/
+theorem OrdinaryValidatorHistoryExtension.refl
+    (signature : FrozenSig) (state : InferState) :
+    OrdinaryValidatorHistoryExtension signature state state := by
+  refine ⟨InferState.HistoryPrefix.refl state, ?_⟩
+  intro event membership previous
+  exact False.elim (previous membership)
+
+/-- Chronological successful traversals compose.  The set-difference form of
+`newEvents` also handles duplicate event values: a duplicate already covered
+by the first traversal needs no second witness. -/
+theorem OrdinaryValidatorHistoryExtension.trans
+    {signature : FrozenSig} {first middle last : InferState}
+    (front : OrdinaryValidatorHistoryExtension signature first middle)
+    (back : OrdinaryValidatorHistoryExtension signature middle last) :
+    OrdinaryValidatorHistoryExtension signature first last := by
+  refine ⟨front.history.trans back.history, ?_⟩
+  intro event finalMembership notFirst terminal suffix producerSafe
+  by_cases inMiddle : event ∈ middle.trace.events
+  · exact front.newEvents event inMiddle notFirst terminal
+      (back.history.trans suffix) producerSafe
+  · exact back.newEvents event finalMembership inMiddle terminal suffix
+      producerSafe
+
+/-- A completed traversal certificate advances any open prefix invariant. -/
+theorem OrdinaryValidatorHistoryExtension.applyCoverage
+    {signature : FrozenSig} {earlier later : InferState}
+    (extension : OrdinaryValidatorHistoryExtension signature earlier later)
+    (before : OpenOrdinaryValidatorEventCoverage signature earlier) :
+    OpenOrdinaryValidatorEventCoverage signature later :=
+  before.transportExtension extension.history extension.newEvents
+
+/-- Package an event-free history extension. -/
+theorem OrdinaryValidatorHistoryExtension.ofNoEvents
+    {signature : FrozenSig} {earlier later : InferState}
+    (history : earlier.HistoryPrefix later)
+    (eventsEq : later.trace.events = earlier.trace.events) :
+    OrdinaryValidatorHistoryExtension signature earlier later := by
+  refine ⟨history, ?_⟩
+  intro event membership previous
+  exfalso
+  apply previous
+  simpa [eventsEq] using membership
+
+/-- Package one explicit event append. -/
+theorem OrdinaryValidatorHistoryExtension.recordEvent
+    {signature : FrozenSig} {state : InferState} {event : TraceEvent}
+    (latest : ∀ terminal,
+      (state.recordEvent event).HistoryPrefix terminal →
+      ProtectedProducerTrace terminal →
+      OrdinaryValidatorEventCondition signature terminal event) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.recordEvent event) := by
+  refine ⟨state.historyPrefix_recordEvent event, ?_⟩
+  intro candidate membership previous terminal suffix producerSafe
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    exact latest terminal suffix producerSafe
 
 /-- Bundle the two independent recursion products needed at the final root:
 ordinary coverage from executable traversal and sensitive coverage from the
@@ -176,12 +259,14 @@ structure RootValidatorEventCoverage
 existing validator assembly theorem. -/
 theorem RootValidatorEventCoverage.atTerminal
     {terminal : Subst} {signature : FrozenSig} {state : InferState}
-    (coverage : RootValidatorEventCoverage terminal signature state) :
+    (coverage : RootValidatorEventCoverage terminal signature state)
+    (producerSafe : ProtectedProducerTrace state) :
     TraversalValidatorEventCoverage signature state ∧
       TerminalAuditEventCoverage terminal signature state ∧
       TraceTypeAlignmentConditions state ∧
       TraceDualAlignmentConditions state := by
-  obtain ⟨traversal, types, duals⟩ := coverage.ordinary.atTerminal
+  obtain ⟨traversal, types, duals⟩ :=
+    coverage.ordinary.atTerminal producerSafe
   exact ⟨traversal, coverage.sensitive, types, duals⟩
 
 end Reconstruction
