@@ -83,10 +83,10 @@ proof.
 inductive Step (signature : FrozenSig) (context : Context) (expression : Expr) :
     Ty -> Ty -> Type where
   | matcherToSlot
-      {producerCap producerTarget consumerCap consumerTarget bindings C T post} :
+      {producerCap producerTarget consumerCap consumerTarget bindings C T}
+      {post : Subst} :
       MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T ->
-      VariablePost post ->
       Step signature context expression
         (.matcher ((producerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply producerTarget)))
@@ -110,7 +110,7 @@ def Step.kind
     {source target : Ty}
     (step : Step signature context expression source target) : Kind :=
   match step with
-  | .matcherToSlot _ _ => .matcherToSlot
+  | .matcherToSlot _ => .matcherToSlot
   | .productMatcher => .productMatcher
   | .slotTuple _ => .slotTuple
 
@@ -146,7 +146,7 @@ def Step.toCoercionPlan
     (step : Step signature context expression source target) :
     Elaboration.CoercionPlan signature context expression source target :=
   match step with
-  | .matcherToSlot raw post => .matcherToSlot raw post
+  | .matcherToSlot raw => .matcherToSlot raw
   | .productMatcher => .productMatcher
   | .slotTuple _ => .slotTuple
 
@@ -260,7 +260,7 @@ private theorem Spine.kinds_eq_endpointSpineKinds
   cases spine with
   | one step =>
       cases step with
-      | matcherToSlot _ _ => rfl
+      | matcherToSlot _ => rfl
       | @productMatcher duals => cases duals <;> rfl
       | @slotTuple duals nonempty =>
           cases duals with
@@ -401,16 +401,16 @@ theorem NormalPlan.eq_refl
 
 /--
 Canonicalize a certified surface slot-to-slot check as identity.  The raw
-certificate proves that the two fully substituted endpoints coincide;
-`VariablePost` is retained as an argument so this helper consumes exactly the
-evidence carried by `Elaboration.CoercionPlan.checkSlotToSlot`.
+certificate proves that the two fully substituted endpoints coincide under an
+arbitrary later substitution.
 -/
 def NormalPlan.ofSurfaceSlotToSlot
     {signature : FrozenSig} {context : Context} {expression : Expr}
-    {sourceCap sourceTarget requestedCap requestedTarget C T post}
+    {sourceCap sourceTarget requestedCap requestedTarget C T}
+    {post : Subst}
     (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
       requestedTarget C T)
-    (_postVariable : VariablePost post) :
+    :
     NormalPlan signature context expression
       (.slot ((sourceCap.apply C).apply post.cap)
         (post.apply ((Subst.mk C T).apply sourceTarget)))
@@ -437,7 +437,7 @@ def NormalPlan.comp
           cases firstSpine with
           | one firstStep =>
               cases firstStep with
-              | matcherToSlot _ _ =>
+              | matcherToSlot _ =>
                   exact False.elim (secondSpine.source_not_slot (by trivial))
               | @productMatcher duals =>
                   cases secondSpine with
@@ -471,7 +471,8 @@ def NormalPlan.emptySlotTuple
   apply Spine.productMatcherToSlot (duals := [])
   simpa [Cap.apply_id] using
     (Step.matcherToSlot (signature := signature) (context := context)
-      (expression := expression) emptyProductMatcherToSlotRaw VariablePost.id)
+      (expression := expression) (post := Subst.id)
+      emptyProductMatcherToSlotRaw)
 
 /-- Observable rule sequence, with identity represented by the empty list. -/
 def NormalPlan.kinds
@@ -550,10 +551,10 @@ theorem CoercionPlan.normalizable
     Nonempty (NormalPlan signature context expression source target) := by
   induction plan with
   | refl => exact ⟨.refl⟩
-  | matcherToSlot raw post =>
-      exact ⟨.coerce (.one (.matcherToSlot raw post))⟩
-  | checkSlotToSlot raw post =>
-      exact ⟨.ofSurfaceSlotToSlot raw post⟩
+  | matcherToSlot raw =>
+      exact ⟨.coerce (.one (.matcherToSlot raw))⟩
+  | checkSlotToSlot raw =>
+      exact ⟨.ofSurfaceSlotToSlot raw⟩
   | productMatcher =>
       exact ⟨.coerce (.one .productMatcher)⟩
   | @slotTuple duals =>

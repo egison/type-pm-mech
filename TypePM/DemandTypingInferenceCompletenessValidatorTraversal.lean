@@ -870,40 +870,16 @@ theorem slotEventCondition
 
 /-! ## Canonical slot suffix transport -/
 
-/-- On a target whose capability leaves remain variable-valued, the
-validator's canonical variable post agrees exactly with full suffix replay. -/
-theorem terminalVariableReplay_apply_eq_replay
-    {steps : List SolveStep} {target : Ty}
-    (capVariable : ∀ varId, varId ∈ target.fcv →
-      ∃ image, (replay steps).cap varId = .var image) :
-    (terminalVariableReplay steps).apply target =
-      (replay steps).apply target := by
-  apply Subst.apply_eq_of_free_agree
-  · intro varId membership
-    rcases capVariable varId membership with ⟨image, equation⟩
-    simp [terminalVariableReplay, terminalVariableCapCandidate, equation]
-  · intro varId _membership
-    rfl
-
 /-- The canonical slot witness for a matcher-to-slot step followed by an
-arbitrary solver suffix.  Only the capability leaves occurring after the
-coercion step must remain variable-valued; unrelated structural solves are
-discarded by `terminalVariableReplay`. -/
+arbitrary solver suffix.  The witness replays the complete suffix, including
+later structural specialization of capability metavariables. -/
 theorem canonicalSlotAlignment_matcherToSlot_suffix
     {step : SolveStep} {suffix : List SolveStep}
     {producerCap consumerCap : Cap}
     {producerTarget consumerTarget : Ty}
     (constraintEq : step.constraint = .producerToSlot producerCap
       producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed)
-    (producerVariables : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.matcher producerCap producerTarget)).fcv →
-        ∃ image, (replay suffix).cap varId = .var image)
-    (consumerVariables : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.slot consumerCap consumerTarget)).fcv →
-        ∃ image, (replay suffix).cap varId = .var image) :
+    (rangeFixed : step.delta.RangeFixed) :
     CanonicalSlotAlignmentAtTerminal [step] ([step] ++ suffix)
       (.matcher producerCap producerTarget)
       (.slot consumerCap consumerTarget) := by
@@ -911,34 +887,16 @@ theorem canonicalSlotAlignment_matcherToSlot_suffix
       (step := step) rfl rfl rfl constraintEq rangeFixed
   · simp only [List.cons_append, List.nil_append, applyDeltas,
       List.tail_cons]
-    calc
-      applyDeltas suffix
-          (step.delta.apply (.matcher producerCap producerTarget)) =
-        (replay suffix).apply
-          (step.delta.apply (.matcher producerCap producerTarget)) := by
-            have equation := replayFrom_apply Subst.id suffix
-              (step.delta.apply (.matcher producerCap producerTarget))
-            rw [Subst.apply_id] at equation
-            exact equation.symm
-      _ = (terminalVariableReplay suffix).apply
-          (step.delta.apply (.matcher producerCap producerTarget)) :=
-        (terminalVariableReplay_apply_eq_replay producerVariables).symm
-      _ = _ := by simp [Subst.apply_matcher]
+    have equation := replayFrom_apply Subst.id suffix
+      (step.delta.apply (.matcher producerCap producerTarget))
+    rw [Subst.apply_id] at equation
+    simpa only [Subst.apply_matcher, replay] using equation.symm
   · simp only [List.cons_append, List.nil_append, applyDeltas,
       List.tail_cons]
-    calc
-      applyDeltas suffix
-          (step.delta.apply (.slot consumerCap consumerTarget)) =
-        (replay suffix).apply
-          (step.delta.apply (.slot consumerCap consumerTarget)) := by
-            have equation := replayFrom_apply Subst.id suffix
-              (step.delta.apply (.slot consumerCap consumerTarget))
-            rw [Subst.apply_id] at equation
-            exact equation.symm
-      _ = (terminalVariableReplay suffix).apply
-          (step.delta.apply (.slot consumerCap consumerTarget)) :=
-        (terminalVariableReplay_apply_eq_replay consumerVariables).symm
-      _ = _ := by simp [Subst.apply_slot]
+    have equation := replayFrom_apply Subst.id suffix
+      (step.delta.apply (.slot consumerCap consumerTarget))
+    rw [Subst.apply_id] at equation
+    simpa only [Subst.apply_slot, replay] using equation.symm
 
 /-- Package a terminal equality as the exact event condition consumed by the
 slot validator. -/
@@ -956,8 +914,8 @@ theorem canonicalSlotEventCondition_equal
     CanonicalSlotAlignmentAtTerminal.equal aligned⟩
 
 /-- Package the one-step matcher-to-slot transport above at concrete trace
-indices.  Slice identification and variable-image safety are the only facts
-the surrounding traversal must provide. -/
+indices.  The surrounding traversal need only identify the local step and the
+remaining suffix. -/
 theorem canonicalSlotEventCondition_matcherToSlot
     {state : InferState} {start stop : Nat} {step : SolveStep}
     {suffix : List SolveStep} {producerCap consumerCap : Cap}
@@ -970,121 +928,13 @@ theorem canonicalSlotEventCondition_matcherToSlot
         [step] ++ suffix)
     (constraintEq : step.constraint = .producerToSlot producerCap
       producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed)
-    (producerVariables : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.matcher producerCap producerTarget)).fcv →
-        ∃ image, (replay suffix).cap varId = .var image)
-    (consumerVariables : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.slot consumerCap consumerTarget)).fcv →
-        ∃ image, (replay suffix).cap varId = .var image) :
+    (rangeFixed : step.delta.RangeFixed) :
     CanonicalSlotEventCondition state
       (.slotAlignment start stop (.matcher producerCap producerTarget)
         (.slot consumerCap consumerTarget)) := by
   refine ⟨startStop, stopBound, ?_⟩
   rw [localSlice, terminalSlice]
   exact canonicalSlotAlignment_matcherToSlot_suffix constraintEq rangeFixed
-    producerVariables consumerVariables
-
-/-- A variable fixed at a local solved cut has the same image under the
-chronological suffix replay as under the final prevailing substitution. -/
-theorem finalCap_eq_suffixReplay_of_fixed
-    {localState terminal : InferState}
-    {suffix : List SolveStep}
-    (solves : terminal.trace.solves = localState.trace.solves ++ suffix)
-    {varId : CapVar}
-    (fixed : localState.prevailing.cap varId = .var varId) :
-    terminal.prevailing.cap varId = (replay suffix).cap varId := by
-  have localApplied : localState.prevailing.apply
-      (.matcher (.var varId) .unit) = .matcher (.var varId) .unit := by
-    simp only [Subst.apply_matcher, Subst.apply_unit]
-    exact congrArg (fun capability => Ty.matcher capability .unit) fixed
-  have terminalEquation := replayFrom_apply localState.prevailing suffix
-    (.matcher (.var varId) .unit)
-  have suffixEquation := replayFrom_apply Subst.id suffix
-    (.matcher (.var varId) .unit)
-  rw [localApplied] at terminalEquation
-  rw [Subst.apply_id] at suffixEquation
-  have prevailingEq : terminal.prevailing =
-      replayFrom localState.prevailing suffix := by
-    simp only [InferState.prevailing, replay]
-    rw [solves, replayFrom_append]
-  rw [← prevailingEq] at terminalEquation
-  exact (Ty.matcher.inj (terminalEquation.trans suffixEquation.symm)).1
-
-/-- Protected local leaves are variable-valued under the exact later solver
-suffix.  This bridges the whole-run producer invariant to the suffix-local
-witness required by one slot event. -/
-theorem InferState.StateExtension.suffixCap_variable_of_protected
-    {localState terminal : InferState}
-    (extension : localState.StateExtension terminal)
-    (terminalSafe : ProtectedProducerTrace terminal)
-    {suffix : List SolveStep}
-    (solves : terminal.trace.solves = localState.trace.solves ++ suffix)
-    {varId : CapVar}
-    (fixed : localState.prevailing.cap varId = .var varId)
-    (protectedAtLocal : varId ∈ localState.protectedCaps) :
-    ∃ image, (replay suffix).cap varId = .var image := by
-  have protectedAtTerminal := extension.protectedCaps varId protectedAtLocal
-  rcases terminalSafe varId protectedAtTerminal with
-    ⟨image, terminalEquation, _safe⟩
-  refine ⟨image, ?_⟩
-  rw [← finalCap_eq_suffixReplay_of_fixed solves fixed]
-  simpa [InferState.prevailing] using terminalEquation
-
-/-- Whole-run bridge for the matcher-to-slot event.  The local target leaves
-must already be protected at the coercion output; solved-form idempotence then
-makes them fixed at that cut, and the final protected-producer trace supplies
-their exact variable images under the remaining suffix. -/
-theorem canonicalSlotEventCondition_matcherToSlot_of_extension
-    {localState terminal : InferState}
-    (extension : localState.StateExtension terminal)
-    (terminalSafe : ProtectedProducerTrace terminal)
-    {start stop : Nat} {step : SolveStep} {suffix : List SolveStep}
-    {producerCap consumerCap : Cap}
-    {producerTarget consumerTarget : Ty}
-    (startStop : start ≤ stop)
-    (stopBound : stop ≤ terminal.trace.solves.length)
-    (localSlice : solveSlice terminal.trace start stop = [step])
-    (terminalSlice :
-      solveSlice terminal.trace start terminal.trace.solves.length =
-        [step] ++ suffix)
-    (solves : terminal.trace.solves = localState.trace.solves ++ suffix)
-    (constraintEq : step.constraint = .producerToSlot producerCap
-      producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed)
-    (producerFixed : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.matcher producerCap producerTarget)).fcv →
-        localState.prevailing.cap varId = .var varId)
-    (consumerFixed : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.slot consumerCap consumerTarget)).fcv →
-        localState.prevailing.cap varId = .var varId)
-    (producerProtected : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.matcher producerCap producerTarget)).fcv →
-        varId ∈ localState.protectedCaps)
-    (consumerProtected : ∀ varId,
-      varId ∈ (step.delta.apply
-        (.slot consumerCap consumerTarget)).fcv →
-        varId ∈ localState.protectedCaps) :
-    CanonicalSlotEventCondition terminal
-      (.slotAlignment start stop (.matcher producerCap producerTarget)
-        (.slot consumerCap consumerTarget)) := by
-  apply canonicalSlotEventCondition_matcherToSlot startStop stopBound
-    localSlice terminalSlice constraintEq rangeFixed
-  · intro varId membership
-    apply InferState.StateExtension.suffixCap_variable_of_protected extension
-      terminalSafe solves
-    · exact producerFixed varId membership
-    · exact producerProtected varId membership
-  · intro varId membership
-    apply InferState.StateExtension.suffixCap_variable_of_protected extension
-      terminalSafe solves
-    · exact consumerFixed varId membership
-    · exact consumerProtected varId membership
 
 /-! ## Direct executable leaf branches -/
 

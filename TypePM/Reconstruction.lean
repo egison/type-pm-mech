@@ -85,25 +85,23 @@ inductive ExprDeriv (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
         (.matcher capability target)
   | coerceMatcherToSlot
       {context expression producerCap producerTarget consumerCap consumerTarget
-       bindings C T post} :
+       bindings C T} {post : Subst} :
       ExprDeriv signature context expression
         (.matcher ((producerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply producerTarget))) ->
       MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T ->
-      VariablePost post ->
       ExprDeriv signature context expression
         (.slot ((consumerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply consumerTarget)))
   | checkSlotToSlot
-      {context expression sourceCap sourceTarget requestedCap requestedTarget C T
-       post} :
+      {context expression sourceCap sourceTarget requestedCap requestedTarget}
+      {C : CapSubst} {T : TySubst} {post : Subst} :
       ExprDeriv signature context expression
         (.slot ((sourceCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply sourceTarget))) ->
       SlotToSlotRawCert sourceCap requestedCap sourceTarget requestedTarget
         C T ->
-      VariablePost post ->
       ExprDeriv signature context expression
         (.slot ((requestedCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply requestedTarget)))
@@ -1242,7 +1240,6 @@ inductive SlotAlignmentAtTerminal
       (deltaEq : step.delta = Subst.mk C T)
       (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T)
-      (postVariable : VariablePost post)
       (producerResult :
         applyDeltas terminalSteps inferred =
           post.apply (.matcher (producerCap.apply C)
@@ -1476,11 +1473,11 @@ private theorem recordedExpectedAlignment_deriv
       rw [← finalEq]
       exact sourceDerivation
   | matcherToSlot inferredEq requestedEq localEq constraintEq deltaEq raw
-      postVariable producerResult consumerResult =>
+      producerResult consumerResult =>
       rw [producerResult] at sourceDerivation
       have coerced := ExprDeriv.coerceMatcherToSlot
         (by simpa only [Subst.apply_matcher] using sourceDerivation)
-        raw postVariable
+        raw
       rw [requestedTerminal, consumerResult]
       simpa only [Subst.apply_slot] using coerced
 

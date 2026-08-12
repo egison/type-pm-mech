@@ -148,10 +148,10 @@ theorem CoercionPlan.toCoreTyping
     CoreTyping signature context expression target := by
   induction plan with
   | refl => exact typing
-  | matcherToSlot raw post =>
-      exact .coerceMatcherToSlot typing raw post
-  | checkSlotToSlot raw post =>
-      exact .checkSlotToSlot typing raw post
+  | matcherToSlot raw =>
+      exact .coerceMatcherToSlot typing raw
+  | checkSlotToSlot raw =>
+      exact .checkSlotToSlot typing raw
   | productMatcher => exact .coerceProductMatcher typing (Subst.apply_id _)
   | slotTuple => exact .coerceSlotTuple typing (Subst.apply_id _)
   | trans _ _ firstIH secondIH => exact secondIH (firstIH typing)
@@ -259,8 +259,8 @@ theorem CoreTyping.toCoreCheck
     | (rcases ‹CoreCheck signature _ _ _› with ⟨synthesis, plan⟩
        refine .intro synthesis (.trans plan ?_)
        first
-       | exact .matcherToSlot (by assumption) (by assumption)
-       | exact .checkSlotToSlot (by assumption) (by assumption)
+       | exact .matcherToSlot (by assumption)
+       | exact .checkSlotToSlot (by assumption)
        | exact .productMatcher
        | exact .slotTuple)
 

@@ -100,7 +100,8 @@ def pairProductToSlotNormalPlan
     (CanonicalCoercion.Step.matcherToSlot
       (signature := emptySignature) (context := context)
       (expression := .tuple [.something, .something])
-      concretePairMatcher_toSlot_raw VariablePost.id)
+      (post := Subst.id)
+      concretePairMatcher_toSlot_raw)
 
 @[simp] theorem pairProductToSlotNormalPlan_kinds
     (context : Context) :

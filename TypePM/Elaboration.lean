@@ -126,21 +126,19 @@ inductive CoercionPlan (signature : FrozenSig) :
       CoercionPlan signature context expression target target
   | matcherToSlot
       {context expression producerCap producerTarget consumerCap consumerTarget
-       bindings C T post} :
+       bindings C T} {post : Subst} :
       MatcherToSlotRawCert producerCap consumerCap producerTarget
         consumerTarget bindings C T ->
-      VariablePost post ->
       CoercionPlan signature context expression
         (.matcher ((producerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply producerTarget)))
         (.slot ((consumerCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply consumerTarget)))
   | checkSlotToSlot
-      {context expression sourceCap sourceTarget requestedCap requestedTarget C T
-       post} :
+      {context expression sourceCap sourceTarget requestedCap requestedTarget}
+      {C : CapSubst} {T : TySubst} {post : Subst} :
       SlotToSlotRawCert sourceCap requestedCap sourceTarget requestedTarget
         C T ->
-      VariablePost post ->
       CoercionPlan signature context expression
         (.slot ((sourceCap.apply C).apply post.cap)
           (post.apply ((Subst.mk C T).apply sourceTarget)))
@@ -179,10 +177,10 @@ theorem CoercionPlan.toRuntimeTyping
     RuntimeTyping signature context expression target := by
   induction plan with
   | refl => exact typing
-  | matcherToSlot raw post =>
+  | matcherToSlot raw =>
       rw [← raw.postTargetEquality _]
       exact .coerceMatcherToSlot typing (raw.postCapabilityDemand _)
-  | checkSlotToSlot raw post =>
+  | checkSlotToSlot raw =>
       rename_i sourceCap sourceTarget requestedCap requestedTarget C T postSubst
       change RuntimeTyping signature context expression
         (postSubst.apply ((Subst.mk C T).apply

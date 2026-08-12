@@ -15,38 +15,6 @@ namespace TypePM
 namespace Inference
 namespace Reconstruction
 
-/-! ## A variable-capability declarative view of a solver suffix -/
-
-/-- Retain a terminal capability image exactly when it is a variable; on an
-unrelated structurally specialized variable, use identity.  This projection
-accepts safe alpha-renaming while remaining globally variable-valued. -/
-def terminalVariableCapCandidate
-    (steps : List SolveStep) : CapSubst :=
-  fun varId =>
-    match (replay steps).cap varId with
-    | .var image => .var image
-    | _ => .var varId
-
-/-- Canonical variable-valued post selected by the finite slot checker.
-Target specialization is replayed completely; capability specialization is
-projected to its variable-valued fragment. -/
-def terminalVariableReplay (steps : List SolveStep) : Subst :=
-  Subst.mk (terminalVariableCapCandidate steps) (replay steps).target
-
-theorem terminalVariableReplay_variable (steps : List SolveStep) :
-    VariablePost (terminalVariableReplay steps) := by
-  constructor
-  intro varId
-  change ∃ image,
-    terminalVariableCapCandidate steps varId = .var image
-  unfold terminalVariableCapCandidate
-  cases equation : (replay steps).cap varId with
-  | var image => exact ⟨image, rfl⟩
-  | any => exact ⟨varId, rfl⟩
-  | skolem name => exact ⟨varId, rfl⟩
-  | con name children => exact ⟨varId, rfl⟩
-  | prod children => exact ⟨varId, rfl⟩
-
 /-! ## Terminal fresh-instance reconstruction -/
 
 /-- Binder-local capability candidate obtained by replaying the fresh image
@@ -396,8 +364,7 @@ private def slotAlignmentAtTerminalCheck
     match inferred, requested, localSteps with
     | .matcher producerCap producerTarget,
         .slot consumerCap consumerTarget, [step] =>
-        let suffix := terminalSteps.tail
-        let post := terminalVariableReplay suffix
+        let post := replay terminalSteps.tail
         match step.constraint with
         | .producerToSlot rawProducerCap rawProducerTarget rawConsumerCap
             rawConsumerTarget =>
@@ -421,9 +388,9 @@ private def slotAlignmentAtTerminalCheck
         | _ => false
     | _, _, _ => false
 
-/-- Exact terminal witness selected by the executable slot checker.  Unlike
-the reconstruction-facing `SlotAlignmentAtTerminal`, the coercion branch
-fixes its suffix witness to `terminalVariableReplay terminalSteps.tail`. -/
+/-- Exact terminal witness selected by the executable slot checker.  The
+coercion branch fixes its suffix witness to the full replay of the remaining
+solver interval. -/
 inductive CanonicalSlotAlignmentAtTerminal
     (localSteps terminalSteps : List SolveStep)
     (inferred requested : Ty) : Prop where
@@ -443,12 +410,12 @@ inductive CanonicalSlotAlignmentAtTerminal
       (rangeFixed : step.delta.RangeFixed)
       (producerResult :
         applyDeltas terminalSteps (.matcher producerCap producerTarget) =
-          (terminalVariableReplay terminalSteps.tail).apply
+          (replay terminalSteps.tail).apply
             (.matcher (producerCap.apply step.delta.cap)
               (step.delta.apply producerTarget)))
       (consumerResult :
         applyDeltas terminalSteps (.slot consumerCap consumerTarget) =
-          (terminalVariableReplay terminalSteps.tail).apply
+          (replay terminalSteps.tail).apply
             (.slot (consumerCap.apply step.delta.cap)
               (step.delta.apply consumerTarget))) :
       CanonicalSlotAlignmentAtTerminal localSteps terminalSteps inferred
@@ -537,16 +504,13 @@ private theorem slotAlignmentAtTerminalCheck_sound
                     subst rawProducerTarget
                     subst rawConsumerCap
                     subst rawConsumerTarget
-                    let suffix := terminalSteps.tail
-                    let post := terminalVariableReplay suffix
-                    have postVariable : VariablePost post :=
-                      terminalVariableReplay_variable suffix
+                    let post := replay terminalSteps.tail
                     have rangeFixed : step.delta.RangeFixed :=
                       rangeFixedOnCheck_sound step.targetSupport rangeChecked
                     rcases solveStep_producerToSlot_raw constraintForm
                         rangeFixed with ⟨bindings, raw⟩
                     exact .matcherToSlot rfl rfl rfl constraintForm rfl raw
-                      postVariable producerResult consumerResult
+                      producerResult consumerResult
 
 private def slotAlignmentEventCheck
     (state : InferState) : TraceEvent -> Bool
