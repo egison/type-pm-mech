@@ -16,6 +16,7 @@ namespace DemandTypingInferenceCompletenessValidationMain
 
 open Inference
 open Inference.Reconstruction
+open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessCertifiedRun
 
 /-- A solve-free expression leaf visits its node and records its result. -/
@@ -273,6 +274,234 @@ theorem synthMatcher
             binders facts).trans
             (ValidatorRunExtension.finishExpr terminal signature _
               (.matcher clauses) path (.matcher capability rawTarget)))))
+
+/-! ## Recursive and matching expressions -/
+
+/-- Non-matcher recursive binders use the canonical two-target placeholder
+allocation.  The body and result-alignment extensions are supplied by the
+global recursion at the exact intermediate cuts. -/
+theorem synthFix
+    {terminal : Subst} {signature : FrozenSig}
+    {initial bodyState alignedState : InferState} {path : SyntaxPath}
+    {self argument : String} {body : Expr} {bodyTarget : Ty}
+    (bodyRun :
+      let entered := visit initial .exprFix path
+      let domain := entered.freshTy
+        (freshOrigin .recursiveBinder path "fix-domain")
+      let codomain := domain.2.freshTy
+        (freshOrigin .recursiveBinder path "fix-codomain")
+      let placeholder := Ty.fn domain.1 codomain.1
+      ValidatorRunExtension terminal signature
+        ((codomain.2.recordEvent
+          (.fixPlaceholder self argument placeholder path)).recordEvent
+          (.directSelfAccepted self placeholder path)) bodyState)
+    (alignment : ValidatorRunExtension terminal signature bodyState
+      alignedState) :
+    let entered := visit initial .exprFix path
+    let domain := entered.freshTy
+      (freshOrigin .recursiveBinder path "fix-domain")
+    let codomain := domain.2.freshTy
+      (freshOrigin .recursiveBinder path "fix-codomain")
+    let placeholder := Ty.fn domain.1 codomain.1
+    ValidatorRunExtension terminal signature initial
+      (finishExpr (.fix self argument body) path placeholder alignedState).state := by
+  dsimp only
+  exact (ValidatorRunExtension.visit terminal signature initial .exprFix
+    path).trans
+      ((ValidatorRunExtension.freshTy terminal signature _ _).trans
+        ((ValidatorRunExtension.freshTy terminal signature _ _).trans
+          ((ValidatorRunExtension.recordNeutral
+            (ValidatorNeutralEvent.fixPlaceholder self argument _ path)).trans
+            ((ValidatorRunExtension.recordNeutral
+              (ValidatorNeutralEvent.directSelfAccepted self _ path)).trans
+              (bodyRun.trans (alignment.trans
+                (ValidatorRunExtension.finishExpr terminal signature _
+                  (.fix self argument body) path _)))))))
+
+/-- Matcher-bodied recursion may allocate a shape-sensitive placeholder.  Its
+allocation extension is supplied by the dedicated placeholder traversal;
+the remaining event order is identical to ordinary `fix`. -/
+theorem synthFixMatcher
+    {terminal : Subst} {signature : FrozenSig}
+    {initial placeholderState bodyState alignedState : InferState}
+    {path : SyntaxPath} {self argument : String} {clauses : List Clause}
+    {domain codomain : Ty}
+    (placeholderRun : ValidatorRunExtension terminal signature
+      (visit initial .exprFix path) placeholderState)
+    (bodyRun : ValidatorRunExtension terminal signature
+      ((placeholderState.recordEvent
+        (.fixPlaceholder self argument (.fn domain codomain) path)).recordEvent
+        (.directSelfAccepted self (.fn domain codomain) path)) bodyState)
+    (alignment : ValidatorRunExtension terminal signature bodyState
+      alignedState) :
+    ValidatorRunExtension terminal signature initial
+      (finishExpr (.fix self argument (.matcher clauses)) path
+        (.fn domain codomain) alignedState).state :=
+  (ValidatorRunExtension.visit terminal signature initial .exprFix path).trans
+    (placeholderRun.trans
+      ((ValidatorRunExtension.recordNeutral
+        (ValidatorNeutralEvent.fixPlaceholder self argument
+          (.fn domain codomain) path)).trans
+        ((ValidatorRunExtension.recordNeutral
+          (ValidatorNeutralEvent.directSelfAccepted self (.fn domain codomain)
+            path)).trans
+          (bodyRun.trans (alignment.trans
+            (ValidatorRunExtension.finishExpr terminal signature alignedState
+              (.fix self argument (.matcher clauses)) path
+              (.fn domain codomain)))))))
+
+/-- `matchAll` executes its target, user pattern, target alignment, matcher
+check, and body in this order. -/
+theorem synthMatchAll
+    {terminal : Subst} {signature : FrozenSig}
+    {initial targetState patternState alignedState matcherState bodyState :
+      InferState}
+    {path : SyntaxPath} {target matcher : Expr} {pattern : Pattern}
+    {body : Expr} {bodyTarget : Ty}
+    (targetRun : ValidatorRunExtension terminal signature
+      (visit initial .exprMatchAll path) targetState)
+    (patternRun : ValidatorRunExtension terminal signature targetState
+      patternState)
+    (targetAlignment : ValidatorRunExtension terminal signature patternState
+      alignedState)
+    (matcherCheck : ValidatorRunExtension terminal signature alignedState
+      matcherState)
+    (bodyRun : ValidatorRunExtension terminal signature matcherState bodyState) :
+    ValidatorRunExtension terminal signature initial
+      (finishExpr (.matchAll target matcher pattern body) path
+        (Ty.listT bodyTarget) bodyState).state :=
+  (ValidatorRunExtension.visit terminal signature initial .exprMatchAll
+    path).trans
+      (targetRun.trans (patternRun.trans (targetAlignment.trans
+        (matcherCheck.trans (bodyRun.trans
+          (ValidatorRunExtension.finishExpr terminal signature bodyState
+            (.matchAll target matcher pattern body) path
+            (Ty.listT bodyTarget)))))))
+
+/-! ## Pattern and matcher traversal chronology -/
+
+/-- A neutral pattern result event closes a previously certified core. -/
+theorem finishPattern
+    {terminal : Subst} {signature : FrozenSig} {initial final : InferState}
+    {pattern : Pattern} {dual : Dual} {bindings : MonoCtx}
+    {path : SyntaxPath}
+    (core : ValidatorRunExtension terminal signature initial final) :
+    ValidatorRunExtension terminal signature initial
+      (final.recordEvent (.inferredPattern pattern dual bindings path)) :=
+  core.trans (ValidatorRunExtension.recordNeutral
+    (ValidatorNeutralEvent.inferredPattern pattern dual bindings path))
+
+/-- Pattern-constructor chronology.  The executable freezes the exported
+instance before recording compatibility, so the terminal-sensitive witness is
+attached at that post-freeze cut. -/
+theorem patternCtor
+    {terminal : Subst} {signature : FrozenSig}
+    {initial childrenState targetAligned capSolved : InferState}
+    {path : SyntaxPath} {name : String} {patterns : List Pattern}
+    {entry : PatternCtorScheme signature.observability}
+    {duals : List Dual} {bindings : MonoCtx} {capability : Cap}
+    {capImages : List CapVar} {payload : Ty} {dual : Dual}
+    (lookup : signature.findPatternCtor name = some entry)
+    (closed : entry.scheme.Closed)
+    (children : ValidatorRunExtension terminal signature
+      (visit (instantiateCtorInState initial entry.scheme).2 .patternCtor path)
+      childrenState)
+    (targetAlignment : ValidatorRunExtension terminal signature childrenState
+      targetAligned)
+    (capabilitySolve : ValidatorRunExtension terminal signature targetAligned
+      capSolved)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry duals capability) :
+    let frozen := capSolved.freezeCapabilityExport capImages payload
+    let compatible := frozen.recordEvent (.patternCtorCompatibility
+      frozen.trace.solves.length name (duals.map Dual.cap) capability)
+    ValidatorRunExtension terminal signature initial
+      (compatible.recordEvent
+        (.inferredPattern (.pctor name patterns) dual bindings path)) := by
+  dsimp only
+  exact (ValidatorRunExtension.instantiateCtorInState
+    (terminal := terminal) (signature := signature) initial entry.scheme
+    closed).trans
+      ((ValidatorRunExtension.visit terminal signature _ .patternCtor
+        path).trans
+        (children.trans (targetAlignment.trans (capabilitySolve.trans
+          ((ValidatorRunExtension.freezeCapabilityExport terminal signature _
+            capImages payload).trans
+            ((ValidatorRunExtension.recordPatternCtor lookup facts).trans
+              (ValidatorRunExtension.recordNeutral
+                (ValidatorNeutralEvent.inferredPattern
+                  (.pctor name patterns) dual bindings path))))))))
+
+/-- One arm is data-pattern traversal followed by its body check; the tail
+continues at the resulting state. -/
+theorem armCons
+    {terminal : Subst} {signature : FrozenSig}
+    {initial dataState bodyState final : InferState}
+    (data : ValidatorRunExtension terminal signature initial dataState)
+    (body : ValidatorRunExtension terminal signature dataState bodyState)
+    (tail : ValidatorRunExtension terminal signature bodyState final) :
+    ValidatorRunExtension terminal signature initial final :=
+  data.trans (body.trans tail)
+
+/-- One matcher clause starts with its visit, then primitive-pattern, next
+matcher checks, and arms. -/
+theorem clause
+    {terminal : Subst} {signature : FrozenSig}
+    {initial primitiveState nextState final : InferState}
+    {path : SyntaxPath}
+    (primitive : ValidatorRunExtension terminal signature
+      (visit initial .clause path) primitiveState)
+    (nextMatchers : ValidatorRunExtension terminal signature primitiveState
+      nextState)
+    (arms : ValidatorRunExtension terminal signature nextState final) :
+    ValidatorRunExtension terminal signature initial final :=
+  (ValidatorRunExtension.visit terminal signature initial .clause path).trans
+    (primitive.trans (nextMatchers.trans arms))
+
+/-! ## Variable lookup suffix -/
+
+/-- A lookup in a context normalized by an idempotent prevailing substitution
+remains the corresponding normalized lookup after every chronological solver
+suffix. -/
+theorem terminalLookup_of_current
+    {rawContext : Context} {name : String} {state future : InferState}
+    {scheme : Scheme}
+    (idempotent : state.prevailing.Idempotent)
+    (lookup : (rawContext.applySubst state.prevailing).find? name = some scheme)
+    (extension : state.StateExtension future) :
+    (rawContext.applySubst future.prevailing).find? name =
+      some (scheme.applyMeta future.prevailing) := by
+  have fixed := normalizedContext_lookup_scheme_fixed idempotent lookup
+  have atCurrent : (rawContext.applySubst state.prevailing).find? name =
+      some (scheme.applyMeta state.prevailing) := by
+    simpa [fixed] using lookup
+  rcases extension.history.prevailing_eq with ⟨suffix, prevailingEq⟩
+  rw [prevailingEq]
+  clear extension future prevailingEq lookup fixed idempotent
+  generalize state.prevailing = prevailing at atCurrent ⊢
+  induction suffix generalizing prevailing with
+  | nil => exact atCurrent
+  | cons step suffix induction =>
+      apply induction
+      rw [Context.applySubst_seq, Context.find?_applySubst, atCurrent,
+        Scheme.applyMeta_seq]
+      rfl
+
+/-- The exact future-open premise consumed by scheme-instantiation validation,
+derived from the current normalized lookup and the current solved form. -/
+theorem instantiateScheme_terminalLookup
+    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {name : String} {state : InferState} {scheme : Scheme}
+    (idempotent : state.prevailing.Idempotent)
+    (lookup : (rawContext.applySubst state.prevailing).find? name = some scheme) :
+    ∀ future,
+      (instantiateSchemeInState signature rawContext normalizedContext name
+        state scheme).2.StateExtension future →
+      (rawContext.applySubst future.prevailing).find? name =
+        some (scheme.applyMeta future.prevailing) := by
+  intro future suffix
+  exact terminalLookup_of_current idempotent lookup
+    ((instantiateSchemeInState_stateExtension signature rawContext
+      normalizedContext name state scheme).trans suffix)
 
 end DemandTypingInferenceCompletenessValidationMain
 end TypePM
