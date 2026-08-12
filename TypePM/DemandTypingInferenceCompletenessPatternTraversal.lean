@@ -439,8 +439,10 @@ def dpatVar_complete
       (inferDPatFuel (fuel + 1) signature path (.var name) target state)
       q S ledger target [(name, target)] := by
   let event := TraceEvent.inferredDPat (.var name) target [(name, target)] path
-  let final := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecord before .dpatVar path event (by simp [event])
-  let transition := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecordExtension before .dpatVar path event
+  let final := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord before .dpatVar path event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension before .dpatVar path event
   refine
     { result := ⟨target, [(name, target)],
         (visit state .dpatVar path).recordEvent event⟩
@@ -469,8 +471,10 @@ def dpatWild_complete
       (inferDPatFuel (fuel + 1) signature path .wild target state)
       q S ledger target [] := by
   let event := TraceEvent.inferredDPat .wild target [] path
-  let final := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecord before .dpatWild path event (by simp [event])
-  let transition := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecordExtension before .dpatWild path event
+  let final := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord before .dpatWild path event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension before .dpatWild path event
   refine
     { result := ⟨target, [], (visit state .dpatWild path).recordEvent event⟩
       success := by simp [inferDPatFuel, event]
@@ -498,8 +502,10 @@ def ppatWild_complete
       (inferPPatFuel (fuel + 1) signature path .wild target state)
       q S ledger target [] [] := by
   let event := TraceEvent.inferredPPat .wild target [] [] path
-  let final := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecord before .ppatWild path event (by simp [event])
-  let transition := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecordExtension before .ppatWild path event
+  let final := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord before .ppatWild path event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension before .ppatWild path event
   refine
     { result := ⟨target, [], [],
         (visit state .ppatWild path).recordEvent event⟩
@@ -530,8 +536,10 @@ def ppatValue_complete
       q S ledger target [] [(name, target)] := by
   let event := TraceEvent.inferredPPat (.pval name) target []
     [(name, target)] path
-  let final := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecord before .ppatValue path event (by simp [event])
-  let transition := DemandTypingInferenceCompletenessPatternTraversal::TraversalStateCorrespondence::visitThenRecordExtension before .ppatValue path event
+  let final := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord before .ppatValue path event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition := DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension before .ppatValue path event
   refine
     { result := ⟨target, [], [(name, target)],
         (visit state .ppatValue path).recordEvent event⟩
@@ -550,6 +558,297 @@ def ppatValue_complete
       target := transition.after.sameTarget target
       holes := .nil
       bindings := .cons (transition.after.sameTarget target) .nil }
+
+def ppatHole_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (target : Ty) :
+    PPatRunCompletion before
+      (inferPPatFuel (fuel + 1) signature path .hole target state)
+      { q with nextCap := q.nextCap + 1 } S
+      (DDLedger.markFreshCap ledger q) target
+      [⟨.var ⟨q.nextCap⟩, target⟩] [] := by
+  let origin := freshOrigin .primitivePattern path "primitive-hole"
+  let fresh := state.freshCap origin
+  have capabilityEq : fresh.1 = .var ⟨q.nextCap⟩ := by
+    change Cap.var ⟨state.supply.nextCap⟩ = Cap.var ⟨q.nextCap⟩
+    rw [before.supply_eq]
+  let holes := [Dual.mk fresh.1 target]
+  let event := TraceEvent.inferredPPat .hole target holes [] path
+  let allocated :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+      before origin
+  let final :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord
+      allocated .ppatHole path event (by
+        intro _ membership
+        simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition :=
+    (DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+      before origin).seq
+      (DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension
+        allocated .ppatHole path event)
+  refine
+    { result := ⟨target, holes, [],
+        (visit fresh.2 .ppatHole path).recordEvent event⟩
+      success := by simp [inferPPatFuel, origin, fresh, holes, event]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      target := transition.after.sameTarget target
+      holes := by
+        change DualListBisimulation transition.after
+          [⟨.var ⟨q.nextCap⟩, target⟩] holes
+        have holesEq : holes = [⟨.var ⟨q.nextCap⟩, target⟩] := by
+          simp [holes, capabilityEq]
+        rw [holesEq]
+        exact .cons (DualBisimulation.same transition.after
+          ⟨.var ⟨q.nextCap⟩, target⟩) .nil
+      bindings := .nil }
+
+/-! ## Empty and cons list packaging -/
+
+def patternsNil_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
+    (index : Nat) {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeBindings executableBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings) :
+    PatternsRunCompletion before
+      (inferPatternsFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path index [] state)
+      q S ledger [] declarativeBindings := by
+  refine
+    { result := ⟨[], executableBindings, state⟩
+      success := by simp [inferPatternsFuel]
+      supply_eq := before.supply_eq
+      transition := .refl before.prevailing
+      declarative_bounded := before.declarative_bounded
+      executable_bounded := before.executable_bounded
+      forward_bounded := before.forward_bounded
+      reverse_bounded := before.reverse_bounded
+      ledger_below := before.ledger_below
+      executable_ledger_below := before.executable_ledger_below
+      protected_origins := before.protected_origins
+      protected_below := before.protected_below
+      allocated_recorded := before.allocated_recorded
+      duals := .nil
+      bindings := bindings }
+
+def ppatsNil_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath) (index : Nat)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state) :
+    PPatsRunCompletion before
+      (inferPPatsFuel (fuel + 1) signature path index [] [] state)
+      q S ledger [] [] [] := by
+  refine
+    { result := ⟨[], [], [], state⟩
+      success := by simp [inferPPatsFuel]
+      supply_eq := before.supply_eq
+      transition := .refl before.prevailing
+      declarative_bounded := before.declarative_bounded
+      executable_bounded := before.executable_bounded
+      forward_bounded := before.forward_bounded
+      reverse_bounded := before.reverse_bounded
+      ledger_below := before.ledger_below
+      executable_ledger_below := before.executable_ledger_below
+      protected_origins := before.protected_origins
+      protected_below := before.protected_below
+      allocated_recorded := before.allocated_recorded
+      targets := .nil
+      holes := .nil
+      bindings := .nil }
+
+def dpatsNil_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath) (index : Nat)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state) :
+    DPatsRunCompletion before
+      (inferDPatsFuel (fuel + 1) signature path index [] [] state)
+      q S ledger [] [] := by
+  refine
+    { result := ⟨[], [], state⟩
+      success := by simp [inferDPatsFuel]
+      supply_eq := before.supply_eq
+      transition := .refl before.prevailing
+      declarative_bounded := before.declarative_bounded
+      executable_bounded := before.executable_bounded
+      forward_bounded := before.forward_bounded
+      reverse_bounded := before.reverse_bounded
+      ledger_below := before.ledger_below
+      executable_ledger_below := before.executable_ledger_below
+      protected_origins := before.protected_origins
+      protected_below := before.protected_below
+      allocated_recorded := before.allocated_recorded
+      targets := .nil
+      bindings := .nil }
+
+def patternsCons_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (selfEnv : SelfEnv) (parent : SyntaxPath)
+    (index : Nat) (pattern : Pattern) (patterns : List Pattern)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
+    {ledger₁ ledger' : CapabilityOriginLedger}
+    {dual : Dual} {duals : List Dual}
+    {bindings₁ bindings' : MonoCtx}
+    (head : PatternRunCompletion before
+      (inferPatternFuel fuel signature context parameters
+        executableBindings selfEnv (index :: parent) pattern state)
+      q₁ S₁ ledger₁ dual bindings₁)
+    (tail : PatternsRunCompletion head.completion
+      (inferPatternsFuel fuel signature context parameters
+        head.result.bindings selfEnv parent (index + 1) patterns
+        head.result.state)
+      q' S' ledger' duals bindings') :
+    PatternsRunCompletion before
+      (inferPatternsFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv parent index (pattern :: patterns) state)
+      q' S' ledger' (dual :: duals) bindings' := by
+  let transition := head.transition.seq tail.transition
+  refine
+    { result := ⟨head.result.dual :: tail.result.duals,
+        tail.result.bindings, tail.result.state⟩
+      success := by simp [inferPatternsFuel, head.success, tail.success]
+      supply_eq := tail.supply_eq
+      transition := transition
+      declarative_bounded := tail.declarative_bounded
+      executable_bounded := tail.executable_bounded
+      forward_bounded := tail.forward_bounded
+      reverse_bounded := tail.reverse_bounded
+      ledger_below := tail.ledger_below
+      executable_ledger_below := tail.executable_ledger_below
+      protected_origins := tail.protected_origins
+      protected_below := tail.protected_below
+      allocated_recorded := tail.allocated_recorded
+      duals := .cons
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+          tail.transition head.dual) tail.duals
+      bindings := tail.bindings }
+
+def ppatsCons_complete
+    (fuel : Nat) (signature : FrozenSig) (parent : SyntaxPath) (index : Nat)
+    (pattern : PPat) (patterns : List PPat)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
+    {ledger₁ ledger' : CapabilityOriginLedger}
+    {target : Ty} {targets : List Ty} {holes restHoles : List Dual}
+    {bindings restBindings : MonoCtx}
+    (head : PPatRunCompletion before
+      (inferPPatFuel fuel signature (index :: parent) pattern
+        executableTarget state)
+      q₁ S₁ ledger₁ target holes bindings)
+    (tail : PPatsRunCompletion head.completion
+      (inferPPatsFuel fuel signature parent (index + 1) patterns
+        executableTargets head.result.state)
+      q' S' ledger' targets restHoles restBindings)
+    (disjoint : ∀ name, name ∈ bindings.names →
+      name ∉ restBindings.names) :
+    PPatsRunCompletion before
+      (inferPPatsFuel (fuel + 1) signature parent index
+        (pattern :: patterns) (executableTarget :: executableTargets) state)
+      q' S' ledger' (target :: targets) (holes ++ restHoles)
+      (bindings ++ restBindings) := by
+  let transportedBindings :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      tail.transition head.bindings
+  have checked := namesDisjoint_of_bisimulation transportedBindings
+    tail.bindings disjoint
+  let transition := head.transition.seq tail.transition
+  refine
+    { result := ⟨head.result.target :: tail.result.targets,
+        head.result.holes ++ tail.result.holes,
+        head.result.bindings ++ tail.result.bindings, tail.result.state⟩
+      success := by
+        simp [inferPPatsFuel, head.success, tail.success, checked]
+      supply_eq := tail.supply_eq
+      transition := transition
+      declarative_bounded := tail.declarative_bounded
+      executable_bounded := tail.executable_bounded
+      forward_bounded := tail.forward_bounded
+      reverse_bounded := tail.reverse_bounded
+      ledger_below := tail.ledger_below
+      executable_ledger_below := tail.executable_ledger_below
+      protected_origins := tail.protected_origins
+      protected_below := tail.protected_below
+      allocated_recorded := tail.allocated_recorded
+      targets := .cons (tail.transition.transportTy head.target) tail.targets
+      holes :=
+        DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.append
+          (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+            tail.transition head.holes) tail.holes
+      bindings := DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.append transportedBindings
+        tail.bindings }
+
+def dpatsCons_complete
+    (fuel : Nat) (signature : FrozenSig) (parent : SyntaxPath) (index : Nat)
+    (pattern : DPat) (patterns : List DPat)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {q₁ q' : InferenceBase.FreshSupply} {S₁ S' : Subst}
+    {ledger₁ ledger' : CapabilityOriginLedger}
+    {target : Ty} {targets : List Ty}
+    {bindings restBindings : MonoCtx}
+    (head : DPatRunCompletion before
+      (inferDPatFuel fuel signature (index :: parent) pattern
+        executableTarget state)
+      q₁ S₁ ledger₁ target bindings)
+    (tail : DPatsRunCompletion head.completion
+      (inferDPatsFuel fuel signature parent (index + 1) patterns
+        executableTargets head.result.state)
+      q' S' ledger' targets restBindings)
+    (disjoint : ∀ name, name ∈ bindings.names →
+      name ∉ restBindings.names) :
+    DPatsRunCompletion before
+      (inferDPatsFuel (fuel + 1) signature parent index
+        (pattern :: patterns) (executableTarget :: executableTargets) state)
+      q' S' ledger' (target :: targets) (bindings ++ restBindings) := by
+  let transportedBindings :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      tail.transition head.bindings
+  have checked := namesDisjoint_of_bisimulation transportedBindings
+    tail.bindings disjoint
+  let transition := head.transition.seq tail.transition
+  refine
+    { result := ⟨head.result.target :: tail.result.targets,
+        head.result.bindings ++ tail.result.bindings, tail.result.state⟩
+      success := by
+        simp [inferDPatsFuel, head.success, tail.success, checked]
+      supply_eq := tail.supply_eq
+      transition := transition
+      declarative_bounded := tail.declarative_bounded
+      executable_bounded := tail.executable_bounded
+      forward_bounded := tail.forward_bounded
+      reverse_bounded := tail.reverse_bounded
+      ledger_below := tail.ledger_below
+      executable_ledger_below := tail.executable_ledger_below
+      protected_origins := tail.protected_origins
+      protected_below := tail.protected_below
+      allocated_recorded := tail.allocated_recorded
+      targets := .cons (tail.transition.transportTy head.target) tail.targets
+      bindings := DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.append transportedBindings
+        tail.bindings }
 
 end DemandTypingInferenceCompletenessPatternTraversal
 end TypePM
