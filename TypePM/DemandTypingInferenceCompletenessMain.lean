@@ -144,6 +144,7 @@ abbrev AuditedSynthCompletenessAt
     ContextBisimulation before.prevailing declarativeContext
       executableContext →
     declarativeContext.BoundedBy q →
+    executableContext.BoundedBy q →
     DDSynthTerminalAudit terminal signature origin →
     SynthBudgetAdequate fuel expression →
     Nonempty (BoundedSynthRunCompletion before
@@ -224,7 +225,7 @@ theorem auditedCheckCompletenessAt_of_synthBelow
         (synthComplete (Nat.lt_succ_self fuel)
           (selfEnv := selfEnv) (path := path)
           (origin := components.synthOrigin) before contexts contextBounded
-          components.synthAudit synthAdequate)
+          executableContextBounded components.synthAudit synthAdequate)
       obtain ⟨_, declarativeRawBounded⟩ :=
         components.synthesized.boundedBy closed before.declarative_bounded
           contextBounded
@@ -261,7 +262,7 @@ theorem patternSynthCompletenessBelow_of_audited
     contexts contextBounded executableContextBounded audit adequate
   let run := Classical.choice
     (complete fuelLt (selfEnv := selfEnv) (path := path) (origin := origin)
-      before contexts contextBounded audit adequate)
+      before contexts contextBounded executableContextBounded audit adequate)
   exact ⟨⟨run.run, run.rawTargetBounded⟩⟩
 
 /-- Audited synthesis below a ceiling also supplies all matcher checking
@@ -1952,10 +1953,18 @@ theorem auditedSynthLam_complete_nonempty
       (Scheme.BoundedBy.ofMono
         (Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)))
       (contextBounded.mono (SupplyExtends.bumpTy q 1))
+  have bodyExecutableContextBounded : Context.BoundedBy
+      { q with nextTy := q.nextTy + 1 }
+      ((name, Scheme.mono (.var q.nextTy)) :: executableContext) := by
+    exact Context.BoundedBy.cons
+      (Scheme.BoundedBy.ofMono
+        (Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)))
+      (executableContextBounded.mono (SupplyExtends.bumpTy q 1))
   let bodyRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv.erase name) (path := 0 :: path)
-      bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
+      bodyBefore bodyContexts bodyContextBounded bodyExecutableContextBounded
+      bodyAudit bodyAdequate)
   exact ⟨boundedSynthLam_complete before bodyRun
     ((Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)).mono
       bodyOrigin.erase.supplyExtends)⟩
@@ -2004,7 +2013,8 @@ theorem auditedSynths_complete_nonempty
           let headRun := Classical.choice
             (synthBelow (Nat.lt_succ_self inner)
               (selfEnv := selfEnv) (path := index :: parent)
-              before contexts contextBounded headAudit headAdequate)
+              before contexts contextBounded executableContextBounded headAudit
+              headAdequate)
           have tailContexts : ContextBisimulation
               headRun.run.completion.state.prevailing declarativeContext
               executableContext :=
@@ -2353,7 +2363,8 @@ theorem auditedSynthApp_complete_nonempty
   let functionRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv) (path := 0 :: path)
-      functionBefore functionContexts contextBounded functionAudit
+      functionBefore functionContexts contextBounded executableContextBounded
+      functionAudit
       functionAdequate)
   let domainOrigin := freshOrigin .expression path "application-domain"
   let resultOrigin := freshOrigin .expression path "application-result"
@@ -2415,6 +2426,12 @@ theorem auditedSynthApp_complete_nonempty
     (contextBounded.mono functionOrigin.erase.supplyExtends).mono
       ((SupplyExtends.bumpTy q₁ 1).trans
         (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1))
+  have argumentExecutableContextBounded : executableContext.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 } :=
+    executableContextBounded.mono
+      (functionOrigin.erase.supplyExtends.trans
+        ((SupplyExtends.bumpTy q₁ 1).trans
+          (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1)))
   have argumentContexts : ContextBisimulation
       functionAlignment.completion.prevailing declarativeContext
       executableContext :=
@@ -2430,7 +2447,8 @@ theorem auditedSynthApp_complete_nonempty
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv) (path := 1 :: path)
       functionAlignment.completion argumentContexts argumentContextBounded
-      components.synthAudit argumentSynthAdequate)
+      argumentExecutableContextBounded components.synthAudit
+      argumentSynthAdequate)
   have expectedBounded : Ty.BoundedBy
       { q₁ with nextTy := q₁.nextTy + 2 } (.var q₁.nextTy) :=
     Ty.BoundedBy.varOf (by simp)
@@ -2522,7 +2540,8 @@ theorem auditedSynthLet_complete_nonempty
   let valueRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv) (path := 0 :: path)
-      valueBefore valueContexts contextBounded valueAudit valueAdequate)
+      valueBefore valueContexts contextBounded executableContextBounded
+      valueAudit valueAdequate)
   let executableScheme := signature.generalize
     (executableContext.applySubst valueRun.run.result.state.prevailing)
     (valueRun.run.result.state.prevailing.apply valueRun.run.result.target)
@@ -2567,7 +2586,8 @@ theorem auditedSynthLet_complete_nonempty
   let bodyRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv.erase name) (path := 1 :: path)
-      bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
+      bodyBefore bodyContexts bodyContextBounded bodyExecutableContextBounded
+      bodyAudit bodyAdequate)
   exact ⟨boundedSynthLet_complete closed before valueRun bodyRun⟩
 
 /-- Ordinary recursive functions use the canonical two-target placeholder;
@@ -2698,7 +2718,8 @@ theorem auditedSynthFix_complete_nonempty
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := (self, executablePlaceholder) ::
         selfEnv.eraseMany [self, argument]) (path := 0 :: path)
-      bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
+      bodyBefore bodyContexts bodyContextBounded bodyExecutableContextBounded
+      bodyAudit bodyAdequate)
   have codomainRelatedAtBody : TyBisimulation
       bodyRun.run.completion.state.prevailing (.var (q.nextTy + 1))
       (fixCodomain state path) := by
