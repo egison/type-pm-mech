@@ -567,10 +567,8 @@ two-stage run as slot-to-slot checking. -/
 noncomputable def alignTypesCore_slotPair_complete
     {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
-    {declarativeLeftCap executableLeftCap declarativeRightCap
-      executableRightCap : Cap}
-    {declarativeLeftTarget executableLeftTarget declarativeRightTarget
-      executableRightTarget : Ty}
+    {executableLeftCap executableRightCap : Cap}
+    {executableLeftTarget executableRightTarget : Ty}
     {capDelta : CapSubst} {origin : ConstraintOrigin}
     (run : StateRunCompletion relation
       (alignAtSlot initial origin
@@ -627,6 +625,513 @@ def StateRunCompletion.finishAlignTypes
         (some core.result).bind finishState :=
       congrArg (fun operation => operation.bind finishState) core.success
     _ = some (core.result.recordEvent event) := rfl
+
+/-- Once the initial matcher heads are exposed, `alignTypesCore` is exactly
+the common capability-then-target protocol on their components. -/
+theorem alignTypesCore_matcherViews
+    {state : InferState} {origin : ConstraintOrigin} {left right : Ty}
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
+    (leftView : state.prevailing.apply left = .matcher leftCap leftTarget)
+    (rightView : state.prevailing.apply right = .matcher rightCap rightTarget)
+    (leftTargetFixed : state.prevailing.apply leftTarget = leftTarget)
+    (rightTargetFixed : state.prevailing.apply rightTarget = rightTarget) :
+    alignTypesCore state origin left right = (do
+      let middle ← runResolvedConstraint state origin (.capEq leftCap rightCap)
+      runResolvedConstraint middle origin
+        (.targetEq (middle.prevailing.apply leftTarget)
+          (middle.prevailing.apply rightTarget))) := by
+  unfold alignTypesCore
+  rw [leftView, rightView]
+  unfold runResolvedConstraint solveResolvedWithLedger
+  cases solved : solveCapEqWithLedger state.capabilityOrigins
+      state.trace.solves.length origin leftCap rightCap with
+  | none => simp [solved]
+  | some step =>
+      have targetId :=
+        (solveCapEqWithLedger_originSafeExactCapMGU solved).1
+      have afterLeft :
+          (step.delta.seq state.prevailing).apply left =
+            .matcher (leftCap.apply step.delta.cap)
+              (step.delta.apply leftTarget) := by
+        rw [Subst.seq_apply, leftView]
+        simp [Subst.apply, targetId, Ty.applyTarget_id]
+        rfl
+      have afterRight :
+          (step.delta.seq state.prevailing).apply right =
+            .matcher (rightCap.apply step.delta.cap)
+              (step.delta.apply rightTarget) := by
+        rw [Subst.seq_apply, rightView]
+        simp [Subst.apply, targetId, Ty.applyTarget_id]
+        rfl
+      simp [solved, InferState.prevailing_recordSolve, afterLeft, afterRight,
+        Subst.seq_apply, leftTargetFixed, rightTargetFixed]
+
+/-- Slot heads obey the same two-stage core protocol. -/
+theorem alignTypesCore_slotViews
+    {state : InferState} {origin : ConstraintOrigin} {left right : Ty}
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
+    (leftView : state.prevailing.apply left = .slot leftCap leftTarget)
+    (rightView : state.prevailing.apply right = .slot rightCap rightTarget)
+    (leftTargetFixed : state.prevailing.apply leftTarget = leftTarget)
+    (rightTargetFixed : state.prevailing.apply rightTarget = rightTarget) :
+    alignTypesCore state origin left right = (do
+      let middle ← runResolvedConstraint state origin (.capEq leftCap rightCap)
+      runResolvedConstraint middle origin
+        (.targetEq (middle.prevailing.apply leftTarget)
+          (middle.prevailing.apply rightTarget))) := by
+  unfold alignTypesCore
+  rw [leftView, rightView]
+  unfold runResolvedConstraint solveResolvedWithLedger
+  cases solved : solveCapEqWithLedger state.capabilityOrigins
+      state.trace.solves.length origin leftCap rightCap with
+  | none => simp [solved]
+  | some step =>
+      have targetId :=
+        (solveCapEqWithLedger_originSafeExactCapMGU solved).1
+      have afterLeft :
+          (step.delta.seq state.prevailing).apply left =
+            .slot (leftCap.apply step.delta.cap)
+              (step.delta.apply leftTarget) := by
+        rw [Subst.seq_apply, leftView]
+        simp [Subst.apply, targetId, Ty.applyTarget_id]
+        rfl
+      have afterRight :
+          (step.delta.seq state.prevailing).apply right =
+            .slot (rightCap.apply step.delta.cap)
+              (step.delta.apply rightTarget) := by
+        rw [Subst.seq_apply, rightView]
+        simp [Subst.apply, targetId, Ty.applyTarget_id]
+        rfl
+      simp [solved, InferState.prevailing_recordSolve, afterLeft, afterRight,
+        Subst.seq_apply, leftTargetFixed, rightTargetFixed]
+
+/-- Raw matcher/matcher DD alignment completes without identifying DD and
+executable metavariable names. -/
+noncomputable def alignTypes_matcherPair_complete
+    {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
+    {capDelta : CapSubst} {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (leftView : S.apply declarativeLeft = .matcher leftCap leftTarget)
+    (rightView : S.apply declarativeRight = .matcher rightCap rightTarget)
+    (capDD : OriginSafeExactCapMGU ledger leftCap rightCap capDelta)
+    (targetDD : OriginSafeExactPairedMGU ledger
+      (leftTarget.applyCapability capDelta)
+      (rightTarget.applyCapability capDelta) targetDelta)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q) :
+    StateRunCompletion relation
+      (alignTypes initial origin executableLeft executableRight) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger := by
+  let executableLeftCap := leftCap.apply relation.prevailing.reverse.cap
+  let executableLeftTarget := relation.prevailing.reverse.apply leftTarget
+  let executableRightCap := rightCap.apply relation.prevailing.reverse.cap
+  let executableRightTarget := relation.prevailing.reverse.apply rightTarget
+  have executableLeftView : initial.prevailing.apply executableLeft =
+      .matcher executableLeftCap executableLeftTarget := by
+    rw [left.reverse, leftView]
+    rfl
+  have executableRightView : initial.prevailing.apply executableRight =
+      .matcher executableRightCap executableRightTarget := by
+    rw [right.reverse, rightView]
+    rfl
+  have leftForward := left.forward
+  have rightForward := right.forward
+  rw [leftView, executableLeftView] at leftForward
+  rw [rightView, executableRightView] at rightForward
+  have resolvedCaps : ResolvedCapComponents relation.prevailing.forward
+      relation.prevailing.reverse leftCap executableLeftCap rightCap
+      executableRightCap :=
+    ⟨(Ty.matcher.inj leftForward).1, rfl,
+      (Ty.matcher.inj rightForward).1, rfl⟩
+  have declarativeLeftFixed :=
+    relation.prevailing.declarativeIdempotent declarativeLeft
+  have declarativeRightFixed :=
+    relation.prevailing.declarativeIdempotent declarativeRight
+  rw [leftView] at declarativeLeftFixed
+  rw [rightView] at declarativeRightFixed
+  have executableLeftFixed :=
+    relation.prevailing.executableIdempotent executableLeft
+  have executableRightFixed :=
+    relation.prevailing.executableIdempotent executableRight
+  rw [executableLeftView] at executableLeftFixed
+  rw [executableRightView] at executableRightFixed
+  have leftTargetRelated : TyBisimulation relation.prevailing leftTarget
+      executableLeftTarget := by
+    constructor
+    · calc
+        S.apply leftTarget = leftTarget :=
+          (Ty.matcher.inj declarativeLeftFixed).2
+        _ = relation.prevailing.forward.apply executableLeftTarget :=
+          (Ty.matcher.inj leftForward).2
+        _ = relation.prevailing.forward.apply
+            (initial.prevailing.apply executableLeftTarget) := by
+          exact congrArg relation.prevailing.forward.apply
+            (Ty.matcher.inj executableLeftFixed).2.symm
+    · calc
+        initial.prevailing.apply executableLeftTarget = executableLeftTarget :=
+          (Ty.matcher.inj executableLeftFixed).2
+        _ = relation.prevailing.reverse.apply leftTarget := rfl
+        _ = relation.prevailing.reverse.apply (S.apply leftTarget) := by
+          exact congrArg relation.prevailing.reverse.apply
+            (Ty.matcher.inj declarativeLeftFixed).2.symm
+  have rightTargetRelated : TyBisimulation relation.prevailing rightTarget
+      executableRightTarget := by
+    constructor
+    · calc
+        S.apply rightTarget = rightTarget :=
+          (Ty.matcher.inj declarativeRightFixed).2
+        _ = relation.prevailing.forward.apply executableRightTarget :=
+          (Ty.matcher.inj rightForward).2
+        _ = relation.prevailing.forward.apply
+            (initial.prevailing.apply executableRightTarget) := by
+          exact congrArg relation.prevailing.forward.apply
+            (Ty.matcher.inj executableRightFixed).2.symm
+    · calc
+        initial.prevailing.apply executableRightTarget = executableRightTarget :=
+          (Ty.matcher.inj executableRightFixed).2
+        _ = relation.prevailing.reverse.apply rightTarget := rfl
+        _ = relation.prevailing.reverse.apply (S.apply rightTarget) := by
+          exact congrArg relation.prevailing.reverse.apply
+            (Ty.matcher.inj declarativeRightFixed).2.symm
+  have declarativeLeftResolvedBounded :=
+    relation.declarative_bounded.apply declarativeLeftBounded
+  have declarativeRightResolvedBounded :=
+    relation.declarative_bounded.apply declarativeRightBounded
+  rw [leftView] at declarativeLeftResolvedBounded
+  rw [rightView] at declarativeRightResolvedBounded
+  have executableLeftResolvedBounded :=
+    relation.executable_bounded.apply executableLeftBounded
+  have executableRightResolvedBounded :=
+    relation.executable_bounded.apply executableRightBounded
+  rw [executableLeftView] at executableLeftResolvedBounded
+  rw [executableRightView] at executableRightResolvedBounded
+  let staged := runResolvedAnnotatedPair_complete (origin := origin) relation
+    resolvedCaps leftTargetRelated rightTargetRelated capDD targetDD
+    (Ty.matcher.inj declarativeLeftFixed).1
+    (Ty.matcher.inj declarativeRightFixed).1
+    (Ty.matcher.inj executableLeftFixed).1
+    (Ty.matcher.inj executableRightFixed).1
+    (Ty.matcher.inj declarativeLeftFixed).2
+    (Ty.matcher.inj declarativeRightFixed).2
+    declarativeLeftResolvedBounded.matcherParts.1
+    declarativeRightResolvedBounded.matcherParts.1
+    executableLeftResolvedBounded.matcherParts.1
+    executableRightResolvedBounded.matcherParts.1
+    declarativeLeftResolvedBounded.matcherParts.2
+    declarativeRightResolvedBounded.matcherParts.2
+    executableLeftResolvedBounded.matcherParts.2
+    executableRightResolvedBounded.matcherParts.2
+  have core : StateRunCompletion relation
+      (alignTypesCore initial origin executableLeft executableRight) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger := by
+    apply StateRunCompletion.congrOperation staged
+    exact alignTypesCore_matcherViews executableLeftView executableRightView
+      (Ty.matcher.inj executableLeftFixed).2
+      (Ty.matcher.inj executableRightFixed).2
+  exact StateRunCompletion.finishAlignTypes core
+
+/-- Mutual state factorization prevents an annotated homogeneous pair from
+appearing only on the executable side.  Hence an ordinary DD pair selects the
+ordinary executable branch as well. -/
+theorem executableAlignPairClass_ordinary
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeClass :
+      alignPairClass (S.apply declarativeLeft) (S.apply declarativeRight) =
+        .ordinary) :
+    alignPairClass (initial.prevailing.apply executableLeft)
+      (initial.prevailing.apply executableRight) = .ordinary := by
+  generalize leftEq : initial.prevailing.apply executableLeft = leftResolved
+  generalize rightEq : initial.prevailing.apply executableRight = rightResolved
+  cases leftResolved <;> cases rightResolved <;> try rfl
+  all_goals
+    have leftForward := left.forward
+    have rightForward := right.forward
+    rw [leftEq] at leftForward
+    rw [rightEq] at rightForward
+    rw [leftForward, rightForward] at declarativeClass
+    simp [alignPairClass] at declarativeClass
+
+/-- Raw slot/slot DD alignment completes under the same mutual-state
+invariant. -/
+noncomputable def alignTypes_slotPair_complete
+    {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
+    {capDelta : CapSubst} {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (leftView : S.apply declarativeLeft = .slot leftCap leftTarget)
+    (rightView : S.apply declarativeRight = .slot rightCap rightTarget)
+    (capDD : OriginSafeExactCapMGU ledger leftCap rightCap capDelta)
+    (targetDD : OriginSafeExactPairedMGU ledger
+      (leftTarget.applyCapability capDelta)
+      (rightTarget.applyCapability capDelta) targetDelta)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q) :
+    StateRunCompletion relation
+      (alignTypes initial origin executableLeft executableRight) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger := by
+  let executableLeftCap := leftCap.apply relation.prevailing.reverse.cap
+  let executableLeftTarget := relation.prevailing.reverse.apply leftTarget
+  let executableRightCap := rightCap.apply relation.prevailing.reverse.cap
+  let executableRightTarget := relation.prevailing.reverse.apply rightTarget
+  have executableLeftView : initial.prevailing.apply executableLeft =
+      .slot executableLeftCap executableLeftTarget := by
+    rw [left.reverse, leftView]
+    rfl
+  have executableRightView : initial.prevailing.apply executableRight =
+      .slot executableRightCap executableRightTarget := by
+    rw [right.reverse, rightView]
+    rfl
+  have leftForward := left.forward
+  have rightForward := right.forward
+  rw [leftView, executableLeftView] at leftForward
+  rw [rightView, executableRightView] at rightForward
+  have resolvedCaps : ResolvedCapComponents relation.prevailing.forward
+      relation.prevailing.reverse leftCap executableLeftCap rightCap
+      executableRightCap :=
+    ⟨(Ty.slot.inj leftForward).1, rfl,
+      (Ty.slot.inj rightForward).1, rfl⟩
+  have declarativeLeftFixed :=
+    relation.prevailing.declarativeIdempotent declarativeLeft
+  have declarativeRightFixed :=
+    relation.prevailing.declarativeIdempotent declarativeRight
+  rw [leftView] at declarativeLeftFixed
+  rw [rightView] at declarativeRightFixed
+  have executableLeftFixed :=
+    relation.prevailing.executableIdempotent executableLeft
+  have executableRightFixed :=
+    relation.prevailing.executableIdempotent executableRight
+  rw [executableLeftView] at executableLeftFixed
+  rw [executableRightView] at executableRightFixed
+  have leftTargetRelated : TyBisimulation relation.prevailing leftTarget
+      executableLeftTarget := by
+    constructor
+    · calc
+        S.apply leftTarget = leftTarget := (Ty.slot.inj declarativeLeftFixed).2
+        _ = relation.prevailing.forward.apply executableLeftTarget :=
+          (Ty.slot.inj leftForward).2
+        _ = relation.prevailing.forward.apply
+            (initial.prevailing.apply executableLeftTarget) := by
+          exact congrArg relation.prevailing.forward.apply
+            (Ty.slot.inj executableLeftFixed).2.symm
+    · calc
+        initial.prevailing.apply executableLeftTarget = executableLeftTarget :=
+          (Ty.slot.inj executableLeftFixed).2
+        _ = relation.prevailing.reverse.apply leftTarget := rfl
+        _ = relation.prevailing.reverse.apply (S.apply leftTarget) := by
+          exact congrArg relation.prevailing.reverse.apply
+            (Ty.slot.inj declarativeLeftFixed).2.symm
+  have rightTargetRelated : TyBisimulation relation.prevailing rightTarget
+      executableRightTarget := by
+    constructor
+    · calc
+        S.apply rightTarget = rightTarget :=
+          (Ty.slot.inj declarativeRightFixed).2
+        _ = relation.prevailing.forward.apply executableRightTarget :=
+          (Ty.slot.inj rightForward).2
+        _ = relation.prevailing.forward.apply
+            (initial.prevailing.apply executableRightTarget) := by
+          exact congrArg relation.prevailing.forward.apply
+            (Ty.slot.inj executableRightFixed).2.symm
+    · calc
+        initial.prevailing.apply executableRightTarget = executableRightTarget :=
+          (Ty.slot.inj executableRightFixed).2
+        _ = relation.prevailing.reverse.apply rightTarget := rfl
+        _ = relation.prevailing.reverse.apply (S.apply rightTarget) := by
+          exact congrArg relation.prevailing.reverse.apply
+            (Ty.slot.inj declarativeRightFixed).2.symm
+  have declarativeLeftResolvedBounded :=
+    relation.declarative_bounded.apply declarativeLeftBounded
+  have declarativeRightResolvedBounded :=
+    relation.declarative_bounded.apply declarativeRightBounded
+  rw [leftView] at declarativeLeftResolvedBounded
+  rw [rightView] at declarativeRightResolvedBounded
+  have executableLeftResolvedBounded :=
+    relation.executable_bounded.apply executableLeftBounded
+  have executableRightResolvedBounded :=
+    relation.executable_bounded.apply executableRightBounded
+  rw [executableLeftView] at executableLeftResolvedBounded
+  rw [executableRightView] at executableRightResolvedBounded
+  let staged := runResolvedAnnotatedPair_complete (origin := origin) relation
+    resolvedCaps leftTargetRelated rightTargetRelated capDD targetDD
+    (Ty.slot.inj declarativeLeftFixed).1
+    (Ty.slot.inj declarativeRightFixed).1
+    (Ty.slot.inj executableLeftFixed).1
+    (Ty.slot.inj executableRightFixed).1
+    (Ty.slot.inj declarativeLeftFixed).2
+    (Ty.slot.inj declarativeRightFixed).2
+    declarativeLeftResolvedBounded.slotParts.1
+    declarativeRightResolvedBounded.slotParts.1
+    executableLeftResolvedBounded.slotParts.1
+    executableRightResolvedBounded.slotParts.1
+    declarativeLeftResolvedBounded.slotParts.2
+    declarativeRightResolvedBounded.slotParts.2
+    executableLeftResolvedBounded.slotParts.2
+    executableRightResolvedBounded.slotParts.2
+  have core : StateRunCompletion relation
+      (alignTypesCore initial origin executableLeft executableRight) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger := by
+    apply StateRunCompletion.congrOperation staged
+    exact alignTypesCore_slotViews executableLeftView executableRightView
+      (Ty.slot.inj executableLeftFixed).2
+      (Ty.slot.inj executableRightFixed).2
+  exact StateRunCompletion.finishAlignTypes core
+
+/-- Public raw completeness theorem for all three ordinary-alignment DD
+constructors.  Solver success and MGU orientation are derived internally. -/
+theorem ddAlignTypesWithLedger_complete_nonempty
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger ledger S declarativeLeft
+      declarativeRight S') :
+    Nonempty (StateRunCompletion relation
+      (alignTypes initial origin executableLeft executableRight) q S' ledger) := by
+  cases aligned with
+  | matcherPair leftView rightView capDD targetDD =>
+      exact ⟨alignTypes_matcherPair_complete (origin := origin) relation left
+        right leftView rightView capDD targetDD declarativeLeftBounded
+        declarativeRightBounded executableLeftBounded executableRightBounded⟩
+  | slotPair leftView rightView capDD targetDD =>
+      exact ⟨alignTypes_slotPair_complete (origin := origin) relation left right
+        leftView rightView capDD targetDD declarativeLeftBounded
+        declarativeRightBounded executableLeftBounded executableRightBounded⟩
+  | ordinary declarativeClass dd =>
+      have executableClass := executableAlignPairClass_ordinary relation left
+        right declarativeClass
+      exact ⟨alignTypes_ordinary_complete (origin := origin) relation left right
+        declarativeLeftBounded declarativeRightBounded executableLeftBounded
+        executableRightBounded declarativeClass executableClass dd⟩
+
+/-- Noncomputable package projection used by the main traversal recursion. -/
+noncomputable def ddAlignTypesWithLedger_complete
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeLeft declarativeRight executableLeft executableRight : Ty}
+    {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (left : TyBisimulation relation.prevailing declarativeLeft executableLeft)
+    (right : TyBisimulation relation.prevailing declarativeRight executableRight)
+    (declarativeLeftBounded : declarativeLeft.BoundedBy q)
+    (declarativeRightBounded : declarativeRight.BoundedBy q)
+    (executableLeftBounded : executableLeft.BoundedBy q)
+    (executableRightBounded : executableRight.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger ledger S declarativeLeft
+      declarativeRight S') :
+    StateRunCompletion relation
+      (alignTypes initial origin executableLeft executableRight) q S' ledger :=
+  Classical.choice (ddAlignTypesWithLedger_complete_nonempty relation left right
+    declarativeLeftBounded declarativeRightBounded executableLeftBounded
+    executableRightBounded aligned)
+
+/-- The dedicated slot-tuple executable is extensionally the slot/slot
+two-stage protocol when its cut-local dual components are already normalized.
+This lets the public selector branch reuse the capability/target completeness
+proof instead of duplicating solver transport. -/
+theorem alignResolvedSlotTupleAtSlot_eq_alignAtSlot
+    {state : InferState} {origin : ConstraintOrigin} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (producerCapFixed :
+      (Cap.prod (duals.map Dual.cap)).apply state.prevailing.cap =
+        .prod (duals.map Dual.cap))
+    (producerTargetFixed :
+      state.prevailing.apply (.prod (duals.map Dual.target)) =
+        .prod (duals.map Dual.target))
+    (consumerCapFixed : consumerCap.apply state.prevailing.cap = consumerCap)
+    (consumerTargetFixed : state.prevailing.apply consumerTarget =
+      consumerTarget) :
+    alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget =
+    alignAtSlot state origin (.slot (.prod (duals.map Dual.cap))
+      (.prod (duals.map Dual.target))) (.slot consumerCap consumerTarget) := by
+  unfold alignResolvedSlotTupleAtSlot alignAtSlot
+  simp only [Subst.apply_slot, producerCapFixed, producerTargetFixed,
+    consumerCapFixed, consumerTargetFixed]
+  unfold runResolvedConstraint
+  unfold solveResolvedWithLedger
+  cases solved : solveCapEqWithLedger state.capabilityOrigins
+      state.trace.solves.length origin (.prod (duals.map Dual.cap))
+      consumerCap with
+  | none => simp [solved]
+  | some step =>
+      have targetEq :
+          (step.delta.seq state.prevailing).apply
+              (.prod (duals.map Dual.target)) =
+            step.delta.apply (.prod (duals.map Dual.target)) := by
+        rw [Subst.seq_apply, producerTargetFixed]
+      have consumerEq :
+          (step.delta.seq state.prevailing).apply consumerTarget =
+            step.delta.apply consumerTarget := by
+        rw [Subst.seq_apply, consumerTargetFixed]
+      have targetMapEq :
+          duals.map ((step.delta.seq state.prevailing).apply ∘ Dual.target) =
+            duals.map (step.delta.apply ∘ Dual.target) := by
+        apply Ty.prod.inj
+        simpa only [Subst.apply_prod, List.map_map, Function.comp_apply] using
+          targetEq
+      simp [solved]
+      rw [InferState.prevailing_recordSolve, targetMapEq, consumerEq]
+
+/-- Complete the executable slot-tuple path by reusing the common annotated
+pair protocol and the extensional equality above. -/
+noncomputable def alignResolvedSlotTuple_complete
+    {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {executableProducerCap executableConsumerCap : Cap}
+    {executableProducerTarget executableConsumerTarget : Ty}
+    {executableDuals : List Dual} {capDelta : CapSubst}
+    {origin : ConstraintOrigin}
+    (producerCapEq : executableProducerCap =
+      .prod (executableDuals.map Dual.cap))
+    (producerTargetEq : executableProducerTarget =
+      .prod (executableDuals.map Dual.target))
+    (run : StateRunCompletion relation
+      (alignAtSlot initial origin
+        (.slot executableProducerCap executableProducerTarget)
+        (.slot executableConsumerCap executableConsumerTarget)) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger)
+    (producerCapFixed : executableProducerCap.apply initial.prevailing.cap =
+      executableProducerCap)
+    (producerTargetFixed : initial.prevailing.apply executableProducerTarget =
+      executableProducerTarget)
+    (consumerCapFixed : executableConsumerCap.apply initial.prevailing.cap =
+      executableConsumerCap)
+    (consumerTargetFixed : initial.prevailing.apply executableConsumerTarget =
+      executableConsumerTarget) :
+    StateRunCompletion relation
+      (alignResolvedSlotTupleAtSlot initial origin executableDuals
+        executableConsumerCap executableConsumerTarget) q
+      (Subst.seq targetDelta (Subst.seq (capOnly capDelta) S)) ledger := by
+  subst executableProducerCap
+  subst executableProducerTarget
+  apply StateRunCompletion.congrOperation run
+  exact alignResolvedSlotTupleAtSlot_eq_alignAtSlot producerCapFixed
+    producerTargetFixed consumerCapFixed consumerTargetFixed
 
 /-- Traversal package for one already-resolved producer-to-slot cut.  Solver
 success, the matcher transport, and both target-MGU orientations are derived

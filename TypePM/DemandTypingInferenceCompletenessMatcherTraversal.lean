@@ -17,6 +17,7 @@ open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessDataBisimulation
+open DemandTypingInferenceCompletenessProtected
 
 /-- Checking is synthesis followed by the executable expected-type cut. -/
 def checkExprFuel_complete
@@ -209,9 +210,19 @@ structure ClauseRunCompletion
     (target : Ty) (holes : List Dual) : Type where
   result : ClauseResult
   success : operation = some result
-  state : TraversalStateCorrespondence q' declarative ledger result.state
+  supply_eq : result.state.supply = q'
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
+  declarative_bounded : declarative.BoundedBy q'
+  executable_bounded : result.state.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger
+  executable_ledger_below : DDLedger.LedgerBelow q'
+    result.state.capabilityOrigins
+  protected_origins : ProtectedCapOrigins result.state
+  protected_below : ProtectedCapsBelowSupply result.state
+  allocated_recorded : AllocatedCapsRecorded result.state
   target : TyBisimulation transition.after target result.target
   holes : DualListBisimulation transition.after holes result.rawHoles
 
@@ -269,12 +280,52 @@ structure ClausesRunCompletion
     (target : Ty) (holeLists : List (List Dual)) : Type where
   result : ClausesResult
   success : operation = some result
-  state : TraversalStateCorrespondence q' declarative ledger result.state
+  supply_eq : result.state.supply = q'
   transition : BisimulationExtension before.prevailing ledger declarative
     result.state
+  declarative_bounded : declarative.BoundedBy q'
+  executable_bounded : result.state.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger
+  executable_ledger_below : DDLedger.LedgerBelow q'
+    result.state.capabilityOrigins
+  protected_origins : ProtectedCapOrigins result.state
+  protected_below : ProtectedCapsBelowSupply result.state
+  allocated_recorded : AllocatedCapsRecorded result.state
   target : TyBisimulation transition.after target result.target
   holes : DualListsBisimulation transition.after holeLists
     result.rawHoleLists
+
+def ClauseRunCompletion.completion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option ClauseResult} {q' : InferenceBase.FreshSupply}
+    {declarative : Subst} {ledger : CapabilityOriginLedger}
+    {target : Ty} {holes : List Dual}
+    (run : ClauseRunCompletion before operation q' declarative ledger target
+      holes) :
+    TraversalStateCorrespondence q' declarative ledger run.result.state :=
+  ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
+    run.executable_bounded, run.forward_bounded, run.reverse_bounded,
+    run.ledger_below, run.executable_ledger_below, run.protected_origins,
+    run.protected_below, run.allocated_recorded⟩
+
+def ClausesRunCompletion.completion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option ClausesResult} {q' : InferenceBase.FreshSupply}
+    {declarative : Subst} {ledger : CapabilityOriginLedger}
+    {target : Ty} {holeLists : List (List Dual)}
+    (run : ClausesRunCompletion before operation q' declarative ledger target
+      holeLists) :
+    TraversalStateCorrespondence q' declarative ledger run.result.state :=
+  ⟨run.supply_eq, run.transition.after, run.declarative_bounded,
+    run.executable_bounded, run.forward_bounded, run.reverse_bounded,
+    run.ledger_below, run.executable_ledger_below, run.protected_origins,
+    run.protected_below, run.allocated_recorded⟩
 
 /-! ## Clause traversal composition -/
 
@@ -330,17 +381,24 @@ def inferClauseFuel_complete
   refine
     { result := ⟨executableTarget, primitive.result.holes, armsRun.result⟩
       success := ?_
-      state := armsRun.completion
+      supply_eq := armsRun.supply_eq
       transition := transition
+      declarative_bounded := armsRun.declarative_bounded
+      executable_bounded := armsRun.executable_bounded
+      forward_bounded := armsRun.forward_bounded
+      reverse_bounded := armsRun.reverse_bounded
+      ledger_below := armsRun.ledger_below
+      executable_ledger_below := armsRun.executable_ledger_below
+      protected_origins := armsRun.protected_origins
+      protected_below := armsRun.protected_below
+      allocated_recorded := armsRun.allocated_recorded
       target := transition.transportTy targetRelated
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
           (nextRun.transition.seq armsRun.transition) primitive.holes }
   simp only [inferClauseFuel]
-  rw (occs := .pos [1]) [primitive.success]
-  rw [executableDecomposed]
-  rw (occs := .pos [1]) [nextRun.success]
-  exact armsRun.success
+  simp [primitive.success, executableDecomposed, nextRun.success,
+    armsRun.success]
 
 /-- Empty clause traversal preserves the shared matcher target. -/
 def inferClausesFuel_nil_complete
@@ -359,8 +417,17 @@ def inferClausesFuel_nil_complete
   refine
     { result := ⟨executableTarget, [], state⟩
       success := by simp [inferClausesFuel]
-      state := before
+      supply_eq := before.supply_eq
       transition := .refl before.prevailing
+      declarative_bounded := before.declarative_bounded
+      executable_bounded := before.executable_bounded
+      forward_bounded := before.forward_bounded
+      reverse_bounded := before.reverse_bounded
+      ledger_below := before.ledger_below
+      executable_ledger_below := before.executable_ledger_below
+      protected_origins := before.protected_origins
+      protected_below := before.protected_below
+      allocated_recorded := before.allocated_recorded
       target := targetRelated
       holes := .nil }
 
@@ -374,11 +441,13 @@ def inferClausesFuel_cons_complete
     {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
     {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
     (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
     (head : ClauseRunCompletion before
       (inferClauseFuel fuel signature context selfEnv (index :: parent)
         clause executableTarget state)
       q₁ S₁ ledger₁ declarativeTarget holes)
-    (tail : ClausesRunCompletion head.state
+    (tail : ClausesRunCompletion head.completion
       (inferClausesFuel fuel signature context selfEnv parent (index + 1)
         clauses executableTarget head.result.state)
       q' S' ledger' declarativeTarget holeLists) :
@@ -391,16 +460,24 @@ def inferClausesFuel_cons_complete
     { result := ⟨executableTarget,
         head.result.rawHoles :: tail.result.rawHoleLists, tail.result.state⟩
       success := ?_
-      state := tail.state
+      supply_eq := tail.supply_eq
       transition := transition
-      target := tail.target
+      declarative_bounded := tail.declarative_bounded
+      executable_bounded := tail.executable_bounded
+      forward_bounded := tail.forward_bounded
+      reverse_bounded := tail.reverse_bounded
+      ledger_below := tail.ledger_below
+      executable_ledger_below := tail.executable_ledger_below
+      protected_origins := tail.protected_origins
+      protected_below := tail.protected_below
+      allocated_recorded := tail.allocated_recorded
+      target := transition.transportTy targetRelated
       holes := .cons
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
           tail.transition head.holes)
         tail.holes }
   simp only [inferClausesFuel]
-  rw (occs := .pos [1]) [head.success]
-  exact tail.success
+  simp [head.success, tail.success]
 
 end DemandTypingInferenceCompletenessMatcherTraversal
 end TypePM
