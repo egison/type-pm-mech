@@ -337,6 +337,64 @@ theorem checkOrigin_complete_nonempty_of_synth
     aligned
   exact ⟨checkExprFuel_complete before synth.run alignedRun⟩
 
+theorem checkOrigin_complete_nonempty
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {expression : Expr} {expected : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedBounded : expected.BoundedBy q)
+    {raw : DDCheck signature q S context expression expected q' S'}
+    (origin : DDCheckOrigin signature raw ledger ledger')
+    (synthComplete : ∀ {rawTarget q₁ S₁ ledger₁}
+      {synthesized : DDSynth signature q S context expression rawTarget q₁ S₁},
+      DDSynthOrigin signature synthesized ledger ledger₁ →
+      Nonempty (BoundedSynthRunCompletion before
+        (inferExprFuel fuel signature context selfEnv path expression state)
+        q₁ S₁ ledger₁ rawTarget)) :
+    Nonempty (StateRunCompletion before
+      (checkExprFuel (fuel + 1) signature context selfEnv path expression
+        expected state) q' S' ledger') := by
+  cases origin with
+  | mk synthOrigin aligned =>
+      let synth := Classical.choice (synthComplete synthOrigin)
+      exact checkOrigin_complete_nonempty_of_synth
+        (synthesized := synthOrigin.erase) closed fuel before
+        contextBounded expectedBounded synth aligned
+
+def checksOrigin_nil_complete
+    {signature : FrozenSig}
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state) :
+    StateRunCompletion before
+      (checkExprsFuel (fuel + 1) signature context selfEnv parent index [] []
+        state) q S ledger :=
+  checkExprsFuel_nil_complete fuel signature context selfEnv parent index before
+
+def checksOrigin_cons_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {expression : Expr} {expressions : List Expr}
+    {expected : Ty} {expecteds : List Ty}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (head : StateRunCompletion before
+      (checkExprFuel fuel signature context selfEnv (index :: parent)
+        expression expected state) q₁ S₁ ledger₁)
+    (tail : StateRunCompletion head.completion
+      (checkExprsFuel fuel signature context selfEnv parent (index + 1)
+        expressions expecteds head.result) q' S' ledger') :
+    StateRunCompletion before
+      (checkExprsFuel (fuel + 1) signature context selfEnv parent index
+        (expression :: expressions) (expected :: expecteds) state)
+      q' S' ledger' :=
+  checkExprsFuel_cons_complete before head tail
+
 /-! ## Structural leaf certificates -/
 
 inductive DDSynthLeafOrigin (signature : FrozenSig) :
