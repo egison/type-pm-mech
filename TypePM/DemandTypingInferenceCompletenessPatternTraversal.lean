@@ -378,6 +378,45 @@ theorem DualListBisimulation.exportPayload
           (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
             bindings)))
 
+/-- Heterogeneous-target form of primitive-pattern export payload
+correspondence. -/
+theorem DualListBisimulation.exportPayloadRelated
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    {declarativeBindings executableBindings : MonoCtx}
+    {declarativeTarget executableTarget : Ty}
+    (target : TyBisimulation relation declarativeTarget executableTarget)
+    (duals : DualListBisimulation relation declarativeDuals executableDuals)
+    (bindings : MonoCtxBisimulation relation declarativeBindings
+      executableBindings) :
+    TyBisimulation relation
+      (capabilityExportPayload (declarativeDuals.map Dual.cap)
+        (declarativeDuals.map Dual.target ++
+          declarativeTarget :: declarativeBindings.map fun entry => entry.2))
+      (capabilityExportPayload (executableDuals.map Dual.cap)
+        (executableDuals.map Dual.target ++
+          executableTarget :: executableBindings.map fun entry => entry.2)) := by
+  unfold capabilityExportPayload
+  apply tyListBisimulation_prod
+  have caps : TyListBisimulation relation
+      ((declarativeDuals.map Dual.cap).map fun capability =>
+        .matcher capability .unit)
+      ((executableDuals.map Dual.cap).map fun capability =>
+        .matcher capability .unit) := by
+    induction duals with
+    | nil => exact .nil
+    | cons head tail induction => exact .cons head.cap induction
+  exact
+    DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+      caps
+      (DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+        (DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.targets
+          duals)
+        (.cons target
+          (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
+            bindings)))
+
 /-! ## Paired export freezing -/
 
 /-- Export leaves selected from two related payloads correspond through the
