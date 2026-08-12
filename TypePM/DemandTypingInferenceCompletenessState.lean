@@ -1,4 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessOneWay
+import TypePM.DemandTypingInferenceCompletenessLedgerBisimulation
 
 /-!
 # Prevailing-state correspondence for inference completeness
@@ -13,6 +14,7 @@ namespace TypePM
 namespace DemandTypingInferenceCompletenessState
 
 open Inference
+open DemandTypingInferenceCompletenessLedgerBisimulation
 
 /-- A DD prevailing substitution is obtained by applying one admissible
 residual after the executable prevailing substitution. -/
@@ -20,13 +22,15 @@ def StateCorrespondence (ledger : CapabilityOriginLedger)
     (declarative : Subst) (executable : InferState) : Prop :=
   ∃ residual,
     declarative = Subst.seq residual executable.prevailing ∧
-      AdmissiblePost ledger residual
+      AdmissiblePostBetween executable.capabilityOrigins ledger residual
 
 /-- The initial exact-state case. -/
 theorem StateCorrespondence.refl
-    (ledger : CapabilityOriginLedger) (state : InferState) :
+    (ledger : CapabilityOriginLedger) (state : InferState)
+    (ledgerEq : state.capabilityOrigins = ledger) :
     StateCorrespondence ledger state.prevailing state := by
-  refine ⟨Subst.id, ?_, AdmissiblePost.id ledger⟩
+  subst ledger
+  refine ⟨Subst.id, ?_, AdmissiblePostBetween.id _⟩
   apply PhasedPost.subst_ext
   · funext varId
     exact (Cap.apply_id (state.prevailing.cap varId)).symm
@@ -52,7 +56,7 @@ theorem stateAfterRecordSolve
     {state : InferState} {step : SolveStep}
     (equation : declarativeOutput =
       Subst.seq residual (Subst.seq step.delta state.prevailing))
-    (admissible : AdmissiblePost ledger residual) :
+    (admissible : AdmissiblePostBetween state.capabilityOrigins ledger residual) :
     StateCorrespondence ledger declarativeOutput
       (state.recordSolve step) := by
   refine ⟨residual, ?_, admissible⟩
@@ -67,16 +71,18 @@ theorem pairedCut
     (relation : StateCorrespondence ledger declarative state)
     (dd : OriginSafeExactPairedMGU ledger
       (declarative.apply left) (declarative.apply right) delta)
-    (result : PairedUnification.PairedResult ledger
+    (result : PairedUnification.PairedResult state.capabilityOrigins
       (state.prevailing.apply left) (state.prevailing.apply right)) :
     ∃ residual,
       Subst.seq delta declarative =
         Subst.seq residual (Subst.seq result.subst state.prevailing) ∧
-      AdmissiblePost ledger residual := by
+      AdmissiblePostBetween state.capabilityOrigins ledger residual := by
   rcases relation with ⟨incoming, stateEquation, incomingAdmissible⟩
   let combined := Subst.seq delta incoming
-  have combinedAdmissible : AdmissiblePost ledger combined :=
-    AdmissiblePost.seq dd.admissible incomingAdmissible
+  have combinedAdmissible :
+      AdmissiblePostBetween state.capabilityOrigins ledger combined :=
+    (AdmissiblePostBetween.ofAdmissible dd.admissible).seq
+      incomingAdmissible
   have stateApply (target : Ty) :
       incoming.apply (state.prevailing.apply target) =
         declarative.apply target := by
@@ -91,7 +97,7 @@ theorem pairedCut
     simp only [combined, Subst.seq_apply, stateApply]
     exact dd.exact.1.1
   have absorbs : combined = Subst.seq combined result.subst :=
-    result.universal combined combinedAdmissible combinedSound
+    result.exactPairedMGU.absorbs combinedSound
   refine ⟨combined, ?_, combinedAdmissible⟩
   calc
     Subst.seq delta declarative =
@@ -113,7 +119,7 @@ theorem pairedCut_recordSolve
     (relation : StateCorrespondence ledger declarative state)
     (dd : OriginSafeExactPairedMGU ledger
       (declarative.apply left) (declarative.apply right) delta)
-    (result : PairedUnification.PairedResult ledger
+    (result : PairedUnification.PairedResult state.capabilityOrigins
       (state.prevailing.apply left) (state.prevailing.apply right))
     (stepDelta : step.delta = result.subst) :
     StateCorrespondence ledger (Subst.seq delta declarative)
@@ -133,18 +139,20 @@ theorem capabilityCut
     (relation : StateCorrespondence ledger declarative state)
     (dd : OriginSafeExactCapMGU ledger
       (left.apply declarative.cap) (right.apply declarative.cap) delta)
-    (result : PairedUnification.OrientedCapResult ledger
+    (result : PairedUnification.OrientedCapResult state.capabilityOrigins
       (left.apply state.prevailing.cap) (right.apply state.prevailing.cap)) :
     ∃ residual,
       Subst.seq ⟨delta, TySubst.id⟩ declarative =
         Subst.seq residual
           (Subst.seq ⟨result.subst, TySubst.id⟩ state.prevailing) ∧
-      AdmissiblePost ledger residual := by
+      AdmissiblePostBetween state.capabilityOrigins ledger residual := by
   rcases relation with ⟨incoming, stateEquation, incomingAdmissible⟩
   let localDelta : Subst := ⟨delta, TySubst.id⟩
   let combined := Subst.seq localDelta incoming
-  have combinedAdmissible : AdmissiblePost ledger combined :=
-    AdmissiblePost.seq { cap := dd.admissible } incomingAdmissible
+  have combinedAdmissible :
+      AdmissiblePostBetween state.capabilityOrigins ledger combined :=
+    (AdmissiblePostBetween.ofAdmissible { cap := dd.admissible }).seq
+      incomingAdmissible
   have stateCapApply (capability : Cap) :
       (capability.apply state.prevailing.cap).apply incoming.cap =
         capability.apply declarative.cap := by
@@ -170,7 +178,7 @@ theorem capabilityCut
           (right.apply state.prevailing.cap)).symm
   have capAbsorbs :
       combined.cap = CapSubst.comp combined.cap result.subst :=
-    result.universal combined.cap combinedAdmissible.cap sound
+    result.exactCapMGU.absorbs sound
   have absorbs : combined =
       Subst.seq combined ⟨result.subst, TySubst.id⟩ := by
     apply PhasedPost.subst_ext

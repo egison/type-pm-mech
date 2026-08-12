@@ -19,6 +19,7 @@ namespace DemandTypingInferenceCompletenessStateMutual
 
 open Inference
 open DemandTypingInferenceCompletenessState
+open DemandTypingInferenceCompletenessLedgerBisimulation
 
 /-- The DD and executable prevailing substitutions mutually factor through
 one another.  The forward residual remains origin-admissible because it is
@@ -38,16 +39,14 @@ structure StateBisimulation (ledger : CapabilityOriginLedger)
   forward : Subst
   forwardEquation :
     declarative = Subst.seq forward executable.prevailing
-  forwardAdmissible : AdmissiblePost ledger forward
   declarativeIdempotent : declarative.Idempotent
   reverse : Subst
   reverseEquation :
     executable.prevailing = Subst.seq reverse declarative
-  /-- Reverse transport must preserve the same origin policy.  Without this
-  condition mutual instantiation can rename a `renameOnly` consumer leaf to
-  a `structuralFlexible` producer leaf, making the executable one-way solve
-  fail even though its DD counterpart succeeds. -/
-  reverseAdmissible : AdmissiblePost ledger reverse
+  /-- Forward and reverse residuals transport the actual executable origin
+  policy and the DD origin policy in opposite directions. -/
+  ledgerBisimulation : LedgerBisimulation ledger
+    executable.capabilityOrigins forward reverse
   executableIdempotent : executable.prevailing.Idempotent
 
 /-- One DD raw target and one executable raw target correspond under the
@@ -130,17 +129,19 @@ needed. -/
 theorem StateBisimulation.toMutual
     {ledger : CapabilityOriginLedger} {declarative : Subst}
     {state : InferState}
-    (relation : StateBisimulation ledger declarative state) :
+    (relation : StateBisimulation ledger declarative state)
+    (ledgerEq : state.capabilityOrigins = ledger) :
     MutualStateCorrespondence ledger declarative state :=
-  ⟨⟨relation.forward, relation.forwardEquation,
-      relation.forwardAdmissible⟩,
+  ⟨⟨relation.forward, relation.forwardEquation, by
+      subst ledger
+      exact relation.ledgerBisimulation.forwardBetween⟩,
     relation.reverse, relation.reverseEquation⟩
 
 /-- Proof-relevant initial correspondence. -/
 def StateBisimulation.refl
-    (ledger : CapabilityOriginLedger) (state : InferState)
+    (state : InferState)
     (idempotent : state.prevailing.Idempotent) :
-    StateBisimulation ledger state.prevailing state where
+    StateBisimulation state.capabilityOrigins state.prevailing state where
   forward := Subst.id
   forwardEquation := by
     apply PhasedPost.subst_ext
@@ -150,7 +151,6 @@ def StateBisimulation.refl
       change state.prevailing.target varId =
         Subst.id.apply (state.prevailing.target varId)
       rw [Subst.apply_id]
-  forwardAdmissible := AdmissiblePost.id ledger
   declarativeIdempotent := idempotent
   reverse := Subst.id
   reverseEquation := by
@@ -161,7 +161,7 @@ def StateBisimulation.refl
       change state.prevailing.target varId =
       Subst.id.apply (state.prevailing.target varId)
       rw [Subst.apply_id]
-  reverseAdmissible := AdmissiblePost.id ledger
+  ledgerBisimulation := LedgerBisimulation.refl state.capabilityOrigins
   executableIdempotent := idempotent
 
 /-- The same raw target is related by every state bisimulation. -/
@@ -187,11 +187,10 @@ def StateBisimulation.recordEvent
     StateBisimulation ledger declarative (state.recordEvent event) where
   forward := relation.forward
   forwardEquation := by simpa using relation.forwardEquation
-  forwardAdmissible := relation.forwardAdmissible
   declarativeIdempotent := relation.declarativeIdempotent
   reverse := relation.reverse
   reverseEquation := by simpa using relation.reverseEquation
-  reverseAdmissible := relation.reverseAdmissible
+  ledgerBisimulation := relation.ledgerBisimulation
   executableIdempotent := relation.executableIdempotent
 
 /-- Event-only transition as a reusable chronological extension. -/
@@ -225,26 +224,29 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
     (dd : OriginSafeExactPairedMGU ledger
       (declarative.apply declarativeLeft)
       (declarative.apply declarativeRight) delta)
-    (result : PairedUnification.PairedResult ledger
+    (result : PairedUnification.PairedResult state.capabilityOrigins
       (state.prevailing.apply executableLeft)
       (state.prevailing.apply executableRight))
     (stepDelta : step.delta = result.subst) :
     BisimulationExtension relation ledger (Subst.seq delta declarative)
       (state.recordSolve step) := by
   let combined := Subst.seq delta relation.forward
-  have combinedAdmissible : AdmissiblePost ledger combined :=
-    AdmissiblePost.seq dd.admissible relation.forwardAdmissible
+  have combinedBetween : AdmissiblePostBetween state.capabilityOrigins ledger
+      combined :=
+    (AdmissiblePostBetween.ofAdmissible dd.admissible).seq
+      relation.ledgerBisimulation.forwardBetween
   have combinedSound :
       combined.apply (state.prevailing.apply executableLeft) =
         combined.apply (state.prevailing.apply executableRight) := by
     simp only [combined, Subst.seq_apply, ← left.forward, ← right.forward]
     exact dd.exact.1.1
   have forwardAbsorbs : combined = Subst.seq combined result.subst :=
-    result.universal combined combinedAdmissible combinedSound
+    result.exactPairedMGU.absorbs combinedSound
   let reverseCompetitor := Subst.seq result.subst relation.reverse
-  have reverseCompetitorAdmissible :
-      AdmissiblePost ledger reverseCompetitor :=
-    AdmissiblePost.seq result.admissible relation.reverseAdmissible
+  have reverseCompetitorBetween :
+      AdmissiblePostBetween ledger state.capabilityOrigins reverseCompetitor :=
+    (AdmissiblePostBetween.ofAdmissible result.admissible).seq
+      relation.ledgerBisimulation.reverseBetween
   have reverseSound :
       reverseCompetitor.apply (declarative.apply declarativeLeft) =
         reverseCompetitor.apply (declarative.apply declarativeRight) := by
@@ -270,7 +272,6 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
           _ = Subst.seq combined
               (Subst.seq result.subst state.prevailing) :=
             (PhasedPost.seq_assoc combined result.subst state.prevailing).symm
-      forwardAdmissible := combinedAdmissible
       declarativeIdempotent :=
         dd.exact.seq_idempotent relation.declarativeIdempotent
       reverse := reverseCompetitor
@@ -287,7 +288,8 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
             rw [← reverseAbsorbs]
           _ = Subst.seq reverseCompetitor (Subst.seq delta declarative) :=
             (PhasedPost.seq_assoc reverseCompetitor delta declarative).symm
-      reverseAdmissible := reverseCompetitorAdmissible
+      ledgerBisimulation :=
+        ⟨combinedBetween, reverseCompetitorBetween⟩
       executableIdempotent := by
         rw [InferState.prevailing_recordSolve, stepDelta]
         exact result.exactPairedMGU.seq_idempotent
@@ -340,9 +342,10 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
 
 /-- Initially the two prevailing states coincide. -/
 theorem MutualStateCorrespondence.refl
-    (ledger : CapabilityOriginLedger) (state : InferState) :
+    (ledger : CapabilityOriginLedger) (state : InferState)
+    (ledgerEq : state.capabilityOrigins = ledger) :
     MutualStateCorrespondence ledger state.prevailing state := by
-  refine ⟨StateCorrespondence.refl ledger state, Subst.id, ?_⟩
+  refine ⟨StateCorrespondence.refl ledger state ledgerEq, Subst.id, ?_⟩
   apply PhasedPost.subst_ext
   · funext varId
     exact (Cap.apply_id (state.prevailing.cap varId)).symm
@@ -366,11 +369,11 @@ theorem MutualStateCorrespondence.recordEvent
 /-- The executable paired result, transported through the incoming reverse
 residual, is a solution of the DD-side constraint. -/
 theorem pairedReverseCompetitorSound
-    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {declarative : Subst}
     {state : InferState} {left right : Ty} {reverseResidual : Subst}
     (reverseEquation :
       state.prevailing = Subst.seq reverseResidual declarative)
-    (result : PairedUnification.PairedResult ledger
+    (result : PairedUnification.PairedResult state.capabilityOrigins
       (state.prevailing.apply left) (state.prevailing.apply right)) :
     (Subst.seq result.subst reverseResidual).apply
         (declarative.apply left) =
@@ -393,7 +396,7 @@ theorem MutualStateCorrespondence.pairedCut_recordSolve
     (relation : MutualStateCorrespondence ledger declarative state)
     (dd : OriginSafeExactPairedMGU ledger
       (declarative.apply left) (declarative.apply right) delta)
-    (result : PairedUnification.PairedResult ledger
+    (result : PairedUnification.PairedResult state.capabilityOrigins
       (state.prevailing.apply left) (state.prevailing.apply right))
     (stepDelta : step.delta = result.subst) :
     MutualStateCorrespondence ledger (Subst.seq delta declarative)
