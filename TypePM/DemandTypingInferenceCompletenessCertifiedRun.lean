@@ -200,6 +200,44 @@ theorem ValidatorRunExtension.freshCap
   · subst event
     simp [TerminalAuditSensitiveEvent]
 
+/-- A resolved solver step changes the solve history but emits no
+reconstruction event, so it transports both validator extensions unchanged. -/
+theorem ValidatorRunExtension.ofRunResolvedConstraint
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {constraint : Constraint}
+    (success : Inference.runResolvedConstraint state origin constraint =
+      some result) :
+    ValidatorRunExtension terminal signature state result := by
+  have extension := runResolvedConstraint_stateExtension success
+  have eventsEq : result.trace.events = state.trace.events := by
+    unfold Inference.runResolvedConstraint at success
+    cases stepEquation : solveResolvedWithLedger state.capabilityOrigins
+        state.trace.solves.length origin constraint with
+    | none => simp [stepEquation] at success
+    | some step =>
+        simp only [stepEquation] at success
+        cases constraint with
+        | capEq _ _ | targetEq _ _ =>
+            simpa [InferState.recordSolve] using (congrArg
+              (fun current : InferState => current.trace.events)
+              (Option.some.inj success)).symm
+        | producerToSlot _ _ _ _ =>
+            change (if capSubstSafeVarsCheck state.capabilityOrigins
+                step.delta.cap state.protectedCaps
+              then some (state.recordSolve step) else none) =
+                some result at success
+            split at success <;> try contradiction
+            simpa [InferState.recordSolve] using (congrArg
+              (fun current : InferState => current.trace.events)
+              (Option.some.inj success)).symm
+  apply ValidatorRunExtension.ofOrdinary
+    (Inference.Reconstruction.OrdinaryValidatorHistoryExtension.ofNoEvents
+      extension eventsEq)
+  intro event membership previous
+  exfalso
+  exact previous (by simpa [eventsEq] using membership)
+
 theorem ValidatorRunExtension.protectMatcherCapability
     (terminal : Subst) (signature : FrozenSig) (state : InferState)
     (capability : Cap) :
