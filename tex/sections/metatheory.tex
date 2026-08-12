@@ -1,13 +1,50 @@
 \section{機械化された性質と接続}
 
-本節では，前節までの規則から得られる性質と，実行可能推論・動的安全性への接続をまとめる．
-solver の個別補題，trace invariant，回帰一覧は \texttt{../docs/details.md} に分離する．
+本章は，第3--6章の規則を公開定理へ接続する．証明は「局所solverの代数」「全traversalへの
+持上げ」「source／executable／runtime境界」の三層に分かれる．個別のLean module，補題，回帰の
+索引は\texttt{../docs/details.md}に分離する．
 
-\subsection{SourceTyping 自身の性質}
+\subsection{公開定理の依存関係}
+
+公開結果は互いに独立な大定理ではなく，共通の局所不変量を次のように消費する．
+
+\begin{center}
+\small
+\begin{tabular}{p{0.25\linewidth}p{0.34\linewidth}p{0.29\linewidth}}
+\toprule
+公開結果 & 直接使う証明境界 & その依存が必要な理由 \\
+\midrule
+$\mathsf{infer}\Rightarrow\mathsf{SourceTyping}$
+  & executable solver correspondence，trace history，validator soundness
+  & 成功runと同じcut列を持つOrigin derivationとterminal auditを作る \\
+$\mathsf{SourceTyping}\Rightarrow\mathsf{infer}$
+  & exact solve completeness，state bisimulation，auditからevent coverageへの輸送
+  & 関係的derivationを同じ割当順序の成功runとして再生する \\
+$\mathsf{SourceTyping}\Rightarrow\mathsf{TypingInvariant}$
+  & chronological factorization，solved form，terminal audit，scheme closedness
+  & 局所状態を一つのroot終端へ正規化してから消去する \\
+$\mathsf{SourceTyping.safe}$
+  & state erasure，$\mathsf{FrozenSigWF}$，$\mathsf{CoreSafety}$
+  & source型を保ったままruntime側の安全性packageへ接続する \\
+受理同値と決定可能性
+  & executable soundnessとacceptance completeness
+  & source typabilityを有限の公開推論で特徴付ける \\
+target一意性
+  & acceptance completeness，実行runの決定性，局所renaming
+  & 二導出を同じ実行targetへ写し，MGUの向きを隠す \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$\mathsf{FrozenSigWF}$はsource-facingな唯一のglobal signature条件である．受理完全性にはscheme
+closednessとcanonical arm checker，安全性にはscheme closednessと動的整合性を供給する．低レベル
+補題は必要なfieldを明示してよいが，公開定理はcallerにそれらを別々に渡させない．
+
+\subsection{局所代数を全判断へ持ち上げる}
 
 \subsubsection*{Slot demand}
-$S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'$ が ordinary equality でないなら，resolved
-expected type は必ず slot-headed である．
+$S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'$がordinary equalityでないなら，resolved expected
+typeは必ずslot-headedである．
 \[
 S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'
 \Longrightarrow
@@ -15,88 +52,120 @@ S;\Omega\vdash\tau\preccurlyeq\rho\dashv S'
 \ \lor\
 \exists\kappa,\upsilon.\;S\rho=\MatcherSlot{\kappa}{\upsilon}.
 \]
-特に $S\rho$ が matcher-headed なら ordinary alignment に限られる．これにより「coercion は
-slot demand を観測した checking cut で一度だけ」が judgment の性質になる．
+特に$S\rho$がmatcher-headedならordinary alignmentに限られる．これにより「coercionはslot
+demandを観測したchecking cutで一度だけ」が実装上の慣例ではなくjudgmentの定理になる．
 
-\subsubsection*{三状態の extension}
-すべての raw demand-directed family は supply を単調に進め，出力 substitution を入力 substitution と局所
-solve delta の chronological replay に因子化できる．対応する Origin family は raw derivation
-と同じ構造を持ち，ledger transition が入力 ledger を保ち，fresh supply の範囲内だけを追加・
-freeze することを保証する．公開型，pattern dual，bindings，hole ledger に現れる flexible
-variable は終端 supply で有界である．
+\subsubsection*{State extensionとboundedness}
+全raw demand-directed familyはsupplyを単調に進め，出力substitutionを入力substitutionと局所deltaの
+chronological replayへ因子化する．対応するOrigin familyはledgerの既存entryを保ち，fresh supplyの
+範囲内だけを追加・freezeする．公開型，pattern dual，bindings，hole ledgerに現れるflexible variableは
+終端supplyで有界である．これにより子の出力を次の子へ渡す規則と，実行traversalの割当順序を一致させる．
 
 \subsubsection*{Solved form}
-capability-only，target-only，paired，二段階 matcher／slot solve，one-way matchingの各局所操作は，
-入力substitutionの冪等性を保存する．これをtraversal順に合成し，alignment familyと，expression，
-expression list，checking，user／primitive／data pattern，pattern list，arm，clause，
-pattern-constructor capabilityを含む全14 raw demand-directed familyについて
+capability-only，target-only，paired，matcher／slotの二段階solve，one-way matchingの各局所操作は，
+入力substitutionの冪等性を保存する．これをtraversal順に合成し，alignmentとexpression，checking，
+pattern，arm，clauseを含む全14 raw familyについて
 \[
 S.\mathsf{Idempotent}\Longrightarrow S'.\mathsf{Idempotent}
 \]
-を証明済みである．公開判断は恒等substitutionから始まるため，rootの終端substitutionは無条件に
-solved formである．
+を得る．公開判断は恒等substitutionから始まるため，root終端は無条件にsolved formである．
 
-\subsubsection*{No guess と freeze}
-exact MGU は constraint 外で恒等，constraint range 内，solved form である．さらに Origin
-admissibility により rigid key を固定し，rename-only key の structural strengthening を拒否する．
-constructor／fresh consumer の structural variable は局所 solve を許すが，選択的 export と
-matcher finalization を越えた producer leaf は rename-only になる．$\mathtt{let}$ は終端
-substitution 下の generalization stability も要求する．
+\subsubsection*{No guessとfreeze}
+exact MGUはconstraint外で恒等，constraint range内，solved formである．Origin admissibilityはrigid
+keyを固定し，rename-only keyのstructural strengtheningを拒否する．constructor／fresh consumerの
+structural variableは局所solveを許すが，exportまたはmatcher finalizationを越えて公開payloadに残る
+producer leafはrename-onlyになる．
 
-\subsubsection*{回帰の現在地}
-origin を追跡しない局所導出では，量化 producer capability を後続 solve が
-$\Any$ へ強化する $\mathit{capFreezeProgram}$ と，let-generalized capability を強化する
-$\mathit{letCapFreezeProgram}$ の問題が現れる．これらは現行 public
-$\mathsf{SourceTyping}$ の正例ではない．該当する局所 delta が Origin-aware solve で拒否されることは
-証明済みであり，プログラム全体についても
-$\neg\mathsf{SourceTyping}(\mathit{capFreezeProgram})$ と
-$\neg\mathsf{SourceTyping}(\mathit{letCapFreezeProgram})$ を閉じる negative regression を構成済みである．
-or-pattern，delegating matcher，let-polymorphic producer の public positive Origin certificate も
-構成済みである．
+この境界がなければ，量化producer capabilityを後続solveが$\Any$へ強化するprogramや，
+let-generalized capabilityを強化するprogramを受理してしまう．現行$\mathsf{SourceTyping}$では，
+対応するdeltaの拒否とprogram全体の導出不能性をnegative regressionとして閉じている．一方，
+or-pattern，delegating matcher，let-polymorphic producerにはpublic Origin certificateがある．
 
 \subsection{実行可能推論からSourceTypingへ}
 
-公開 inference は停止する raw traversal と有限の fail-closed validator の合成である．
+公開推論は停止するraw traversalと有限のfail-closed validatorの合成である．
 \[
 \mathsf{infer}(\Sighat,\Gamma,e)=
 \mathsf{bind}(\mathsf{inferRaw}(\Sighat,\Gamma,e),
   \lambda r.\;\mathsf{if}\;\mathsf{wBridgeCheck}(\Sighat,r)
   \;\mathsf{then}\;\mathsf{some}\;r\;\mathsf{else}\;\mathsf{none}).
 \]
-raw traversal の executable ledger と demand-directed の intrinsic Origin certificate は同じ policy を別の
-役割で記録する．前者は solver を実行時に fail closed にし，後者は関係的 derivation の solve
-admissibility を証明する．validator は trace から binder-local instance，alignment，matcher
-finalization，let generalization，freeze event を再検査する．成功したfuelled traversalは，
-expression synthesis／checking，expression list，pattern，matcher，arm，clauseを含む10 familyの
-相互帰納により，同じsupply，prevailing substitution，origin ledgerを持つraw demand-directed derivationへ
-再構成される．append-only historyは各再帰呼出しを一つのroot終端へ接続し，validatorの証拠から
-$\mathtt{let}$，matcher，pattern constructorのterminal auditを構成する．従って公開成功から
-次を得る．
+raw runからsource derivationを作るには，次の三段階が必要である．
+
+\begin{enumerate}
+\item executable solverの成功を，ledger-admissibleなexact relational solveへ写す．
+\item expression，checking，pattern，matcher，arm，clauseのtraversalを，同じ$q,S,\Omega$を持つ
+  raw derivationとOrigin certificateへ相互再構成する．
+\item append-only historyで全局所cutを一つのroot終端へ接続し，validator soundnessから
+  $\mathtt{let}$，matcher，pattern constructorのterminal auditを構成する．
+\end{enumerate}
+
+従って
 \[
 \frac{\mathsf{infer}(\Sighat,\Gamma,e)=\mathsf{some}\;r}
-{\mathsf{SourceTyping}(\Sighat,\Gamma,e,r.\mathsf{resolvedTarget})}.
+{\mathsf{SourceTyping}(\Sighat,\Gamma,e,r.\mathsf{resolvedTarget})}
+\tag{\textsc{Inference-Soundness}}
 \]
-この定理は $\mathsf{TypingInvariant}$ を経由せず，caller-supplied bridge，history，
-$\mathsf{InferenceInputWF}$を前提にしない．
+を得る．caller-supplied bridge，history，$\mathsf{InferenceInputWF}$はpremiseに残らない．この経路は
+$\mathsf{TypingInvariant}$を介さず，唯一のsource typingを直接再構成する．
 
-これとは独立に，$S_r=r.\mathsf{state.prevailing}$として公開成功から
-$\mathsf{TypingInvariant}(\Sighat,S_r\Gamma,e,r.\mathsf{resolvedTarget})$を再構成する既存経路もある．
-$\mathsf{TypingInvariant}$ は source acceptance ではなく，solver stateを持たない内部invariantで
-あり，動的メタ理論との直接接続に用いる．一般contextについて二つの経路を同一視する主張はしない．
+これとは独立に，成功runのproof-relevant reconstructionから
+$\mathsf{TypingInvariant}(\Sighat,S_r\Gamma,e,r.\mathsf{resolvedTarget})$を得る内部経路もある．
+これは動的メタ理論へ直接接続するための経路であり，一般contextについて二つの経路を同一視しない．
 
-\subsection{動的安全性}
+\subsection{SourceTypingから実行可能推論へ}
 
-freeze 済み signature の checker は，全schemeのbinder外にmetavariableがないことと動的整合性を
-一つに束ねた$\mathsf{FrozenSigWF}$を確立する．function-valuedなexhaustiveness checkerだけは，
-signature構築時に固定した実装との等式をchecker soundnessへ渡す．その下で，typed
-environment における評価は $\mathsf{TypingInvariant}$ を $\mathsf{ValueTy}$ へ保存する．matching
-machine について，typed state の一段保存，局所 progress，到達可能 state の保存，成功 branch
-の substitution typing を証明済みである．空 successor 列は正当な match failure であり stuck
-ではない．一般の program termination は主張しない．
+逆向きは，Origin treeとterminal auditを同時に再帰し，関係的derivationを成功runとして再生する．
+exact solve witnessとexecutable solver resultは，raw metavariable名の構文的一致ではなく，互いに
+factorするidempotent stateのbisimulationで対応させる．fresh allocation，context normalization，
+producer protection，fuel boundを全traversal familyで保存する．
 
-\subsection{SourceTyping からの公開安全性}
+各局所runは成功等式とvalidator event coverageを返す．ordinary eventは規則自身から得る．
+$\mathtt{let}$ generalization，matcher finalization，pattern-constructor compatibilityはterminal auditから
+得て，demand-directed側と実行側のoperandをbisimulation越しに対応させる．rootで全eventを有限の
+$\mathsf{wBridgeCheck}$へ射影する．$\mathsf{FrozenSigWF}$はこの輸送に必要なscheme closednessと
+canonical arm checkerを供給する．
 
-source-facingな公開安全性定理は次の形で機械化済みである．
+実際の公開定理は一般contextについて
+\[
+\mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau)
+\Longrightarrow
+\mathsf{FrozenSigWF}(\Sighat)
+\Longrightarrow
+\mathsf{infer}(\Sighat,\Gamma,e)\ne\mathsf{none}
+\tag{\textsc{Acceptance-Completeness}}
+\]
+である．raw visibility，freeze compatibility，solver success，validator bridgeはcaller premiseに
+残らない．ただしこれはvalidator単体が任意のraw runを受理するという主張ではなく，terminal-audited
+$\mathsf{SourceTyping}$から再構成したrunに対する受理完全性である．
+
+recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$を，外部から
+paired rootを渡さずこの公開定理へ到達するend-to-end regressionとして機械検査している．
+
+\subsection{State erasureと公開安全性}
+
+$\mathsf{SourceTyping}$から内部invariantを作るとき，局所cutの状態をそのままruntime typingへ
+持ち込まない．各局所出力から一つのroot終端への$\mathsf{StateFactorization}$，root substitutionの
+solved form，terminal auditを使い，全14 Origin familyを同じ終端へ正規化してから$q,S,\Omega$を消去する．
+
+canonical schemeのfinite openingはvariable lookupを終端contextへ輸送する．matcher-to-slotは終端
+$\mathsf{CapabilityDemand}$，slot-to-slotは終端型等式へ射影する．$\mathtt{let}$，matcher，pattern
+constructorだけはterminal auditの三種のfactsを使う．従ってclosed signature上のclosed programで
+\[
+\Sighat.\mathsf{SchemesClosed}
+\Longrightarrow
+\mathsf{SourceTyping}(\Sighat,\emptyset,e,\tau)
+\Longrightarrow
+\mathsf{TypingInvariant}(\Sighat,\emptyset,e,\tau)
+\]
+が成立する．$\mathsf{TypingInvariant}$の存在をsource ruleのpremiseに置く循環はない．
+
+$\mathsf{FrozenSigWF}$はこのscheme closednessに加えてruntime signatureの動的整合性を持つ．その下で
+evaluationは$\mathsf{TypingInvariant}$を$\mathsf{ValueTy}$へ保存し，matching machineについてtyped
+stateの一段保存，局所progress，到達可能stateの保存，成功branchのsubstitution typingが成り立つ．
+空successor列は正当なmatch failureでありstuckではない．
+
+これらをsource-facingな一つの定理に束ねる．
 \[
 \frac{
   \mathsf{FrozenSigWF}(\Sighat)
@@ -105,78 +174,14 @@ source-facingな公開安全性定理は次の形で機械化済みである．
 }{
   \mathsf{SafeResult}_{\mathsf{Source}}(\Sighat,e,\tau,\mathcal S_F)
 }
-\;\rn{Source-Safety}
+\tag{\textsc{Source-Safety}}
 \]
-$\mathsf{SafeResult}_{\mathsf{Source}}$はLeanの$\mathsf{SourceTyping.SafeResult}$を表し，
-$\mathsf{TypingInvariant}(\Sighat,\emptyset,e,\tau)$と
-$\mathsf{CoreSafety}(\Sighat,\mathcal S_F)$を保持する．従って内部certificateを公開定理のpremiseに
-露出せず，同じ公開型でevaluationとmatching machineの安全性を利用できる．
+$\mathsf{SafeResult}_{\mathsf{Source}}$は同じ公開型の$\mathsf{TypingInvariant}$と
+$\mathsf{CoreSafety}$を保持する．callerは内部certificateやscheme closednessを別premiseとして渡さない．
 
-この定理のstate-erasure部分では，入力cutより前のorigin policyを保存する
-supply-scopedな残余substitutionと，各局所出力を一つのroot終端substitutionへ結ぶ
-$\mathsf{StateFactorization}$を使う．全14 Origin familyのfactorizationとconstructor-wise erasureを
-一つの終端cutへ固定した相互帰納にまとめ，supply，prevailing substitution，ledgerを消去する．
+\subsection{受理同値，返値型，target一意性}
 
-局所cutではなく公開終端で再確認すべき追加情報はterminal auditに分離する．そのfactsは三種であり，
-$\mathtt{let}$は終端context／value typeから再計算したgeneralizationの一致，matcherはterminal hole
-capabilityから再計算したevidence，shape，clause capability，arm exhaustiveness，coverage，pattern
-constructorは終端dual／capabilityの$\mathsf{CapCompatible}$を記録する．variable nodeは追加factsを
-持たず，canonical $\mathsf{Scheme}$のfinite opening transportから終端lookupとの一致を直接導く．
-相互erasureはこれらを使って
-$\mathsf{TypingInvariant}$，pattern，arm，clause certificateを再構成する．matcher-to-slotは終端
-$\mathsf{CapabilityDemand}$，slot-to-slotは終端型等式へ消去される．
-
-従ってclosed signature上のclosed-programについて
-\[
-\Sighat.\mathsf{SchemesClosed}
-\Longrightarrow
-\mathsf{SourceTyping}(\Sighat,\emptyset,e,\tau)
-\Longrightarrow
-\mathsf{TypingInvariant}(\Sighat,\emptyset,e,\tau)
-\]
-が成立する．$\mathsf{TypingInvariant}$の存在をdemand-directed ruleのpremiseに置く循環的な定義は用いず，$\mathsf{SourceTyping}$ derivation自身の
-solved-form保存，Origin history，terminal auditから射影する．このclosednessは低レベルerasureの
-正確なpremiseとして残るが，公開callerは別に渡さない．$\mathsf{FrozenSigWF}$が
-$\Sighat.\mathsf{SchemesClosed}$をfieldとして保持し，実行可能checkerが全tableについて検査する．
-
-\subsection{受理完全性}
-
-逆向の受理完全性は，$\mathsf{SourceTyping}$ derivationのOrigin treeとterminal auditを同時に再帰することで
-証明する．demand-directedのexact solve witnessとexecutable solver resultを相互factorizationで対応させ，
-fresh allocation，context normalization，producer protection，fuel boundを保ったfuelled traversalを，
-expression，checking，pattern，arm，clauseの全familyに対して再構成する．
-
-各局所runは成功等式とともにvalidator eventのcoverage extensionを返す．ordinary eventは
-traversal自身から，$\mathtt{let}$ generalization，matcher finalization，pattern-constructor
-compatibilityはterminal auditから得る．pattern constructorでは，demand-directed導出が記録するdual／capabilityと
-実行trace中のoperandsを同一視せず，両者とそのbisimulationをpaired witnessとして保持する．rootで
-これらを$\mathsf{PairedRootCertifiedSynthesis}$に束ね，pattern-constructor条件はpaired witnessから
-直接，$\mathtt{let}$とmatcherの条件も各局所cutのdemand-directed／実行operandを結ぶpaired witnessから，
-type／dual alignmentと合成して有限の$\mathsf{wBridgeCheck}$の全条件を導く．exact-state leafは
-このchronologyの対角な特別場合として埋め込む．Originとauditは$\mathsf{Prop}$，concrete runは
-$\mathsf{Type}$に属するため，fuelに対するstrong recursionは各cutのpaired runを
-$\mathsf{Nonempty}$で返す．canonical initial cutで$\mathsf{PairedRootCertifiedSynthesis}$へ束ね，
-公開facadeは受理命題の内部でだけその証明消去境界を開く．
-
-公開定理はM4と同じglobal signature条件の下で
-\[
-\mathsf{SourceTyping}(\Sighat,\emptyset,e,\tau)
-\Longrightarrow
-\mathsf{FrozenSigWF}(\Sighat)
-\Longrightarrow
-\mathsf{infer}(\Sighat,\emptyset,e)\ne\mathsf{none}
-\]
-である．実際のLean定理$\mathtt{SourceTyping.infer\_isSome}$は一般のcontextに対して述べられる．
-$\mathsf{FrozenSigWF}$からはterminal factsのbisimulation輸送に必要なscheme closednessとcanonical arm
-checkerを取り出す．$\mathsf{RawSourceVisible}$，$\mathsf{FreezeCompatible}$，solver success，
-validator bridgeなどの実装向け条件はcaller premiseに残らない．これはvalidator単体の無条件
-完全性ではなく，terminal-audited demand-directed fragmentから生成したtraceに対する受理完全性である．
-recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$の三例を，
-caller-supplied paired rootを持たない公開回帰として機械検査している．
-
-\subsection{受理同値とannotation-freeness}
-
-executable soundnessと受理完全性を合成すると，一般contextについて
+\textsc{Inference-Soundness}と\textsc{Acceptance-Completeness}を合成すると，一般contextについて
 \[
 \mathsf{FrozenSigWF}(\Sighat)
 \Longrightarrow
@@ -186,12 +191,10 @@ executable soundnessと受理完全性を合成すると，一般contextにつ�
 \mathsf{infer}(\Sighat,\Gamma,e)\ne\mathsf{none}
 \right)
 \]
-を得る．Leanでは$\mathtt{Inference.sourceTypable\_iff\_infer\_isSome}$として機械化し，
-$\Gamma=\emptyset$への特殊化を$\mathtt{Inference.annotation\_freeness}$として公開する．
-sourceの$\mathsf{Expr}$にはtype-ascription constructorがないため，closed termに対して何らかの型で
-$\mathsf{SourceTyping}$が成立するかを，型annotationを入力せず有限な公開推論で決定できる．対応する
-$\mathtt{sourceTypableDecidable}$は$\mathsf{FrozenSigWF}$の証明の下で
-$\mathsf{Decidable}(\exists\tau.\,\mathsf{SourceTyping})$を返す．
+を得る．$\Gamma=\emptyset$への特殊化がannotation-freenessである．sourceの$\mathsf{Expr}$には
+type-ascription constructorがないため，closed termのsource typabilityを型annotationなしの有限な
+公開推論で決定できる．同じ同値から
+$\mathsf{Decidable}(\exists\tau.\,\mathsf{SourceTyping})$も構成済みである．
 
 型を返す入口についても
 \[
@@ -199,29 +202,26 @@ $\mathsf{Decidable}(\exists\tau.\,\mathsf{SourceTyping})$を返す．
 \Longrightarrow
 \mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau)
 \]
-を証明済みである．完全性方向では，任意に与えた$\mathsf{SourceTyping}$ derivationのtargetと返値型の構文的一致ではなく，
-$\mathsf{inferType}$が返す何らかの型と，その返値自身の$\mathsf{SourceTyping}$ derivationを同時に得る．さらに同じ
-$\Sighat,\Gamma,e$に対する二つの$\mathsf{SourceTyping}$ target $\tau_1,\tau_2$には，共通の決定的な実行target $\upsilon$と，
-各$\tau_i$の全residual capability／target metavariable上で局所的に可逆な二sort変数renaming
-$R_i$が存在し，$R_i\tau_i=\upsilon$となることを機械化済みである．
+が成り立つ．任意に与えたderivationのtargetと返値型の構文的一致は要求しない．二つの
+$\mathsf{SourceTyping}$ target $\tau_1,\tau_2$は，acceptance completenessで同じ決定的な実行runへ
+写る．各辺のstate factorizationから，全residual二sortmeta上で局所的に可逆なrenaming $R_i$と共通
+target $\upsilon$を取り出し，$R_i\tau_i=\upsilon$を得る．
 
-initial supply以前のmetavariableまで固定するより強い形は一般contextでは成立しない．例えば
-$f:?0\to ?0, x:?1$の下の$f\,x$では，constraint $?1\doteq ?0$のexact MGUをどちら向きに取るかにより，
-公開targetは$?0$にも$?1$にもなる．両導出はterminal auditまで含む回帰として機械化している．
-従って一意性は全residual metaのrenamingを法として述べる．型のinstance preorder上のprincipalityは
-別の結果であり，$\mathsf{TypingInvariant}$全体のprincipality反例をこのdemand-directed結果には流用しない．
+initial supply以前のmetaまで固定する強い形は一般contextでは偽である．例えば
+$f:?0\to ?0, x:?1$の下の$f\,x$では，constraint $?1\doteq ?0$のexact MGUをどちら向きに取るかで
+公開targetは$?0$にも$?1$にもなる．従って一意性は全residual metaのrenamingを法として述べる．
+型のinstance preorder上のprincipalityは別の結果であり，$\mathsf{TypingInvariant}$全体の
+principality反例を$\mathsf{SourceTyping}$へ流用しない．
 
-\subsection{機械化の範囲}
+\subsection{機械化の範囲と非主張}
 
-全 expression／pattern／arm／clause の raw demand-directed family，それらに対応する intrinsic Origin family，
-ledger の基本 transition，alignment の slot-demand，state replay，supply boundedness，全14 raw familyの
-solved-form保存，terminal audit，terminal-fixedな$mathsf{TypingInvariant}$への相互射影，closed-programの
-$\mathsf{SourceTyping}\Rightarrow\mathsf{TypingInvariant}$，公開 inferenceから$\mathsf{SourceTyping}$および
-$\mathsf{TypingInvariant}$へのreconstruction，$\mathsf{SourceTyping.safe}$によるsource-facingな公開安全性，
-concrete dynamic safety，demand-directed derivationから全実行traversal familyへの受理完全性，terminal auditから
-validator event coverageへの輸送，公開の$\mathtt{SourceTyping.infer\_isSome}$，一般contextの受理同値，
-closed annotation-freeness，$\mathtt{inferType}$返値soundness，source typabilityのdecidabilityは
-Lean~4に機械化済みである．同じsourceの$\mathsf{SourceTyping}$ targetが全residual二sortmetaの局所renamingを法として
-一意であることと，open contextでinitial metaを固定する強い形の反例も機械化済みである．
-public freeze回帰も閉じている．
-主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．
+全expression／pattern／arm／clauseのraw family，対応するOrigin family，solverとledgerの局所代数，
+全14 familyのstate factorizationとsolved-form保存，terminal audit，実行推論との双方向接続，
+closed-program state erasure，concrete dynamic safety，受理同値，decidability，target一意性はLean~4に
+機械化済みである．主定理と一般補題に$\mathtt{sorry}$，$\mathtt{admit}$，project-defined
+$\mathtt{axiom}$はない．
+
+一般のprogram termination，$\mathsf{SourceTyping}$のinstance preorder上のprincipality，open contextで
+入力metaをすべて固定するtarget一意性は主張しない．pattern-free direct-self Damas--Milner断片から
+$\mathsf{TypingInvariant}$への埋込みと具体的な受理例はあるが，全$\mathsf{DM.Typing}$ derivationの
+executable acceptanceとconservativityは今後の課題である．

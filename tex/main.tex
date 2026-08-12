@@ -47,11 +47,19 @@
 
 \begin{document}
 \maketitle
+\begin{abstract}
+本仕様は，first-class matcherを生成する型と消費する型を分け，消費位置でだけcoercionを選ぶ
+Egison coreを定式化する．中心課題は，停止する実行可能推論，唯一のsource typing，推論状態を
+消去した動的安全性を，一つの設計として接続することである．各規則だけでなく，fresh supply，
+prevailing substitution，Origin ledger，terminal auditが必要になる理由と，soundness，
+acceptance completeness，state erasure，安全性の依存関係を明示する．
+\end{abstract}
 \setcounter{tocdepth}{1}
 \tableofcontents
 \clearpage
 
 \input{sections/overview}
+\input{sections/design}
 \input{sections/syntax}
 \input{sections/alignment}
 \input{sections/expressions}

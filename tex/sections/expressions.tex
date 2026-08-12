@@ -1,5 +1,10 @@
 \section{式の synthesis 規則}
 
+本章は，第3章のinstantiation／generalizationと第4章のalignmentを使い，各expression constructorを
+三状態のchronological transitionとして定義する．規則は局所的なsynthesis結果を返し，外側の
+checking cutだけがcoercionを選ぶ．$\mathtt{let}$とmatcher recursionで局所事実がroot終端まで
+安定しない箇所はterminal auditへ送る．
+
 $\alpha_{q_\tau}$ は supply $q$ が指す次の target variable である．list 判断は要素を左から右へ
 処理し，$q,S,\Omega$ の三状態を順に渡す．instance の上付き $\mathsf{ren}$ は fresh capability
 binder image を $\mathsf{renameOnly}$，$\mathsf{str}$ は $\mathsf{structuralFlexible}$ として ledger

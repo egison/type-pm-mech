@@ -1,5 +1,11 @@
 \section{Pattern と matcher の規則}
 
+本章は，expression checkingをpattern，matcher clause，matcher literalへ拡張する．patternはtarget
+だけでなくcapability demandとbinding contextを合成するため，expressionより多くの相互再帰familyを
+必要とする．各holeのnext matcherは第4章と同じslot checkingを使い，matcher finalizationとpattern
+constructor compatibilityの非局所事実はterminal auditへ渡す．この構造が第7章の相互erasureと
+受理完全性のpattern側の依存になる．
+
 \subsection{ユーザーパターンの synthesis}
 
 ユーザーパターン判断を

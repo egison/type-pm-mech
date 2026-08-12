@@ -1,0 +1,151 @@
+\section{設計の必然性と依存関係}
+
+本章は規則を導入する前に，どの問題に対してどの構成要素が必要かを分離する．後続章はここで示す
+依存方向に従う．
+
+\subsection{MatcherとMatcherSlotを分ける理由}
+
+matcher producerとmatcher consumerを同じ型だけで表すと，coercionを選ぶ根拠が型に現れない．
+その場合，特定の構文をcoercion siteとして列挙するか，通常単一化が失敗した後でcoercionを試す
+必要がある．前者はfirst-classな関数引数に一般化できず，後者はrollback，solverの探索順，fuelに
+受理結果を依存させる．
+
+そこでproducerを$\Matcher{\kappa}{\tau}$，consumer expectationを
+$\MatcherSlot{\kappa}{\tau}$とし，checking cutでresolved expected headを観測する．これにより
+
+\begin{center}
+\begin{tabular}{p{0.28\linewidth}p{0.29\linewidth}p{0.32\linewidth}}
+\toprule
+設計上の問題 & 採用する表現 & 得られる性質 \\
+\midrule
+通常等価性とcoercionの区別
+  & expected headの$\mathsf{MatcherSlot}$
+  & branch選択がunification失敗に依存しない \\
+coercion siteの一般化
+  & 構文ではなくchecking judgment
+  & $\mathtt{matchAll}$と通常の関数適用が同じ規則を使う \\
+producerの保護
+  & one-way matcher-to-slot solve
+  & consumer demandがproducer capabilityを書き換えない \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+非恒等coercionの終点は常にslotである．matcher-headed expected typeではordinary equalityだけを
+許す．expected headが未解決なら構造を推測せず，ordinary branchを選ぶ．
+
+\subsection{三つの推論状態を分ける理由}
+
+demand-directed judgmentは$q;S;\Omega$を左から右へthreadする．三成分は互いに代用できない．
+
+\begin{center}
+\begin{tabular}{p{0.12\linewidth}p{0.28\linewidth}p{0.49\linewidth}}
+\toprule
+状態 & 記録するもの & 独立に必要な理由 \\
+\midrule
+$q$
+  & 二sortの次のfresh番号
+  & source判断と実行走査の割当順序を一致させ，変数のboundednessとfuel recursionを証明する \\
+$S$
+  & そのcutまでのconstraint解
+  & 子を左から右へ接続し，expected head，context，一般化を同じchronological stateで解釈する \\
+$\Omega$
+  & capability variableの生成由来とsolve権限
+  & 同じ構文形のvariableでも，rigid，rename-only，structural-flexibleを区別してproducer strengtheningを拒否する \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$S$だけではcapability variableがscheme producer由来か局所consumer由来かを復元できない．型の
+shapeだけから$\Omega$を再計算することもできないため，ledgerはsubstitutionとは別に保持する．一方，
+$\Omega$はcoercion demandを決めない．demandはexpected slot head，solve権限はoriginという別軸である．
+
+\subsection{二種類の証明境界}
+
+実行可能推論と関係的source typingは同じpolicyを異なる形で保持する．
+
+\begin{center}
+\begin{tabular}{p{0.23\linewidth}p{0.31\linewidth}p{0.35\linewidth}}
+\toprule
+構成要素 & 必要になる理由 & 後続で可能になること \\
+\midrule
+raw demand-directed derivation
+  & 規則木と三状態の入出力を記録する
+  & traversalの構造帰納，state factorization \\
+intrinsic Origin certificate
+  & 各solveとfreezeがledger policyに従うことを関係的に証明する
+  & source側のno-guess／producer protection \\
+terminal audit
+  & 局所cutでは後続solveに安定しない事実をroot終端で固定する
+  & state erasureとvalidator completeness \\
+executable trace
+  & solver，allocation，event emissionを計算として記録する
+  & reconstructionと有限validator \\
+terminal validator
+  & raw成功のうち全bridge条件を満たすrunだけを公開する
+  & 成功等式だけをpremiseとするsoundness \\
+$\mathsf{TypingInvariant}$
+  & 推論履歴をruntime typingから切り離す
+  & preservationとmatching safety \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Origin certificateは実行traceのコピーではなく，$\mathsf{SourceTyping}$ derivation自身がsolveの
+admissibilityを持つために必要である．validatorは逆に，実行runがその関係的条件を満たすことを
+有限に検査する．この二つを混同しないため，soundnessはtraceからOriginを再構成し，completenessは
+Originから成功traceを再構成する．
+
+\subsection{terminal auditが必要な三箇所}
+
+局所cutで成立しても，外側の後続substitutionを適用すると再確認が必要な事実がある．すべてのnodeに
+任意のfuture suffixへの安定性を要求すると，$\mathtt{let}$のgeneralized setが変わり得るため強すぎる．
+そこで公開rootの終端substitutionに固定したauditを，raw derivationと同じ木構造で持つ．
+
+\begin{center}
+\begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.35\linewidth}}
+\toprule
+node & 局所cutだけでは足りない事実 & root終端で再確認するもの \\
+\midrule
+$\mathtt{let}$
+  & bodyの後続solveでcontextとvalue typeが変わる
+  & 終端context／value typeから再計算したgeneralization \\
+matcher literal
+  & hole capabilityとfinal capabilityがrenameされ得る
+  & evidence，shape，clause capability，exhaustiveness，coverage \\
+pattern constructor
+  & argument dualとresult capabilityが後続solveを受ける
+  & 終端substitution後の$\mathsf{CapCompatible}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+variable nodeは追加auditを持たない．canonical schemeのfinite openingとsubstitution transportから
+終端lookupとの一致を代数的に導く．
+
+\subsection{公開定理までの依存グラフ}
+
+証明は局所代数から公開定理へ次の順で積み上げる．
+
+\begin{center}
+\begin{tabular}{c}
+exact solver + ledger admissibility + canonical scheme laws \\
+$\Downarrow$ \\
+全raw familyのstate extension + chronological factorization + solved-form保存 \\
+$\Downarrow$ \\
+Origin tree + terminal audit + executable event coverage \\
+$\Downarrow$ \\
+\begin{tabular}{c@{\qquad}c@{\qquad}c}
+infer $\Rightarrow$ SourceTyping & SourceTyping $\Rightarrow$ infer & SourceTyping $\Rightarrow$ TypingInvariant
+\end{tabular} \\
+$\Downarrow$ \\
+受理同値・決定可能性・target一意性
+\qquad
+SourceTypingによる公開安全性
+\end{tabular}
+\end{center}
+
+$\mathsf{FrozenSigWF}$はsource-facingな唯一のglobal signature条件である．受理完全性にはterminal
+factsを実行stateへ輸送するclosednessとcanonical arm checkerを与え，安全性にはscheme closednessと
+動的整合性を与える．低レベル補題は必要なfieldを明示してよいが，公開callerへ別premiseとして
+露出しない．
