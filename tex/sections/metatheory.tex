@@ -141,16 +141,32 @@ $\Sighat.\mathsf{SchemesClosed}$をfieldとして保持し，実行可能checker
 
 \subsection{受理完全性}
 
-もう一つの未完成定理は，DD derivation を executable inference の成功へ移すことである．
-executable selector と DD rule の cut-resolved classification を一致させ，exact solve witness と
-Origin transition を executable trace および terminal validator に対応付ける必要がある．目標は
-追加 premise のない
+逆向の受理完全性は，DD derivationのOrigin treeとterminal auditを同時に再帰することで
+証明する．DDのexact solve witnessとexecutable solver resultを相互factorizationで対応させ，
+fresh allocation，context normalization，producer protection，fuel boundを保ったfuelled traversalを，
+expression，checking，pattern，arm，clauseの全familyに対して再構成する．
+
+各局所runは成功等式とともにvalidator eventのcoverage extensionを返す．ordinary eventは
+traversal自身から，$mathtt{let}$ generalization，matcher finalization，pattern-constructor
+compatibilityはterminal auditから得る．rootでこれらを
+$\mathsf{RootCertifiedSynthesis}$に束ね，type／dual alignmentと合成して有限の
+$\mathsf{wBridgeCheck}$の全条件を導く．Originとauditは$\mathsf{Prop}$，concrete runは
+$\mathsf{Type}$に属するため，main recursionはroot certificateの$\mathsf{Nonempty}$を返し，
+公開facadeは受理命題の内部でだけその証明消去境界を開く．
+
+公開定理はM4と同じglobal signature条件の下で
 \[
 \mathsf{DDTyping}(\Sighat,\emptyset,e,\tau)
 \Longrightarrow
+\mathsf{FrozenSigWF}(\Sighat)
+\Longrightarrow
 \mathsf{infer}(\Sighat,\emptyset,e)\ne\mathsf{none}
 \]
-である．
+である．実際のLean定理$\mathtt{DDTyping.infer\_isSome}$は一般のcontextに対して述べられる．
+$\mathsf{FrozenSigWF}$からはterminal factsのbisimulation輸送に必要なscheme closednessとcanonical arm
+checkerを取り出す．$\mathsf{RawSourceVisible}$，$\mathsf{FreezeCompatible}$，solver success，
+validator bridgeなどの実装向け条件はcaller premiseに残らない．これはvalidator単体の無条件
+完全性ではなく，terminal-audited DD fragmentから生成したtraceに対する受理完全性である．
 
 \subsection{機械化の範囲}
 
@@ -159,7 +175,7 @@ ledger の基本 transition，alignment の slot-demand，state replay，supply 
 solved-form保存，terminal audit，terminal-fixedな相互runtime erasure，closed-programの
 $\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{DDTyping}$および
 $\mathsf{RuntimeTyping}$へのreconstruction，$\mathsf{DDTyping.safe}$によるsource-facingな公開安全性，
-concrete dynamic safetyはLean~4に機械化済みである．
-public freeze回帰も閉じている．受理接続に関しては，逆向きのDD／infer受理完全性だけが
-未完成である．
+concrete dynamic safety，DD derivationから全実行traversal familyへの受理完全性，terminal auditから
+validator event coverageへの輸送，公開の$\mathtt{DDTyping.infer\_isSome}$はLean~4に機械化済みである．
+public freeze回帰も閉じている．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

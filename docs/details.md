@@ -202,6 +202,32 @@ Inference.infer_success_ddTyping :
 漏れない．この経路は `RuntimeTyping` を介さずsource typingを直接構成する．一方，次節の
 `infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
 
+逆向きの受理完全性はDDのOrigin treeとterminal auditを同時に再帰する．exact solver witnessを
+実行solverのresultへ移し，fresh allocation，context normalization，producer protection，fuel boundを
+保ったfuelled traversalを全expression／checking／pattern／arm／clause familyについて構成する．
+DD側と実行側のprevailing substitutionは同一である必要はなく，相互にfactorするidempotent stateの
+`StateBisimulation`で結ぶ．このためraw metavariable名の違いを公開定理へ漏らさない．
+
+各局所runは成功等式だけでなくvalidator eventのcoverage extensionを返す．ordinary eventは
+traversal自身から，`let` generalization，matcher finalization，pattern-constructor compatibilityは
+terminal auditから得る．rootの`RootCertifiedSynthesis`はこれらとtype／dual alignmentを束ね，
+`wBridgeCheck`の全有限条件へ射影する．Originとauditは`Prop`，concrete runは`Type`なので，
+main recursionの結果は`Nonempty RootCertifiedSynthesis`であり，公開facadeが受理命題の内部でのみ
+その証明消去境界を開く．
+
+```text
+DDTyping.infer_isSome :
+  DDTyping signature context expression target →
+  FrozenSigWF signature →
+  (infer signature context expression).isSome = true
+```
+
+`FrozenSigWF`はM4と共有するglobal signature条件である．terminal factsをbisimulation越しに移す際，
+その`schemesClosed`と`armExhaustiveBasic`を使う．`RawSourceVisible`，`FreezeCompatible`，solver
+success，validator bridge，既知のinference successは公開premiseではない．ここで証明したのは
+validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `DDTyping` fragmentから
+再構成したtraceに対する受理完全性である．
+
 ## 4. RuntimeTyping は内部 certificate である
 
 [`TypePM/Source.lean`](../TypePM/Source.lean) の `RuntimeTyping` は fresh supply，prevailing solver
@@ -401,6 +427,10 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceSoundnessFixMatcher`／`Let`／`Patterns`／`Matcher` | constructor別の再構成slice |
 | `DemandTypingInferenceSoundnessMutual` | 全10 traversal familyのraw exact-state相互再構成 |
 | `DemandTypingInferenceSoundnessComplete`／`Certified`／`Public` | terminal-audited run，validator bridge，公開 `infer_success_ddTyping` |
+| `DemandTypingInferenceCompletenessStateMutual`／`ContextBisimulation`／`Traversal` | DD／実行stateの相互factorization，context正規化，成功run package |
+| `DemandTypingInferenceCompletenessPatternMain`／`MatcherMain`／`Main` | terminal-auditedな全構文familyのfuelled traversal完全性 |
+| `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun` | compositional event coverageと成功runの統合package |
+| `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`Public` | terminal auditの実行stateへの輸送，有限validator，公開 `DDTyping.infer_isSome` |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |

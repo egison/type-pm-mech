@@ -11,7 +11,10 @@ does not invoke or store a source typing judgment.  Consequently successful
 public inference carries enough algebraic evidence for reconstruction while
 remaining executable.
 
-No completeness or principality claim is made for the terminal validator.
+The terminal validator alone has no unconstrained completeness claim.  The
+separate DD acceptance-completeness proof establishes that traces reconstructed
+from terminal-audited `DDTyping` derivations pass this validator.  No
+principality claim is made here.
 -/
 
 namespace TypePM

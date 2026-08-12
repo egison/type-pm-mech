@@ -147,15 +147,21 @@ DDTyping.SafeResult signature e τ SF
 matching safetyを束ねた `CoreSafety` を保持する．`Inference.infer_closed_safe` はclosedな推論成功を
 `infer → DDTyping → safety` の公開経路へ接続する．
 
-現在残る受理接続は `DDTyping → infer` の受理完全性だけである．これには，上記 freeze 統合に
-加え，現行 executable selector が product source の認識に
-raw type を使う箇所を cut-resolved view と一致させる必要がある．最終目標は追加 premise の
-ない次の定理である．
+`DDTyping → infer` の受理完全性も完成している．DD derivation と terminal audit を同時に再帰し，
+exact solve，fresh allocation，context normalization，producer protectionを同じ executable traversalへ
+再現する．各局所runが蓄積するvalidator event coverageをrootでterminal auditと合成し，有限の
+`wBridgeCheck`を通す．公開定理はM4と同じglobal signature条件だけを受け取る．
 
 ```text
-DDTyping signature [] e τ →
-  (infer signature [] e).isSome
+DDTyping.infer_isSome :
+  DDTyping signature context e τ →
+  FrozenSigWF signature →
+  (infer signature context e).isSome = true
 ```
+
+`RawSourceVisible`，`FreezeCompatible`，solver success，validator bridgeなどの実装向け条件は
+caller premiseに残らない．`FrozenSigWF`はterminal factsを実行側の終端stateへ輸送する際の
+scheme closednessとcanonical arm checkerを含み，M4とM5で共有する公開signature境界である．
 
 `nestedCapProgram` と swapped 版は DD で型付かず，推論器も拒否する意図された負例である．
 一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は維持すべき正例で
@@ -175,14 +181,14 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 
 [x] 3. infer success → DDTyping ─┐
                                  ├→ [ ] 6. 受理同値と注釈不要性
-[ ] 5. DDTyping → infer success ─┘
+[x] 5. DDTyping → infer success ─┘
 ```
 
 記号は `[x]` が完了，`[~]` が一部完了，`[ ]` が未完了を表す．
 
 ### 進捗サマリ
 
-全7 milestoneのうち，完了5，未着手2である．
+全7 milestoneのうち，完了6，未着手1である．
 
 | milestone | 状態 | 完了した中心部分 | 残る中心部分 |
 |---|---|---|---|
@@ -191,11 +197,12 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 | 2. DD state erasure | 完了 | canonical `Scheme`，全14 familyのfactorizationとidempotence，terminal audit，固定終端への相互erasure，closed-program公開定理 | なし |
 | 3. infer success → DDTyping | 完了 | 全 traversal family の exact-state 相互再構成，terminal audit，public中心定理と回帰 | なし |
 | 4. DDの公開安全性 | 完了 | `FrozenSigWF`へのclosedness統合，`DDTyping.safe`，closed inferenceからの公開安全性経路 | なし |
-| 5. DDTyping → infer success | 未着手 | 完全性に必要なexact solver基盤は既存 | traversal完全性，terminal validator完全性 |
-| 6. 受理同値 | 未着手 | なし | milestone 3と5の合成 |
+| 5. DDTyping → infer success | 完了 | 全構文familyのaudited traversal完全性，validator event coverage，public `DDTyping.infer_isSome` | なし |
+| 6. 受理同値 | 未着手 | milestone 3と5の両方 | 受理同値と`inferType`の結果型との関係 |
 
-現在の次段は milestone 5である．公開source typingから動的安全性までの順方向は完成しており，
-残る受理接続はDD derivationを実行可能推論の成功へ移す逆向き完全性である．
+現在の次段は milestone 6である．milestone 3の executable soundnessとmilestone 5の
+acceptance completenessを合成し，`FrozenSigWF`の下でsource typabilityと公開推論器の
+受理を同値として公開する．
 
 `infer` 成功から `RuntimeTyping` を再構成する既存定理は，引き続き実行系の内部 certificate への
 独立した経路である．新しい source-facing 経路はまず `DDTyping` を直接再構成する．一般 context
@@ -354,23 +361,32 @@ DDTyping.SafeResult signature e τ SF
 matching machineの既存定理をこの入口から利用できる．`Inference.SafeResult` は推論成功から得た
 source `DDTyping` も保持し，`Inference.infer_closed_safe` はclosed inferenceを同じDD入口へ通す．
 
-### [ ] 5. DDTyping に対する推論器の受理完全性を証明する
+### [x] 5. DDTyping に対する推論器の受理完全性を証明する
 
-DD derivation を左から右に読み，対応する `inferRaw` traversal が成功することを証明する．先に
-executable selector の product source 認識を raw view から cut-resolved view へ揃え，DD の
-`demandClass` と実装の branch 選択を一致させる．その後，DD の exact solve witness を実行
-solver の result へ対応させ，生成された trace が terminal validator を通ることまで示す．
+DD derivationのOrigin treeとterminal auditを同時に左から右へ読み，対応する
+fuelled traversalの成功を全expression，checking，pattern，arm，clause familyに対して再構成する．
+DDのexact solve witnessとexecutable solver resultはmutual factorizationで対応させ，
+`StateBisimulation`，context normalization，supply boundednessをrecursive callの間で保存する．
+
+各constructorは成功runに加えてordinary validator eventと三種のterminal-sensitive eventの
+coverage extensionを返す．rootでそれらを`RootCertifiedSynthesis`に束ね，producer protection，
+terminal audit，type／dual alignmentを`wBridgeCheck`の全条件へ射影する．
+Originとauditは`Prop`，concrete runは`Type`に属するため，main recursionは
+`Nonempty RootCertifiedSynthesis`を返し，公開facadeが受理命題の内部でだけその証明消去境界を開く．
 
 中心定理：
 
 ```text
-DDTyping signature [] e τ →
-  (infer signature [] e).isSome
+DDTyping.infer_isSome :
+  DDTyping signature context e τ →
+  FrozenSigWF signature →
+  (infer signature context e).isSome = true
 ```
 
-途中結果として raw traversal の完全性と terminal validator の完全性を分けて定理化してよいが，
-最終定理には `RawSourceVisible`，`FreezeCompatible`，caller-supplied bridge などの追加 premise を
-残さない．
+公開premiseはsource derivationとM4でも使う`FrozenSigWF`だけである．
+`RawSourceVisible`，`FreezeCompatible`，solver success，caller-supplied bridge，既知のinference
+successは残さない．これはvalidator単体が任意のraw runを受理するという無条件完全性ではなく，
+terminal-audited `DDTyping` fragmentから生成したtraceに対する相対的な完全性である．
 
 ### [ ] 6. 受理同値と注釈不要性を公開する
 
@@ -378,8 +394,9 @@ milestone 3 と 5 を合成し，closed program について source typability �
 対応付ける．
 
 ```text
-(∃ τ, DDTyping signature [] e τ) ↔
-  (infer signature [] e).isSome
+FrozenSigWF signature →
+  ((∃ τ, DDTyping signature [] e τ) ↔
+    (infer signature [] e).isSome)
 ```
 
 この同値を本 mechanization の annotation-freeness 定理とする．あわせて，`inferType` が返す型と

@@ -75,7 +75,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   domain を先に選べる state-free λ certificate で `DDTyping` を代用しない．
 - **raw visibility**（cut 時点で selector に必要な head が raw source に見えるか）と
   **capability freeze**（producer image に許される substitution／export）は demand とは
-  別軸であり，fragment 受理完全性で別々に扱う．capability-origin ledger は coercion
+  別軸であり，受理完全性の内部不変量として別々に扱う．capability-origin ledger は coercion
   demand に別証人を要求する仕組みではない．
 - `nestedCapProgram`（と swapped 版）の DD 拒否は意図された挙動であり変えない．
   これらが `RuntimeTyping` certificate を持つことは，certificate から source acceptance を
@@ -88,8 +88,9 @@ commit／push はその都度の明示指示がある場合に限るという規
   `infer_success_ddTyping` が唯一のsource typingである `DDTyping` を与える状態を維持する．
   `infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
 - `InferenceInputWF` を soundness の前提に戻さない．`WBridgeWF` は validator が内部で
-  構成する証明書であり，呼び出し側の追加前提に戻さない．terminal validator の
-  completeness は主張しない．
+  構成する証明書であり，呼び出し側の追加前提に戻さない．terminal validator 単体が任意の
+  raw runを受理するという無条件completenessは主張しない．`DDTyping.infer_isSome`はterminal
+  auditを持つDD derivationからvalidatorの全event条件を再構成する相対的な受理完全性である．
 - `RuntimeTyping` certificate の substitution-only principality は
   `no_principal_type` により否定されるが，これは `DDTyping` の principality 主張ではない．
   `DDTyping` の principal-type theorem は独立に定式化してから議論する．
@@ -97,13 +98,14 @@ commit／push はその都度の明示指示がある場合に限るという規
   capability freeze は intrinsic Origin certificate，終端での非安定な事実は terminal audit
   として derivation 側に統合され，closed programの `DDTyping` から `RuntimeTyping`
   への state erasure は証明済みである．`RuntimeTyping` の存在を premise に
-  埋め込む循環的な `DDTyping` 定義に戻さない．受理完全性は別の未証明課題である．
+  埋め込む循環的な `DDTyping` 定義に戻さない．`DDTyping.infer_isSome`は
+  `DDTyping signature context e τ`と`FrozenSigWF signature`だけから公開`infer`の受理を導く．
   `DDAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
   分岐を判断側へ持ち込まない（raw visibility は executable inference との対応境界である）．
   pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の
   一致を崩す規則変更をしない．matcher literal の finalization 検査群を DD 側だけ
-  弱めない．受理接続に関しては `DDTyping → infer` の逆向き完全性だけが未証明であり，soundnessの
-  `WBridgeWF`／historyをcaller premiseへ露出して穴を埋めない．
+  弱めない．受理完全性を変更するときもsolver success，`WBridgeWF`，history，
+  `RawSourceVisible`，`FreezeCompatible`をcaller premiseへ露出しない．
 
 ### 動的安全性
 
