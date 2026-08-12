@@ -588,6 +588,29 @@ theorem checksOrigin_complete_nonempty_from_check
         exact ⟨checksOrigin_cons_complete before headRun tailRun⟩
 termination_by fuel
 
+/-- Close the whole checking-list recursion directly from the synthesis
+component.  This is the form consumed by constructor and primitive
+synthesis; no checking premise remains at that boundary. -/
+theorem checksOrigin_complete_nonempty_from_synth
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    (synthComplete : SynthCompletenessMotive signature)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {expecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ expecteds, expected.BoundedBy q)
+    {raw : DDChecks signature q S context expressions expecteds q' S'}
+    (origin : DDChecksOrigin signature raw ledger ledger')
+    (adequate : SynthsBudgetAdequate fuel expressions) :
+    Nonempty (StateRunCompletion before
+      (checkExprsFuel fuel signature context selfEnv parent index expressions
+        expecteds state) q' S' ledger') :=
+  checksOrigin_complete_nonempty_from_check
+    (checkCompletenessMotive_of_synth closed synthComplete)
+    fuel before contextBounded expectedsBounded origin adequate
+
 /-! ## Structural leaf certificates -/
 
 inductive DDSynthLeafOrigin (signature : FrozenSig) :
