@@ -23,6 +23,7 @@ open Inference
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessDataBisimulation
+open DemandTypingInferenceCompletenessAlignmentFamilies
 open DemandTypingInferenceCompletenessPatternMain
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessCertifiedRun
@@ -613,6 +614,118 @@ def certifiedPatternTuple_complete
       ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings :=
   ⟨boundedPatternTuple_complete before children.bounded,
     tuple children.validation⟩
+
+/-- Certified conjunction packaging reconstructs the same dual-alignment cut
+as the raw bounded completion and certifies that executable suffix. -/
+noncomputable def certifiedPatternAnd_complete
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {context : Context} {parameters : PatternCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {left right : Pattern}
+    {executableBindings : MonoCtx}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
+    {leftDual rightDual : Dual} {leftBindings bindings' : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (leftRun : BoundedCertifiedPatternRunCompletion terminal signature
+      (before.visit .patternAnd path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternAnd path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : BoundedCertifiedPatternRunCompletion terminal signature
+      leftRun.bounded.run.completion
+      (inferPatternFuel fuel signature context parameters
+        leftRun.bounded.run.result.bindings selfEnv (1 :: path) right
+        leftRun.bounded.run.result.state)
+      q₂ S₂ ledger₂ rightDual bindings')
+    (rightExtends : SupplyExtends q₁ q₂)
+    (declarativeLeftBounded : leftDual.BoundedBy q₂)
+    (declarativeRightBounded : rightDual.BoundedBy q₂)
+    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pand left right) state)
+      q₂ S' ledger₂ leftDual bindings' := by
+  let leftAtRight :=
+    _root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+      rightRun.bounded.run.transition leftRun.bounded.run.dual
+  let alignment := ddAlignDualWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-and")
+    rightRun.bounded.run.completion leftAtRight rightRun.bounded.run.dual
+    declarativeLeftBounded declarativeRightBounded
+    (leftRun.bounded.rawDualBounded.mono rightExtends)
+    rightRun.bounded.rawDualBounded aligned
+  refine ⟨boundedPatternAnd_complete before leftRun.bounded rightRun.bounded
+    rightExtends declarativeLeftBounded declarativeRightBounded aligned, ?_⟩
+  exact andPattern leftRun.validation rightRun.validation
+    (ValidatorRunExtension.ofAlignDuals
+      (terminal := terminal) (signature := signature) alignment.success)
+
+/-- Certified disjunction additionally certifies the positional binding
+alignment after the shared dual-alignment cut. -/
+noncomputable def certifiedPatternOr_complete
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {context : Context} {parameters : PatternCtx} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {left right : Pattern}
+    {executableBindings : MonoCtx}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
+    {leftDual rightDual : Dual} {leftBindings rightBindings : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (leftRun : BoundedCertifiedPatternRunCompletion terminal signature
+      (before.visit .patternOr path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternOr path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : BoundedCertifiedPatternRunCompletion terminal signature
+      leftRun.bounded.run.completion
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (1 :: path) right leftRun.bounded.run.result.state)
+      q₂ S₂ ledger₂ rightDual rightBindings)
+    (rightExtends : SupplyExtends q₁ q₂)
+    (declarativeLeftDualBounded : leftDual.BoundedBy q₂)
+    (declarativeRightDualBounded : rightDual.BoundedBy q₂)
+    (declarativeLeftBindingsBounded : leftBindings.BoundedBy q₂)
+    (declarativeRightBindingsBounded : rightBindings.BoundedBy q₂)
+    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+      leftBindings rightBindings S') :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.por left right) state)
+      q₂ S' ledger₂ leftDual leftBindings := by
+  let leftDualAtRight :=
+    _root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+      rightRun.bounded.run.transition leftRun.bounded.run.dual
+  let leftBindingsAtRight :=
+    _root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      rightRun.bounded.run.transition leftRun.bounded.run.bindings
+  let dualAlignment := ddAlignDualWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-or")
+    rightRun.bounded.run.completion leftDualAtRight rightRun.bounded.run.dual
+    declarativeLeftDualBounded declarativeRightDualBounded
+    (leftRun.bounded.rawDualBounded.mono rightExtends)
+    rightRun.bounded.rawDualBounded dualsAligned
+  let bindingAlignment := ddAlignBindingsWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-or-bindings")
+    dualAlignment.completion
+    (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      dualAlignment.transition leftBindingsAtRight)
+    (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      dualAlignment.transition rightRun.bounded.run.bindings)
+    declarativeLeftBindingsBounded declarativeRightBindingsBounded
+    (leftRun.bounded.rawBindingsBounded.mono rightExtends)
+    rightRun.bounded.rawBindingsBounded bindingsAligned
+  refine ⟨boundedPatternOr_complete before leftRun.bounded rightRun.bounded
+    rightExtends declarativeLeftDualBounded declarativeRightDualBounded
+    declarativeLeftBindingsBounded declarativeRightBindingsBounded dualsAligned
+    bindingsAligned, ?_⟩
+  exact orPattern leftRun.validation rightRun.validation
+    ((ValidatorRunExtension.ofAlignDuals
+      (terminal := terminal) (signature := signature)
+      dualAlignment.success).trans
+      (ValidatorRunExtension.ofAlignBindings
+        (terminal := terminal) (signature := signature)
+        bindingAlignment.success))
 
 /-! ## Certified list dispatch -/
 
