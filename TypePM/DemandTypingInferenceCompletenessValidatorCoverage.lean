@@ -31,6 +31,15 @@ structure OrdinaryValidatorEventCondition
   typeAlignment : TypeAlignmentEventCondition terminal event
   dualAlignment : DualAlignmentEventCondition terminal event
 
+/-- Assemble one ordinary event from the three independent validator folds. -/
+theorem OrdinaryValidatorEventCondition.mkOfConditions
+    {signature : FrozenSig} {terminal : InferState} {event : TraceEvent}
+    (traversal : TraversalValidatorEventCondition signature terminal event)
+    (types : TypeAlignmentEventCondition terminal event)
+    (duals : DualAlignmentEventCondition terminal event) :
+    OrdinaryValidatorEventCondition signature terminal event :=
+  ⟨traversal, types, duals⟩
+
 /-- A successful ordinary type-alignment emitter supplies the complete local
 ordinary-validator condition for its recorded event at every later cut. -/
 theorem alignTypes_ordinaryValidatorEventCondition
@@ -74,6 +83,287 @@ theorem alignDuals_ordinaryValidatorEventCondition
       canonicalInstance := ⟨trivial⟩
       slot := ⟨trivial⟩ }
 
+/-- A successful expected-type check supplies the exact canonical slot event
+condition at every later cut. -/
+theorem alignExprResultAtExpected_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {path : SyntaxPath}
+    {expressionResult : ExprResult} {expected : Ty}
+    {final terminal : InferState}
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final)
+    (suffix : final.HistoryPrefix terminal) :
+    OrdinaryValidatorEventCondition signature terminal (.slotAlignment
+      expressionResult.state.trace.solves.length final.trace.solves.length
+      (match expectedCoercionPlan expressionResult.state
+          expressionResult.target expected with
+        | .productMatcherLift duals => productMatcherTarget duals
+        | .slotTupleLift duals => slotTupleTarget duals
+        | .raw => expressionResult.state.prevailing.apply
+            expressionResult.target)
+      (expressionResult.state.prevailing.apply expected)) := by
+  have canonical :=
+    alignExprResultAtExpected_canonicalSlotEventCondition success suffix
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact instanceEventCondition (by trivial) (by trivial) (by trivial)
+    canonical
+
+/-- Closed constructor instantiation contributes a canonical instance event
+at every later terminal cut. -/
+theorem ctorInstantiation_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {terminal : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : CtorScheme}
+    (closed : scheme.Closed)
+    (solveBound : solveCount ≤ terminal.trace.solves.length) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.ctorInstantiation solveCount supply scheme
+        (InferenceBase.instantiateCtorScheme supply scheme).value.1
+        (InferenceBase.instantiateCtorScheme supply scheme).value.2
+        (freshCapImages supply scheme.capBinders)) := by
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact instanceEventCondition (by trivial) (by trivial)
+    (ctorInstanceEventCondition_atTerminal closed solveBound) (by trivial)
+
+/-- Context-scheme instantiation adapter.  The lookup equation is supplied at
+the terminal cut by the context-bisimulation component of the completeness
+recursion; protected canonical images discharge the remaining witness. -/
+theorem schemeInstantiation_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {terminal : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : Scheme}
+    {name : String} {rawContext context : Context}
+    {fixedCaps reservedCaps : List CapVar}
+    {fixedTys reservedTys : List TypePM.TyVar}
+    (solveBound : solveCount ≤ terminal.trace.solves.length)
+    (terminalLookup :
+      (rawContext.applySubst terminal.prevailing).find? name =
+        some (scheme.applyMeta terminal.prevailing))
+    (producerSafe : ProtectedProducerTrace terminal)
+    (freshProtected : ∀ image,
+      image ∈ Scheme.canonicalCapImages supply scheme →
+        image ∈ terminal.protectedCaps) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.schemeInstantiation solveCount supply scheme name rawContext context
+        fixedCaps fixedTys reservedCaps reservedTys
+        (InferenceBase.instantiateScheme supply scheme).value
+        (Scheme.canonicalCapImages supply scheme)
+        (Scheme.canonicalTyImages supply scheme)) := by
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact instanceEventCondition (by trivial) (by trivial)
+    (schemeInstanceEventCondition_atTerminal solveBound terminalLookup
+      producerSafe freshProtected) (by trivial)
+
+/-- Closed dual-scheme instantiation adapter. -/
+theorem dualInstantiation_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {terminal : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : DualScheme}
+    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawBindings : MonoCtx} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx}
+    {fixedCaps reservedCaps : List CapVar}
+    {fixedTys reservedTys : List TypePM.TyVar}
+    (closed : scheme.Closed)
+    (solveBound : solveCount ≤ terminal.trace.solves.length)
+    (producerSafe : ProtectedProducerTrace terminal)
+    (freshProtected : ∀ image,
+      image ∈ freshCapImages supply scheme.capBinders →
+        image ∈ terminal.protectedCaps) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.dualInstantiation solveCount supply scheme rawContext rawParameters
+        rawBindings context parameters bindings fixedCaps fixedTys
+        reservedCaps reservedTys
+        (InferenceBase.instantiateDualScheme supply scheme).value.1
+        (InferenceBase.instantiateDualScheme supply scheme).value.2
+        (freshCapImages supply scheme.capBinders)
+        (freshTyImages supply scheme.tyBinders)) := by
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact instanceEventCondition (by trivial) (by trivial)
+    (dualInstanceEventCondition_atTerminal closed solveBound producerSafe
+      freshProtected) (by trivial)
+
+/-! ## Validator-neutral events -/
+
+/-- Events which contribute no nontrivial clause to any ordinary validator
+fold.  Keeping this whitelist explicit ensures that adding a new trace event
+cannot silently classify it as validator neutral. -/
+inductive ValidatorNeutralEvent : TraceEvent → Prop where
+  | visit (kind path) : ValidatorNeutralEvent (.visit kind path)
+  | freshCap (origin varId) : ValidatorNeutralEvent (.freshCap origin varId)
+  | freshTy (origin varId) : ValidatorNeutralEvent (.freshTy origin varId)
+  | fixPlaceholder (self argument target path) :
+      ValidatorNeutralEvent (.fixPlaceholder self argument target path)
+  | directSelfAccepted (self target path) :
+      ValidatorNeutralEvent (.directSelfAccepted self target path)
+  | directSelfReference (self target path) :
+      ValidatorNeutralEvent (.directSelfReference self target path)
+  | actualClauseEvidence (clause holes evidence) :
+      ValidatorNeutralEvent (.actualClauseEvidence clause holes evidence)
+  | literalCoverage (clauses capability) :
+      ValidatorNeutralEvent (.literalCoverage clauses capability)
+  | capabilityFlow (tag evidence) :
+      ValidatorNeutralEvent (.capabilityFlow tag evidence)
+  | inferredExpr (expression target path) :
+      ValidatorNeutralEvent (.inferredExpr expression target path)
+  | inferredPattern (pattern dual bindings path) :
+      ValidatorNeutralEvent (.inferredPattern pattern dual bindings path)
+  | inferredPPatWild (target holes bindings path) :
+      ValidatorNeutralEvent (.inferredPPat .wild target holes bindings path)
+  | inferredPPatValue (name target holes bindings path) :
+      ValidatorNeutralEvent
+        (.inferredPPat (.pval name) target holes bindings path)
+  | inferredPPatCtor (name patterns target holes bindings path) :
+      ValidatorNeutralEvent
+        (.inferredPPat (.ctor name patterns) target holes bindings path)
+  | inferredPPatTuple (patterns target holes bindings path) :
+      ValidatorNeutralEvent
+        (.inferredPPat (.tuple patterns) target holes bindings path)
+  | inferredDPat (pattern target bindings path) :
+      ValidatorNeutralEvent (.inferredDPat pattern target bindings path)
+  | capabilityExportFreeze (solveCount images raw localTarget surviving) :
+      ValidatorNeutralEvent
+        (.capabilityExportFreeze solveCount images raw localTarget surviving)
+
+/-- A whitelisted neutral event satisfies all ordinary clauses at every
+terminal state. -/
+theorem ValidatorNeutralEvent.ordinaryCondition
+    {event : TraceEvent} (neutral : ValidatorNeutralEvent event)
+    (signature : FrozenSig) (terminal : InferState) :
+    OrdinaryValidatorEventCondition signature terminal event := by
+  cases neutral <;>
+    refine
+      { traversal := ?_
+        typeAlignment := trivial
+        dualAlignment := trivial } <;>
+    exact
+      { primitiveHole := ⟨by simp [PrimitiveHoleEventCondition]⟩
+        patternLeaf := ⟨by simp [PatternLeafEventCondition]⟩
+        canonicalInstance := ⟨by simp [CanonicalInstanceEventCondition]⟩
+        slot := ⟨by simp [CanonicalSlotEventCondition]⟩ }
+
+/-! ## Fresh-allocation event adapters -/
+
+/-- The primitive-hole freshness fact is state independent once allocated,
+so the emission-cut proof can be reused at every future terminal. -/
+theorem primitiveHole_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {allocation terminal : InferState}
+    {path : SyntaxPath} {target : Ty}
+    (signatureBelow : InferenceBase.CapVarsBelow allocation.supply
+      signature.capVars)
+    (targetBounded : target.BoundedBy allocation.supply) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.inferredPPat .hole target
+        [⟨.var ⟨allocation.supply.nextCap⟩, target⟩] [] path) := by
+  have emitted := primitiveHoleEventCondition
+    (state := allocation) (path := path) signatureBelow targetBounded
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact
+    { primitiveHole := emitted.primitiveHole
+      patternLeaf := emitted.patternLeaf
+      canonicalInstance := ⟨by trivial⟩
+      slot := ⟨by trivial⟩ }
+
+/-- Pattern-variable allocation adapter for arbitrary future terminals. -/
+theorem patternVar_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {allocation terminal : InferState}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    (signatureCaps : InferenceBase.CapVarsBelow allocation.supply
+      signature.capVars)
+    (contextCaps : InferenceBase.CapVarsBelow allocation.supply context.fcv)
+    (parameterCaps : InferenceBase.CapVarsBelow allocation.supply
+      parameters.fcv)
+    (bindingCaps : InferenceBase.CapVarsBelow allocation.supply bindings.fcv)
+    (signatureTys : InferenceBase.TyVarsBelow allocation.supply
+      signature.tyVars)
+    (contextTys : InferenceBase.TyVarsBelow allocation.supply context.ftv)
+    (parameterTys : InferenceBase.TyVarsBelow allocation.supply parameters.ftv)
+    (bindingTys : InferenceBase.TyVarsBelow allocation.supply bindings.ftv) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.patternVarFresh context parameters bindings
+        ⟨allocation.supply.nextCap⟩ allocation.supply.nextTy) := by
+  have emitted := patternVarEventCondition (state := allocation)
+    signatureCaps contextCaps parameterCaps bindingCaps signatureTys contextTys
+    parameterTys bindingTys
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact
+    { primitiveHole := emitted.primitiveHole
+      patternLeaf := emitted.patternLeaf
+      canonicalInstance := ⟨by trivial⟩
+      slot := ⟨by trivial⟩ }
+
+/-- Pattern-wildcard allocation adapter for arbitrary future terminals. -/
+theorem patternWild_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {allocation terminal : InferState}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    (signatureCaps : InferenceBase.CapVarsBelow allocation.supply
+      signature.capVars)
+    (contextCaps : InferenceBase.CapVarsBelow allocation.supply context.fcv)
+    (parameterCaps : InferenceBase.CapVarsBelow allocation.supply
+      parameters.fcv)
+    (bindingCaps : InferenceBase.CapVarsBelow allocation.supply bindings.fcv)
+    (signatureTys : InferenceBase.TyVarsBelow allocation.supply
+      signature.tyVars)
+    (contextTys : InferenceBase.TyVarsBelow allocation.supply context.ftv)
+    (parameterTys : InferenceBase.TyVarsBelow allocation.supply parameters.ftv)
+    (bindingTys : InferenceBase.TyVarsBelow allocation.supply bindings.ftv) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.patternWildFresh context parameters bindings
+        ⟨allocation.supply.nextCap⟩ allocation.supply.nextTy) := by
+  have emitted := patternWildEventCondition (state := allocation)
+    signatureCaps contextCaps parameterCaps bindingCaps signatureTys contextTys
+    parameterTys bindingTys
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact
+    { primitiveHole := emitted.primitiveHole
+      patternLeaf := emitted.patternLeaf
+      canonicalInstance := ⟨by trivial⟩
+      slot := ⟨by trivial⟩ }
+
+/-- Value-pattern capability allocation adapter for arbitrary future cuts. -/
+theorem patternValue_ordinaryValidatorEventCondition
+    {signature : FrozenSig} {allocation terminal : InferState}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {target : Ty}
+    (signatureCaps : InferenceBase.CapVarsBelow allocation.supply
+      signature.capVars)
+    (contextCaps : InferenceBase.CapVarsBelow allocation.supply context.fcv)
+    (parameterCaps : InferenceBase.CapVarsBelow allocation.supply
+      parameters.fcv)
+    (bindingCaps : InferenceBase.CapVarsBelow allocation.supply bindings.fcv)
+    (targetBounded : target.BoundedBy allocation.supply) :
+    OrdinaryValidatorEventCondition signature terminal
+      (.patternValueFresh context parameters bindings
+        ⟨allocation.supply.nextCap⟩ target) := by
+  have emitted := patternValueEventCondition (state := allocation)
+    signatureCaps contextCaps parameterCaps bindingCaps targetBounded
+  refine
+    { traversal := ?_
+      typeAlignment := trivial
+      dualAlignment := trivial }
+  exact
+    { primitiveHole := emitted.primitiveHole
+      patternLeaf := emitted.patternLeaf
+      canonicalInstance := ⟨by trivial⟩
+      slot := ⟨by trivial⟩ }
+
 /-- Prefix-open coverage: every event already emitted by `prefix` satisfies
 its ordinary validator obligations at every future append-only history cut.
 
@@ -82,7 +372,7 @@ alignment conditions mention the terminal substitution, so they cannot in
 general be transported from a proof stated only at the current prefix. -/
 def OpenOrdinaryValidatorEventCoverage
     (signature : FrozenSig) (initial : InferState) : Prop :=
-  ∀ terminal, initial.HistoryPrefix terminal →
+  ∀ terminal, initial.StateExtension terminal →
     ProtectedProducerTrace terminal →
     ∀ event, event ∈ initial.trace.events →
       OrdinaryValidatorEventCondition signature terminal event
@@ -103,7 +393,7 @@ theorem OpenOrdinaryValidatorEventCoverage.atTerminal
     TraversalValidatorEventCoverage signature state ∧
       TraceTypeAlignmentConditions state ∧
       TraceDualAlignmentConditions state := by
-  have terminal := coverage state (InferState.HistoryPrefix.refl state)
+  have terminal := coverage state (InferState.StateExtension.refl state)
     producerSafe
   refine ⟨?_, ?_, ?_⟩
   · intro event membership
@@ -121,10 +411,10 @@ equal to an older event is already covered by the older witness. -/
 theorem OpenOrdinaryValidatorEventCoverage.transportExtension
     {signature : FrozenSig} {earlier later : InferState}
     (before : OpenOrdinaryValidatorEventCoverage signature earlier)
-    (history : earlier.HistoryPrefix later)
+    (history : earlier.StateExtension later)
     (newEvents : ∀ event,
       event ∈ later.trace.events → event ∉ earlier.trace.events →
-      ∀ terminal, later.HistoryPrefix terminal →
+      ∀ terminal, later.StateExtension terminal →
         ProtectedProducerTrace terminal →
         OrdinaryValidatorEventCondition signature terminal event) :
     OpenOrdinaryValidatorEventCoverage signature later := by
@@ -138,7 +428,7 @@ without any additional semantic premise. -/
 theorem OpenOrdinaryValidatorEventCoverage.transportNoEvents
     {signature : FrozenSig} {earlier later : InferState}
     (before : OpenOrdinaryValidatorEventCoverage signature earlier)
-    (history : earlier.HistoryPrefix later)
+    (history : earlier.StateExtension later)
     (eventsEq : later.trace.events = earlier.trace.events) :
     OpenOrdinaryValidatorEventCoverage signature later := by
   apply before.transportExtension history
@@ -154,7 +444,7 @@ theorem OpenOrdinaryValidatorEventCoverage.recordEvent
     {signature : FrozenSig} {state : InferState} {event : TraceEvent}
     (before : OpenOrdinaryValidatorEventCoverage signature state)
     (latest : ∀ terminal,
-      (state.recordEvent event).HistoryPrefix terminal →
+      (state.recordEvent event).StateExtension terminal →
         ProtectedProducerTrace terminal →
         OrdinaryValidatorEventCondition signature terminal event) :
     OpenOrdinaryValidatorEventCoverage signature
@@ -164,7 +454,7 @@ theorem OpenOrdinaryValidatorEventCoverage.recordEvent
     List.mem_singleton] at membership
   rcases membership with previous | newest
   · exact before terminal
-      ((state.historyPrefix_recordEvent event).trans suffix)
+      ((state.stateExtension_recordEvent event).trans suffix)
       producerSafe candidate previous
   · subst candidate
     exact latest terminal suffix producerSafe
@@ -178,10 +468,10 @@ mutually recursive executable families can return this certificate alongside
 its ordinary result without mentioning the final root validator. -/
 structure OrdinaryValidatorHistoryExtension
     (signature : FrozenSig) (earlier later : InferState) : Prop where
-  history : earlier.HistoryPrefix later
+  history : earlier.StateExtension later
   newEvents : ∀ event,
     event ∈ later.trace.events → event ∉ earlier.trace.events →
-    ∀ terminal, later.HistoryPrefix terminal →
+    ∀ terminal, later.StateExtension terminal →
       ProtectedProducerTrace terminal →
       OrdinaryValidatorEventCondition signature terminal event
 
@@ -189,7 +479,7 @@ structure OrdinaryValidatorHistoryExtension
 theorem OrdinaryValidatorHistoryExtension.refl
     (signature : FrozenSig) (state : InferState) :
     OrdinaryValidatorHistoryExtension signature state state := by
-  refine ⟨InferState.HistoryPrefix.refl state, ?_⟩
+  refine ⟨InferState.StateExtension.refl state, ?_⟩
   intro event membership previous
   exact False.elim (previous membership)
 
@@ -220,7 +510,7 @@ theorem OrdinaryValidatorHistoryExtension.applyCoverage
 /-- Package an event-free history extension. -/
 theorem OrdinaryValidatorHistoryExtension.ofNoEvents
     {signature : FrozenSig} {earlier later : InferState}
-    (history : earlier.HistoryPrefix later)
+    (history : earlier.StateExtension later)
     (eventsEq : later.trace.events = earlier.trace.events) :
     OrdinaryValidatorHistoryExtension signature earlier later := by
   refine ⟨history, ?_⟩
@@ -233,12 +523,12 @@ theorem OrdinaryValidatorHistoryExtension.ofNoEvents
 theorem OrdinaryValidatorHistoryExtension.recordEvent
     {signature : FrozenSig} {state : InferState} {event : TraceEvent}
     (latest : ∀ terminal,
-      (state.recordEvent event).HistoryPrefix terminal →
+      (state.recordEvent event).StateExtension terminal →
       ProtectedProducerTrace terminal →
       OrdinaryValidatorEventCondition signature terminal event) :
     OrdinaryValidatorHistoryExtension signature state
       (state.recordEvent event) := by
-  refine ⟨state.historyPrefix_recordEvent event, ?_⟩
+  refine ⟨state.stateExtension_recordEvent event, ?_⟩
   intro candidate membership previous terminal suffix producerSafe
   simp only [InferState.recordEvent, List.mem_append,
     List.mem_singleton] at membership
@@ -246,6 +536,296 @@ theorem OrdinaryValidatorHistoryExtension.recordEvent
   · exact False.elim (previous old)
   · subst candidate
     exact latest terminal suffix producerSafe
+
+/-- Append one validator-neutral event. -/
+theorem OrdinaryValidatorHistoryExtension.recordNeutral
+    {signature : FrozenSig} {state : InferState} {event : TraceEvent}
+    (neutral : ValidatorNeutralEvent event) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.recordEvent event) :=
+  OrdinaryValidatorHistoryExtension.recordEvent fun terminal _history _safe =>
+    neutral.ordinaryCondition signature terminal
+
+/-- Syntax-node visits are neutral event appends. -/
+theorem OrdinaryValidatorHistoryExtension.visit
+    (signature : FrozenSig) (state : InferState)
+    (kind : NodeKind) (path : SyntaxPath) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.visit state kind path) := by
+  simpa [TypePM.Inference.visit] using
+    (OrdinaryValidatorHistoryExtension.recordNeutral
+      (signature := signature) (state := state)
+      (ValidatorNeutralEvent.visit kind path))
+
+/-- Final expression recording is a neutral event append. -/
+theorem OrdinaryValidatorHistoryExtension.finishExpr
+    (signature : FrozenSig) (state : InferState)
+    (expression : Expr) (path : SyntaxPath) (target : Ty) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.finishExpr expression path target state).state := by
+  simpa [TypePM.Inference.finishExpr] using
+    (OrdinaryValidatorHistoryExtension.recordNeutral
+      (signature := signature) (state := state)
+      (ValidatorNeutralEvent.inferredExpr expression target path))
+
+/-- Recording provenance without an event does not affect ordinary coverage. -/
+theorem OrdinaryValidatorHistoryExtension.recordSource
+    (signature : FrozenSig) (state : InferState) (source : ProducerSource) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.recordSource source) :=
+  OrdinaryValidatorHistoryExtension.ofNoEvents
+    (state.stateExtension_recordSource source) (by rfl)
+
+/-- Direct-self recording composes one neutral event with a source-only
+update. -/
+theorem OrdinaryValidatorHistoryExtension.recordSelfReference
+    (signature : FrozenSig) (state : InferState)
+    (binder : String) (placeholder : Ty) (path : SyntaxPath) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.recordSelfReference state binder placeholder path) := by
+  unfold TypePM.Inference.recordSelfReference
+  exact (OrdinaryValidatorHistoryExtension.recordNeutral
+    (signature := signature) (state := state)
+    (ValidatorNeutralEvent.directSelfReference binder placeholder path)).trans
+      (OrdinaryValidatorHistoryExtension.recordSource signature _ _)
+
+/-- Protecting a finalized matcher changes no event history. -/
+theorem OrdinaryValidatorHistoryExtension.protectMatcherCapability
+    (signature : FrozenSig) (state : InferState) (capability : Cap) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.protectMatcherCapability capability) :=
+  OrdinaryValidatorHistoryExtension.ofNoEvents
+    (state.stateExtension_protectMatcherCapability capability) (by rfl)
+
+/-- Fresh target allocation appends only its neutral allocation event. -/
+theorem OrdinaryValidatorHistoryExtension.freshTy
+    (signature : FrozenSig) (state : InferState) (origin : ConstraintOrigin) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.freshTy origin).2 := by
+  refine ⟨state.stateExtension_freshTy origin, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [InferState.freshTy, InferenceBase.freshTyMeta,
+    InferState.recordEvent, List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    exact (ValidatorNeutralEvent.freshTy origin state.supply.nextTy
+      ).ordinaryCondition signature terminal
+
+/-- Fresh capability allocation appends only its neutral allocation event. -/
+theorem OrdinaryValidatorHistoryExtension.freshCap
+    (signature : FrozenSig) (state : InferState) (origin : ConstraintOrigin) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.freshCap origin).2 := by
+  refine ⟨state.stateExtension_freshCap origin, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [InferState.freshCap, InferenceBase.freshCapMeta,
+    InferState.recordEvent, List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    exact (ValidatorNeutralEvent.freshCap origin ⟨state.supply.nextCap⟩
+      ).ordinaryCondition signature terminal
+
+/-- Export freezing appends one neutral bookkeeping event. -/
+theorem OrdinaryValidatorHistoryExtension.freezeCapabilityExport
+    (signature : FrozenSig) (state : InferState)
+    (capImages : List CapVar) (exportedPayload : Ty) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.freezeCapabilityExport capImages exportedPayload) := by
+  refine ⟨state.stateExtension_freezeCapabilityExport capImages
+    exportedPayload, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [InferState.freezeCapabilityExport, InferState.recordEvent,
+    List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    exact (ValidatorNeutralEvent.capabilityExportFreeze
+      state.trace.solves.length capImages exportedPayload
+      (state.prevailing.apply exportedPayload)
+      (capabilityExportLeaves state capImages exportedPayload)
+      ).ordinaryCondition signature terminal
+
+/-- Closed constructor instantiation is one canonical-instance event append. -/
+theorem OrdinaryValidatorHistoryExtension.instantiateCtorInState
+    {signature : FrozenSig} (state : InferState) (scheme : CtorScheme)
+    (closed : scheme.Closed) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.instantiateCtorInState state scheme).2 := by
+  have stateExtension := instantiateCtorInState_stateExtension state scheme
+  refine ⟨stateExtension, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [TypePM.Inference.instantiateCtorInState,
+    InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    apply ctorInstantiation_ordinaryValidatorEventCondition closed
+    exact (stateExtension.trans suffix).history.solve_length_le
+
+/-- Context-scheme instantiation extension.  The only nonlocal input is the
+terminal lookup equation, which is owned by context bisimulation rather than
+by the state-history layer. -/
+theorem OrdinaryValidatorHistoryExtension.instantiateSchemeInState
+    {signature : FrozenSig} {rawContext normalizedContext : Context}
+    {name : String} {state : InferState} {scheme : Scheme}
+    (terminalLookup : ∀ terminal,
+      (TypePM.Inference.instantiateSchemeInState signature rawContext
+        normalizedContext name state scheme).2.StateExtension terminal →
+      (rawContext.applySubst terminal.prevailing).find? name =
+        some (scheme.applyMeta terminal.prevailing)) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.instantiateSchemeInState signature rawContext
+        normalizedContext name state scheme).2 := by
+  let output := (TypePM.Inference.instantiateSchemeInState signature rawContext
+    normalizedContext name state scheme).2
+  have stateExtension := instantiateSchemeInState_stateExtension signature
+    rawContext normalizedContext name state scheme
+  refine ⟨stateExtension, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [TypePM.Inference.instantiateSchemeInState,
+    InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    apply schemeInstantiation_ordinaryValidatorEventCondition
+      ((stateExtension.trans suffix).history.solve_length_le)
+      (terminalLookup terminal suffix) producerSafe
+    intro image imageMembership
+    apply suffix.protectedCaps
+    simp only [TypePM.Inference.instantiateSchemeInState,
+      InferState.recordEvent, List.mem_append]
+    exact Or.inr imageMembership
+
+/-- Closed dual-scheme instantiation extension. -/
+theorem OrdinaryValidatorHistoryExtension.instantiateDualInState
+    {signature : FrozenSig} {rawContext : Context}
+    {rawParameters : PatternCtx} {rawBindings : MonoCtx} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx} {state : InferState}
+    {scheme : DualScheme} (closed : scheme.Closed) :
+    OrdinaryValidatorHistoryExtension signature state
+      (TypePM.Inference.instantiateDualInState signature rawContext
+        rawParameters rawBindings context parameters bindings state scheme).2 := by
+  let output := (TypePM.Inference.instantiateDualInState signature rawContext
+    rawParameters rawBindings context parameters bindings state scheme).2
+  have stateExtension := instantiateDualInState_stateExtension signature
+    rawContext rawParameters rawBindings context parameters bindings state scheme
+  refine ⟨stateExtension, ?_⟩
+  intro event membership previous terminal suffix producerSafe
+  simp only [TypePM.Inference.instantiateDualInState,
+    InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    apply dualInstantiation_ordinaryValidatorEventCondition closed
+      ((stateExtension.trans suffix).history.solve_length_le) producerSafe
+    intro image imageMembership
+    apply suffix.protectedCaps
+    simp only [TypePM.Inference.instantiateDualInState,
+      InferState.recordEvent, List.mem_append]
+    exact Or.inr imageMembership
+
+/-! ## Alignment-event finishers -/
+
+/-- Append the public type-alignment event after an already covered core
+alignment run. -/
+theorem OrdinaryValidatorHistoryExtension.finishAlignTypes
+    {signature : FrozenSig} {state aligned : InferState}
+    {origin : ConstraintOrigin} {left right : Ty}
+    (core : OrdinaryValidatorHistoryExtension signature state aligned)
+    (success : alignTypes state origin left right = some
+      (aligned.recordEvent (.typeAlignment state.trace.solves.length
+        aligned.trace.solves.length left right (state.prevailing.apply left)
+        (state.prevailing.apply right)))) :
+    OrdinaryValidatorHistoryExtension signature state
+      (aligned.recordEvent (.typeAlignment state.trace.solves.length
+        aligned.trace.solves.length left right (state.prevailing.apply left)
+        (state.prevailing.apply right))) := by
+  let event := TraceEvent.typeAlignment state.trace.solves.length
+    aligned.trace.solves.length left right (state.prevailing.apply left)
+    (state.prevailing.apply right)
+  apply core.trans
+  apply OrdinaryValidatorHistoryExtension.recordEvent
+  intro terminal suffix producerSafe
+  have condition := alignTypes_ordinaryValidatorEventCondition
+    (signature := signature) success suffix.history
+  simpa [event, InferState.recordEvent] using condition
+
+/-- Append the public dual-alignment event after its already covered internal
+capability/type run. -/
+theorem OrdinaryValidatorHistoryExtension.finishAlignDuals
+    {signature : FrozenSig} {state aligned : InferState}
+    {origin : ConstraintOrigin} {left right : Dual}
+    (core : OrdinaryValidatorHistoryExtension signature state aligned)
+    (success : alignDuals state origin left right = some
+      (aligned.recordEvent (.dualAlignment state.trace.solves.length
+        aligned.trace.solves.length left right
+        (left.applySubst state.prevailing)
+        (right.applySubst state.prevailing)))) :
+    OrdinaryValidatorHistoryExtension signature state
+      (aligned.recordEvent (.dualAlignment state.trace.solves.length
+        aligned.trace.solves.length left right
+        (left.applySubst state.prevailing)
+        (right.applySubst state.prevailing))) := by
+  let event := TraceEvent.dualAlignment state.trace.solves.length
+    aligned.trace.solves.length left right (left.applySubst state.prevailing)
+    (right.applySubst state.prevailing)
+  apply core.trans
+  apply OrdinaryValidatorHistoryExtension.recordEvent
+  intro terminal suffix producerSafe
+  have condition := alignDuals_ordinaryValidatorEventCondition
+    (signature := signature) success suffix.history
+  simpa [event, InferState.recordEvent] using condition
+
+/-- Append the expected-slot event after the selected underlying alignment
+has already been covered. -/
+theorem OrdinaryValidatorHistoryExtension.finishExpectedAlignment
+    {signature : FrozenSig} {path : SyntaxPath}
+    {expressionResult : ExprResult} {expected : Ty} {aligned : InferState}
+    (core : OrdinaryValidatorHistoryExtension signature
+      expressionResult.state aligned)
+    (success : alignExprResultAtExpected path expressionResult expected = some
+      (aligned.recordEvent (.slotAlignment
+        expressionResult.state.trace.solves.length
+        aligned.trace.solves.length
+        (match expectedCoercionPlan expressionResult.state
+            expressionResult.target expected with
+          | .productMatcherLift duals => productMatcherTarget duals
+          | .slotTupleLift duals => slotTupleTarget duals
+          | .raw => expressionResult.state.prevailing.apply
+              expressionResult.target)
+        (expressionResult.state.prevailing.apply expected)))) :
+    OrdinaryValidatorHistoryExtension signature expressionResult.state
+      (aligned.recordEvent (.slotAlignment
+        expressionResult.state.trace.solves.length
+        aligned.trace.solves.length
+        (match expectedCoercionPlan expressionResult.state
+            expressionResult.target expected with
+          | .productMatcherLift duals => productMatcherTarget duals
+          | .slotTupleLift duals => slotTupleTarget duals
+          | .raw => expressionResult.state.prevailing.apply
+              expressionResult.target)
+        (expressionResult.state.prevailing.apply expected))) := by
+  let inferred := match expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+    | .productMatcherLift duals => productMatcherTarget duals
+    | .slotTupleLift duals => slotTupleTarget duals
+    | .raw => expressionResult.state.prevailing.apply expressionResult.target
+  let requested := expressionResult.state.prevailing.apply expected
+  let event := TraceEvent.slotAlignment
+    expressionResult.state.trace.solves.length aligned.trace.solves.length
+    inferred requested
+  apply core.trans
+  apply OrdinaryValidatorHistoryExtension.recordEvent
+  intro terminal suffix producerSafe
+  have condition :=
+    alignExprResultAtExpected_ordinaryValidatorEventCondition
+      (signature := signature) success suffix.history
+  simpa [event, inferred, requested, InferState.recordEvent] using condition
 
 /-- Bundle the two independent recursion products needed at the final root:
 ordinary coverage from executable traversal and sensitive coverage from the
