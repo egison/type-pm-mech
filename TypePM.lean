@@ -92,6 +92,8 @@ import TypePM.DemandTypingInferenceSoundnessPublic
 import TypePM.DemandTypingInferenceSoundnessRegression
 import TypePM.DemandTypingInferenceCompletenessPublic
 import TypePM.DemandTypingInferenceCompletenessRegression
+import TypePM.DemandTypingInferenceEquivalence
+import TypePM.DemandTypingInferenceEquivalenceRegression
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
@@ -113,5 +115,7 @@ exposes `DDTyping.safe`, which obtains signature closedness from the single
 public `FrozenSigWF` condition and packages state erasure with the concrete
 dynamic safety interface.  `DemandTypingInferenceCompletenessPublic` exposes
 the premise-free acceptance-completeness boundary from `DDTyping` back to
-successful executable inference.
+successful executable inference.  `DemandTypingInferenceEquivalence` composes
+the two directions into decidable DD typability, closed-program
+annotation-freeness, and soundness of the type reported by `inferType`.
 -/
