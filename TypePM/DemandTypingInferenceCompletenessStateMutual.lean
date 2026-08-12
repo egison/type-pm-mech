@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessState
 import TypePM.DemandTypingInferenceSoundness
+import TypePM.DemandTypingIdempotence
 
 /-!
 # Mutual prevailing-state correspondence
@@ -38,9 +39,16 @@ structure StateBisimulation (ledger : CapabilityOriginLedger)
   forwardEquation :
     declarative = Subst.seq forward executable.prevailing
   forwardAdmissible : AdmissiblePost ledger forward
+  declarativeIdempotent : declarative.Idempotent
   reverse : Subst
   reverseEquation :
     executable.prevailing = Subst.seq reverse declarative
+  /-- Reverse transport must preserve the same origin policy.  Without this
+  condition mutual instantiation can rename a `renameOnly` consumer leaf to
+  a `structuralFlexible` producer leaf, making the executable one-way solve
+  fail even though its DD counterpart succeeds. -/
+  reverseAdmissible : AdmissiblePost ledger reverse
+  executableIdempotent : executable.prevailing.Idempotent
 
 /-- One DD raw target and one executable raw target correspond under the
 fixed residuals of a state bisimulation. -/
@@ -130,7 +138,8 @@ theorem StateBisimulation.toMutual
 
 /-- Proof-relevant initial correspondence. -/
 def StateBisimulation.refl
-    (ledger : CapabilityOriginLedger) (state : InferState) :
+    (ledger : CapabilityOriginLedger) (state : InferState)
+    (idempotent : state.prevailing.Idempotent) :
     StateBisimulation ledger state.prevailing state where
   forward := Subst.id
   forwardEquation := by
@@ -142,6 +151,7 @@ def StateBisimulation.refl
         Subst.id.apply (state.prevailing.target varId)
       rw [Subst.apply_id]
   forwardAdmissible := AdmissiblePost.id ledger
+  declarativeIdempotent := idempotent
   reverse := Subst.id
   reverseEquation := by
     apply PhasedPost.subst_ext
@@ -149,8 +159,10 @@ def StateBisimulation.refl
       exact (Cap.apply_id (state.prevailing.cap varId)).symm
     · funext varId
       change state.prevailing.target varId =
-        Subst.id.apply (state.prevailing.target varId)
+      Subst.id.apply (state.prevailing.target varId)
       rw [Subst.apply_id]
+  reverseAdmissible := AdmissiblePost.id ledger
+  executableIdempotent := idempotent
 
 /-- The same raw target is related by every state bisimulation. -/
 theorem StateBisimulation.sameTarget
@@ -176,8 +188,11 @@ def StateBisimulation.recordEvent
   forward := relation.forward
   forwardEquation := by simpa using relation.forwardEquation
   forwardAdmissible := relation.forwardAdmissible
+  declarativeIdempotent := relation.declarativeIdempotent
   reverse := relation.reverse
   reverseEquation := by simpa using relation.reverseEquation
+  reverseAdmissible := relation.reverseAdmissible
+  executableIdempotent := relation.executableIdempotent
 
 /-- Event-only transition as a reusable chronological extension. -/
 def StateBisimulation.recordEventExtension
@@ -227,17 +242,18 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
   have forwardAbsorbs : combined = Subst.seq combined result.subst :=
     result.universal combined combinedAdmissible combinedSound
   let reverseCompetitor := Subst.seq result.subst relation.reverse
+  have reverseCompetitorAdmissible :
+      AdmissiblePost ledger reverseCompetitor :=
+    AdmissiblePost.seq result.admissible relation.reverseAdmissible
   have reverseSound :
       reverseCompetitor.apply (declarative.apply declarativeLeft) =
         reverseCompetitor.apply (declarative.apply declarativeRight) := by
     simp only [reverseCompetitor, Subst.seq_apply, ← left.reverse,
       ← right.reverse]
     exact result.sound
-  let reverseWitness := dd.exact.1.2 reverseCompetitor reverseSound
-  let reverseAfter := Classical.choose reverseWitness
-  have reverseFactors :
-      reverseCompetitor = Subst.seq reverseAfter delta :=
-    Classical.choose_spec reverseWitness
+  have reverseAbsorbs :
+      reverseCompetitor = Subst.seq reverseCompetitor delta :=
+    dd.exact.absorbs reverseSound
   let after : StateBisimulation ledger (Subst.seq delta declarative)
       (state.recordSolve step) :=
     { forward := combined
@@ -255,7 +271,9 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
               (Subst.seq result.subst state.prevailing) :=
             (PhasedPost.seq_assoc combined result.subst state.prevailing).symm
       forwardAdmissible := combinedAdmissible
-      reverse := reverseAfter
+      declarativeIdempotent :=
+        dd.exact.seq_idempotent relation.declarativeIdempotent
+      reverse := reverseCompetitor
       reverseEquation := by
         rw [InferState.prevailing_recordSolve, stepDelta]
         calc
@@ -265,10 +283,15 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
             exact congrArg (Subst.seq result.subst) relation.reverseEquation
           _ = Subst.seq reverseCompetitor declarative :=
             PhasedPost.seq_assoc result.subst relation.reverse declarative
-          _ = Subst.seq (Subst.seq reverseAfter delta) declarative := by
-            rw [← reverseFactors]
-          _ = Subst.seq reverseAfter (Subst.seq delta declarative) :=
-            (PhasedPost.seq_assoc reverseAfter delta declarative).symm }
+          _ = Subst.seq (Subst.seq reverseCompetitor delta) declarative := by
+            rw [← reverseAbsorbs]
+          _ = Subst.seq reverseCompetitor (Subst.seq delta declarative) :=
+            (PhasedPost.seq_assoc reverseCompetitor delta declarative).symm
+      reverseAdmissible := reverseCompetitorAdmissible
+      executableIdempotent := by
+        rw [InferState.prevailing_recordSolve, stepDelta]
+        exact result.exactPairedMGU.seq_idempotent
+          relation.executableIdempotent }
   refine
     { after := after
       transportTy := ?_ }
@@ -298,7 +321,7 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
   · rw [InferState.prevailing_recordSolve, stepDelta]
     change (Subst.seq result.subst state.prevailing).apply
         trackedExecutable =
-      reverseAfter.apply
+      reverseCompetitor.apply
         ((Subst.seq delta declarative).apply trackedDeclarative)
     calc
       (Subst.seq result.subst state.prevailing).apply trackedExecutable =
@@ -308,10 +331,10 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
           reverseCompetitor.apply
             (declarative.apply trackedDeclarative) := by
         simp only [reverseCompetitor, Subst.seq_apply, tracked.reverse]
-      _ = (Subst.seq reverseAfter delta).apply
+      _ = (Subst.seq reverseCompetitor delta).apply
           (declarative.apply trackedDeclarative) := by
-        rw [← reverseFactors]
-      _ = reverseAfter.apply
+        rw [← reverseAbsorbs]
+      _ = reverseCompetitor.apply
           ((Subst.seq delta declarative).apply trackedDeclarative) := by
         simp only [Subst.seq_apply]
 

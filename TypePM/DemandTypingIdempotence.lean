@@ -260,7 +260,7 @@ private theorem matchCap_seq_idempotent_of_fixed
 
 /-- One-way alignment preserves solved form when all four resolved components
 are fixed at the checking cut. -/
-private theorem oneWay_seq_idempotent_of_fixed
+theorem OneWayDelta.seq_idempotent_of_fixed
     {S delta : Subst} {producerCap : Cap} {producerTarget : Ty}
     {consumerCap : Cap} {consumerTarget : Ty}
     (idem : S.Idempotent)
@@ -441,7 +441,7 @@ theorem DDAlign.idempotent
       rw [hslot] at expectedReapplied
       simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget] at expectedReapplied
       have consumerTargetFixed := (Ty.slot.inj expectedReapplied).2
-      exact oneWay_seq_idempotent_of_fixed idem oneWay producerCapFixed
+      exact OneWayDelta.seq_idempotent_of_fixed idem oneWay producerCapFixed
         producerTargetFixed consumerTargetFixed
   | slotTupleLift hclass hduals hslot capExact targetExact =>
       rename_i duals consumerCap consumerTarget C targetDelta
@@ -497,7 +497,7 @@ theorem DDAlign.idempotent
       obtain ⟨producerCapFixed, producerTargetFixed⟩ :=
         Ty.matcher.inj rawReapplied
       have consumerTargetFixed := (Ty.slot.inj expectedReapplied).2
-      exact oneWay_seq_idempotent_of_fixed idem oneWay producerCapFixed
+      exact OneWayDelta.seq_idempotent_of_fixed idem oneWay producerCapFixed
         producerTargetFixed consumerTargetFixed
   | slotToSlot hraw hslot capExact targetExact =>
       rename_i sourceCap sourceTarget requestedCap requestedTarget C targetDelta

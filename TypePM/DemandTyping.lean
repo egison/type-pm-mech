@@ -393,6 +393,46 @@ structure OriginSafeExactPairedMGU (ledger : CapabilityOriginLedger)
   exact : ExactPairedMGU left right subst
   admissible : AdmissiblePost ledger subst
 
+/-- Global most-generality plus solved form implies absorption by every
+solution. -/
+theorem ExactCapMGU.absorbs
+    {left right : Cap} {subst competitor : CapSubst}
+    (exact : ExactCapMGU left right subst)
+    (sound : left.apply competitor = right.apply competitor) :
+    competitor = CapSubst.comp competitor subst := by
+  rcases exact.1.2 competitor sound with ⟨residual, factor⟩
+  rw [factor]
+  funext varId
+  simp only [CapSubst.comp]
+  have fixed := exact.2.2.2 (.var varId)
+  simp only [Cap.apply] at fixed
+  rw [Cap.apply_comp, fixed]
+
+/-- Paired counterpart of `ExactCapMGU.absorbs`. -/
+theorem ExactPairedMGU.absorbs
+    {left right : Ty} {subst competitor : Subst}
+    (exact : ExactPairedMGU left right subst)
+    (sound : competitor.apply left = competitor.apply right) :
+    competitor = Subst.seq competitor subst := by
+  rcases exact.1.2 competitor sound with ⟨residual, factor⟩
+  rw [factor]
+  have self : Subst.seq subst subst = subst := by
+    apply PhasedPost.subst_ext
+    · funext varId
+      have fixed := exact.2.2.2.2.2.2 (.matcher (.var varId) .unit)
+      have capFixed : (subst.cap varId).apply subst.cap = subst.cap varId :=
+        (Ty.matcher.inj fixed).1
+      simpa only [Subst.seq, CapSubst.comp] using capFixed
+    · funext varId
+      change subst.apply (subst.target varId) = subst.target varId
+      simpa only [Subst.apply, Ty.applyCapability, Ty.applyTarget] using
+        exact.2.2.2.2.2.2 (.var varId)
+  calc
+    Subst.seq residual subst =
+        Subst.seq residual (Subst.seq subst subst) := by rw [self]
+    _ = Subst.seq (Subst.seq residual subst) subst :=
+      PhasedPost.seq_assoc residual subst subst
+
 /-- An exact producer-to-slot delta that is legal at the given
 origin-ledger cut. -/
 structure OriginSafeOneWayDelta (ledger : CapabilityOriginLedger)
