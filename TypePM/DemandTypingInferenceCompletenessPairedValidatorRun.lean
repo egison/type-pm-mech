@@ -24,6 +24,7 @@ open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessCertifiedRun
 open DemandTypingInferenceCompletenessValidatorBisimulation
+open DemandTypingInferenceCompletenessMatcherTraversal
 
 /-- A sensitive event justified either exactly, as before, or by paired DD
 and executable constructor operands under the current traversal relation. -/
@@ -51,6 +52,31 @@ inductive PairedTerminalAuditEventWitness
       PairedTerminalAuditEventWitness terminal signature relation
         (.patternCtorCompatibility solveCount name
           (executableDuals.map Dual.cap) executableCapability)
+  | matcher
+      {solveCount : Nat} {clauses : List Clause}
+      {declarativeTarget executableTarget localTarget : Ty}
+      {declarativeHoleLists executableHoleLists : List (List Dual)}
+      {localHoleLists : List (List Cap)}
+      {localEvidence : List Shape.Evidence}
+      {declarativeCapability executableCapability : Cap}
+      (solveBound : solveCount ≤ state.trace.solves.length)
+      (localTargetEq : localTarget =
+        (replay (state.trace.solves.take solveCount)).apply executableTarget)
+      (localHolesEq : localHoleLists = terminalHoleCaps
+        (replay (state.trace.solves.take solveCount)) executableHoleLists)
+      (target : TyBisimulation relation declarativeTarget executableTarget)
+      (holes : DualListsBisimulation relation declarativeHoleLists
+        executableHoleLists)
+      (capability : CapBisimulation relation declarativeCapability
+        executableCapability)
+      (catchAll : catchAllLastCheck clauses = true)
+      (binders : matcherBindersCheck clauses = true)
+      (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+        declarativeHoleLists declarativeCapability declarativeTarget) :
+      PairedTerminalAuditEventWitness terminal signature relation
+        (.matcherFinalization solveCount clauses executableTarget
+          executableHoleLists localTarget localHoleLists localEvidence
+          executableCapability)
 
 /-- Paired witnesses transport with the same chronological bisimulation
 extension used by the raw completeness package. -/
@@ -79,6 +105,24 @@ theorem PairedTerminalAuditEventWitness.transport
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           extension capability)
         facts
+  | matcher solveBound localTargetEq localHolesEq target holes capability
+      catchAll binders facts =>
+      apply PairedTerminalAuditEventWitness.matcher
+        (Nat.le_trans solveBound stateExtension.history.solve_length_le)
+      · rw [HistoryPrefix.take_solves_of_le stateExtension.history solveBound]
+        exact localTargetEq
+      · rw [HistoryPrefix.take_solves_of_le stateExtension.history solveBound]
+        exact localHolesEq
+      · exact
+        (extension.transportTy target)
+      · exact
+        (BisimulationExtension.transportDualLists extension holes)
+      · exact
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+          extension capability)
+      · exact catchAll
+      · exact binders
+      · exact facts
 
 /-- At the root cut, paired constructor operands directly satisfy the
 executable validator condition.  We deliberately do not manufacture an
@@ -109,6 +153,52 @@ theorem PairedTerminalAuditEventWitness.patternCtorCondition
         DDTerminalAudit.PatternCtorFacts.compatible_bisimulation relation
           duals capability facts
       exact ⟨solveBound, entry, lookup, compatible⟩
+
+/-- At the root cut, paired matcher operands satisfy the executable
+finalization condition.  The chronological prefix equations are stored by
+the paired witness, while the terminal checks transfer across the final
+bisimulation. -/
+theorem PairedTerminalAuditEventWitness.matcherCondition
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    {relation : StateBisimulation ledger terminal state}
+    (armBasic : signature.armExhaustive = basicArmExhaustive)
+    {solveCount : Nat} {clauses : List Clause} {rawTarget : Ty}
+    {rawHoleLists : List (List Dual)} {localTarget : Ty}
+    {localHoleLists : List (List Cap)} {localEvidence : List Shape.Evidence}
+    {localCapability : Cap}
+    (witness : PairedTerminalAuditEventWitness terminal signature relation
+      (.matcherFinalization solveCount clauses rawTarget rawHoleLists
+        localTarget localHoleLists localEvidence localCapability)) :
+    solveCount ≤ state.trace.solves.length ∧
+      localTarget = (replay (state.trace.solves.take solveCount)).apply rawTarget ∧
+      localHoleLists = resolvedHoleCaps
+        (replay (state.trace.solves.take solveCount)) rawHoleLists ∧
+      let terminalTarget := state.prevailing.apply rawTarget
+      let terminalHoleLists := resolvedHoleCaps state.prevailing rawHoleLists
+      let terminalCapability := localCapability.apply state.prevailing.cap
+      ∃ evidence,
+        collectClauseEvidence signature.toMatcherSig clauses terminalHoleLists =
+            some evidence ∧
+        Shape.inferShape signature.observability evidence =
+            some terminalCapability ∧
+        clauseCapsListCheck signature terminalCapability clauses
+            terminalHoleLists = true ∧
+        catchAllLastCheck clauses = true ∧
+        matcherBindersCheck clauses = true ∧
+        armExhaustiveCheck signature clauses terminalTarget = true ∧
+        coverageCheck signature.toMatcherSig clauses terminalCapability = true := by
+  cases witness with
+  | exact witness =>
+      exact TerminalAuditEventWitness.matcher_condition_bisimulation relation
+        armBasic witness
+  | matcher solveBound localTargetEq localHolesEq target holes capability
+      catchAll binders facts =>
+      rcases DDTerminalAudit.MatcherFacts.valid_bisimulation_related relation
+        armBasic target holes capability facts with
+        ⟨evidence, collected, inferred, caps, arms, coverage⟩
+      exact ⟨solveBound, localTargetEq, localHolesEq, evidence, collected,
+        inferred, caps, catchAll, binders, arms, coverage⟩
 
 /-- Pointwise paired coverage of every sensitive event in one trace. -/
 def PairedTerminalAuditEventCoverage
@@ -259,6 +349,128 @@ theorem PairedValidatorRunExtension.recordPatternCtor
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           transition capability)
         facts
+
+/-- Record the two-event matcher-finalization suffix with DD and executable
+raw operands kept explicitly paired. -/
+theorem PairedValidatorRunExtension.recordMatcherFinalization
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {declarativeHoleLists executableHoleLists : List (List Dual)}
+    {declarativeCapability executableCapability : Cap}
+    {evidence : List Shape.Evidence}
+    (target : TyBisimulation relation declarativeTarget executableTarget)
+    (holes : DualListsBisimulation relation declarativeHoleLists
+      executableHoleLists)
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (catchAll : catchAllLastCheck clauses = true)
+    (binders : matcherBindersCheck clauses = true)
+    (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+      declarativeHoleLists declarativeCapability declarativeTarget) :
+    let coverageEvent := TraceEvent.literalCoverage clauses executableCapability
+    let covered := state.recordEvent coverageEvent
+    let finalizationEvent := TraceEvent.matcherFinalization
+      covered.trace.solves.length clauses executableTarget executableHoleLists
+      (covered.prevailing.apply executableTarget)
+      (terminalHoleCaps covered.prevailing executableHoleLists)
+      evidence executableCapability
+    let coverageTransition := relation.recordEventExtension coverageEvent
+    let finalizationTransition :=
+      coverageTransition.after.recordEventExtension finalizationEvent
+    PairedValidatorRunExtension terminal signature
+      (coverageTransition.seq finalizationTransition)
+      ((state.stateExtension_recordEvent coverageEvent).trans
+        (covered.stateExtension_recordEvent finalizationEvent)) := by
+  dsimp only
+  let coverageEvent := TraceEvent.literalCoverage clauses executableCapability
+  let covered := state.recordEvent coverageEvent
+  let finalizationEvent := TraceEvent.matcherFinalization
+    covered.trace.solves.length clauses executableTarget executableHoleLists
+    (covered.prevailing.apply executableTarget)
+    (terminalHoleCaps covered.prevailing executableHoleLists)
+    evidence executableCapability
+  let coverageTransition := relation.recordEventExtension coverageEvent
+  let finalizationTransition :=
+    coverageTransition.after.recordEventExtension finalizationEvent
+  have coverageValidation := PairedValidatorRunExtension.ofExact
+    coverageTransition
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (ValidatorNeutralEvent.literalCoverage clauses executableCapability))
+  have finalizationHistory := covered.stateExtension_recordEvent finalizationEvent
+  have finalizationValidation : PairedValidatorRunExtension terminal signature
+      finalizationTransition finalizationHistory := by
+    refine ⟨?_, ⟨?_⟩⟩
+    · apply OrdinaryValidatorHistoryExtension.recordEvent
+      intro future extension producerSafe
+      refine
+        { traversal := ?_
+          typeAlignment := by trivial
+          dualAlignment := by trivial }
+      exact
+        { primitiveHole := ⟨by trivial⟩
+          patternLeaf := ⟨by trivial⟩
+          canonicalInstance := ⟨by trivial⟩
+          slot := ⟨by trivial⟩ }
+    · intro candidate membership previous
+      simp only [InferState.recordEvent, List.mem_append,
+        List.mem_singleton] at membership
+      rcases membership with old | newest
+      · exact False.elim (previous (by
+          simpa [InferState.recordEvent] using old))
+      · subst candidate
+        have witness : PairedTerminalAuditEventWitness terminal signature
+            finalizationTransition.after finalizationEvent := by
+          dsimp [finalizationEvent]
+          refine PairedTerminalAuditEventWitness.matcher
+            (terminal := terminal)
+            (signature := signature)
+            (relation := finalizationTransition.after)
+            (declarativeTarget := declarativeTarget)
+            (executableTarget := executableTarget)
+            (declarativeHoleLists := declarativeHoleLists)
+            (executableHoleLists := executableHoleLists)
+            (declarativeCapability := declarativeCapability)
+            (executableCapability := executableCapability)
+            (clauses := clauses) (localEvidence := evidence)
+            (Nat.le_refl covered.trace.solves.length) ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+          · simp [InferState.recordEvent, InferState.prevailing,
+              finalizationEvent, covered]
+          · simp [InferState.recordEvent, InferState.prevailing,
+              finalizationEvent, covered]
+          · exact finalizationTransition.transportTy
+              (coverageTransition.transportTy target)
+          · exact BisimulationExtension.transportDualLists
+              finalizationTransition
+              (BisimulationExtension.transportDualLists coverageTransition holes)
+          · exact
+              DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+                finalizationTransition
+                (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+                  coverageTransition capability)
+          · exact catchAll
+          · exact binders
+          · exact facts
+        simpa [finalizationEvent, covered, coverageEvent,
+          InferState.recordEvent] using witness
+  refine ⟨coverageValidation.ordinary.trans finalizationValidation.ordinary,
+    ⟨?_⟩⟩
+  intro event membership notFirst
+  by_cases inCovered : event ∈ covered.trace.events
+  · have coveredWitness := coverageValidation.sensitive.newEvents event
+      inCovered notFirst
+    cases event <;> try trivial
+    all_goals simpa only [BisimulationExtension.seq] using
+      (PairedTerminalAuditEventWitness.transport finalizationTransition
+        finalizationHistory coveredWitness)
+  · have finalWitness := finalizationValidation.sensitive.newEvents event
+      membership inCovered
+    cases event <;> try trivial
+    all_goals simpa only [BisimulationExtension.seq] using finalWitness
 
 /-- Chronological paired traversals compose along their raw bisimulation
 transitions. -/

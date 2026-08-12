@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessValidatorEquivariance
 import TypePM.DemandTypingInferenceCompletenessPatternMain
+import TypePM.DemandTypingInferenceCompletenessMatcherTraversal
 import TypePM.Preservation
 
 /-!
@@ -23,6 +24,7 @@ open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessValidatorEquivariance
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessPatternCtorCapability
+open DemandTypingInferenceCompletenessMatcherTraversal
 
 /-- The reverse residual is a local renaming on all variables in a finite
 bundle of terminal-normalized DD operands. -/
@@ -93,6 +95,152 @@ theorem StateBisimulation.executable_cap_eq_pure_of_mem
   have equal := StateBisimulation.executable_apply_eq_pure_of_mem relation
     operands member
   exact (Ty.matcher.inj equal).1
+
+/-- Bundle-local observational equality for a pair of distinct raw operands. -/
+theorem TyBisimulation.executable_eq_pure_of_mem
+    {ledger : CapabilityOriginLedger} {terminal : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger terminal state)
+    (operands : List Ty) {declarativeTarget executableTarget : Ty}
+    (member : declarativeTarget ∈ operands)
+    (related : TyBisimulation relation declarativeTarget executableTarget) :
+    state.prevailing.apply executableTarget =
+      (Subst.seq
+        (LocalRenamingOn.pureSubst
+          (StateBisimulation.reverseLocalRenamingOn_bundleImages relation
+            operands)) terminal).apply declarativeTarget := by
+  let localMap :=
+    StateBisimulation.reverseLocalRenamingOn_bundleImages relation operands
+  have pure : relation.reverse.apply (terminal.apply declarativeTarget) =
+      (LocalRenamingOn.pureSubst localMap).apply
+        (terminal.apply declarativeTarget) := by
+    apply LocalRenamingOn.forward_apply_eq_pure localMap
+    · intro varId free
+      exact Ty.mem_fcvList_of_mem
+        (List.mem_map.mpr ⟨declarativeTarget, member, rfl⟩) free
+    · intro varId free
+      exact Ty.mem_ftvList_of_mem
+        (List.mem_map.mpr ⟨declarativeTarget, member, rfl⟩) free
+  rw [related.reverse, Subst.seq_apply]
+  exact pure
+
+theorem DualListBisimulation.resolvedCaps_eq_pure
+    {ledger : CapabilityOriginLedger} {terminal : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger terminal state}
+    {declarativeHoles executableHoles : List Dual}
+    (related : DualListBisimulation relation declarativeHoles executableHoles)
+    (operands : List Ty)
+    (included : ∀ declarativeDual, declarativeDual ∈ declarativeHoles →
+      Ty.matcher declarativeDual.cap .unit ∈ operands) :
+    (executableHoles.map (Dual.applySubst state.prevailing)).map Dual.cap =
+      (declarativeHoles.map (Dual.applySubst
+        (Subst.seq
+          (LocalRenamingOn.pureSubst
+            (StateBisimulation.reverseLocalRenamingOn_bundleImages relation
+              operands)) terminal))).map Dual.cap := by
+  induction related with
+  | nil => rfl
+  | cons head tail induction =>
+      simp only [List.map_cons, List.cons.injEq]
+      constructor
+      · have shell := TyBisimulation.executable_eq_pure_of_mem relation
+            operands (included _ (by simp)) head.cap
+        exact (Ty.matcher.inj shell).1
+      · exact induction (fun item itemMem => included item (by simp [itemMem]))
+
+theorem DualListsBisimulation.resolved_eq_pure
+    {ledger : CapabilityOriginLedger} {terminal : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger terminal state}
+    {declarativeLists executableLists : List (List Dual)}
+    (related : DualListsBisimulation relation declarativeLists executableLists)
+    (operands : List Ty)
+    (included : ∀ declarativeDual,
+      declarativeDual ∈ declarativeLists.flatten →
+      Ty.matcher declarativeDual.cap .unit ∈ operands) :
+    terminalHoleCaps state.prevailing executableLists =
+      terminalHoleCaps
+        (Subst.seq
+          (LocalRenamingOn.pureSubst
+            (StateBisimulation.reverseLocalRenamingOn_bundleImages relation
+              operands)) terminal)
+        declarativeLists := by
+  induction related with
+  | nil => rfl
+  | cons head tail induction =>
+      simp only [terminalHoleCaps, List.map_cons, List.cons.injEq]
+      constructor
+      · exact DualListBisimulation.resolvedCaps_eq_pure head operands
+          (fun item itemMem => included item (by
+            exact List.mem_flatten.mpr ⟨_, by simp, itemMem⟩))
+      · exact induction (fun item itemMem => included item (by
+          obtain ⟨holes, holesMem, within⟩ := List.mem_flatten.mp itemMem
+          exact List.mem_flatten.mpr ⟨holes, by simp [holesMem], within⟩))
+
+/-- Matcher terminal facts transfer directly across paired raw operands. -/
+theorem DDTerminalAudit.MatcherFacts.valid_bisimulation_related
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {ledger : CapabilityOriginLedger}
+    (relation : StateBisimulation ledger terminal state)
+    (armBasic : signature.armExhaustive = basicArmExhaustive)
+    {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {declarativeHoleLists executableHoleLists : List (List Dual)}
+    {declarativeCapability executableCapability : Cap}
+    (target : TyBisimulation relation declarativeTarget executableTarget)
+    (holes : DualListsBisimulation relation declarativeHoleLists
+      executableHoleLists)
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+      declarativeHoleLists declarativeCapability declarativeTarget) :
+    let terminalTarget := state.prevailing.apply executableTarget
+    let terminalHoleLists := terminalHoleCaps state.prevailing
+      executableHoleLists
+    let terminalCapability := executableCapability.apply state.prevailing.cap
+    ∃ evidence,
+      collectClauseEvidence signature.toMatcherSig clauses terminalHoleLists =
+          some evidence ∧
+      Shape.inferShape signature.observability evidence =
+          some terminalCapability ∧
+      clauseCapsListCheck signature terminalCapability clauses
+          terminalHoleLists = true ∧
+      armExhaustiveCheck signature clauses terminalTarget = true ∧
+      coverageCheck signature.toMatcherSig clauses terminalCapability = true := by
+  dsimp only
+  let holeShells := declarativeHoleLists.flatMap fun holeList =>
+    holeList.map fun dual => Ty.matcher dual.cap .unit
+  let operands := declarativeTarget ::
+    Ty.matcher declarativeCapability .unit :: holeShells
+  let localMap := StateBisimulation.reverseLocalRenamingOn_bundleImages
+    relation operands
+  let post := LocalRenamingOn.pureSubst localMap
+  have moved := DDTerminalAudit.MatcherFacts.transportLocalRenaming localMap
+    armBasic facts
+  have targetEq : state.prevailing.apply executableTarget =
+      (Subst.seq post terminal).apply declarativeTarget :=
+    TyBisimulation.executable_eq_pure_of_mem relation operands
+      (by simp [operands]) target
+  have holesEq : terminalHoleCaps state.prevailing executableHoleLists =
+      terminalHoleCaps (Subst.seq post terminal) declarativeHoleLists := by
+    apply DualListsBisimulation.resolved_eq_pure holes operands
+    intro dual membership
+    simp only [operands, holeShells, List.mem_cons, List.mem_flatMap,
+      List.mem_map]
+    obtain ⟨holeList, listMem, dualMem⟩ := List.mem_flatten.mp membership
+    exact Or.inr (Or.inr ⟨holeList, listMem, dual, dualMem, rfl⟩)
+  have capabilityEq : executableCapability.apply state.prevailing.cap =
+      declarativeCapability.apply (Subst.seq post terminal).cap := by
+    have shell := TyBisimulation.executable_eq_pure_of_mem relation operands
+      (by simp [operands]) capability
+    exact (Ty.matcher.inj shell).1
+  rcases moved.valid with ⟨evidence, collected, inferred, caps, arms, coverage⟩
+  exact ⟨evidence, by simpa [holesEq] using collected,
+    by simpa [capabilityEq] using inferred,
+    by simpa [holesEq, capabilityEq] using caps,
+    by simpa [targetEq] using arms,
+    by simpa [capabilityEq] using coverage⟩
 
 theorem DualListBisimulation.capabilities_append
     {ledger : CapabilityOriginLedger} {declarative : Subst}
