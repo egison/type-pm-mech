@@ -51,6 +51,63 @@ theorem ContextBisimulation.same
       _ = (context.applySubst declarative).applySubst relation.reverse :=
         Context.applySubst_seq relation.reverse declarative context
 
+/-- A chronological state extension transports every already-related
+polymorphic context without opening its binders. -/
+theorem ContextBisimulation.transport
+    {ledger ledger' : CapabilityOriginLedger}
+    {declarative declarative' : Subst} {state state' : InferState}
+    {before : StateBisimulation ledger declarative state}
+    (extension : BisimulationExtension before ledger' declarative' state')
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation before declarativeContext
+      executableContext) :
+    ContextBisimulation extension.after declarativeContext
+      executableContext := by
+  induction declarativeContext generalizing executableContext with
+  | nil =>
+      cases executableContext with
+      | nil => exact ⟨rfl, rfl⟩
+      | cons head tail =>
+          have impossible := congrArg List.length contexts.forward
+          simp [Context.applySubst] at impossible
+  | cons declarativeEntry declarativeTail induction =>
+      cases executableContext with
+      | nil =>
+          have impossible := congrArg List.length contexts.forward
+          simp [Context.applySubst] at impossible
+      | cons executableEntry executableTail =>
+          rcases declarativeEntry with ⟨declarativeName, declarativeScheme⟩
+          rcases executableEntry with ⟨executableName, executableScheme⟩
+          have forwardCons := List.cons.inj (by
+            simpa only [Context.applySubst, List.map_cons] using
+              contexts.forward)
+          have reverseCons := List.cons.inj (by
+            simpa only [Context.applySubst, List.map_cons] using
+              contexts.reverse)
+          have nameEq : declarativeName = executableName :=
+            congrArg Prod.fst forwardCons.1
+          have schemeForward : declarativeScheme.applyMeta declarative =
+              (executableScheme.applyMeta state.prevailing).applyMeta
+                before.forward := congrArg Prod.snd forwardCons.1
+          have schemeReverse : executableScheme.applyMeta state.prevailing =
+              (declarativeScheme.applyMeta declarative).applyMeta
+                before.reverse := congrArg Prod.snd reverseCons.1
+          have tails := induction
+            ⟨forwardCons.2, reverseCons.2⟩
+          subst executableName
+          have schemes := extension.transportScheme schemeForward schemeReverse
+          constructor
+          · simpa only [Context.applySubst, List.map_cons, schemes.1]
+              using congrArg (List.cons
+                (declarativeName,
+                  (executableScheme.applyMeta state'.prevailing).applyMeta
+                    extension.after.forward)) tails.forward
+          · simpa only [Context.applySubst, List.map_cons, schemes.2]
+              using congrArg (List.cons
+                (declarativeName,
+                  (declarativeScheme.applyMeta declarative').applyMeta
+                    extension.after.reverse)) tails.reverse
+
 /-- The normalized schemes returned by corresponding lookups inherit the
 same forward and reverse residuals. -/
 theorem ContextBisimulation.lookup

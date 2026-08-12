@@ -87,6 +87,17 @@ structure BisimulationExtension
   transportTy : ∀ {declarativeTarget executableTarget},
     TyBisimulation before declarativeTarget executableTarget →
       TyBisimulation after declarativeTarget executableTarget
+  transportScheme : ∀ {declarativeScheme executableScheme : Scheme},
+    declarativeScheme.applyMeta declarative =
+        (executableScheme.applyMeta executable.prevailing).applyMeta
+          before.forward →
+    executableScheme.applyMeta executable.prevailing =
+        (declarativeScheme.applyMeta declarative).applyMeta before.reverse →
+    declarativeScheme.applyMeta declarative' =
+        (executableScheme.applyMeta executable'.prevailing).applyMeta
+          after.forward ∧
+    executableScheme.applyMeta executable'.prevailing =
+        (declarativeScheme.applyMeta declarative').applyMeta after.reverse
 
 /-- Identity transition. -/
 def BisimulationExtension.refl
@@ -96,6 +107,7 @@ def BisimulationExtension.refl
     BisimulationExtension relation ledger declarative state where
   after := relation
   transportTy := fun related => related
+  transportScheme := fun forward reverse => ⟨forward, reverse⟩
 
 /-- Chronological extensions compose and retain transport of tracked types. -/
 def BisimulationExtension.seq
@@ -109,6 +121,9 @@ def BisimulationExtension.seq
     BisimulationExtension before ledger₂ declarative₂ state₂ where
   after := second.after
   transportTy := fun related => second.transportTy (first.transportTy related)
+  transportScheme := fun forward reverse =>
+    let middle := first.transportScheme forward reverse
+    second.transportScheme middle.1 middle.2
 
 /-- Pointwise transport for a previously tracked target list. -/
 theorem BisimulationExtension.transportTyList
@@ -211,6 +226,9 @@ def StateBisimulation.recordEventExtension
     · change state.prevailing.apply executableTarget =
         relation.reverse.apply (declarative.apply declarativeTarget)
       exact related.reverse
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨forward, reverse⟩
 
 /-- General paired cut where the DD and executable operands may have
 different raw metavariable names but share the current state residuals. -/
@@ -296,7 +314,8 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
           relation.executableIdempotent }
   refine
     { after := after
-      transportTy := ?_ }
+      transportTy := ?_
+      transportScheme := ?_ }
   intro trackedDeclarative trackedExecutable tracked
   constructor
   · rw [InferState.prevailing_recordSolve, stepDelta]
@@ -339,6 +358,37 @@ noncomputable def StateBisimulation.pairedCut_recordSolve
       _ = reverseCompetitor.apply
           ((Subst.seq delta declarative).apply trackedDeclarative) := by
         simp only [Subst.seq_apply]
+  intro trackedDeclarative trackedExecutable trackedForward trackedReverse
+  constructor
+  · rw [InferState.prevailing_recordSolve, stepDelta]
+    calc
+      trackedDeclarative.applyMeta (Subst.seq delta declarative) =
+          (trackedDeclarative.applyMeta declarative).applyMeta delta := by
+            rw [Scheme.applyMeta_seq]
+      _ = ((trackedExecutable.applyMeta state.prevailing).applyMeta
+            relation.forward).applyMeta delta := by rw [trackedForward]
+      _ = (trackedExecutable.applyMeta state.prevailing).applyMeta combined := by
+            simp only [Scheme.applyMeta_seq, combined]
+      _ = (trackedExecutable.applyMeta state.prevailing).applyMeta
+            (Subst.seq combined result.subst) := by rw [← forwardAbsorbs]
+      _ = (trackedExecutable.applyMeta
+            (Subst.seq result.subst state.prevailing)).applyMeta combined := by
+            simp only [Scheme.applyMeta_seq]
+  · rw [InferState.prevailing_recordSolve, stepDelta]
+    calc
+      trackedExecutable.applyMeta (Subst.seq result.subst state.prevailing) =
+          (trackedExecutable.applyMeta state.prevailing).applyMeta
+            result.subst := by rw [Scheme.applyMeta_seq]
+      _ = ((trackedDeclarative.applyMeta declarative).applyMeta
+            relation.reverse).applyMeta result.subst := by rw [trackedReverse]
+      _ = (trackedDeclarative.applyMeta declarative).applyMeta
+            reverseCompetitor := by
+              simp only [Scheme.applyMeta_seq, reverseCompetitor]
+      _ = (trackedDeclarative.applyMeta declarative).applyMeta
+            (Subst.seq reverseCompetitor delta) := by rw [← reverseAbsorbs]
+      _ = (trackedDeclarative.applyMeta
+            (Subst.seq delta declarative)).applyMeta reverseCompetitor := by
+              simp only [Scheme.applyMeta_seq]
 
 /-- Initially the two prevailing states coincide. -/
 theorem MutualStateCorrespondence.refl
