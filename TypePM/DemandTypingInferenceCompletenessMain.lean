@@ -1904,5 +1904,57 @@ theorem auditedSynthLeaf_complete_nonempty
       | lit => exact ⟨boundedSynthLit_complete before inner⟩
       | something => exact ⟨boundedSynthSomething_complete before inner⟩
 
+/-- Lambda is the first non-leaf global case.  Its only recursive premise is
+strictly below the enclosing fuel; all context transport is local to the
+fresh monomorphic binder. -/
+theorem auditedSynthLam_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {body : Expr} {bodyTarget : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
+      ((name, Scheme.mono (.var q.nextTy)) :: declarativeContext)
+      body bodyTarget q' S'}
+    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger'}
+    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.lam name body)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.lam name body) state) q' S' ledger'
+      (.fn (.var q.nextTy) bodyTarget)) := by
+  have bodyAdequate : SynthBudgetAdequate fuel body := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  let bodyBefore := before.afterVisitFreshTy .exprLam path
+    (freshOrigin .expression path "lambda-domain")
+  let domainRelated := bodyBefore.prevailing.sameTarget (.var q.nextTy)
+  let bodyContexts :=
+    (contexts.transport
+      ((before.visitExtension .exprLam path).seq
+        ((before.visit .exprLam path).freshTyExtension
+          (freshOrigin .expression path "lambda-domain")))).consMono
+      name domainRelated
+  have bodyContextBounded : Context.BoundedBy
+      { q with nextTy := q.nextTy + 1 }
+      ((name, Scheme.mono (.var q.nextTy)) :: declarativeContext) :=
+    Context.BoundedBy.cons
+      (Scheme.BoundedBy.ofMono
+        (Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)))
+      (contextBounded.mono (SupplyExtends.bumpTy q 1))
+  let bodyRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv.erase name) (path := 0 :: path)
+      bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
+  exact ⟨boundedSynthLam_complete before bodyRun
+    ((Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)).mono
+      bodyOrigin.erase.supplyExtends)⟩
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
