@@ -775,8 +775,8 @@ theorem inference_result_type :
   native_decide
 
 theorem program_typed :
-    RuntimeTyping signature [] program programResult := by
-  have typing := Inference.infer_success_runtimeTyping inference_success
+    TypingInvariant signature [] program programResult := by
+  have typing := Inference.infer_success_typingInvariant inference_success
   rw [inference_result_type] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing
 
@@ -917,7 +917,7 @@ theorem matcher_consistent :
 structure SafetyWitness : Prop where
   publicInference :
     Inference.infer signature [] program = some inferenceResult
-  sourceTyping : RuntimeTyping signature [] program programResult
+  sourceTyping : TypingInvariant signature [] program programResult
   orderedReduction :
     MAtom runtimeSignature [] userPattern matcherValue targetValue
       [successfulContinuation] []

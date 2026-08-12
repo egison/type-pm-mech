@@ -7,11 +7,11 @@ import TypePM.DemandTypingInferenceSoundness
 This module isolates the two generalization obligations attached to an
 executable `let` traversal.
 
-* `DDSynthOrigin.letE` records only chronological traversal and ledger flow.
-* `DDSynthTerminalAudit.letE` asks for generalization stability at the chosen
+* `DemandSynthOrigin.letE` records only chronological traversal and ledger flow.
+* `DemandSynthTerminalAudit.letE` asks for generalization stability at the chosen
   root terminal cut.
 
-The first theorem below therefore composes the two recursive DD runs without
+The first theorem below therefore composes the two recursive demand-directed runs without
 a generalization premise.  The second theorem recovers the one required
 terminal equation directly from the finite `WBridgeWF` validator certificate
 and chronological event membership.
@@ -21,14 +21,14 @@ namespace TypePM
 namespace Inference
 
 /-- Compose the value and body runs of one executable let.  Recording the
-generalization event changes neither DD state index nor the capability-origin
+generalization event changes neither demand-directed state index nor the capability-origin
 ledger, so the recursive runs meet at exactly the declarative let boundary. -/
-theorem DDSynthRun.letE
+theorem DemandSynthRun.letE
     {signature : FrozenSig} {context : Context} {name : String}
     {value body : Expr} {initial : InferState} {path : SyntaxPath}
     {valueResult bodyResult : ExprResult}
-    (valueRun : DDSynthRun signature context value initial valueResult)
-    (bodyRun : DDSynthRun signature
+    (valueRun : DemandSynthRun signature context value initial valueResult)
+    (bodyRun : DemandSynthRun signature
       ((name, signature.generalize
         (context.applySubst valueResult.state.prevailing)
         (valueResult.state.prevailing.apply valueResult.target)) :: context)
@@ -42,7 +42,7 @@ theorem DDSynthRun.letE
             (context.applySubst valueResult.state.prevailing)
             (valueResult.state.prevailing.apply valueResult.target))))
       bodyResult) :
-    DDSynthRun signature context (.letE name value body) initial
+    DemandSynthRun signature context (.letE name value body) initial
       (finishExpr (.letE name value body) path bodyResult.target
         bodyResult.state) := by
   rcases valueRun with
@@ -50,18 +50,18 @@ theorem DDSynthRun.letE
   subst valueTarget
   rcases bodyRun with
     ⟨bodyTarget, bodyDerived, bodyTargetEq, bodyOrigin⟩
-  change DDSynth signature initial.supply initial.prevailing context value
+  change DemandSynth signature initial.supply initial.prevailing context value
     valueResult.target valueResult.state.supply
       valueResult.state.prevailing at valueDerived
-  change DDSynthOrigin signature valueDerived initial.capabilityOrigins
+  change DemandSynthOrigin signature valueDerived initial.capabilityOrigins
     valueResult.state.capabilityOrigins at valueOrigin
   simp only [InferState.recordEvent_supply,
     InferState.prevailing_recordEvent,
     InferState.recordEvent_capabilityOrigins] at bodyDerived bodyOrigin
-  refine ⟨bodyTarget, DDSynth.letE valueDerived bodyDerived, ?_, ?_⟩
+  refine ⟨bodyTarget, DemandSynth.letE valueDerived bodyDerived, ?_, ?_⟩
   · simpa [finishExpr] using bodyTargetEq
   · simpa [finishExpr] using
-      DDSynthOrigin.letE valueOrigin bodyOrigin
+      DemandSynthOrigin.letE valueOrigin bodyOrigin
 
 /-- The terminal generalization event checked by `WBridgeWF` is exactly the
 `LetFacts` payload required by the terminal audit tree. -/
@@ -100,12 +100,12 @@ theorem DDTerminalAudit.LetFacts.ofWBridgeWF
 /-- At a root let boundary, the public terminal bridge supplies the terminal
 audit fact while the two recursive runs independently supply chronological
 origin evidence. -/
-theorem DDSynthRun.letEAtValidatedRoot
+theorem DemandSynthRun.letEAtValidatedRoot
     {signature : FrozenSig} {context : Context} {name : String}
     {value body : Expr} {initial : InferState} {path : SyntaxPath}
     {valueResult bodyResult : ExprResult} {fuel : Nat} {selfEnv : SelfEnv}
-    (valueRun : DDSynthRun signature context value initial valueResult)
-    (bodyRun : DDSynthRun signature
+    (valueRun : DemandSynthRun signature context value initial valueResult)
+    (bodyRun : DemandSynthRun signature
       ((name, signature.generalize
         (context.applySubst valueResult.state.prevailing)
         (valueResult.state.prevailing.apply valueResult.target)) :: context)
@@ -136,7 +136,7 @@ theorem DDSynthRun.letEAtValidatedRoot
     (bridge : Reconstruction.WBridgeWF signature
       (finishExpr (.letE name value body) path bodyResult.target
         bodyResult.state).state) :
-    DDSynthRun signature context (.letE name value body) initial
+    DemandSynthRun signature context (.letE name value body) initial
         (finishExpr (.letE name value body) path bodyResult.target
           bodyResult.state) ∧
       DDTerminalAudit.LetFacts
@@ -157,7 +157,7 @@ theorem DDSynthRun.letEAtValidatedRoot
     (inferExprFuel_historyPrefix bodySuccess).trans
       (finishExpr_historyPrefix (.letE name value body) path
         bodyResult.target bodyResult.state)
-  exact ⟨DDSynthRun.letE valueRun bodyRun,
+  exact ⟨DemandSynthRun.letE valueRun bodyRun,
     DDTerminalAudit.LetFacts.ofWBridgeWF bridge history⟩
 
 end Inference

@@ -118,7 +118,7 @@ def productMatcherArgumentApplication : Expr :=
 
 /-- A matcher-headed domain is not a coercion demand: the raw product of
 matchers is not lifted there, so the application is rejected.  A downstream
-`RuntimeTyping` certificate exists, but does not define source acceptance. -/
+`TypingInvariant` proof exists, but does not define source acceptance. -/
 def productMatcherArgumentApplicationSucceeds : Bool :=
   Inference.inferenceSucceeds emptySignature productMatcherConsumerContext
     productMatcherArgumentApplication
@@ -194,10 +194,10 @@ theorem terminalLetResult_success :
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem terminalLet_typed :
-    RuntimeTyping emptySignature
+    TypingInvariant emptySignature
       (Inference.ResolvedContext terminalLetResult.state.prevailing [])
       terminalLetExpression terminalLetResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping terminalLetResult_success
+  Inference.infer_success_typingInvariant terminalLetResult_success
 
 /-! ## Expression-scheme instantiation in both variable sorts -/
 
@@ -225,11 +225,11 @@ theorem quantifiedSchemeResult_success :
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem quantifiedScheme_typed :
-    RuntimeTyping emptySignature
+    TypingInvariant emptySignature
       (Inference.ResolvedContext quantifiedSchemeResult.state.prevailing
         quantifiedContext)
       quantifiedExpression quantifiedSchemeResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping quantifiedSchemeResult_success
+  Inference.infer_success_typingInvariant quantifiedSchemeResult_success
 
 /-! ## Pattern-function instantiation in both variable sorts -/
 
@@ -261,10 +261,10 @@ theorem quantifiedPAppResult_success :
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
 theorem quantifiedPApp_typed :
-    RuntimeTyping patternFunctionSignature
+    TypingInvariant patternFunctionSignature
       (Inference.ResolvedContext quantifiedPAppResult.state.prevailing [])
       quantifiedPAppExpression quantifiedPAppResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping quantifiedPAppResult_success
+  Inference.infer_success_typingInvariant quantifiedPAppResult_success
 
 /-! ## Slot-to-slot expected-type alignment -/
 
@@ -298,10 +298,10 @@ theorem slotToSlot_alignment_recorded :
   native_decide
 
 theorem slotToSlot_typed :
-    RuntimeTyping emptySignature
+    TypingInvariant emptySignature
       (Inference.ResolvedContext slotToSlotResult.state.prevailing slotContext)
       slotToSlotExpression slotToSlotResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping slotToSlotResult_success
+  Inference.infer_success_typingInvariant slotToSlotResult_success
 
 /-! ## Finalized matcher target specialized by an enclosing use -/
 
@@ -351,10 +351,10 @@ theorem matcherTarget_specialized_after_finalization :
   native_decide
 
 theorem specializedMatcher_typed :
-    RuntimeTyping matcherSignature
+    TypingInvariant matcherSignature
       (Inference.ResolvedContext specializedMatcherResult.state.prevailing [])
       specializedMatcherExpression specializedMatcherResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping specializedMatcherResult_success
+  Inference.infer_success_typingInvariant specializedMatcherResult_success
 
 /-! ## Public enforcement of the hole/value-pattern-pattern order -/
 

@@ -8,8 +8,8 @@ These closed examples specialize the public Milestone 6 interface without
 adding a source annotation, a typing premise, or an executable-success
 premise.  The first two pin the general-context and closed-program
 equivalences.  The flagship `matchAll` example separately checks that the
-concrete type reported by `inferType` has a `DDTyping` derivation; it does not
-claim that every independently derived DD target is syntactically equal to
+concrete type reported by `inferType` has a `SourceTyping` derivation; it does not
+claim that every independently derived demand-directed target is syntactically equal to
 that reported type.
 -/
 
@@ -18,17 +18,17 @@ namespace DemandTypingInferenceEquivalenceRegression
 
 /-- The context-general acceptance equivalence specializes to the complete
 recursive list matcher without any caller-supplied typing or run witness. -/
-theorem listMatcher_ddTypable_iff_infer_isSome :
-    (∃ target, DDTyping RecursiveExamples.listSignature []
+theorem listMatcher_sourceTypable_iff_infer_isSome :
+    (∃ target, SourceTyping RecursiveExamples.listSignature []
       RecursiveExamples.listMatcher target) ↔
       (Inference.infer RecursiveExamples.listSignature []
         RecursiveExamples.listMatcher).isSome = true :=
-  Inference.ddTypable_iff_infer_isSome RecursiveExamples.listSignature_wf
+  Inference.sourceTypable_iff_infer_isSome RecursiveExamples.listSignature_wf
 
 /-- The dedicated closed-program statement covers the larger multiset
 matcher, including its additional `join` pattern constructor. -/
 theorem paperCompleteMultisetMatcher_annotation_free :
-    (∃ target, DDTyping RecursiveExamples.multisetSignature []
+    (∃ target, SourceTyping RecursiveExamples.multisetSignature []
       RecursiveExamples.paperCompleteMultisetMatcher target) ↔
       (Inference.infer RecursiveExamples.multisetSignature []
         RecursiveExamples.paperCompleteMultisetMatcher).isSome = true :=
@@ -38,7 +38,7 @@ theorem paperCompleteMultisetMatcher_annotation_free :
 /-- The reverse direction of annotation-freeness reflects a concrete public
 acceptance bit into existential source typability. -/
 theorem listMatcher_typable_of_acceptance :
-    ∃ target, DDTyping RecursiveExamples.listSignature []
+    ∃ target, SourceTyping RecursiveExamples.listSignature []
       RecursiveExamples.listMatcher target := by
   apply (Inference.annotation_freeness
     RecursiveExamples.listSignature_wf).2
@@ -55,7 +55,7 @@ theorem listMatcher_acceptance_of_typability :
 
 /-- The type-only API reports the exact concrete type already pinned for the
 recursive-matcher `matchAll` example.  This is a fact about the deterministic
-executable result, not a DD target-uniqueness theorem. -/
+executable result, not a demand-directed target-uniqueness theorem. -/
 theorem listMatcherMatchAll_inferType_result :
     Inference.inferType RecursiveExamples.listSignature []
       RecursiveExamples.listMatcherMatchAll =
@@ -64,20 +64,20 @@ theorem listMatcherMatchAll_inferType_result :
     RecursiveExamples.listMatcherMatchAllInferenceResult_success,
     RecursiveExamples.listMatcherMatchAllInferenceResult_target]
 
-/-- Consequently the type returned by `inferType` is a source-facing DD
+/-- Consequently the type returned by `inferType` is a source-facing demand-directed
 type for the flagship recursive matcher consumer. -/
-theorem listMatcherMatchAll_inferType_ddTyping :
-    DDTyping RecursiveExamples.listSignature []
+theorem listMatcherMatchAll_inferType_sourceTyping :
+    SourceTyping RecursiveExamples.listSignature []
       RecursiveExamples.listMatcherMatchAll
       RecursiveExamples.listMatcherMatchAllTy :=
-  Inference.inferType_success_ddTyping listMatcherMatchAll_inferType_result
+  Inference.inferType_success_sourceTyping listMatcherMatchAll_inferType_result
 
 /-- Compilation of this definition pins the public decision procedure for
-DD typability independently of the concrete positive result above. -/
-def listMatcherMatchAll_ddTypableDecidable :
-    Decidable (∃ target, DDTyping RecursiveExamples.listSignature []
+source typability independently of the concrete positive result above. -/
+def listMatcherMatchAll_sourceTypableDecidable :
+    Decidable (∃ target, SourceTyping RecursiveExamples.listSignature []
       RecursiveExamples.listMatcherMatchAll target) :=
-  Inference.ddTypableDecidable RecursiveExamples.listSignature []
+  Inference.sourceTypableDecidable RecursiveExamples.listSignature []
     RecursiveExamples.listMatcherMatchAll RecursiveExamples.listSignature_wf
 
 end DemandTypingInferenceEquivalenceRegression

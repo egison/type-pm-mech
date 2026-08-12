@@ -1,6 +1,6 @@
 import TypePM.DemandTypingTerminalAuditTree
 import TypePM.DemandTypingTerminalErasure
-import TypePM.DemandTypingRuntimeErasureMatchAll
+import TypePM.DemandTypingInvariantErasureMatchAll
 import TypePM.DemandTypingIdempotence
 
 /-!
@@ -215,8 +215,8 @@ private theorem childDepth_le_fuel {child parent fuel : Nat}
 
 local macro "audit_child_bound" : term =>
   `(childDepth_le_fuel (by assumption) (by
-      simp [DDSynthTerminalAudit.depth, DDSynthsTerminalAudit.depth,
-        DDCheckTerminalAudit.depth, DDChecksTerminalAudit.depth,
+      simp [DemandSynthTerminalAudit.depth, DemandSynthsTerminalAudit.depth,
+        DemandCheckTerminalAudit.depth, DemandChecksTerminalAudit.depth,
         DDPatternTerminalAudit.depth, DDPatternsTerminalAudit.depth,
         DDArmsTerminalAudit.depth, DDClauseTerminalAudit.depth,
         DDClausesTerminalAudit.depth, Nat.lt_add_one_iff,
@@ -225,14 +225,14 @@ local macro "audit_child_bound" : term =>
 set_option maxHeartbeats 4000000 in
 mutual
 
-private theorem DDSynthTerminalAudit.runtimeErasureFuel
+private theorem DemandSynthTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {target : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDSynth signature q S context expression target q' S'}
+    {S' : Subst} {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDSynthOrigin signature raw ledger ledger'}
-    (audit : DDSynthTerminalAudit terminal signature origin)
+    {origin : DemandSynthOrigin signature raw ledger ledger'}
+    (audit : DemandSynthTerminalAudit terminal signature origin)
     (fuel : Nat) (fuelEnough : audit.depth ≤ fuel)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
@@ -240,11 +240,11 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
     (closed : signature.SchemesClosed) (Sid : S.Idempotent)
     (Sb : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context) :
-    RuntimeTyping signature (context.applySubst terminal) expression
+    TypingInvariant signature (context.applySubst terminal) expression
       (terminal.apply target) := by
   have fuelPositive : 0 < fuel := by
     have depthPositive : 0 < audit.depth := by
-      cases audit <;> simp [DDSynthTerminalAudit.depth]
+      cases audit <;> simp [DemandSynthTerminalAudit.depth]
     omega
   obtain ⟨fuel', rfl⟩ := Nat.exists_eq_succ_of_ne_zero
     (Nat.ne_of_gt fuelPositive)
@@ -252,14 +252,14 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
   | var =>
       rename_i name scheme lookup
       rcases toTerminal with ⟨post, equation, admissible⟩
-      exact DDSynthOrigin.runtimeErasureUnder_var lookup Sid Sb equation
+      exact DemandSynthOrigin.typingInvariantErasureUnder_var lookup Sid Sb equation
         admissible
   | lam bodyAudit =>
       rename_i name body bodyTarget bodyRaw bodyOrigin
       have extension := SupplyExtends.bumpTy q 1
       have domainB : Ty.BoundedBy { q with nextTy := q.nextTy + 1 }
           (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
-      have bodyTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have bodyTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := (name, Scheme.mono (.var q.nextTy)) :: context) bodyAudit
         fuel' audit_child_bound toTerminal closed
         Sid (Sb.mono extension)
@@ -267,7 +267,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
           (contextBounded.mono extension))
       simp only [Context.applySubst, List.map_cons, Scheme.applyMeta_mono,
         Subst.apply_fn] at bodyTyping ⊢
-      exact RuntimeTyping.lam bodyTyping
+      exact TypingInvariant.lam bodyTyping
   | fix bodyAudit =>
       rename_i argument self body bodyTarget S1 distinct direct nonMatcher
         bodyRaw aligned bodyOrigin
@@ -290,7 +290,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (Sb.mono extension) bodyContextB
       have alignFactor := DDErasure.StateFactorization.ofAlignTypes aligned
         S1b bodyB (codomainB.mono bodyOrigin.erase.supplyExtends)
-      have bodyTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have bodyTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := _) bodyAudit fuel' audit_child_bound
         (alignFactor.trans toTerminal) closed Sid (Sb.mono extension)
         bodyContextB
@@ -299,7 +299,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
           terminal.apply (.var (q.nextTy + 1)) := by
         rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
         exact congrArg post.apply aligned.output_equal
-      have bodyExpected : RuntimeTyping signature
+      have bodyExpected : TypingInvariant signature
           ((argument, Scheme.mono (terminal.apply (.var q.nextTy))) ::
             (self, Scheme.mono
               (.fn (terminal.apply (.var q.nextTy))
@@ -309,7 +309,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         rw [finalResultEquality] at bodyTyping
         simpa only [Context.applySubst, List.map_cons,
           Scheme.applyMeta_mono, Subst.apply_fn] using bodyTyping
-      exact RuntimeTyping.fixE distinct direct bodyExpected
+      exact TypingInvariant.fixE distinct direct bodyExpected
   | app functionAudit argumentAudit =>
       rename_i function functionTarget q1 S1 ledger1 S2 argument aligned
         functionRaw argumentRaw functionOrigin argumentOrigin
@@ -329,7 +329,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
       have shapeB := Ty.BoundedBy.fnOf domainB codomainB
       have S2b := aligned.erase.boundedBy (S1b.mono extension)
         (functionB.mono extension) shapeB
-      have argumentFactor := DDCheckOrigin.factorize argumentOrigin closed S2b
+      have argumentFactor := DemandCheckOrigin.factorize argumentOrigin closed S2b
         (contextBounded.mono
           (functionOrigin.erase.supplyExtends.trans extension)) domainB
       have allocation := DDErasure.StateFactorization.ofTransition
@@ -339,13 +339,13 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (S1b.mono extension) (functionB.mono extension) shapeB
       have functionToTerminal :=
         ((allocation.trans alignment).trans argumentFactor).trans toTerminal
-      have functionTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have functionTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := context) functionAudit fuel' audit_child_bound functionToTerminal
         closed Sid Sb contextBounded
-      have S2id := DemandTypingIdempotence.DDAlignTypes.idempotent
-        aligned.erase (DemandTypingIdempotence.DDSynth.idempotent
+      have S2id := DemandTypingIdempotence.DemandAlignTypes.idempotent
+        aligned.erase (DemandTypingIdempotence.DemandSynth.idempotent
           functionOrigin.erase Sid)
-      have argumentTyping := DDCheckTerminalAudit.runtimeErasureFuel
+      have argumentTyping := DemandCheckTerminalAudit.typingInvariantErasureFuel
         (context := context) argumentAudit fuel' audit_child_bound
         toTerminal closed S2id S2b
         (contextBounded.mono
@@ -358,7 +358,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
           Subst.seq_apply, Subst.seq_apply, Subst.seq_apply]
         exact congrArg terminalPost.apply
           (congrArg argumentPost.apply aligned.output_equal)
-      apply RuntimeTyping.app
+      apply TypingInvariant.app
         (domain := terminal.apply (.var q1.nextTy))
         (codomain := terminal.apply (.var (q1.nextTy + 1)))
       · rw [finalShape] at functionTyping
@@ -367,13 +367,13 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
   | lit =>
       rename_i value
       rcases toTerminal with ⟨post, equation, admissible⟩
-      exact DDSynthOrigin.runtimeErasureUnder_lit _ _ _ _ _ _
+      exact DemandSynthOrigin.typingInvariantErasureUnder_lit _ _ _ _ _ _
         equation admissible
   | tuple childrenAudit =>
       rename_i expressions targets childrenRaw childrenOrigin
       simpa only [Subst.apply_prod, Subst.applyList_eq_map] using
-        RuntimeTyping.tuple
-          (DDSynthsTerminalAudit.runtimeErasureFuel (context := context)
+        TypingInvariant.tuple
+          (DemandSynthsTerminalAudit.typingInvariantErasureFuel (context := context)
             childrenAudit fuel' audit_child_bound toTerminal closed Sid Sb
             contextBounded)
   | ctor childrenAudit =>
@@ -390,7 +390,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
       have instB := instantiateCtorScheme_boundedBy (q := q)
         ((closed.dataCtors lookup).boundedBy)
       have ext := SupplyExtends.instantiateCtorScheme q scheme
-      have childrenTyping := DDChecksTerminalAudit.runtimeErasureFuel
+      have childrenTyping := DemandChecksTerminalAudit.typingInvariantErasureFuel
         (context := context) childrenAudit fuel' audit_child_bound
         (freezing.trans toTerminal) closed Sid (Sb.mono ext)
         (contextBounded.mono ext) instB.1
@@ -408,7 +408,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         · intro varId membership
           rw [(closed.dataCtors lookup).2] at membership
           contradiction
-      exact RuntimeTyping.ctor lookup instanceAt childrenTyping
+      exact TypingInvariant.ctor lookup instanceAt childrenTyping
   | prim childrenAudit =>
       rename_i scheme expressions ledger1 op lookup childrenRaw childrenOrigin
       have freezing := DDErasure.StateFactorization.ofTransition
@@ -423,7 +423,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
       have instB := instantiateCtorScheme_boundedBy (q := q)
         ((closed.primitives lookup).boundedBy)
       have ext := SupplyExtends.instantiateCtorScheme q scheme
-      have childrenTyping := DDChecksTerminalAudit.runtimeErasureFuel
+      have childrenTyping := DemandChecksTerminalAudit.typingInvariantErasureFuel
         (context := context) childrenAudit fuel' audit_child_bound
         (freezing.trans toTerminal) closed Sid (Sb.mono ext)
         (contextBounded.mono ext) instB.1
@@ -441,7 +441,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         · intro varId membership
           rw [(closed.primitives lookup).2] at membership
           contradiction
-      exact RuntimeTyping.prim lookup instanceAt childrenTyping
+      exact TypingInvariant.prim lookup instanceAt childrenTyping
   | letE valueAudit bodyAudit facts =>
       rename_i name value body valueTarget q1 S1 ledger1 valueRaw
         bodyRaw valueOrigin bodyOrigin
@@ -453,26 +453,26 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         Context.BoundedBy.cons
           (FrozenSig.generalize_boundedBy (S1b.apply valueB))
           (contextBounded.mono valueOrigin.erase.supplyExtends)
-      have bodyFactor := DDSynthOrigin.factorize bodyOrigin closed S1b
+      have bodyFactor := DemandSynthOrigin.factorize bodyOrigin closed S1b
         bodyContextB
-      have valueTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have valueTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := context) valueAudit fuel' audit_child_bound
         (bodyFactor.trans toTerminal) closed Sid Sb contextBounded
-      have S1id := DemandTypingIdempotence.DDSynth.idempotent
+      have S1id := DemandTypingIdempotence.DemandSynth.idempotent
         valueOrigin.erase Sid
-      have bodyTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have bodyTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := _) bodyAudit fuel' audit_child_bound toTerminal closed S1id S1b
         bodyContextB
-      change RuntimeTyping signature
+      change TypingInvariant signature
         ((name, (signature.generalize (context.applySubst S1)
           (S1.apply valueTarget)).applyMeta terminal) ::
           context.applySubst terminal) body (terminal.apply target)
         at bodyTyping
       rw [facts.stable] at bodyTyping
-      exact RuntimeTyping.letE valueTyping bodyTyping
+      exact TypingInvariant.letE valueTyping bodyTyping
   | something =>
       rcases toTerminal with ⟨post, equation, admissible⟩
-      exact DDSynthOrigin.runtimeErasureUnder_something _ _ _ _ _
+      exact DemandSynthOrigin.typingInvariantErasureUnder_something _ _ _ _ _
         equation admissible
   | matcher clausesAudit facts =>
       rename_i clauses rawHoleLists evidence capability ledger1 inferred
@@ -488,7 +488,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (after := DDLedger.freezeMatcherProducer ledger1 capability)
         (SupplyExtends.refl q')
         (DDLedger.RefinesBelow.freezeMatcherProducer q' ledger1 capability)
-      have clausesTyping := DDClausesTerminalAudit.runtimeErasureFuel
+      have clausesTyping := DDClausesTerminalAudit.typingInvariantErasureFuel
         (context := context) clausesAudit fuel' audit_child_bound
         (freezing.trans toTerminal) closed
         Sid (Sb.mono ext) (contextBounded.mono ext) sharedB
@@ -498,7 +498,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (Inference.collectClauseEvidence_sound collected)
       have binderWitness := Inference.matcherBindersCheck_sound binders
       simpa only [Subst.apply_matcher] using
-        RuntimeTyping.matcher (ResolvedClausesTy.ofShared clausesTyping)
+        TypingInvariant.matcher (ResolvedClausesTy.ofShared clausesTyping)
           inferred (Inference.catchAllLastCheck_sound catchAll)
           (Inference.armExhaustiveCheck_sound arms)
           binderWitness.1 binderWitness.2
@@ -521,7 +521,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (targetB.mono ext2)
       have matcherExpectedB := Ty.BoundedBy.slotOf dualB.1
         (targetB.mono ext2)
-      have matcherFactor := DDCheckOrigin.factorize matcherOrigin closed S3b
+      have matcherFactor := DemandCheckOrigin.factorize matcherOrigin closed S3b
         (contextBounded.mono (ext1.trans ext2)) matcherExpectedB
       have S4b := matcherOrigin.erase.boundedBy closed S3b
         (contextBounded.mono (ext1.trans ext2)) matcherExpectedB
@@ -529,45 +529,45 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
       have bodyContextB := Context.BoundedBy.append
         ((bindingsB.mono ext3).toContext)
         (contextBounded.mono ((ext1.trans ext2).trans ext3))
-      have bodyFactor := DDSynthOrigin.factorize bodyOrigin closed S4b
+      have bodyFactor := DemandSynthOrigin.factorize bodyOrigin closed S4b
         bodyContextB
       have patternFactor := DDPatternOrigin.factorize patternOrigin closed S1b
         (contextBounded.mono ext1) (fun entry mem => nomatch mem)
         (fun entry mem => nomatch mem)
-      have targetAt := DDSynthTerminalAudit.runtimeErasureFuel
+      have targetAt := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := context) targetAudit fuel' audit_child_bound
         (patternFactor.trans
           ((alignFactor.trans matcherFactor).trans bodyFactor) |>.trans
             toTerminal) closed Sid Sb contextBounded
-      have S1id := DemandTypingIdempotence.DDSynth.idempotent
+      have S1id := DemandTypingIdempotence.DemandSynth.idempotent
         targetOrigin.erase Sid
-      have patternAt := DDPatternTerminalAudit.runtimeErasureFuel
+      have patternAt := DDPatternTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := []) patternAudit fuel'
         (childDepth_le_fuel (by assumption) (by
-          simp only [DDSynthTerminalAudit.depth, Nat.lt_add_one_iff]
+          simp only [DemandSynthTerminalAudit.depth, Nat.lt_add_one_iff]
           exact Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)))
         (((alignFactor.trans matcherFactor).trans bodyFactor).trans toTerminal)
         closed S1id S1b (contextBounded.mono ext1)
         (fun entry mem => nomatch mem) (fun entry mem => nomatch mem)
       have S2id := DemandTypingIdempotence.DDPattern.idempotent
         patternOrigin.erase S1id
-      have S3id := DemandTypingIdempotence.DDAlignTypes.idempotent
+      have S3id := DemandTypingIdempotence.DemandAlignTypes.idempotent
         targetAligned.erase S2id
-      have matcherAt := DDCheckTerminalAudit.runtimeErasureFuel
+      have matcherAt := DemandCheckTerminalAudit.typingInvariantErasureFuel
         (context := context) matcherAudit fuel'
         (childDepth_le_fuel (by assumption) (by
-          simp only [DDSynthTerminalAudit.depth, Nat.lt_add_one_iff]
+          simp only [DemandSynthTerminalAudit.depth, Nat.lt_add_one_iff]
           exact Nat.le_trans
             (Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _))
             (Nat.le_max_right _ _)))
         ((bodyFactor.trans toTerminal)) closed S3id S3b
         (contextBounded.mono (ext1.trans ext2)) matcherExpectedB
-      have S4id := DemandTypingIdempotence.DDCheck.idempotent
+      have S4id := DemandTypingIdempotence.DemandCheck.idempotent
         matcherOrigin.erase S3id
-      have bodyAt := DDSynthTerminalAudit.runtimeErasureFuel
+      have bodyAt := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := _) bodyAudit fuel'
         (childDepth_le_fuel (by assumption) (by
-          simp only [DDSynthTerminalAudit.depth, Nat.lt_add_one_iff]
+          simp only [DemandSynthTerminalAudit.depth, Nat.lt_add_one_iff]
           exact Nat.le_trans
             (Nat.le_trans (Nat.le_max_right _ _) (Nat.le_max_right _ _))
             (Nat.le_max_right _ _)))
@@ -578,15 +578,15 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         exact ((matcherFactor.trans bodyFactor).trans toTerminal).liftTyEquality
           targetAligned.output_equal
       rw [targetEq] at patternAt
-      have bodyAt' : RuntimeTyping signature
+      have bodyAt' : TypingInvariant signature
           ((bindings.applySubst terminal).toContext ++
             context.applySubst terminal) body (terminal.apply bodyTarget) := by
         simpa only [Context.applySubst_append,
           MonoCtx.toContext_applySubst] using bodyAt
-      change RuntimeTyping signature (context.applySubst terminal)
+      change TypingInvariant signature (context.applySubst terminal)
         (.matchAll targetExpr matcherExpr pattern body)
         (Ty.listT (terminal.apply bodyTarget))
-      exact RuntimeTyping.matchAll targetAt
+      exact TypingInvariant.matchAll targetAt
         (ResolvedPatternTy.ofTerminal patternAt)
         (by simpa only [Subst.apply_slot] using matcherAt) bodyAt'
   | fixMatcher bodyAudit =>
@@ -606,7 +606,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         (Sb.mono ext) bodyContextB
       have alignFactor := DDErasure.StateFactorization.ofAlignTypes aligned
         S1b bodyB (codomainB.mono bodyOrigin.erase.supplyExtends)
-      have bodyTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have bodyTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := _) bodyAudit fuel' audit_child_bound
         (alignFactor.trans toTerminal) closed Sid (Sb.mono ext) bodyContextB
       rcases toTerminal with ⟨post, terminalEquation, _⟩
@@ -614,7 +614,7 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
           terminal.apply codomain := by
         rw [terminalEquation, Subst.seq_apply, Subst.seq_apply]
         exact congrArg post.apply aligned.output_equal
-      have bodyExpected : RuntimeTyping signature
+      have bodyExpected : TypingInvariant signature
           ((argument, Scheme.mono (terminal.apply domain)) ::
             (self, Scheme.mono
               (.fn (terminal.apply domain) (terminal.apply codomain))) ::
@@ -623,19 +623,19 @@ private theorem DDSynthTerminalAudit.runtimeErasureFuel
         rw [finalResultEquality] at bodyTyping
         simpa only [Context.applySubst, List.map_cons,
           Scheme.applyMeta_mono, Subst.apply_fn] using bodyTyping
-      exact RuntimeTyping.fixE distinct direct bodyExpected
+      exact TypingInvariant.fixE distinct direct bodyExpected
 
 termination_by fuel
 
-private theorem DDSynthsTerminalAudit.runtimeErasureFuel
+private theorem DemandSynthsTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynths signature q S context expressions targets q' S'}
+    {raw : DemandSynths signature q S context expressions targets q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDSynthsOrigin signature raw ledger ledger'}
-    (audit : DDSynthsTerminalAudit terminal signature origin)
+    {origin : DemandSynthsOrigin signature raw ledger ledger'}
+    (audit : DemandSynthsTerminalAudit terminal signature origin)
     (fuel : Nat) (fuelEnough : audit.depth ≤ fuel)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
@@ -647,7 +647,7 @@ private theorem DDSynthsTerminalAudit.runtimeErasureFuel
       (targets.map terminal.apply) := by
   have fuelPositive : 0 < fuel := by
     have depthPositive : 0 < audit.depth := by
-      cases audit <;> simp [DDSynthsTerminalAudit.depth]
+      cases audit <;> simp [DemandSynthsTerminalAudit.depth]
     omega
   obtain ⟨fuel', rfl⟩ := Nat.exists_eq_succ_of_ne_zero
     (Nat.ne_of_gt fuelPositive)
@@ -657,27 +657,27 @@ private theorem DDSynthsTerminalAudit.runtimeErasureFuel
       rename_i expression target q1 S1 ledger1 expressions targets headRaw
         tailRaw headOrigin tailOrigin
       obtain ⟨S1b, _⟩ := headOrigin.erase.boundedBy closed Sb contextBounded
-      have tailFactor := DDSynthsOrigin.factorize tailOrigin closed S1b
+      have tailFactor := DemandSynthsOrigin.factorize tailOrigin closed S1b
         (contextBounded.mono headOrigin.erase.supplyExtends)
       exact ExprsTy.cons
-        (DDSynthTerminalAudit.runtimeErasureFuel (context := context) headAudit
+        (DemandSynthTerminalAudit.typingInvariantErasureFuel (context := context) headAudit
           fuel' audit_child_bound (tailFactor.trans toTerminal) closed Sid Sb
           contextBounded)
-        (DDSynthsTerminalAudit.runtimeErasureFuel (context := context) tailAudit
+        (DemandSynthsTerminalAudit.typingInvariantErasureFuel (context := context) tailAudit
           fuel' audit_child_bound toTerminal closed
-          (DemandTypingIdempotence.DDSynth.idempotent headOrigin.erase Sid) S1b
+          (DemandTypingIdempotence.DemandSynth.idempotent headOrigin.erase Sid) S1b
           (contextBounded.mono headOrigin.erase.supplyExtends))
 
 termination_by fuel
 
-private theorem DDCheckTerminalAudit.runtimeErasureFuel
+private theorem DemandCheckTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {expected : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDCheck signature q S context expression expected q' S'}
+    {S' : Subst} {raw : DemandCheck signature q S context expression expected q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDCheckOrigin signature raw ledger ledger'}
-    (audit : DDCheckTerminalAudit terminal signature origin)
+    {origin : DemandCheckOrigin signature raw ledger ledger'}
+    (audit : DemandCheckTerminalAudit terminal signature origin)
     (fuel : Nat) (fuelEnough : audit.depth ≤ fuel)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
@@ -686,11 +686,11 @@ private theorem DDCheckTerminalAudit.runtimeErasureFuel
     (Sb : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) :
-    RuntimeTyping signature (context.applySubst terminal) expression
+    TypingInvariant signature (context.applySubst terminal) expression
       (terminal.apply expected) := by
   have fuelPositive : 0 < fuel := by
     have depthPositive : 0 < audit.depth := by
-      cases audit <;> simp [DDCheckTerminalAudit.depth]
+      cases audit <;> simp [DemandCheckTerminalAudit.depth]
     omega
   obtain ⟨fuel', rfl⟩ := Nat.exists_eq_succ_of_ne_zero
     (Nat.ne_of_gt fuelPositive)
@@ -701,28 +701,28 @@ private theorem DDCheckTerminalAudit.runtimeErasureFuel
         contextBounded
       have alignFactor := aligned.factorPost S1b synthB
         (expectedBounded.mono synthOrigin.erase.supplyExtends)
-      have synthTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have synthTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := context) synthAudit fuel' audit_child_bound
         (DDErasure.StateFactorization.trans alignFactor toTerminal) closed Sid
         Sb contextBounded
       rcases toTerminal with ⟨post, equation, _⟩
-      have certificate := aligned.runtimeCertificate.apply post
-      have finalAlignment : RuntimeAlignment (terminal.apply rawTarget)
+      have certificate := aligned.invariantCertificate.apply post
+      have finalAlignment : InvariantAlignment (terminal.apply rawTarget)
           (terminal.apply expected) := by
         simpa only [equation, Subst.seq_apply] using certificate
       exact finalAlignment.transport synthTyping
 
 termination_by fuel
 
-private theorem DDChecksTerminalAudit.runtimeErasureFuel
+private theorem DemandChecksTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDChecks signature q S context expressions expecteds q' S'}
+    {raw : DemandChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     (fuel : Nat) (fuelEnough : audit.depth ≤ fuel)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
@@ -735,7 +735,7 @@ private theorem DDChecksTerminalAudit.runtimeErasureFuel
       (expecteds.map terminal.apply) := by
   have fuelPositive : 0 < fuel := by
     have depthPositive : 0 < audit.depth := by
-      cases audit <;> simp [DDChecksTerminalAudit.depth]
+      cases audit <;> simp [DemandChecksTerminalAudit.depth]
     omega
   obtain ⟨fuel', rfl⟩ := Nat.exists_eq_succ_of_ne_zero
     (Nat.ne_of_gt fuelPositive)
@@ -751,20 +751,20 @@ private theorem DDChecksTerminalAudit.runtimeErasureFuel
         intro item mem
         exact (expectedsBounded item (by simp [mem])).mono
           headOrigin.erase.supplyExtends
-      have tailFactor := DDChecksOrigin.factorize tailOrigin closed S1b
+      have tailFactor := DemandChecksOrigin.factorize tailOrigin closed S1b
         (contextBounded.mono headOrigin.erase.supplyExtends) tailBounds
       exact ExprsTy.cons
-        (DDCheckTerminalAudit.runtimeErasureFuel (context := context) headAudit
+        (DemandCheckTerminalAudit.typingInvariantErasureFuel (context := context) headAudit
           fuel' audit_child_bound (tailFactor.trans toTerminal) closed Sid Sb
           contextBounded headB)
-        (DDChecksTerminalAudit.runtimeErasureFuel (context := context) tailAudit
+        (DemandChecksTerminalAudit.typingInvariantErasureFuel (context := context) tailAudit
           fuel' audit_child_bound toTerminal closed
-          (DemandTypingIdempotence.DDCheck.idempotent headOrigin.erase Sid) S1b
+          (DemandTypingIdempotence.DemandCheck.idempotent headOrigin.erase Sid) S1b
           (contextBounded.mono headOrigin.erase.supplyExtends) tailBounds)
 
 termination_by fuel
 
-private theorem DDPatternTerminalAudit.runtimeErasureFuel
+private theorem DDPatternTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {parameters : PatternCtx} {bindingsIn : MonoCtx} {pattern : Pattern}
@@ -815,12 +815,12 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
         (S := S')
         (SupplyExtends.bumpCap q1 1)
         (DDLedger.RefinesBelow.markFreshCap q1 ledger1)
-      have expressionTyping := DDSynthTerminalAudit.runtimeErasureFuel
+      have expressionTyping := DemandSynthTerminalAudit.typingInvariantErasureFuel
         (context := bindingsIn.toContext ++ context) expressionAudit fuel'
         audit_child_bound
         (allocation.trans toTerminal) closed Sid Sb
         (Context.BoundedBy.append bindingsBounded.toContext contextBounded)
-      have expressionTyping' : RuntimeTyping signature
+      have expressionTyping' : TypingInvariant signature
           ((bindingsIn.applySubst terminal).toContext ++
             context.applySubst terminal) expression (terminal.apply target) := by
         simpa only [Context.applySubst_append,
@@ -847,7 +847,7 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
       rfl
   | ptuple childrenAudit =>
       rename_i patterns duals childrenRaw childrenOrigin
-      have childrenAt := DDPatternsTerminalAudit.runtimeErasureFuel
+      have childrenAt := DDPatternsTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) childrenAudit fuel'
         audit_child_bound
         toTerminal closed Sid Sb
@@ -883,7 +883,7 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
           (Inference.capabilityExportPayload [capability]
             ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
               bindingsOut.map fun binding => binding.2))
-      have childrenAt := DDPatternsTerminalAudit.runtimeErasureFuel
+      have childrenAt := DDPatternsTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) childrenAudit fuel'
         audit_child_bound
         ((((targetsFactor.trans capFactor).trans freezing).trans toTerminal))
@@ -916,12 +916,12 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
         (leftDualB.mono ext2) rightDualB
       have rightFactor := DDPatternOrigin.factorize rightOrigin closed S1b
         (contextBounded.mono ext1) (parametersBounded.mono ext1) leftBindingsB
-      have leftAt := DDPatternTerminalAudit.runtimeErasureFuel
+      have leftAt := DDPatternTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) leftAudit fuel'
         audit_child_bound
         ((rightFactor.trans alignFactor).trans toTerminal) closed Sid Sb
         contextBounded parametersBounded bindingsBounded
-      have rightAt := DDPatternTerminalAudit.runtimeErasureFuel
+      have rightAt := DDPatternTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) rightAudit fuel'
         audit_child_bound
         (alignFactor.trans toTerminal) closed
@@ -955,12 +955,12 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
       have rightFactor := DDPatternOrigin.factorize rightOrigin closed S1b
         (contextBounded.mono ext1) (parametersBounded.mono ext1)
         (bindingsBounded.mono ext1)
-      have leftAt := DDPatternTerminalAudit.runtimeErasureFuel
+      have leftAt := DDPatternTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) leftAudit fuel'
         audit_child_bound
         (((rightFactor.trans dualFactor).trans bindingFactor).trans toTerminal)
         closed Sid Sb contextBounded parametersBounded bindingsBounded
-      have rightAt := DDPatternTerminalAudit.runtimeErasureFuel
+      have rightAt := DDPatternTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) rightAudit fuel'
         audit_child_bound
         ((dualFactor.trans bindingFactor).trans toTerminal) closed
@@ -996,7 +996,7 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
       have childrenFactor := DDPatternsOrigin.factorize childrenOrigin closed
         (Sb.mono instExt) (contextBounded.mono instExt)
         (parametersBounded.mono instExt) (bindingsBounded.mono instExt)
-      have childrenAt := DDPatternsTerminalAudit.runtimeErasureFuel
+      have childrenAt := DDPatternsTerminalAudit.typingInvariantErasureFuel
         (context := context) (parameters := parameters) childrenAudit fuel'
         audit_child_bound
         (alignFactor.trans toTerminal) closed Sid (Sb.mono instExt)
@@ -1009,7 +1009,7 @@ private theorem DDPatternTerminalAudit.runtimeErasureFuel
 
 termination_by fuel
 
-private theorem DDPatternsTerminalAudit.runtimeErasureFuel
+private theorem DDPatternsTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {parameters : PatternCtx} {bindingsIn : MonoCtx} {patterns : List Pattern}
@@ -1050,11 +1050,11 @@ private theorem DDPatternsTerminalAudit.runtimeErasureFuel
         (contextBounded.mono ext) (parametersBounded.mono ext) bindings1B
       simpa only [List.map_cons, Dual.applySubst, Dual.apply] using
         TerminalPatternResolutions.cons
-          (DDPatternTerminalAudit.runtimeErasureFuel (context := context)
+          (DDPatternTerminalAudit.typingInvariantErasureFuel (context := context)
             (parameters := parameters) headAudit fuel' audit_child_bound
             (tailFactor.trans toTerminal) closed Sid Sb
             contextBounded parametersBounded bindingsBounded)
-          (DDPatternsTerminalAudit.runtimeErasureFuel (context := context)
+          (DDPatternsTerminalAudit.typingInvariantErasureFuel (context := context)
             (parameters := parameters) tailAudit fuel' audit_child_bound
             toTerminal closed
             (DemandTypingIdempotence.DDPattern.idempotent headOrigin.erase Sid)
@@ -1063,7 +1063,7 @@ private theorem DDPatternsTerminalAudit.runtimeErasureFuel
 
 termination_by fuel
 
-private theorem DDArmsTerminalAudit.runtimeErasureFuel
+private theorem DDArmsTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {ppBindings : MonoCtx} {arms : List Arm} {clauseTarget bodyTarget : Ty}
@@ -1110,29 +1110,29 @@ private theorem DDArmsTerminalAudit.runtimeErasureFuel
         (bindingsBounded.mono (ext1.trans ext2))
         (clauseBounded.mono (ext1.trans ext2))
         (bodyBounded.mono (ext1.trans ext2))
-      have bodyFactor := DDCheckOrigin.factorize bodyOrigin closed S1b
+      have bodyFactor := DemandCheckOrigin.factorize bodyOrigin closed S1b
         bodyContextB (bodyBounded.mono ext1)
       have patternFactor := DDDPatOrigin.factorize patternOrigin closed Sb
         clauseBounded
       rcases (bodyFactor.trans tailFactor).trans toTerminal
         with ⟨patternPost, patternEquation, patternAdmissible⟩
       have patternAt :=
-        (DDDPatOrigin.runtimeErasureUnder patternOrigin closed Sb clauseBounded)
+        (DDDPatOrigin.typingInvariantErasureUnder patternOrigin closed Sb clauseBounded)
           patternEquation patternAdmissible
-      have bodyAt := DDCheckTerminalAudit.runtimeErasureFuel
+      have bodyAt := DemandCheckTerminalAudit.typingInvariantErasureFuel
         (context := armBindings.toContext ++ ppBindings.toContext ++ context)
         bodyAudit fuel' audit_child_bound (tailFactor.trans toTerminal) closed
         (DemandTypingIdempotence.DDDPat.idempotent patternOrigin.erase Sid) S1b
         bodyContextB (bodyBounded.mono ext1)
-      have bodyAt' : RuntimeTyping signature
+      have bodyAt' : TypingInvariant signature
           ((armBindings.applySubst terminal).toContext ++
             (ppBindings.applySubst terminal).toContext ++
             context.applySubst terminal) body (terminal.apply bodyTarget) := by
         simpa only [Context.applySubst_append,
           MonoCtx.toContext_applySubst] using bodyAt
-      have tailAt := DDArmsTerminalAudit.runtimeErasureFuel
+      have tailAt := DDArmsTerminalAudit.typingInvariantErasureFuel
         (context := context) tailAudit fuel' audit_child_bound toTerminal closed
-        (DemandTypingIdempotence.DDCheck.idempotent bodyOrigin.erase
+        (DemandTypingIdempotence.DemandCheck.idempotent bodyOrigin.erase
           (DemandTypingIdempotence.DDDPat.idempotent patternOrigin.erase Sid))
         S2b (contextBounded.mono (ext1.trans ext2))
         (bindingsBounded.mono (ext1.trans ext2))
@@ -1142,7 +1142,7 @@ private theorem DDArmsTerminalAudit.runtimeErasureFuel
 
 termination_by fuel
 
-private theorem DDClauseTerminalAudit.runtimeErasureFuel
+private theorem DDClauseTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {clause : Clause} {sharedTarget : Ty} {holes : List Dual}
@@ -1194,21 +1194,21 @@ private theorem DDClauseTerminalAudit.runtimeErasureFuel
       have armsFactor := DDArmsOrigin.factorize armsOrigin closed S2b
         (contextBounded.mono (ext1.trans ext2)) (ppBindingsB.mono ext2)
         (sharedBounded.mono (ext1.trans ext2)) armBodyB
-      have nextFactor := DDChecksOrigin.factorize nextOrigin closed S1b
+      have nextFactor := DemandChecksOrigin.factorize nextOrigin closed S1b
         (contextBounded.mono ext1) nextExpectedB
       have ppFactor := DDPPatOrigin.factorize ppOrigin closed Sb sharedBounded
       rcases (nextFactor.trans armsFactor).trans toTerminal with
         ⟨ppPost, ppEquation, ppAdmissible⟩
-      have ppAt := (DDPPatOrigin.runtimeErasureUnder ppOrigin closed Sb
+      have ppAt := (DDPPatOrigin.typingInvariantErasureUnder ppOrigin closed Sb
         sharedBounded) ppEquation ppAdmissible
-      have nextAt := DDChecksTerminalAudit.runtimeErasureFuel
+      have nextAt := DemandChecksTerminalAudit.typingInvariantErasureFuel
         (context := context) nextAudit fuel' audit_child_bound
         (armsFactor.trans toTerminal) closed
         (DemandTypingIdempotence.DDPPat.idempotent ppOrigin.erase Sid) S1b
         (contextBounded.mono ext1) nextExpectedB
-      have armsAt := DDArmsTerminalAudit.runtimeErasureFuel
+      have armsAt := DDArmsTerminalAudit.typingInvariantErasureFuel
         (context := context) armsAudit fuel' audit_child_bound toTerminal closed
-        (DemandTypingIdempotence.DDChecks.idempotent nextOrigin.erase
+        (DemandTypingIdempotence.DemandChecks.idempotent nextOrigin.erase
           (DemandTypingIdempotence.DDPPat.idempotent ppOrigin.erase Sid))
         S2b (contextBounded.mono (ext1.trans ext2)) (ppBindingsB.mono ext2)
         (sharedBounded.mono (ext1.trans ext2)) armBodyB
@@ -1222,7 +1222,7 @@ private theorem DDClauseTerminalAudit.runtimeErasureFuel
 
 termination_by fuel
 
-private theorem DDClausesTerminalAudit.runtimeErasureFuel
+private theorem DDClausesTerminalAudit.typingInvariantErasureFuel
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {clauses : List Clause} {sharedTarget : Ty}
@@ -1269,11 +1269,11 @@ private theorem DDClausesTerminalAudit.runtimeErasureFuel
           have tailFactor := DDClausesOrigin.factorize tailOrigin closed S1b
             (contextBounded.mono ext) (sharedBounded.mono ext)
           exact ClausesTy.cons
-            (DDClauseTerminalAudit.runtimeErasureFuel (context := context)
+            (DDClauseTerminalAudit.typingInvariantErasureFuel (context := context)
               headAudit fuel' audit_child_bound (tailFactor.trans toTerminal)
               closed Sid Sb
               contextBounded sharedBounded headCaps headEvidence)
-            (DDClausesTerminalAudit.runtimeErasureFuel (context := context)
+            (DDClausesTerminalAudit.typingInvariantErasureFuel (context := context)
               tailAudit fuel' audit_child_bound toTerminal closed
               (DemandTypingIdempotence.DDClause.idempotent headOrigin.erase Sid)
               S1b (contextBounded.mono ext) (sharedBounded.mono ext)
@@ -1292,35 +1292,35 @@ wrappers instantiate it with the audit depth, keeping fuel and its bookkeeping
 out of the public API.
 -/
 
-theorem DDSynthTerminalAudit.runtimeErasure
+theorem DemandSynthTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {target : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDSynth signature q S context expression target q' S'}
+    {S' : Subst} {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDSynthOrigin signature raw ledger ledger'}
-    (audit : DDSynthTerminalAudit terminal signature origin)
+    {origin : DemandSynthOrigin signature raw ledger ledger'}
+    (audit : DemandSynthTerminalAudit terminal signature origin)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
       terminalSupply terminal terminalLedger)
     (closed : signature.SchemesClosed) (Sid : S.Idempotent)
     (Sb : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context) :
-    RuntimeTyping signature (context.applySubst terminal) expression
+    TypingInvariant signature (context.applySubst terminal) expression
       (terminal.apply target) :=
-  DDSynthTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DemandSynthTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded
 
-theorem DDSynthsTerminalAudit.runtimeErasure
+theorem DemandSynthsTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynths signature q S context expressions targets q' S'}
+    {raw : DemandSynths signature q S context expressions targets q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDSynthsOrigin signature raw ledger ledger'}
-    (audit : DDSynthsTerminalAudit terminal signature origin)
+    {origin : DemandSynthsOrigin signature raw ledger ledger'}
+    (audit : DemandSynthsTerminalAudit terminal signature origin)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
       terminalSupply terminal terminalLedger)
@@ -1329,18 +1329,18 @@ theorem DDSynthsTerminalAudit.runtimeErasure
     (contextBounded : Context.BoundedBy q context) :
     ExprsTy signature (context.applySubst terminal) expressions
       (targets.map terminal.apply) :=
-  DDSynthsTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DemandSynthsTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded
 
-theorem DDCheckTerminalAudit.runtimeErasure
+theorem DemandCheckTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {expected : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDCheck signature q S context expression expected q' S'}
+    {S' : Subst} {raw : DemandCheck signature q S context expression expected q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDCheckOrigin signature raw ledger ledger'}
-    (audit : DDCheckTerminalAudit terminal signature origin)
+    {origin : DemandCheckOrigin signature raw ledger ledger'}
+    (audit : DemandCheckTerminalAudit terminal signature origin)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
       terminalSupply terminal terminalLedger)
@@ -1348,21 +1348,21 @@ theorem DDCheckTerminalAudit.runtimeErasure
     (Sb : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) :
-    RuntimeTyping signature (context.applySubst terminal) expression
+    TypingInvariant signature (context.applySubst terminal) expression
       (terminal.apply expected) :=
-  DDCheckTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DemandCheckTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded expectedBounded
 
-theorem DDChecksTerminalAudit.runtimeErasure
+theorem DemandChecksTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDChecks signature q S context expressions expecteds q' S'}
+    {raw : DemandChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' terminalLedger : CapabilityOriginLedger}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     {terminalSupply : InferenceBase.FreshSupply}
     (toTerminal : DDErasure.StateFactorization q' S' ledger'
       terminalSupply terminal terminalLedger)
@@ -1372,11 +1372,11 @@ theorem DDChecksTerminalAudit.runtimeErasure
     (expectedsBounded : ∀ expected ∈ expecteds, expected.BoundedBy q) :
     ExprsTy signature (context.applySubst terminal) expressions
       (expecteds.map terminal.apply) :=
-  DDChecksTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DemandChecksTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded expectedsBounded
 
-theorem DDPatternTerminalAudit.runtimeErasure
+theorem DDPatternTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {parameters : PatternCtx} {bindingsIn : MonoCtx} {pattern : Pattern}
@@ -1397,11 +1397,11 @@ theorem DDPatternTerminalAudit.runtimeErasure
       (context.applySubst terminal) (parameters.applySubst terminal)
       (bindingsIn.applySubst terminal) pattern (dual.cap.apply terminal.cap)
       (terminal.apply dual.target) (bindingsOut.applySubst terminal) :=
-  DDPatternTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DDPatternTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded parametersBounded bindingsBounded
 
-theorem DDPatternsTerminalAudit.runtimeErasure
+theorem DDPatternsTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {parameters : PatternCtx} {bindingsIn : MonoCtx} {patterns : List Pattern}
@@ -1423,11 +1423,11 @@ theorem DDPatternsTerminalAudit.runtimeErasure
       (bindingsIn.applySubst terminal) patterns
       (duals.map (Dual.applySubst terminal))
       (bindingsOut.applySubst terminal) :=
-  DDPatternsTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DDPatternsTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded parametersBounded bindingsBounded
 
-theorem DDArmsTerminalAudit.runtimeErasure
+theorem DDArmsTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {ppBindings : MonoCtx} {arms : List Arm} {clauseTarget bodyTarget : Ty}
@@ -1446,11 +1446,11 @@ theorem DDArmsTerminalAudit.runtimeErasure
     (bodyBounded : bodyTarget.BoundedBy q) :
     ArmsTy signature (context.applySubst terminal) (terminal.apply clauseTarget)
       (ppBindings.applySubst terminal) (terminal.apply bodyTarget) arms :=
-  DDArmsTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DDArmsTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded bindingsBounded clauseBounded bodyBounded
 
-theorem DDClauseTerminalAudit.runtimeErasure
+theorem DDClauseTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {clause : Clause} {sharedTarget : Ty} {holes : List Dual}
@@ -1472,11 +1472,11 @@ theorem DDClauseTerminalAudit.runtimeErasure
       ((holes.map (Dual.applySubst terminal)).map Dual.cap) = some evidence) :
     ClauseTy signature terminal (context.applySubst terminal) clause capability
       (terminal.apply sharedTarget) evidence :=
-  DDClauseTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DDClauseTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded sharedBounded capsAtTerminal evidenceAtTerminal
 
-theorem DDClausesTerminalAudit.runtimeErasure
+theorem DDClausesTerminalAudit.typingInvariantErasure
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {clauses : List Clause} {sharedTarget : Ty}
@@ -1498,7 +1498,7 @@ theorem DDClausesTerminalAudit.runtimeErasure
       clauses (terminalHoleCaps terminal holeLists) evidences) :
     ClausesTy signature terminal (context.applySubst terminal) clauses
       capability (terminal.apply sharedTarget) evidences :=
-  DDClausesTerminalAudit.runtimeErasureFuel audit audit.depth (Nat.le_refl _)
+  DDClausesTerminalAudit.typingInvariantErasureFuel audit audit.depth (Nat.le_refl _)
     toTerminal
     closed Sid Sb contextBounded sharedBounded capsAtTerminal evidenceAtTerminal
 

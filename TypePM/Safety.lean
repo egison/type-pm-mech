@@ -861,7 +861,7 @@ inductive CaptureAdm (signature : FrozenSig)
   | wild {target} :
       CaptureAdm signature context input .wild .wild target []
   | pval {name expression target} :
-      RuntimeTyping signature (input.toContext ++ context) expression target →
+      TypingInvariant signature (input.toContext ++ context) expression target →
       CaptureAdm signature context input (.pval name) (.pval expression) target
         [(name, target)]
   | ctor {name entry pps patterns targets result bindings} :
@@ -897,7 +897,7 @@ theorem TerminalPatternResolution.pval_parts
     (typing : TerminalPatternResolution signature prevailing context parameters
       input (.pval expression) capability target output) :
     output = input ∧
-      RuntimeTyping signature (input.toContext ++ context) expression target := by
+      TypingInvariant signature (input.toContext ++ context) expression target := by
   cases typing with
   | pval fresh separate expressionTyping => exact ⟨rfl, expressionTyping⟩
 
@@ -1266,7 +1266,7 @@ theorem ppm_environment_typed
     (evalPreserve :
       ∀ {expression value target},
         Eval SF environment expression value →
-        RuntimeTyping signature (input.toContext ++ context) expression target →
+        TypingInvariant signature (input.toContext ++ context) expression target →
         ValueTy signature value target)
     {pp : PPat} {pattern : Pattern} {target : Ty} {bindings : MonoCtx}
     {captures : List Pattern} {ppEnvironment : Env}
@@ -2470,7 +2470,7 @@ theorem ResolvedPatternTy.pval_inversion
     (typing : ResolvedPatternTy signature prevailing context parameters input
       (.pval expression) capability target output) :
     output = input ∧
-      RuntimeTyping signature (input.toContext ++ context) expression target := by
+      TypingInvariant signature (input.toContext ++ context) expression target := by
   cases typing.terminal with
   | pval fresh separate actualTyping =>
       exact ⟨rfl, actualTyping⟩
@@ -3040,13 +3040,13 @@ theorem matom_matcher_success_typed
           body decomposition →
         EnvTyped signature bodyContext
           (dataEnvironment ++ ppEnvironment ++ matcherEnvironment) →
-        RuntimeTyping signature bodyContext body bodyTarget →
+        TypingInvariant signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
       ∀ {nextContext : Context} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
-        RuntimeTyping signature nextContext next nextTarget →
+        TypingInvariant signature nextContext next nextTarget →
         ValueTy signature matcherValue nextTarget) :
     MAtomTypedOutput signature context parameters input output
       (valueLists.map fun values =>
@@ -3189,13 +3189,13 @@ theorem matom_matcher_success_primitive_typed
           body decomposition →
         EnvTyped signature bodyContext
           (dataEnvironment ++ ppEnvironment ++ matcherEnvironment) →
-        RuntimeTyping signature bodyContext body bodyTarget →
+        TypingInvariant signature bodyContext body bodyTarget →
         ValueTy signature decomposition bodyTarget)
     (nextPreserve :
       ∀ {nextContext : Context} {nextTarget : Ty},
         Eval SF matcherEnvironment next matcherValue →
         EnvTyped signature nextContext matcherEnvironment →
-        RuntimeTyping signature nextContext next nextTarget →
+        TypingInvariant signature nextContext next nextTarget →
         ValueTy signature matcherValue nextTarget) :
     MAtomTypedOutput signature context parameters input output
       (valueLists.map fun values =>
@@ -3477,7 +3477,7 @@ inductive EvalRuntimeSigAgrees
         Eval SF (pair.1 ++ environment) body pair.2} :
       (∀ {context : Context} {result : Ty},
         EnvTyped signature context environment →
-        RuntimeTyping signature context (.matchAll target matcher pattern body) result →
+        TypingInvariant signature context (.matchAll target matcher pattern body) result →
         RuntimeSigAgrees signature context SF) →
       EvalRuntimeSigAgrees signature SF targetEvaluation →
       EvalRuntimeSigAgrees signature SF matcherEvaluation →
@@ -3785,7 +3785,7 @@ private abbrev EvalPreservationKernel
     ∀ {context : Context} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
-      RuntimeTyping signature context expression target →
+      TypingInvariant signature context expression target →
       ValueTy signature value target
 
 /-- Internal pristine-result motive for concrete evaluation. -/
@@ -3964,14 +3964,14 @@ private theorem PPMRuntimeSigAgrees.preserve_with
   case phole =>
     intro runtimeEnvironment userPattern actualCaptures actualEnvironment
       equality sourceContext sourceInput sourceTarget sourceBindings
-      runtimePristine runtimeTyping captureTyping
+      runtimePristine typingInvariant captureTyping
     cases equality
     cases captureTyping
     exact .nil
   case pwild =>
     intro runtimeEnvironment actualCaptures actualEnvironment equality
       sourceContext sourceInput sourceTarget sourceBindings runtimePristine
-      runtimeTyping captureTyping
+      typingInvariant captureTyping
     cases equality
     cases captureTyping
     exact .nil
@@ -3979,39 +3979,39 @@ private theorem PPMRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment name expression evaluated evaluation
       evaluationAgreement evaluationIH actualCaptures actualEnvironment equality
       sourceContext sourceInput sourceTarget sourceBindings runtimePristine
-      runtimeTyping captureTyping
+      typingInvariant captureTyping
     cases equality
     cases captureTyping with
     | pval expressionTyping =>
         exact .cons
-          (evalPreserve evaluationAgreement runtimePristine runtimeTyping
+          (evalPreserve evaluationAgreement runtimePristine typingInvariant
             expressionTyping)
           .nil
   case pctor =>
     intro ignoredName runtimeEnvironment name pps patterns results patternLength
       resultLength matchings childrenAgreements childrenIH actualCaptures
       actualEnvironment equality sourceContext sourceInput sourceTarget
-      sourceBindings runtimePristine runtimeTyping captureTyping
+      sourceBindings runtimePristine typingInvariant captureTyping
     cases equality
     cases captureTyping with
     | ctor find children instantiation =>
         exact children.ppm_environments_typed (_SF := SF)
           (_environment := runtimeEnvironment) patternLength resultLength
           (fun entry member {target} {entryBindings} entryAdmissible =>
-            childrenIH entry member rfl runtimePristine runtimeTyping
+            childrenIH entry member rfl runtimePristine typingInvariant
               entryAdmissible)
   case ptuple =>
     intro runtimeEnvironment pps patterns results patternLength resultLength
       matchings childrenAgreements childrenIH actualCaptures actualEnvironment
       equality sourceContext sourceInput sourceTarget sourceBindings
-      runtimePristine runtimeTyping captureTyping
+      runtimePristine typingInvariant captureTyping
     cases equality
     cases captureTyping with
     | tuple children =>
         exact children.ppm_environments_typed (_SF := SF)
           (_environment := runtimeEnvironment) patternLength resultLength
           (fun entry member {target} {entryBindings} entryAdmissible =>
-            childrenIH entry member rfl runtimePristine runtimeTyping
+            childrenIH entry member rfl runtimePristine typingInvariant
               entryAdmissible)
   all_goals intros; trivial
 
@@ -4920,7 +4920,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     {SF : RuntimeSigF}
     (generalizedValueFlow :
       ∀ {context : Context} {expression : Expr} {source : Ty}
-        (typing : RuntimeTyping signature context expression source),
+        (typing : TypingInvariant signature context expression source),
         typing.GeneralizedValueFlow)
     (patfunPreserve : PatfunPreservationKernel signature SF)
     {environment : Env} {expression : Expr} {value : Value}
@@ -4930,7 +4930,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     (∀ {context : Context} {target : Ty},
       EnvPristine environment →
       EnvTyped signature context environment →
-      RuntimeTyping signature context expression target →
+      TypingInvariant signature context expression target →
       ValueTy signature value target) := by
   refine EvalRuntimeSigAgrees.rec
     (motive_1 := fun {runtimeEnvironment} {sourceExpression} {result} _ _ =>
@@ -4938,7 +4938,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       (∀ {sourceContext : Context} {sourceTarget : Ty},
         EnvPristine runtimeEnvironment →
         EnvTyped signature sourceContext runtimeEnvironment →
-        RuntimeTyping signature sourceContext sourceExpression sourceTarget →
+        TypingInvariant signature sourceContext sourceExpression sourceTarget →
         ValueTy signature result sourceTarget))
     (motive_2 := fun {runtimeEnvironment} {primitivePattern} {userPattern}
         {runtimeResult} _ _ =>
@@ -4995,8 +4995,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     constructor
     · intro runtimePristine
       exact runtimePristine.lookup found
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5006,8 +5006,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment parameter body
     constructor
     · exact fun runtimePristine => .closure runtimePristine
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5022,8 +5022,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment self parameter body
     constructor
     · exact fun runtimePristine => .closure runtimePristine
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5046,8 +5046,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       cases functionPristine with
       | closure capturedPristine =>
           exact bodyIH.1 (pushArg_pristine capturedPristine argumentPristine)
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5069,8 +5069,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment literal
     constructor
     · exact fun _ => .lit
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun terminalTyping terminalEvidence _ => by
           cases terminalEvidence
           exact ValueTy.lit)
@@ -5081,8 +5081,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     · intro runtimePristine
       exact .tuple (valuesPristine_of_zip lengths (fun pair member =>
         (childrenIH pair member).1 runtimePristine))
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5099,8 +5099,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     · intro runtimePristine
       exact .ctor (valuesPristine_of_zip lengths (fun pair member =>
         (childrenIH pair member).1 runtimePristine))
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5118,8 +5118,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       exact primEval_pristine
         (valuesPristine_of_zip lengths (fun pair member =>
           (childrenIH pair member).1 runtimePristine)) primitive
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5135,8 +5135,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     constructor
     · intro runtimePristine
       exact bodyIH.1 (.cons (boundIH.1 runtimePristine) runtimePristine)
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5157,8 +5157,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment
     constructor
     · exact fun _ => .something
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun terminalTyping terminalEvidence _ => by
           cases terminalEvidence
           exact ValueTy.something)
@@ -5166,8 +5166,8 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment clauses
     constructor
     · exact fun runtimePristine => .matcherLiteral runtimePristine
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext} {terminalTarget} terminalTyping terminalEvidence
             terminalEnvironment => by
           cases terminalEvidence with
@@ -5177,7 +5177,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
                 (fun name value found => terminalEnvironment.domain found)
                 (fun name value scheme actual found sourceFound instantiation =>
                   terminalEnvironment.lookup found sourceFound instantiation)
-                (RuntimeTyping.matcher clausesTyping shape catchAll exhaustive ppNodup
+                (TypingInvariant.matcher clausesTyping shape catchAll exhaustive ppNodup
                   armNodup coverage) MatcherCursor.refl)
   case ematchAll =>
     intro runtimeEnvironment targetExpression matcherExpression body pattern
@@ -5200,13 +5200,13 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           (childrenIH pair member).1
             ((substitutionsPristine pair.1
               (List.fst_mem_of_mem_zip member)).append runtimePristine)))
-    · intro sourceContext sourceTarget runtimePristine runtimeTyping typing
-      exact preserveSourceCoercions signatureWF typing runtimeTyping
+    · intro sourceContext sourceTarget runtimePristine typingInvariant typing
+      exact preserveSourceCoercions signatureWF typing typingInvariant
         (fun {terminalContext : Context} {terminalTarget : Ty}
-            (terminalTyping : RuntimeTyping signature terminalContext
+            (terminalTyping : TypingInvariant signature terminalContext
               (.matchAll targetExpression matcherExpression pattern body)
               terminalTarget)
-            (terminalEvidence : RuntimeTyping.Terminal terminalTyping)
+            (terminalEvidence : TypingInvariant.Terminal terminalTyping)
             (terminalEnvironment :
               EnvTyped signature terminalContext runtimeEnvironment) => by
           cases terminalEvidence with
@@ -5259,7 +5259,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     constructor
     · exact fun _ => .nil
     · intro actualCaptures actualEnvironment equality sourceContext sourceInput
-        sourceTarget sourceBindings runtimePristine runtimeTyping captureTyping
+        sourceTarget sourceBindings runtimePristine typingInvariant captureTyping
       cases equality
       cases captureTyping
       exact .nil
@@ -5268,7 +5268,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     constructor
     · exact fun _ => .nil
     · intro actualCaptures actualEnvironment equality sourceContext sourceInput
-        sourceTarget sourceBindings runtimePristine runtimeTyping captureTyping
+        sourceTarget sourceBindings runtimePristine typingInvariant captureTyping
       cases equality
       cases captureTyping
       exact .nil
@@ -5279,12 +5279,12 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     · intro runtimePristine
       exact .cons (evaluationIH.1 runtimePristine) .nil
     · intro actualCaptures actualEnvironment equality sourceContext sourceInput
-        sourceTarget sourceBindings runtimePristine runtimeTyping captureTyping
+        sourceTarget sourceBindings runtimePristine typingInvariant captureTyping
       cases equality
       cases captureTyping with
       | pval expressionTyping =>
           exact .cons
-            (evaluationIH.2 runtimePristine runtimeTyping expressionTyping)
+            (evaluationIH.2 runtimePristine typingInvariant expressionTyping)
             .nil
   case pctor =>
     intro ignoredName runtimeEnvironment name pps patterns results patternLength
@@ -5297,14 +5297,14 @@ private theorem EvalRuntimeSigAgrees.preserve_with
         List.exists_fst_mem_zip_of_snd_mem resultLength member
       exact (childrenIH (input, result) inputMember).1 runtimePristine
     · intro actualCaptures actualEnvironment equality sourceContext sourceInput
-        sourceTarget sourceBindings runtimePristine runtimeTyping captureTyping
+        sourceTarget sourceBindings runtimePristine typingInvariant captureTyping
       cases equality
       cases captureTyping with
       | ctor found children instantiation =>
           exact children.ppm_environments_typed (_SF := SF)
             (_environment := runtimeEnvironment) patternLength resultLength
             (fun entry member {target} {entryBindings} entryAdmissible =>
-              (childrenIH entry member).2 rfl runtimePristine runtimeTyping
+              (childrenIH entry member).2 rfl runtimePristine typingInvariant
                 entryAdmissible)
   case ptuple =>
     intro runtimeEnvironment pps patterns results patternLength resultLength
@@ -5317,14 +5317,14 @@ private theorem EvalRuntimeSigAgrees.preserve_with
         List.exists_fst_mem_zip_of_snd_mem resultLength member
       exact (childrenIH (input, result) inputMember).1 runtimePristine
     · intro actualCaptures actualEnvironment equality sourceContext sourceInput
-        sourceTarget sourceBindings runtimePristine runtimeTyping captureTyping
+        sourceTarget sourceBindings runtimePristine typingInvariant captureTyping
       cases equality
       cases captureTyping with
       | tuple children =>
           exact children.ppm_environments_typed (_SF := SF)
             (_environment := runtimeEnvironment) patternLength resultLength
             (fun entry member {target} {entryBindings} entryAdmissible =>
-              (childrenIH entry member).2 rfl runtimePristine runtimeTyping
+              (childrenIH entry member).2 rfl runtimePristine typingInvariant
                 entryAdmissible)
   case pfail =>
     intro runtimeEnvironment pp userPattern failed
@@ -5336,7 +5336,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case msomeWC =>
     intro runtimeEnvironment runtimeValue sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace
+      typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someWC_typed patternTyping valueTyping
@@ -5345,7 +5345,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case msomeVar =>
     intro runtimeEnvironment name runtimeValue sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace
+      typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someVar_typed patternTyping valueTyping
@@ -5355,7 +5355,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment compared value expected evaluation equal
       evaluationAgreement evaluationIH sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace
+      typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someValEq_typed patternTyping
@@ -5365,7 +5365,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
     intro runtimeEnvironment compared value expected evaluation unequal
       evaluationAgreement evaluationIH sourceContext sourceParameters
       sourceInput sourceOutput runtimePristine valuePristine matcherPristine
-      runtimeTyping atomTyping trace
+      typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_someValNeq_typed patternTyping
@@ -5374,7 +5374,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mand =>
     intro runtimeEnvironment left right runtimeMatcher runtimeValue sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace
+      matcherPristine typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_and_typed patternTyping matcherTyping valueTyping
@@ -5383,7 +5383,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mor =>
     intro runtimeEnvironment left right runtimeMatcher runtimeValue sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace
+      matcherPristine typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_or_typed patternTyping matcherTyping valueTyping
@@ -5392,7 +5392,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mtuple =>
     intro ignored runtimeEnvironment patterns matchers values patternLength valueLength
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace
+      valuePristine matcherPristine typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_tuple_typed signatureWF patternTyping matcherTyping
@@ -5402,7 +5402,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
   case mprodSome =>
     intro ignored1 ignored2 ignored3 runtimeEnvironment userPattern matchers runtimeValue primitive
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace
+      valuePristine matcherPristine typingInvariant atomTyping trace
     cases atomTyping with
     | mk patternTyping matcherTyping valueTyping =>
         exact matom_prodSome_typed patternTyping primitive valueTyping
@@ -5413,24 +5413,24 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       pp next arms clauses continuations new dispatch failure recursive
       failureAgreement recursiveAgreement failureIH recursiveIH sourceContext
       sourceParameters sourceInput sourceOutput runtimePristine valuePristine
-      matcherPristine runtimeTyping atomTyping trace
+      matcherPristine typingInvariant atomTyping trace
     exact matom_matcherPPFail_typed failure atomTyping trace
       (fun recursiveTyping recursiveTrace =>
         recursiveIH runtimePristine valuePristine
           (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment, dispatch⟩)
-          runtimeTyping recursiveTyping recursiveTrace)
+          typingInvariant recursiveTyping recursiveTrace)
   case mdpfail =>
     intro ignored runtimeEnvironment matcherEnvironment original userPattern runtimeValue
       pp next dp body arms clauses captures ppEnvironment continuations new
       dispatch ppSuccess dataFailure recursive ppAgreement recursiveAgreement
       ppIH recursiveIH sourceContext sourceParameters sourceInput sourceOutput
-      runtimePristine valuePristine matcherPristine runtimeTyping atomTyping
+      runtimePristine valuePristine matcherPristine typingInvariant atomTyping
       trace
     exact matom_matcherDPFail_typed ppSuccess dataFailure atomTyping trace
       (fun recursiveTyping recursiveTrace =>
         recursiveIH runtimePristine valuePristine
           (.inr ⟨_, _, _, rfl, matcherPristine.matcherEnvironment, dispatch⟩)
-          runtimeTyping recursiveTyping recursiveTrace)
+          typingInvariant recursiveTyping recursiveTrace)
   case mmatcher =>
     intro ignored1 ignored2 ignored3 runtimeEnvironment matcherEnvironment original userPattern runtimeValue
       pp next dp body arms clauses captures ppEnvironment dataEnvironment
@@ -5438,7 +5438,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
       dataSuccess bodyEvaluation listDecode tupleDecodes nextEvaluation
       matcherDecode ppAgreement bodyAgreement nextAgreement ppIH bodyIH nextIH
       sourceContext sourceParameters sourceInput sourceOutput runtimePristine
-      valuePristine matcherPristine runtimeTyping atomTyping trace
+      valuePristine matcherPristine typingInvariant atomTyping trace
     have ppEnvironmentPristine := ppIH.1 runtimePristine
     have dataEnvironmentPristine :=
       pdMatch_pristine valuePristine dataSuccess
@@ -5453,7 +5453,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           matcherTyping valueTyping (trace rfl) dispatch ppSuccess dataSuccess
           bodyEvaluation listDecode tupleDecodes nextEvaluation matcherDecode
           (fun admissible =>
-            ppIH.2 rfl runtimePristine runtimeTyping admissible)
+            ppIH.2 rfl runtimePristine typingInvariant admissible)
           (fun _ bodyEnvironment bodyTyping =>
             bodyIH.2 bodyEnvironmentPristine bodyEnvironment bodyTyping)
           (fun _ nextEnvironment nextTyping =>
@@ -5466,7 +5466,7 @@ private theorem EvalRuntimeSigAgrees.preserve_with
           dataSuccess bodyEvaluation listDecode tupleDecodes nextEvaluation
           matcherDecode
           (fun admissible =>
-            ppIH.2 rfl runtimePristine runtimeTyping admissible)
+            ppIH.2 rfl runtimePristine typingInvariant admissible)
           (fun _ bodyEnvironment bodyTyping =>
             bodyIH.2 bodyEnvironmentPristine bodyEnvironment bodyTyping)
           (fun _ nextEnvironment nextTyping =>
@@ -5596,7 +5596,7 @@ theorem EvalRuntimeSigAgrees.preservation
     {context : Context} {target : Ty}
     (environmentPristine : EnvPristine environment)
     (environmentTyping : EnvTyped signature context environment)
-    (sourceTyping : RuntimeTyping signature context expression target) :
+    (sourceTyping : TypingInvariant signature context expression target) :
     ValueTy signature value target :=
   (EvalRuntimeSigAgrees.preserve_with signatureWF
     (fun typing => typing.generalizedValueFlow
@@ -5996,7 +5996,7 @@ structure CoreSafety (signature : FrozenSig) (SF : RuntimeSigF) : Prop where
       EvalRuntimeSigAgrees signature SF evaluation →
       EnvPristine environment →
       EnvTyped signature context environment →
-      RuntimeTyping signature context expression target →
+      TypingInvariant signature context expression target →
       ValueTy signature value target
   stepPreservation :
     ∀ {state states} {reduction : Step SF state states}

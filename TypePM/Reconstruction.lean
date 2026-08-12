@@ -4,8 +4,8 @@ import TypePM.InferenceHistory
 # Proof-relevant reconstruction after executable type inference
 
 This module keeps successful inference evidence separate from the internal
-state-free runtime certificates.  The mutually inductive family below mirrors
-every source form, but no constructor stores `RuntimeTyping`, `PatternTy`, `PPatTy`, `DPatTy`, or
+state-free typing invariants.  The mutually inductive family below mirrors
+every source form, but no constructor stores `TypingInvariant`, `PatternTy`, `PPatTy`, `DPatTy`, or
 `ClauseTy`.  The final section is the only forgetful map into those judgments.
 
 In particular, variable and pattern-function reconstruction consumes the
@@ -511,7 +511,7 @@ macro_rules
       `(tactic|
         apply $recursor
           (motive_1 := fun context expression target _ =>
-            RuntimeTyping $signature context expression target)
+            TypingInvariant $signature context expression target)
           (motive_2 := fun context expressions targets _ =>
             ExprsTy $signature context expressions targets)
           (motive_3 := fun context parameters bindings pattern capability target
@@ -581,28 +581,28 @@ private theorem runtimeMatcherToSlot_ofRaw
     {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
     {bindings : CapMatch.Bindings} {C : CapSubst} {T : TySubst}
     {post : Subst}
-    (typing : RuntimeTyping signature context expression
+    (typing : TypingInvariant signature context expression
       (.matcher ((producerCap.apply C).apply post.cap)
         (post.apply ((Subst.mk C T).apply producerTarget))))
     (raw : MatcherToSlotRawCert producerCap consumerCap producerTarget
       consumerTarget bindings C T) :
-    RuntimeTyping signature context expression
+    TypingInvariant signature context expression
       (.slot ((consumerCap.apply C).apply post.cap)
         (post.apply ((Subst.mk C T).apply consumerTarget))) := by
   rw [← raw.postTargetEquality post]
-  exact RuntimeTyping.coerceMatcherToSlot typing
+  exact TypingInvariant.coerceMatcherToSlot typing
     (raw.postCapabilityDemand post)
 
 private theorem runtimeSlotToSlot_ofRaw
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {sourceCap requestedCap : Cap} {sourceTarget requestedTarget : Ty}
     {C : CapSubst} {T : TySubst} {post : Subst}
-    (typing : RuntimeTyping signature context expression
+    (typing : TypingInvariant signature context expression
       (.slot ((sourceCap.apply C).apply post.cap)
         (post.apply ((Subst.mk C T).apply sourceTarget))))
     (raw : SlotToSlotRawCert sourceCap requestedCap sourceTarget
       requestedTarget C T) :
-    RuntimeTyping signature context expression
+    TypingInvariant signature context expression
       (.slot ((requestedCap.apply C).apply post.cap)
         (post.apply ((Subst.mk C T).apply requestedTarget))) := by
   have endpoint :
@@ -621,7 +621,7 @@ macro_rules
         first
           | apply runtimeMatcherToSlot_ofRaw <;> assumption
           | apply runtimeSlotToSlot_ofRaw <;> assumption
-          | apply RuntimeTyping.coerceSlotTuple <;> assumption
+          | apply TypingInvariant.coerceSlotTuple <;> assumption
           | apply TerminalPPatResolution.hole <;> assumption
           | exact TerminalPPatResolution.wild
           | exact TerminalPPatResolution.pval
@@ -650,13 +650,13 @@ macro_rules
           | constructor <;> assumption)
 
 /-- The combined mutual recursor discharges every recursive source premise. -/
-theorem ExprDeriv.toRuntimeTyping
+theorem ExprDeriv.toTypingInvariant
     {signature context expression target}
     (derivation : ExprDeriv signature context expression target) :
-    RuntimeTyping signature context expression target := by
+    TypingInvariant signature context expression target := by
   apply ExprDeriv.rec
     (motive_1 := fun context expression target _ =>
-      RuntimeTyping signature context expression target)
+      TypingInvariant signature context expression target)
     (motive_2 := fun context expressions targets _ =>
       ExprsTy signature context expressions targets)
     (motive_3 := fun context parameters bindings pattern capability target

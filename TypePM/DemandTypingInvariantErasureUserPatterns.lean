@@ -1,15 +1,15 @@
-import TypePM.DemandTypingRuntimeErasurePatterns
-import TypePM.DemandTypingRuntimeErasurePurePatterns
-import TypePM.DemandTypingRuntimeErasureExpr
+import TypePM.DemandTypingInvariantErasurePatterns
+import TypePM.DemandTypingInvariantErasurePurePatterns
+import TypePM.DemandTypingInvariantErasureExpr
 
 /-! # Later-cut erasure for expression-independent user-pattern fragments -/
 
 namespace TypePM
 
-theorem DDAlignDualWithLedger.output_equal
+theorem DemandAlignDualWithLedger.output_equal
     {ledger : CapabilityOriginLedger} {S S' : Subst}
     {left right : Dual}
-    (aligned : DDAlignDualWithLedger ledger S left right S') :
+    (aligned : DemandAlignDualWithLedger ledger S left right S') :
     left.applySubst S' = right.applySubst S' := by
   cases aligned with
   | mk capSafe targetsAligned =>
@@ -35,10 +35,10 @@ theorem DDAlignDualWithLedger.output_equal
       simp only [Dual.applySubst, Dual.apply] at capEquality targetEquality ⊢
       rw [capEquality, targetEquality]
 
-theorem DDAlignBindingsWithLedger.output_equal
+theorem DemandAlignBindingsWithLedger.output_equal
     {ledger : CapabilityOriginLedger} {S S' : Subst}
     {left right : MonoCtx}
-    (aligned : DDAlignBindingsWithLedger ledger S left right S') :
+    (aligned : DemandAlignBindingsWithLedger ledger S left right S') :
     left.applySubst S' = right.applySubst S' := by
   induction aligned with
   | nil => rfl
@@ -72,10 +72,10 @@ theorem ReplayExtends.applyDual_eq
   simp only [Dual.applySubst, Dual.apply] at capAtLater targetAtLater ⊢
   rw [capAtLater, targetAtLater]
 
-theorem DDAlignDualListWithLedger.output_equal
+theorem DemandAlignDualListWithLedger.output_equal
     {ledger : CapabilityOriginLedger} {S S' : Subst}
     {left right : List Dual}
-    (aligned : DDAlignDualListWithLedger ledger S left right S') :
+    (aligned : DemandAlignDualListWithLedger ledger S left right S') :
     left.map (Dual.applySubst S') = right.map (Dual.applySubst S') := by
   induction aligned with
   | nil => rfl
@@ -85,10 +85,10 @@ theorem DDAlignDualListWithLedger.output_equal
       simp only [List.map_cons]
       rw [headAtFinal, ih]
 
-theorem DDAlignTargetListWithLedger.output_equal
+theorem DemandAlignTargetListWithLedger.output_equal
     {ledger : CapabilityOriginLedger} {S S' : Subst}
     {duals : List Dual} {targets : List Ty}
-    (aligned : DDAlignTargetListWithLedger ledger S duals targets S') :
+    (aligned : DemandAlignTargetListWithLedger ledger S duals targets S') :
     (duals.map Dual.target).map S'.apply = targets.map S'.apply := by
   induction aligned with
   | nil => rfl
@@ -229,7 +229,7 @@ private theorem closedPatternCtorInstance
 
 namespace DDPatternOrigin
 
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
@@ -247,14 +247,14 @@ def RuntimeErasureUnder
       (dual.cap.apply finalSubst.cap) (finalSubst.apply dual.target)
       (bindingsOut.applySubst finalSubst)
 
-theorem runtimeErasureUnder_pvar
+theorem typingInvariantErasureUnder_pvar
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {ledger : CapabilityOriginLedger}
     (missing : name ∉ bindings.names)
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (@DDPatternOrigin.pvar signature q S context parameters bindings name
         ledger missing) := by
   intro final finalSubst post finalLedger equation admissible
@@ -263,13 +263,13 @@ theorem runtimeErasureUnder_pvar
       (actualContext := context.applySubst finalSubst)
       missing freshCap freshTy)
 
-theorem runtimeErasureUnder_wild
+theorem typingInvariantErasureUnder_wild
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {ledger : CapabilityOriginLedger}
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternOrigin.wild (signature := signature) (q := q) (S := S)
         (context := context) (parameters := parameters) (bindings := bindings)
         (ledger := ledger)) := by
@@ -278,12 +278,12 @@ theorem runtimeErasureUnder_wild
     (TerminalPatternResolution.wild (prevailing := finalSubst)
       (actualContext := context.applySubst finalSubst) freshCap freshTy)
 
-theorem runtimeErasureUnder_embed
+theorem typingInvariantErasureUnder_embed
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {dual : Dual} {ledger : CapabilityOriginLedger}
     (lookup : parameters.find? name = some dual) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (@DDPatternOrigin.embed signature q S context bindings q S context
         parameters bindings name dual ledger lookup) := by
   intro final finalSubst post finalLedger equation admissible
@@ -294,19 +294,19 @@ theorem runtimeErasureUnder_embed
   rw [PatternCtx.find?_applySubst, lookup]
   rfl
 
-theorem runtimeErasureUnder_pval_of_expression
+theorem typingInvariantErasureUnder_pval_of_expression
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {expression : Expr} {target : Ty} {q₁ : InferenceBase.FreshSupply}
     {S₁ : Subst} {ledger ledger₁ : CapabilityOriginLedger}
-    {expressionRaw : DDSynth signature q S
+    {expressionRaw : DemandSynth signature q S
       (bindings.toContext ++ context) expression target q₁ S₁}
-    (expressionOrigin : DDSynthOrigin signature expressionRaw ledger ledger₁)
-    (expressionUnder : DDSynthOrigin.RuntimeErasureUnder expressionOrigin)
+    (expressionOrigin : DemandSynthOrigin signature expressionRaw ledger ledger₁)
+    (expressionUnder : DemandSynthOrigin.TypingInvariantErasureUnder expressionOrigin)
     (freshCap : FreshCap signature context parameters bindings
       ⟨q₁.nextCap⟩)
     (separate : ⟨q₁.nextCap⟩ ∉ target.fcv) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (@DDPatternOrigin.pval signature parameters q S context parameters
         bindings expression target q₁ S₁ ledger ledger₁ expressionRaw
         expressionOrigin) := by
@@ -314,7 +314,7 @@ theorem runtimeErasureUnder_pval_of_expression
   have expressionAdmissible := admissible_before_markFreshCap admissible
   have expressionAtFinal := expressionUnder terminalEquation
     expressionAdmissible
-  have expressionAtFinal' : RuntimeTyping signature
+  have expressionAtFinal' : TypingInvariant signature
       ((bindings.applySubst finalSubst).toContext ++
         context.applySubst finalSubst)
       expression (finalSubst.apply target) := by
@@ -329,7 +329,7 @@ end DDPatternOrigin
 
 namespace DDPatternsOrigin
 
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
@@ -347,18 +347,18 @@ def RuntimeErasureUnder
       (duals.map (Dual.applySubst finalSubst))
       (bindingsOut.applySubst finalSubst)
 
-theorem runtimeErasureUnder_nil
+theorem typingInvariantErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (parameters := parameters) (bindings := bindings)
         (ledger := ledger)) := by
   intro final finalSubst post finalLedger equation admissible
   exact TerminalPatternResolutions.nil
 
-theorem runtimeErasureUnder_cons
+theorem typingInvariantErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {dual : Dual}
@@ -372,11 +372,11 @@ theorem runtimeErasureUnder_cons
       patterns duals bindings' q' S'}
     (headOrigin : DDPatternOrigin signature head ledger ledger₁)
     (tailOrigin : DDPatternsOrigin signature tail ledger₁ ledger')
-    (headUnder : DDPatternOrigin.RuntimeErasureUnder headOrigin)
-    (tailUnder : RuntimeErasureUnder tailOrigin)
+    (headUnder : DDPatternOrigin.TypingInvariantErasureUnder headOrigin)
+    (tailUnder : TypingInvariantErasureUnder tailOrigin)
     (tailFactor : DDErasure.StateFactorization q₁ S₁ ledger₁ q' S'
       ledger') :
-    RuntimeErasureUnder (DDPatternsOrigin.cons headOrigin tailOrigin) := by
+    TypingInvariantErasureUnder (DDPatternsOrigin.cons headOrigin tailOrigin) := by
   intro final finalSubst post finalLedger equation admissible
   rcases tailFactor with ⟨tailPost, tailEquation, tailAdmissible⟩
   have combinedEquation : finalSubst =
@@ -392,7 +392,7 @@ end DDPatternsOrigin
 
 namespace DDPatternOrigin
 
-theorem runtimeErasureUnder_ptuple_of_children
+theorem typingInvariantErasureUnder_ptuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
@@ -401,15 +401,15 @@ theorem runtimeErasureUnder_ptuple_of_children
     {children : DDPatterns signature q S context parameters bindings patterns
       duals bindings' q' S'}
     (childrenOrigin : DDPatternsOrigin signature children ledger ledger')
-    (childrenUnder : DDPatternsOrigin.RuntimeErasureUnder childrenOrigin) :
-    RuntimeErasureUnder (DDPatternOrigin.ptuple childrenOrigin) := by
+    (childrenUnder : DDPatternsOrigin.TypingInvariantErasureUnder childrenOrigin) :
+    TypingInvariantErasureUnder (DDPatternOrigin.ptuple childrenOrigin) := by
   intro final finalSubst post finalLedger equation admissible
   have childrenAtFinal := childrenUnder equation admissible
   simpa only [Dual.map_cap_applySubst, Dual.map_target_applySubst,
     Cap.apply_prod, Cap.applyList_eq_map, Subst.apply_prod] using
     TerminalPatternResolution.tuple childrenAtFinal
 
-theorem runtimeErasureUnder_pand_of_children
+theorem typingInvariantErasureUnder_pand_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
@@ -422,14 +422,14 @@ theorem runtimeErasureUnder_pand_of_children
     {rightRaw : DDPattern signature q₁ S₁ context parameters leftBindings
       right rightDual bindings' q₂ S₂}
     (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
-    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S')
-    (leftUnder : RuntimeErasureUnder leftOrigin)
-    (rightUnder : RuntimeErasureUnder rightOrigin)
+    (aligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S')
+    (leftUnder : TypingInvariantErasureUnder leftOrigin)
+    (rightUnder : TypingInvariantErasureUnder rightOrigin)
     (rightFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₂ S₂ ledger₂)
     (alignmentFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
       q₂ S' ledger₂) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternOrigin.pand leftOrigin rightOrigin aligned) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   let later : DDErasure.StateFactorization q₂ S' ledger₂ final
@@ -447,7 +447,7 @@ theorem runtimeErasureUnder_pand_of_children
   rw [← capEquality, ← targetEquality] at rightAtFinal
   exact TerminalPatternResolution.and leftAtFinal rightAtFinal
 
-theorem runtimeErasureUnder_por_of_children
+theorem typingInvariantErasureUnder_por_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
@@ -460,18 +460,18 @@ theorem runtimeErasureUnder_por_of_children
     {rightRaw : DDPattern signature q₁ S₁ context parameters bindings
       right rightDual rightBindings q₂ S₂}
     (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
-    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
-    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+    (dualsAligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DemandAlignBindingsWithLedger ledger₂ S₃
       leftBindings rightBindings S')
-    (leftUnder : RuntimeErasureUnder leftOrigin)
-    (rightUnder : RuntimeErasureUnder rightOrigin)
+    (leftUnder : TypingInvariantErasureUnder leftOrigin)
+    (rightUnder : TypingInvariantErasureUnder rightOrigin)
     (rightFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₂ S₂ ledger₂)
     (dualsFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
       q₂ S₃ ledger₂)
     (bindingsFactorization : DDErasure.StateFactorization q₂ S₃ ledger₂
       q₂ S' ledger₂) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternOrigin.por leftOrigin rightOrigin dualsAligned
         bindingsAligned) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -494,7 +494,7 @@ theorem runtimeErasureUnder_por_of_children
   rw [← capEquality, ← targetEquality, ← bindingsEquality] at rightAtFinal
   exact TerminalPatternResolution.or leftAtFinal rightAtFinal
 
-theorem runtimeErasureUnder_papp_of_children
+theorem typingInvariantErasureUnder_papp_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern} {scheme : DualScheme}
@@ -507,16 +507,16 @@ theorem runtimeErasureUnder_papp_of_children
       parameters bindings patterns duals bindings' q₁ S₁}
     (childrenOrigin : DDPatternsOrigin signature children
       (DDLedger.markDualInstance ledger q scheme) ledger₁)
-    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+    (aligned : DemandAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S')
-    (childrenUnder : DDPatternsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDPatternsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (childrenFactorization : DDErasure.StateFactorization
       (InferenceBase.instantiateDualScheme q scheme).supply S
       (DDLedger.markDualInstance ledger q scheme) q₁ S₁ ledger₁)
     (alignmentFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₁ S' ledger₁)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternOrigin.papp lookup childrenOrigin aligned) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   let later : DDErasure.StateFactorization q₁ S' ledger₁ final
@@ -530,7 +530,7 @@ theorem runtimeErasureUnder_papp_of_children
   rw [← dualEquality] at instanceAtFinal
   exact TerminalPatternResolution.app lookup childrenAtFinal instanceAtFinal
 
-theorem runtimeErasureUnder_pctor_of_children
+theorem typingInvariantErasureUnder_pctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern}
@@ -545,7 +545,7 @@ theorem runtimeErasureUnder_pctor_of_children
       parameters bindings patterns duals bindings' q₁ S₁}
     (childrenOrigin : DDPatternsOrigin signature children
       (DDLedger.markCtorInstance ledger q entry.scheme) ledger₁)
-    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+    (targetsAligned : DemandAlignTargetListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
     {capRaw : DDPatternCtorCap signature entry q₁ S₂
       (duals.map Dual.cap) capability q₂ S₃}
@@ -553,7 +553,7 @@ theorem runtimeErasureUnder_pctor_of_children
     (compatibleCheck : Inference.capCompatibleCheck entry
       ((duals.map Dual.cap).map fun child => child.apply S₃.cap)
       (capability.apply S₃.cap) = true)
-    (childrenUnder : DDPatternsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDPatternsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (targetsFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₁ S₂ ledger₁)
     (capFactorization : DDErasure.StateFactorization q₁ S₂ ledger₁
@@ -573,7 +573,7 @@ theorem runtimeErasureUnder_pctor_of_children
         entry.CapCompatible
           ((duals.map (Dual.applySubst finalSubst)).map Dual.cap)
           (capability.apply finalSubst.cap)) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPatternOrigin.pctor lookup childrenOrigin targetsAligned capOrigin
         compatibleCheck) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -617,7 +617,7 @@ end DDPatternOrigin
 
 namespace DDArmsOrigin
 
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
@@ -632,11 +632,11 @@ def RuntimeErasureUnder
       (finalSubst.apply clauseTarget) (ppBindings.applySubst finalSubst)
       (finalSubst.apply bodyTarget) arms
 
-theorem runtimeErasureUnder_nil
+theorem typingInvariantErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (ppBindings : MonoCtx) (clauseTarget bodyTarget : Ty)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDArmsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ppBindings := ppBindings)
         (clauseTarget := clauseTarget) (bodyTarget := bodyTarget)
@@ -644,7 +644,7 @@ theorem runtimeErasureUnder_nil
   intro final finalSubst post finalLedger equation admissible
   exact ArmsTy.nil
 
-theorem runtimeErasureUnder_cons
+theorem typingInvariantErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {ppBindings : MonoCtx} {dataPattern : DPat}
     {body : Expr} {arms : List Arm} {clauseTarget bodyTarget : Ty}
@@ -656,21 +656,21 @@ theorem runtimeErasureUnder_cons
     (patternOrigin : DDDPatOrigin signature patternRaw ledger ledger₁)
     (disjoint : ∀ name, name ∈ armBindings.names →
       name ∉ ppBindings.names)
-    {bodyRaw : DDCheck signature q₁ S₁
+    {bodyRaw : DemandCheck signature q₁ S₁
       (armBindings.toContext ++ ppBindings.toContext ++ context) body
       bodyTarget q₂ S₂}
-    (bodyOrigin : DDCheckOrigin signature bodyRaw ledger₁ ledger₂)
+    (bodyOrigin : DemandCheckOrigin signature bodyRaw ledger₁ ledger₂)
     {tailRaw : DDArms signature q₂ S₂ context ppBindings arms
       clauseTarget bodyTarget q' S'}
     (tailOrigin : DDArmsOrigin signature tailRaw ledger₂ ledger')
-    (patternUnder : DDDPatOrigin.RuntimeErasureUnder patternOrigin)
-    (bodyUnder : DDCheckOrigin.RuntimeErasureUnder bodyOrigin)
-    (tailUnder : RuntimeErasureUnder tailOrigin)
+    (patternUnder : DDDPatOrigin.TypingInvariantErasureUnder patternOrigin)
+    (bodyUnder : DemandCheckOrigin.TypingInvariantErasureUnder bodyOrigin)
+    (tailUnder : TypingInvariantErasureUnder tailOrigin)
     (bodyFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₂ S₂ ledger₂)
     (tailFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
       q' S' ledger') :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDArmsOrigin.cons patternOrigin disjoint bodyOrigin tailOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   rcases tailFactorization with ⟨tailPost, tailEquation, tailAdmissible⟩
@@ -689,7 +689,7 @@ theorem runtimeErasureUnder_cons
   have patternAtFinal := patternUnder patternEquation
     (bodyFactorAdmissible.seq (tailAdmissible.seq admissible))
   have tailAtFinal := tailUnder terminalEquation admissible
-  have bodyAtFinal' : RuntimeTyping signature
+  have bodyAtFinal' : TypingInvariant signature
       ((armBindings.applySubst finalSubst).toContext ++
         (ppBindings.applySubst finalSubst).toContext ++
         context.applySubst finalSubst)
@@ -713,7 +713,7 @@ namespace DDClauseOrigin
 /-- Later-cut erasure for one clause, parameterized by the two pieces of
 matcher-finalization evidence that are deliberately absent from `DDClause`:
 the selected matcher capability and the clause shape evidence. -/
-def RuntimeErasureUnderAt
+def TypingInvariantErasureUnderAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -733,7 +733,7 @@ def RuntimeErasureUnderAt
       capability (finalSubst.apply sharedTarget) evidence
 
 /-- Specialize the later-cut invariant to the clause's own terminal cut. -/
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -741,12 +741,12 @@ theorem runtimeErasure_of_under
     {ledger ledger' : CapabilityOriginLedger}
     {origin : DDClauseOrigin signature raw ledger ledger'}
     {capability : Cap} {evidence : Shape.Evidence}
-    (under : RuntimeErasureUnderAt origin capability evidence)
+    (under : TypingInvariantErasureUnderAt origin capability evidence)
     (caps : PPatCapsAt signature true clause.pp
       ((holes.map (Dual.applySubst S')).map Dual.cap) capability)
     (shape : clauseEvidence signature.toMatcherSig clause.pp
       ((holes.map (Dual.applySubst S')).map Dual.cap) = some evidence) :
-    DDClauseOrigin.RuntimeErasureAt origin capability evidence := by
+    DDClauseOrigin.TypingInvariantErasureAt origin capability evidence := by
   exact under (final := q') (post := Subst.id) (finalLedger := ledger')
     (subst_eq_seq_id S') (DDErasure.AdmissiblePostBetween.id q' ledger')
     caps shape
@@ -754,7 +754,7 @@ theorem runtimeErasure_of_under
 /-- A clause transports its primitive pattern and next-matchers across the
 chronological suffixes ending at the arms cut.  Final capability and shape
 evidence enter only at that common terminal cut. -/
-theorem runtimeErasureUnder_mk
+theorem typingInvariantErasureUnder_mk
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {pp : PPat} {next : Expr} {arms : List Arm}
     {sharedTarget : Ty} {holes : List Dual} {ppBindings : MonoCtx}
@@ -765,21 +765,21 @@ theorem runtimeErasureUnder_mk
     {ppRaw : DDPPat signature q S pp sharedTarget holes ppBindings q₁ S₁}
     (ppOrigin : DDPPatOrigin signature ppRaw ledger ledger₁)
     (decomposed : decomposeME next holes.length = some nextMatchers)
-    {nextRaw : DDChecks signature q₁ S₁ context nextMatchers
+    {nextRaw : DemandChecks signature q₁ S₁ context nextMatchers
       (holes.map fun hole => .slot hole.cap hole.target) q₂ S₂}
-    (nextOrigin : DDChecksOrigin signature nextRaw ledger₁ ledger₂)
+    (nextOrigin : DemandChecksOrigin signature nextRaw ledger₁ ledger₂)
     {armsRaw : DDArms signature q₂ S₂ context ppBindings arms
       sharedTarget (Ty.listT (prodTy (holes.map Dual.target))) q' S'}
     (armsOrigin : DDArmsOrigin signature armsRaw ledger₂ ledger')
-    (ppUnder : DDPPatOrigin.RuntimeErasureUnder ppOrigin)
-    (nextUnder : DDChecksOrigin.RuntimeErasureUnder nextOrigin)
-    (armsUnder : DDArmsOrigin.RuntimeErasureUnder armsOrigin)
+    (ppUnder : DDPPatOrigin.TypingInvariantErasureUnder ppOrigin)
+    (nextUnder : DemandChecksOrigin.TypingInvariantErasureUnder nextOrigin)
+    (armsUnder : DDArmsOrigin.TypingInvariantErasureUnder armsOrigin)
     (nextFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q₂ S₂ ledger₂)
     (armsFactorization : DDErasure.StateFactorization q₂ S₂ ledger₂
       q' S' ledger')
     {capability : Cap} {evidence : Shape.Evidence} :
-    RuntimeErasureUnderAt
+    TypingInvariantErasureUnderAt
       (DDClauseOrigin.mk ppOrigin decomposed nextOrigin armsOrigin)
       capability evidence := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -816,7 +816,7 @@ namespace DDClausesOrigin
 
 /-- Clause-list erasure consumes the capability/evidence audit performed by
 matcher finalization at the same later cut. -/
-def RuntimeErasureUnderAt
+def TypingInvariantErasureUnderAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
@@ -836,7 +836,7 @@ def RuntimeErasureUnderAt
       capability (finalSubst.apply sharedTarget) evidences
 
 /-- Specialize clause-list erasure to its own terminal finalization audit. -/
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
@@ -844,21 +844,21 @@ theorem runtimeErasure_of_under
       holeLists q' S'} {ledger ledger' : CapabilityOriginLedger}
     {origin : DDClausesOrigin signature raw ledger ledger'}
     {capability : Cap} {evidences : List Shape.Evidence}
-    (under : RuntimeErasureUnderAt origin capability evidences)
+    (under : TypingInvariantErasureUnderAt origin capability evidences)
     (caps : Inference.ClauseCapsList signature clauses
       (terminalHoleCaps S' holeLists) capability)
     (shape : Inference.ClauseEvidenceList signature.toMatcherSig clauses
       (terminalHoleCaps S' holeLists) evidences) :
-    DDClausesOrigin.RuntimeErasureAt origin capability evidences := by
+    DDClausesOrigin.TypingInvariantErasureAt origin capability evidences := by
   exact under (final := q') (post := Subst.id) (finalLedger := ledger')
     (subst_eq_seq_id S') (DDErasure.AdmissiblePostBetween.id q' ledger')
     caps shape
 
-theorem runtimeErasureUnder_nil
+theorem typingInvariantErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (sharedTarget : Ty) (ledger : CapabilityOriginLedger)
     (capability : Cap) :
-    RuntimeErasureUnderAt
+    TypingInvariantErasureUnderAt
       (DDClausesOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (sharedTarget := sharedTarget) (ledger := ledger))
       capability [] := by
@@ -869,7 +869,7 @@ theorem runtimeErasureUnder_nil
 
 /-- A nonempty clause list transports the head across the tail traversal and
 then consumes the matching head/tail finalization witnesses structurally. -/
-theorem runtimeErasureUnder_cons
+theorem typingInvariantErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clause : Clause} {clauses : List Clause}
     {sharedTarget : Ty} {holes : List Dual} {holeLists : List (List Dual)}
@@ -881,12 +881,12 @@ theorem runtimeErasureUnder_cons
       holeLists q' S'}
     (headOrigin : DDClauseOrigin signature head ledger ledger₁)
     (tailOrigin : DDClausesOrigin signature tail ledger₁ ledger')
-    (headUnder : DDClauseOrigin.RuntimeErasureUnderAt headOrigin capability
+    (headUnder : DDClauseOrigin.TypingInvariantErasureUnderAt headOrigin capability
       evidence)
-    (tailUnder : RuntimeErasureUnderAt tailOrigin capability evidences)
+    (tailUnder : TypingInvariantErasureUnderAt tailOrigin capability evidences)
     (tailFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q' S' ledger') :
-    RuntimeErasureUnderAt (DDClausesOrigin.cons headOrigin tailOrigin)
+    TypingInvariantErasureUnderAt (DDClausesOrigin.cons headOrigin tailOrigin)
       capability (evidence :: evidences) := by
   intro final finalSubst post finalLedger terminalEquation admissible caps evs
   cases caps with
@@ -907,13 +907,13 @@ theorem runtimeErasureUnder_cons
 
 end DDClausesOrigin
 
-namespace DDSynthOrigin
+namespace DemandSynthOrigin
 
 /-- Matcher finalization obtains its shared clause certificate directly from
 the later-cut clause invariant and the two executable finalization audits.
 The only remaining matcher-local algebraic premise is fixedness of the
 already-finalized producer capability. -/
-theorem runtimeErasure_matcher_of_clause_invariant
+theorem typingInvariantErasure_matcher_of_clause_invariant
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List Clause}
     {rawHoleLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
@@ -935,21 +935,21 @@ theorem runtimeErasure_matcher_of_clause_invariant
       (S'.apply (.var q.nextTy)) = true)
     (coverage : Inference.coverageCheck signature.toMatcherSig clauses
       capability = true)
-    (clausesUnder : DDClausesOrigin.RuntimeErasureUnderAt clausesOrigin
+    (clausesUnder : DDClausesOrigin.TypingInvariantErasureUnderAt clausesOrigin
       capability evidence)
     (capabilityFixed : capability.apply S'.cap = capability) :
-    RuntimeErasure
-      (DDSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
+    TypingInvariantErasure
+      (DemandSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
         catchAll binders arms coverage) := by
-  have clausesAtTerminal : DDClausesOrigin.RuntimeErasureAt clausesOrigin
+  have clausesAtTerminal : DDClausesOrigin.TypingInvariantErasureAt clausesOrigin
       capability evidence :=
-    DDClausesOrigin.runtimeErasure_of_under (origin := clausesOrigin)
+    DDClausesOrigin.typingInvariantErasure_of_under (origin := clausesOrigin)
       clausesUnder (Inference.clauseCapsListCheck_sound clauseCaps)
       (Inference.collectClauseEvidence_sound collected)
-  exact runtimeErasure_matcher_of_clauses clausesOrigin collected inferred
+  exact typingInvariantErasure_matcher_of_clauses clausesOrigin collected inferred
     clauseCaps catchAll binders arms coverage
     (ResolvedClausesTy.ofShared clausesAtTerminal) capabilityFixed
 
-end DDSynthOrigin
+end DemandSynthOrigin
 
 end TypePM

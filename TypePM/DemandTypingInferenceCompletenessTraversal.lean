@@ -10,7 +10,7 @@ import TypePM.DemandTypingOriginMetatheory
 /-!
 # Raw traversal completeness
 
-This module is the traversal-facing half of inference completeness.  The DD
+This module is the traversal-facing half of inference completeness.  The demand-directed
 and executable solvers may choose different orientations for the same MGU, so
 the induction invariant does not identify their prevailing substitutions.
 Instead it threads mutual factorization together with the pieces of mutable
@@ -38,7 +38,7 @@ open DemandTypingInferenceCompletenessGeneralizationEquivariance
 
 /-! ## Export-leaf transport -/
 
-/-- Every executable export leaf is renamed by the forward residual to a DD
+/-- Every executable export leaf is renamed by the forward residual to a demand-directed
 export leaf.  The payload occurrence supplies the finite scope on which
 mutual factorization is an actual renaming; the reverse ledger map then rules
 out rigid and rename-only destinations for a structural source leaf. -/
@@ -215,7 +215,7 @@ theorem StateBisimulation.reverseExportLeaves
 
 /-- State relation used at every recursive traversal boundary.  History,
 protected producer leaves, and provenance sources are append-only evidence
-owned by the executable run; the DD indices determine only supply, prevailing
+owned by the executable run; the demand-directed indices determine only supply, prevailing
 substitution up to mutual MGU factorization, and the chronological origin
 ledger. -/
 structure TraversalStateCorrespondence
@@ -783,7 +783,7 @@ structure FreshTyCompletion
     { q with nextTy := q.nextTy + 1 } declarative ledger
     (state.freshTy origin).2
 
-/-- One target allocation agrees literally with the supply-indexed DD
+/-- One target allocation agrees literally with the supply-indexed demand-directed
 allocation and leaves the prevailing substitution and origin ledger alone. -/
 def TraversalStateCorrespondence.freshTy
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -1509,7 +1509,7 @@ noncomputable def runResolvedTargetEq_complete_of_step
   · change (Subst.seq solver.subst relation.prevailing.reverse).BoundedBy q
     exact executableDeltaBounded.seq relation.reverse_bounded
 
-/-- A DD solution on the declarative views supplies an admissible solution on
+/-- A demand-directed solution on the declarative views supplies an admissible solution on
 the bisimilar executable views.  Paired-solver completeness therefore creates
 the concrete step internally; callers need not predict its orientation. -/
 noncomputable def runResolvedTargetEq_complete

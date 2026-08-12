@@ -4,7 +4,7 @@ import TypePM.DemandTypingInferenceCompletenessOneWayTransport
 /-!
 # Alignment traversal completeness
 
-This module connects the solver-independent DD alignment relations to the
+This module connects the solver-independent demand-directed alignment relations to the
 executable alignment traversals.  It is kept separate from the main mutual
 expression traversal so branch-local solver transport can stabilize without
 expanding that recursion.
@@ -37,7 +37,7 @@ structure ResolvedCapComponents
   rightReverse : executableRight = declarativeRight.apply reverse.cap
 
 /-- A capability-only exact cut mutually transports through the residuals
-already relating the DD and executable states. -/
+already relating the demand-directed and executable states. -/
 noncomputable def capabilityDeltaBisimulation
     {declarativeLedger executableLedger : CapabilityOriginLedger}
     {forward reverse : Subst}
@@ -208,7 +208,7 @@ def StateRunCompletion.seq
     _ = secondOperation first.result := rfl
     _ = some second.result := second.success
 
-/-- Complete one already-resolved capability equality.  The DD capability
+/-- Complete one already-resolved capability equality.  The demand-directed capability
 MGU is transported through the incoming state bisimulation to obtain an
 executable solver competitor; neither solver success nor an orientation is a
 caller premise. -/
@@ -720,7 +720,7 @@ theorem alignTypesCore_slotViews
       simp [solved, InferState.prevailing_recordSolve, afterLeft, afterRight,
         Subst.seq_apply, leftTargetFixed, rightTargetFixed]
 
-/-- Raw matcher/matcher DD alignment completes without identifying DD and
+/-- Raw matcher/matcher demand-directed alignment completes without identifying demand-directed and
 executable metavariable names. -/
 noncomputable def alignTypes_matcherPair_complete
     {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
@@ -853,7 +853,7 @@ noncomputable def alignTypes_matcherPair_complete
   exact StateRunCompletion.finishAlignTypes core
 
 /-- Mutual state factorization prevents an annotated homogeneous pair from
-appearing only on the executable side.  Hence an ordinary DD pair selects the
+appearing only on the executable side.  Hence an ordinary demand-directed pair selects the
 ordinary executable branch as well. -/
 theorem executableAlignPairClass_ordinary
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -878,7 +878,7 @@ theorem executableAlignPairClass_ordinary
     rw [leftForward, rightForward] at declarativeClass
     simp [alignPairClass] at declarativeClass
 
-/-- Raw slot/slot DD alignment completes under the same mutual-state
+/-- Raw slot/slot demand-directed alignment completes under the same mutual-state
 invariant. -/
 noncomputable def alignTypes_slotPair_complete
     {q : InferenceBase.FreshSupply} {S targetDelta : Subst}
@@ -1009,7 +1009,7 @@ noncomputable def alignTypes_slotPair_complete
       (Ty.slot.inj executableRightFixed).2
   exact StateRunCompletion.finishAlignTypes core
 
-/-- Public raw completeness theorem for all three ordinary-alignment DD
+/-- Public raw completeness theorem for all three ordinary-alignment demand-directed
 constructors.  Solver success and MGU orientation are derived internally. -/
 theorem ddAlignTypesWithLedger_complete_nonempty
     {q : InferenceBase.FreshSupply} {S S' : Subst}
@@ -1023,7 +1023,7 @@ theorem ddAlignTypesWithLedger_complete_nonempty
     (declarativeRightBounded : declarativeRight.BoundedBy q)
     (executableLeftBounded : executableLeft.BoundedBy q)
     (executableRightBounded : executableRight.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S declarativeLeft
+    (aligned : DemandAlignTypesWithLedger ledger S declarativeLeft
       declarativeRight S') :
     Nonempty (StateRunCompletion relation
       (alignTypes initial origin executableLeft executableRight) q S' ledger) := by
@@ -1056,7 +1056,7 @@ noncomputable def ddAlignTypesWithLedger_complete
     (declarativeRightBounded : declarativeRight.BoundedBy q)
     (executableLeftBounded : executableLeft.BoundedBy q)
     (executableRightBounded : executableRight.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S declarativeLeft
+    (aligned : DemandAlignTypesWithLedger ledger S declarativeLeft
       declarativeRight S') :
     StateRunCompletion relation
       (alignTypes initial origin executableLeft executableRight) q S' ledger :=
@@ -1261,7 +1261,7 @@ noncomputable def runResolvedOneWay_complete
 
 /-- Matcher-to-slot branch of `alignAtSlot`, with no caller-selected solver
 result.  The explicit resolved component equations are precisely the local
-head decomposition later supplied by the full DD-alignment induction. -/
+head decomposition later supplied by the full demand-directed-alignment induction. -/
 noncomputable def alignAtSlot_matcherToSlot_complete
     {q : InferenceBase.FreshSupply} {S delta : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}

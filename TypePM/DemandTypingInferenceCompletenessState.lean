@@ -6,7 +6,7 @@ import TypePM.DemandTypingInferenceCompletenessLedgerBisimulation
 
 Completeness cannot require the declarative and executable MGUs to be
 literally equal: either solver may choose the opposite orientation for a
-variable equality.  The invariant used here therefore keeps the DD state as
+variable equality.  The invariant used here therefore keeps the demand-directed state as
 an admissible instance of the executable prevailing state.
 -/
 
@@ -16,7 +16,7 @@ namespace DemandTypingInferenceCompletenessState
 open Inference
 open DemandTypingInferenceCompletenessLedgerBisimulation
 
-/-- A DD prevailing substitution is obtained by applying one admissible
+/-- A demand-directed prevailing substitution is obtained by applying one admissible
 residual after the executable prevailing substitution. -/
 def StateCorrespondence (ledger : CapabilityOriginLedger)
     (declarative : Subst) (executable : InferState) : Prop :=
@@ -49,7 +49,7 @@ theorem StateCorrespondence.recordEvent
   exact ⟨residual, by simpa using equation, admissible⟩
 
 /-- Algebraic core of one solver cut.  If an admissible outgoing residual
-maps the executable successor to the DD successor, recording the step
+maps the executable successor to the demand-directed successor, recording the step
 preserves state correspondence. -/
 theorem stateAfterRecordSolve
     {ledger : CapabilityOriginLedger} {declarativeOutput residual : Subst}
@@ -62,7 +62,7 @@ theorem stateAfterRecordSolve
   refine ⟨residual, ?_, admissible⟩
   simpa only [InferState.prevailing_recordSolve] using equation
 
-/-- A paired executable result absorbs the DD delta together with the
+/-- A paired executable result absorbs the demand-directed delta together with the
 incoming state residual.  The conclusion is already phrased as the outgoing
 state equation, avoiding any choice of canonical MGU orientation. -/
 theorem pairedCut

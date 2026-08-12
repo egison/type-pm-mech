@@ -1,9 +1,9 @@
 import TypePM.Source
 
 /-!
-# The runtime certificate is not a principal-type specification
+# The typing invariant is not a principal-type specification
 
-This module records why the internal `RuntimeTyping` family must not be used
+This module records why the internal `TypingInvariant` family must not be used
 as a principal-type specification.  The closed expression
 `(something, something)` has certificates for
 
@@ -20,7 +20,7 @@ principal certificate type for the expression.
 The counterexample is not exotic: usable product matchers require exactly
 this coercion overlap, and the failure is independent of capability
 evidence.  It says nothing about type uniqueness or principality for the
-public `DDTyping` judgment.
+public `SourceTyping` judgment.
 -/
 
 namespace TypePM
@@ -32,22 +32,22 @@ def pairProgram : Expr :=
 
 /-- Its product-of-matchers typing, by `T-TUPLE`. -/
 theorem pair_prod_typing {signature : FrozenSig} :
-    RuntimeTyping signature [] pairProgram
+    TypingInvariant signature [] pairProgram
       (.prod [.matcher .any .int, .matcher .any .int]) :=
-  RuntimeTyping.tuple (.cons RuntimeTyping.something (.cons RuntimeTyping.something .nil))
+  TypingInvariant.tuple (.cons TypingInvariant.something (.cons TypingInvariant.something .nil))
 
 /-- Its product-matcher typing, by `COERCE-PRODUCT-MATCHER`. -/
 theorem pair_matcher_typing {signature : FrozenSig} :
-    RuntimeTyping signature [] pairProgram
+    TypingInvariant signature [] pairProgram
       (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  RuntimeTyping.coerceProductMatcher
+  TypingInvariant.coerceProductMatcher
     (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
     pair_prod_typing
 
 /-- Every derivable type of a tuple has a `prod`, `matcher`, or `slot` head. -/
 theorem tuple_ty_head {signature : FrozenSig} {context : Context}
     {expressions : List Expr} {target : Ty}
-    (typing : RuntimeTyping signature context (.tuple expressions) target) :
+    (typing : TypingInvariant signature context (.tuple expressions) target) :
     (∃ components, target = .prod components) ∨
     (∃ capability targetTy, target = .matcher capability targetTy) ∨
     (∃ capability targetTy, target = .slot capability targetTy) := by
@@ -79,15 +79,15 @@ theorem apply_slot_head (S : Subst) (capability : Cap) (target : Ty) :
     (target.applyCapability S.cap).applyTarget S.target, rfl⟩
 
 /--
-No `RuntimeTyping` type of `(something, something)` has both the product and
+No `TypingInvariant` type of `(something, something)` has both the product and
 product-matcher certificates among its paired-substitution instances.
-Principality therefore fails for the runtime-certificate family as stated.
+Principality therefore fails for the typing-invariant family as stated.
 -/
 theorem no_principal_type {signature : FrozenSig} :
     ¬ ∃ principal : Ty,
-        RuntimeTyping signature [] pairProgram principal ∧
+        TypingInvariant signature [] pairProgram principal ∧
         ∀ target : Ty,
-          RuntimeTyping signature [] pairProgram target →
+          TypingInvariant signature [] pairProgram target →
           ∃ S : Subst, S.apply principal = target := by
   rintro ⟨principal, principalTyping, instances⟩
   obtain ⟨S₁, prodInstance⟩ := instances _ pair_prod_typing

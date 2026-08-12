@@ -524,15 +524,15 @@ theorem NormalPlan.sound
     Elaboration.CoercionPlan signature context expression source target :=
   plan.toCoercionPlan
 
-/-- Replaying a normal plan over a runtime certificate yields the target
-runtime certificate. -/
-theorem NormalPlan.toRuntimeTyping
+/-- Replaying a normal plan over a typing invariant yields the target
+typing invariant. -/
+theorem NormalPlan.toTypingInvariant
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (plan : NormalPlan signature context expression source target)
-    (typing : RuntimeTyping signature context expression source) :
-    RuntimeTyping signature context expression target :=
-  plan.toCoercionPlan.toRuntimeTyping typing
+    (typing : TypingInvariant signature context expression source) :
+    TypingInvariant signature context expression target :=
+  plan.toCoercionPlan.toTypingInvariant typing
 
 end CanonicalCoercion
 

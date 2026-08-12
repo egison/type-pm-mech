@@ -200,8 +200,8 @@ theorem inferenceResult_target :
   native_decide
 
 theorem program_typed :
-    RuntimeTyping signature [] program (Ty.listT .int) := by
-  have typing := Inference.infer_success_runtimeTyping inference_success
+    TypingInvariant signature [] program (Ty.listT .int) := by
+  have typing := Inference.infer_success_typingInvariant inference_success
   rw [inferenceResult_target] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing
 

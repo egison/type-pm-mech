@@ -3,7 +3,7 @@ import TypePM.DemandTypingInferenceSoundnessMutual
 import TypePM.DemandTypingTerminalAuditBuilder
 
 /-!
-# Terminal-audited executable-to-DD soundness
+# Terminal-audited executable-to-demand-directed soundness
 
 Successful executable traversals are reconstructed together with their
 chronological Origin certificate and a proof-relevant audit at one enclosing
@@ -15,51 +15,51 @@ three facts that are intentionally not stable under arbitrary suffixes.
 namespace TypePM
 namespace Inference
 
-private theorem DDSynthTerminalAudit.transportRawOrigin
-    {rawLeft rawRight : DDSynth signature q subst context expression target q'
+private theorem DemandSynthTerminalAudit.transportRawOrigin
+    {rawLeft rawRight : DemandSynth signature q subst context expression target q'
       subst'}
-    {originLeft : DDSynthOrigin signature rawLeft ledger ledger'}
-    {originRight : DDSynthOrigin signature rawRight ledger ledger'}
-    (audit : Nonempty (DDSynthTerminalAudit terminal signature originLeft)) :
-    Nonempty (DDSynthTerminalAudit terminal signature originRight) := by
+    {originLeft : DemandSynthOrigin signature rawLeft ledger ledger'}
+    {originRight : DemandSynthOrigin signature rawRight ledger ledger'}
+    (audit : Nonempty (DemandSynthTerminalAudit terminal signature originLeft)) :
+    Nonempty (DemandSynthTerminalAudit terminal signature originRight) := by
   have rawEq : rawLeft = rawRight := Subsingleton.elim _ _
   cases rawEq
   rcases audit with ⟨audit⟩
   exact ⟨audit.transportOrigin⟩
 
-private theorem DDSynthsTerminalAudit.transportRawOrigin
-    {rawLeft rawRight : DDSynths signature q subst context expressions targets
+private theorem DemandSynthsTerminalAudit.transportRawOrigin
+    {rawLeft rawRight : DemandSynths signature q subst context expressions targets
       q' subst'}
-    {originLeft : DDSynthsOrigin signature rawLeft ledger ledger'}
-    {originRight : DDSynthsOrigin signature rawRight ledger ledger'}
-    (audit : Nonempty (DDSynthsTerminalAudit terminal signature originLeft)) :
-    Nonempty (DDSynthsTerminalAudit terminal signature originRight) := by
+    {originLeft : DemandSynthsOrigin signature rawLeft ledger ledger'}
+    {originRight : DemandSynthsOrigin signature rawRight ledger ledger'}
+    (audit : Nonempty (DemandSynthsTerminalAudit terminal signature originLeft)) :
+    Nonempty (DemandSynthsTerminalAudit terminal signature originRight) := by
   have rawEq : rawLeft = rawRight := Subsingleton.elim _ _
   cases rawEq
   have originEq : originLeft = originRight := Subsingleton.elim _ _
   cases originEq
   exact audit
 
-private theorem DDCheckTerminalAudit.transportRawOrigin
-    {rawLeft rawRight : DDCheck signature q subst context expression expected
+private theorem DemandCheckTerminalAudit.transportRawOrigin
+    {rawLeft rawRight : DemandCheck signature q subst context expression expected
       q' subst'}
-    {originLeft : DDCheckOrigin signature rawLeft ledger ledger'}
-    {originRight : DDCheckOrigin signature rawRight ledger ledger'}
-    (audit : Nonempty (DDCheckTerminalAudit terminal signature originLeft)) :
-    Nonempty (DDCheckTerminalAudit terminal signature originRight) := by
+    {originLeft : DemandCheckOrigin signature rawLeft ledger ledger'}
+    {originRight : DemandCheckOrigin signature rawRight ledger ledger'}
+    (audit : Nonempty (DemandCheckTerminalAudit terminal signature originLeft)) :
+    Nonempty (DemandCheckTerminalAudit terminal signature originRight) := by
   have rawEq : rawLeft = rawRight := Subsingleton.elim _ _
   cases rawEq
   have originEq : originLeft = originRight := Subsingleton.elim _ _
   cases originEq
   exact audit
 
-private theorem DDChecksTerminalAudit.transportRawOrigin
-    {rawLeft rawRight : DDChecks signature q subst context expressions
+private theorem DemandChecksTerminalAudit.transportRawOrigin
+    {rawLeft rawRight : DemandChecks signature q subst context expressions
       expecteds q' subst'}
-    {originLeft : DDChecksOrigin signature rawLeft ledger ledger'}
-    {originRight : DDChecksOrigin signature rawRight ledger ledger'}
-    (audit : Nonempty (DDChecksTerminalAudit terminal signature originLeft)) :
-    Nonempty (DDChecksTerminalAudit terminal signature originRight) := by
+    {originLeft : DemandChecksOrigin signature rawLeft ledger ledger'}
+    {originRight : DemandChecksOrigin signature rawRight ledger ledger'}
+    (audit : Nonempty (DemandChecksTerminalAudit terminal signature originLeft)) :
+    Nonempty (DemandChecksTerminalAudit terminal signature originRight) := by
   have rawEq : rawLeft = rawRight := Subsingleton.elim _ _
   cases rawEq
   have originEq : originLeft = originRight := Subsingleton.elim _ _
@@ -137,7 +137,7 @@ private theorem inferExprFuel_var_certifiedRunAt
     {initial : InferState} {result : ExprResult} {terminal : InferState}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.var name) initial = some result) :
-    DDSynthCertifiedRun terminal.prevailing signature context (.var name)
+    DemandSynthCertifiedRun terminal.prevailing signature context (.var name)
       initial result := by
   let entered := visit initial .exprVar path
   let normalizedContext := context.applySubst entered.prevailing
@@ -154,12 +154,12 @@ private theorem inferExprFuel_var_certifiedRunAt
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
           refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
-            DDSynth.var ddLookup, ?_,
-            DDSynthOrigin.var (signature := signature) (q := initial.supply)
+            DemandSynth.var ddLookup, ?_,
+            DemandSynthOrigin.var (signature := signature) (q := initial.supply)
               (S := initial.prevailing) (context := context)
               (ledger := initial.capabilityOrigins) ddLookup, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit]
-          · exact ⟨DDSynthTerminalAudit.var (lookup := ddLookup)⟩
+          · exact ⟨DemandSynthTerminalAudit.var (lookup := ddLookup)⟩
       | some placeholder =>
           simp only [inferExprFuel, entered, normalizedContext, lookup,
             active] at success
@@ -169,13 +169,13 @@ private theorem inferExprFuel_var_certifiedRunAt
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
           refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
-            DDSynth.var ddLookup, ?_,
-            DDSynthOrigin.var (signature := signature) (q := initial.supply)
+            DemandSynth.var ddLookup, ?_,
+            DemandSynthOrigin.var (signature := signature) (q := initial.supply)
               (S := initial.prevailing) (context := context)
               (ledger := initial.capabilityOrigins) ddLookup, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit,
               recordSelfReference]
-          · exact ⟨DDSynthTerminalAudit.var (lookup := ddLookup)⟩
+          · exact ⟨DemandSynthTerminalAudit.var (lookup := ddLookup)⟩
 
 private theorem inferExprFuel_lit_certifiedRunAt
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -183,13 +183,13 @@ private theorem inferExprFuel_lit_certifiedRunAt
     {initial : InferState} {result : ExprResult} {terminal : InferState}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.lit value) initial = some result) :
-    DDSynthCertifiedRun terminal.prevailing signature context (.lit value)
+    DemandSynthCertifiedRun terminal.prevailing signature context (.lit value)
       initial result := by
   simp only [inferExprFuel, finishExpr, visit] at success
   have resultEq := Option.some.inj success
   subst result
-  exact ⟨.int, DDSynth.lit, rfl, DDSynthOrigin.lit,
-    ⟨DDSynthTerminalAudit.lit⟩⟩
+  exact ⟨.int, DemandSynth.lit, rfl, DemandSynthOrigin.lit,
+    ⟨DemandSynthTerminalAudit.lit⟩⟩
 
 private theorem inferExprFuel_something_certifiedRunAt
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -197,13 +197,13 @@ private theorem inferExprFuel_something_certifiedRunAt
     {result : ExprResult} {terminal : InferState}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       .something initial = some result) :
-    DDSynthCertifiedRun terminal.prevailing signature context .something
+    DemandSynthCertifiedRun terminal.prevailing signature context .something
       initial result := by
   simp only [inferExprFuel, finishExpr, visit] at success
   have resultEq := Option.some.inj success
   subst result
-  exact ⟨.matcher .any (.var initial.supply.nextTy), DDSynth.something,
-    rfl, DDSynthOrigin.something, ⟨DDSynthTerminalAudit.something⟩⟩
+  exact ⟨.matcher .any (.var initial.supply.nextTy), DemandSynth.something,
+    rfl, DemandSynthOrigin.something, ⟨DemandSynthTerminalAudit.something⟩⟩
 
 private theorem inferPatternFuel_pvar_certifiedRunAt
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -280,7 +280,7 @@ private theorem inferExprFuel_certifiedRunAtAux
       initial = some result)
     (bridge : Reconstruction.WBridgeWF signature terminal)
     (history : result.state.HistoryPrefix terminal) :
-    DDSynthCertifiedRun terminal.prevailing signature context expression
+    DemandSynthCertifiedRun terminal.prevailing signature context expression
       initial result := by
   revert history bridge terminal success result
   apply inferExprFuel.induct
@@ -290,7 +290,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             some result →
         Reconstruction.WBridgeWF signature terminal →
           result.state.HistoryPrefix terminal →
-          DDSynthCertifiedRun terminal.prevailing signature context expression
+          DemandSynthCertifiedRun terminal.prevailing signature context expression
             initial result)
     (motive2 := fun fuel signature context selfEnv path expression expected
         initial =>
@@ -299,7 +299,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             initial = some final →
         Reconstruction.WBridgeWF signature terminal →
           final.HistoryPrefix terminal →
-          DDCheckCertifiedRun terminal.prevailing signature context expression
+          DemandCheckCertifiedRun terminal.prevailing signature context expression
             expected initial final)
     (motive3 := fun fuel signature context parameters bindings selfEnv path
         pattern initial =>
@@ -325,7 +325,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             some result →
         Reconstruction.WBridgeWF signature terminal →
           result.state.HistoryPrefix terminal →
-          DDSynthCertifiedRun terminal.prevailing signature context
+          DemandSynthCertifiedRun terminal.prevailing signature context
             (.matcher clauses) initial result)
     (motive6 := fun fuel signature context selfEnv parent index clauses target
         initial =>
@@ -360,7 +360,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             expecteds initial = some final →
         Reconstruction.WBridgeWF signature terminal →
           final.HistoryPrefix terminal →
-          DDChecksCertifiedRun terminal.prevailing signature context expressions
+          DemandChecksCertifiedRun terminal.prevailing signature context expressions
             expecteds initial final)
     (motive10 := fun fuel signature context selfEnv parent index expressions
         initial =>
@@ -369,7 +369,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             initial = some result →
         Reconstruction.WBridgeWF signature terminal →
           result.state.HistoryPrefix terminal →
-          DDSynthsCertifiedRun terminal.prevailing signature context expressions
+          DemandSynthsCertifiedRun terminal.prevailing signature context expressions
             initial result)
   all_goals intros
   all_goals try simp_all (config := { zetaDelta := true }) only
@@ -402,18 +402,18 @@ private theorem inferExprFuel_certifiedRunAtAux
         bodyResult.state).trans history
     rcases bodyIH bodyResult terminal rfl bridge bodyHistory with
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin, ⟨bodyAudit⟩⟩
-    have bodyOrigin' : DDSynthOrigin signature bodyRaw
+    have bodyOrigin' : DemandSynthOrigin signature bodyRaw
         initial.capabilityOrigins bodyResult.state.capabilityOrigins := by
       simpa only [lambdaEntryState_capabilityOrigins] using bodyOrigin
-    have bodyAudit' : DDSynthTerminalAudit terminal.prevailing signature
-        bodyOrigin' := DDSynthTerminalAudit.transportBuilt
-      (DDSynthTerminalAudit.BuiltAudit.of
+    have bodyAudit' : DemandSynthTerminalAudit terminal.prevailing signature
+        bodyOrigin' := DemandSynthTerminalAudit.transportBuilt
+      (DemandSynthTerminalAudit.BuiltAudit.of
         (origin := bodyOrigin) bodyAudit)
     exact ⟨.fn (.var initial.supply.nextTy) bodyTarget,
-      DDSynth.lam bodyRaw, by simp [finishExpr, bodyTargetEq],
-      by simpa [finishExpr, visit] using DDSynthOrigin.lam bodyOrigin',
+      DemandSynth.lam bodyRaw, by simp [finishExpr, bodyTargetEq],
+      by simpa [finishExpr, visit] using DemandSynthOrigin.lam bodyOrigin',
       by simpa [finishExpr, visit] using
-        Nonempty.intro (DDSynthTerminalAudit.lam bodyAudit')⟩
+        Nonempty.intro (DemandSynthTerminalAudit.lam bodyAudit')⟩
   case case9 =>
     rename_i fuel signature context selfEnv path initial self argument body gate
       domain codomain placeholderState placeholder bodyInitial shadowed
@@ -428,9 +428,9 @@ private theorem inferExprFuel_certifiedRunAtAux
       (alignTypes_historyPrefix alignEq).trans alignedHistory
     rcases bodyIH bodyResult terminal rfl bridge bodyHistory with
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin, ⟨bodyAudit⟩⟩
-    let bodyRun : DDSynthRun signature bodyContext body bodyInitial bodyResult :=
+    let bodyRun : DemandSynthRun signature bodyContext body bodyInitial bodyResult :=
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin⟩
-    let bodyCertified : DDSynthCertifiedRun terminal.prevailing signature
+    let bodyCertified : DemandSynthCertifiedRun terminal.prevailing signature
         bodyContext body bodyInitial bodyResult :=
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin, ⟨bodyAudit⟩⟩
     rcases (DirectSelf.fix_gate_eq_true self argument body).mp gate with
@@ -445,7 +445,7 @@ private theorem inferExprFuel_certifiedRunAtAux
       subst domain
       subst codomain
       subst placeholderState
-      have canonicalBodyCertified : DDSynthCertifiedRun terminal.prevailing
+      have canonicalBodyCertified : DemandSynthCertifiedRun terminal.prevailing
           signature
           ((argument, Scheme.mono (fixDomain initial path)) ::
             (self, Scheme.mono
@@ -459,22 +459,22 @@ private theorem inferExprFuel_certifiedRunAtAux
       subst bodyTarget'
       rcases alignTypes_ddAlignTypesRun alignEq with
         ⟨alignedSupplyEq, alignedLedgerEq, alignedDD⟩
-      let fixRaw := DDSynth.fix distinct direct nonMatcher bodyRaw'
+      let fixRaw := DemandSynth.fix distinct direct nonMatcher bodyRaw'
         alignedDD.erase
-      let fixOrigin := DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin'
+      let fixOrigin := DemandSynthOrigin.fix distinct direct nonMatcher bodyOrigin'
         alignedDD
-      let fixAudit : DDSynthTerminalAudit terminal.prevailing signature
-          fixOrigin := DDSynthTerminalAudit.fix (distinct := distinct)
+      let fixAudit : DemandSynthTerminalAudit terminal.prevailing signature
+          fixOrigin := DemandSynthTerminalAudit.fix (distinct := distinct)
             (direct := direct) (nonMatcher := nonMatcher)
             (aligned := alignedDD) bodyAudit'
-      have base : DDSynthCertifiedRun terminal.prevailing signature context
+      have base : DemandSynthCertifiedRun terminal.prevailing signature context
           (.fix self argument body) initial
           ⟨.fn (fixDomain initial path) (fixCodomain initial path), aligned⟩ := by
-        unfold DDSynthCertifiedRun
+        unfold DemandSynthCertifiedRun
         rw [alignedSupplyEq, alignedLedgerEq]
         exact ⟨.fn (fixDomain initial path) (fixCodomain initial path),
           fixRaw, rfl, fixOrigin, ⟨fixAudit⟩⟩
-      unfold DDSynthCertifiedRun at base ⊢
+      unfold DemandSynthCertifiedRun at base ⊢
       simpa [finishExpr, InferState.recordEvent_supply,
         InferState.prevailing_recordEvent,
         InferState.recordEvent_capabilityOrigins] using base
@@ -494,7 +494,7 @@ private theorem inferExprFuel_certifiedRunAtAux
           InferState.recordEvent_supply, visited, visit] using
           placeholderLedger
       have transported := bodyCertified
-      unfold DDSynthCertifiedRun at transported
+      unfold DemandSynthCertifiedRun at transported
       rw [bodyPrevailing, bodyLedger] at transported
       rcases transported with
         ⟨bodyTarget', bodyRaw', bodyTargetEq', bodyOrigin', ⟨bodyAudit'⟩⟩
@@ -505,21 +505,21 @@ private theorem inferExprFuel_certifiedRunAtAux
         simpa [bodyInitial] using placeholderPure
       rcases alignTypes_ddAlignTypesRun alignEq with
         ⟨alignedSupplyEq, alignedLedgerEq, alignedDD⟩
-      let fixRaw := DDSynth.fixMatcher distinct direct placeholderPure' bodyRaw'
+      let fixRaw := DemandSynth.fixMatcher distinct direct placeholderPure' bodyRaw'
         alignedDD.erase
-      let fixOrigin := DDSynthOrigin.fixMatcher distinct direct placeholderPure'
+      let fixOrigin := DemandSynthOrigin.fixMatcher distinct direct placeholderPure'
         bodyOrigin' alignedDD
-      let fixAudit : DDSynthTerminalAudit terminal.prevailing signature
-          fixOrigin := DDSynthTerminalAudit.fixMatcher
+      let fixAudit : DemandSynthTerminalAudit terminal.prevailing signature
+          fixOrigin := DemandSynthTerminalAudit.fixMatcher
             (distinct := distinct) (direct := direct)
             (placeholder := placeholderPure') (aligned := alignedDD) bodyAudit'
-      have base : DDSynthCertifiedRun terminal.prevailing signature context
+      have base : DemandSynthCertifiedRun terminal.prevailing signature context
           (.fix self argument (.matcher clauses)) (visit initial .exprFix path)
           ⟨.fn domain codomain, aligned⟩ := by
-        unfold DDSynthCertifiedRun
+        unfold DemandSynthCertifiedRun
         rw [alignedSupplyEq, alignedLedgerEq]
         exact ⟨.fn domain codomain, fixRaw, rfl, fixOrigin, ⟨fixAudit⟩⟩
-      unfold DDSynthCertifiedRun at base ⊢
+      unfold DemandSynthCertifiedRun at base ⊢
       simpa [finishExpr, visit] using base
   case case15 =>
     rename_i fuel signature context selfEnv path initial function argument
@@ -555,16 +555,16 @@ private theorem inferExprFuel_certifiedRunAtAux
     rcases alignExprResultAtExpected_ddAlignRun argumentAlignEq with
       ⟨argumentSupplyEq, argumentLedgerEq, argumentAligned⟩
     subst argumentTarget
-    have argumentCheckRaw := DDCheck.mk argumentRaw argumentAligned.erase
+    have argumentCheckRaw := DemandCheck.mk argumentRaw argumentAligned.erase
     have argumentCheckOrigin :=
-      DDCheckOrigin.mk argumentOrigin argumentAligned
-    have argumentCheckAudit : DDCheckTerminalAudit terminal.prevailing
+      DemandCheckOrigin.mk argumentOrigin argumentAligned
+    have argumentCheckAudit : DemandCheckTerminalAudit terminal.prevailing
         signature argumentCheckOrigin :=
-      DDCheckTerminalAudit.mk (aligned := argumentAligned) argumentAudit
-    let argumentCheck : DDCheckCertifiedRun terminal.prevailing signature
+      DemandCheckTerminalAudit.mk (aligned := argumentAligned) argumentAudit
+    let argumentCheck : DemandCheckCertifiedRun terminal.prevailing signature
         context argument (applicationDomain functionResult path)
         functionAligned argumentFinal := by
-      unfold DDCheckCertifiedRun
+      unfold DemandCheckCertifiedRun
       rw [argumentSupplyEq, argumentLedgerEq]
       exact ⟨argumentCheckRaw, argumentCheckOrigin, ⟨argumentCheckAudit⟩⟩
     have functionAlignedHistory : functionAligned.HistoryPrefix terminal :=
@@ -587,38 +587,38 @@ private theorem inferExprFuel_certifiedRunAtAux
       ⟨functionTarget, functionRaw, functionTargetEq, functionOrigin,
         ⟨functionAudit⟩⟩
     subst functionTarget
-    have functionAlignRun : DDAlignTypesRun functionResult.target
+    have functionAlignRun : DemandAlignTypesRun functionResult.target
         (.fn (applicationDomain functionResult path)
           (applicationResultTarget functionResult path))
         (applicationFreshState functionResult path) functionAligned := by
       exact alignTypes_ddAlignTypesRun functionAlignEq
     rcases functionAlignRun with
       ⟨functionSupplyEq, functionLedgerEq, functionAlignedDD⟩
-    unfold DDCheckCertifiedRun at argumentCheck
+    unfold DemandCheckCertifiedRun at argumentCheck
     rw [functionSupplyEq, functionLedgerEq] at argumentCheck
     rcases argumentCheck with
       ⟨argumentCheckRaw, argumentCheckOrigin, ⟨argumentCheckAudit⟩⟩
-    change DDSynth signature initial.supply initial.prevailing context function
+    change DemandSynth signature initial.supply initial.prevailing context function
       functionResult.target functionResult.state.supply
         functionResult.state.prevailing at functionRaw
-    change DDSynthOrigin signature functionRaw initial.capabilityOrigins
+    change DemandSynthOrigin signature functionRaw initial.capabilityOrigins
       functionResult.state.capabilityOrigins at functionOrigin
     simp only [applicationFreshState_capabilityOrigins,
       applicationFreshState_prevailing, applicationDomain_eq,
       applicationResultTarget_eq] at functionAlignedDD
     let appRaw :=
-      DDSynth.app functionRaw functionAlignedDD.erase argumentCheckRaw
-    have appOrigin : DDSynthOrigin signature appRaw initial.capabilityOrigins
+      DemandSynth.app functionRaw functionAlignedDD.erase argumentCheckRaw
+    have appOrigin : DemandSynthOrigin signature appRaw initial.capabilityOrigins
         argumentFinal.capabilityOrigins := by
       simpa using
-        DDSynthOrigin.app functionOrigin functionAlignedDD argumentCheckOrigin
+        DemandSynthOrigin.app functionOrigin functionAlignedDD argumentCheckOrigin
     have appAudit : Nonempty
-        (DDSynthTerminalAudit terminal.prevailing signature appOrigin) :=
-      DDSynthTerminalAudit.transportRawOrigin
-        (originLeft := DDSynthOrigin.app functionOrigin functionAlignedDD
+        (DemandSynthTerminalAudit terminal.prevailing signature appOrigin) :=
+      DemandSynthTerminalAudit.transportRawOrigin
+        (originLeft := DemandSynthOrigin.app functionOrigin functionAlignedDD
           argumentCheckOrigin)
         (originRight := appOrigin)
-        ⟨DDSynthTerminalAudit.app (aligned := functionAlignedDD)
+        ⟨DemandSynthTerminalAudit.app (aligned := functionAlignedDD)
           functionAudit argumentCheckAudit⟩
     exact ⟨.var (functionResult.state.supply.nextTy + 1), appRaw,
       by simp [finishExpr], appOrigin, by simpa [finishExpr] using appAudit⟩
@@ -639,15 +639,15 @@ private theorem inferExprFuel_certifiedRunAtAux
     rcases childrenIH children terminal rfl bridge childrenHistory with
       ⟨childTargets, childrenRaw, targetsEq, childrenOrigin,
         ⟨childrenAudit⟩⟩
-    change DDSynths signature initial.supply initial.prevailing context
+    change DemandSynths signature initial.supply initial.prevailing context
       expressions childTargets children.state.supply
         children.state.prevailing at childrenRaw
-    change DDSynthsOrigin signature childrenRaw initial.capabilityOrigins
+    change DemandSynthsOrigin signature childrenRaw initial.capabilityOrigins
       children.state.capabilityOrigins at childrenOrigin
-    exact ⟨.prod childTargets, DDSynth.tuple childrenRaw,
+    exact ⟨.prod childTargets, DemandSynth.tuple childrenRaw,
       by simp [finishExpr, targetsEq],
-      by simpa [finishExpr] using DDSynthOrigin.tuple childrenOrigin,
-      ⟨DDSynthTerminalAudit.tuple childrenAudit⟩⟩
+      by simpa [finishExpr] using DemandSynthOrigin.tuple childrenOrigin,
+      ⟨DemandSynthTerminalAudit.tuple childrenAudit⟩⟩
   case case21 =>
     rename_i fuel signature context selfEnv path initial name expressions scheme
       lookup expecteds target instState final childrenEq visited result terminal
@@ -670,12 +670,12 @@ private theorem inferExprFuel_certifiedRunAtAux
               scheme).value.2)).trans history)
     rcases childrenIH final terminal rfl bridge childrenHistory with
       ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    let childrenCertified : DDChecksCertifiedRun terminal.prevailing signature
+    let childrenCertified : DemandChecksCertifiedRun terminal.prevailing signature
         context expressions
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprCtor path) scheme).2
         final := ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    unfold DDChecksCertifiedRun at childrenCertified
+    unfold DemandChecksCertifiedRun at childrenCertified
     have entrySupply :
         (instantiateCtorInState (visit initial .exprCtor path)
           scheme).2.supply =
@@ -708,10 +708,10 @@ private theorem inferExprFuel_certifiedRunAtAux
     rw [entrySupply, entryPrevailing, entryLedger] at childrenCertified
     rcases childrenCertified with
       ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    let ctorOrigin := DDSynthOrigin.ctor lookup childrenOrigin
-    let ctorAudit : DDSynthTerminalAudit terminal.prevailing signature
-        ctorOrigin := DDSynthTerminalAudit.ctor (lookup := lookup) childrenAudit
-    have base : DDSynthCertifiedRun terminal.prevailing signature context
+    let ctorOrigin := DemandSynthOrigin.ctor lookup childrenOrigin
+    let ctorAudit : DemandSynthTerminalAudit terminal.prevailing signature
+        ctorOrigin := DemandSynthTerminalAudit.ctor (lookup := lookup) childrenAudit
+    have base : DemandSynthCertifiedRun terminal.prevailing signature context
         (.ctor name expressions) initial
         (finishExpr (.ctor name expressions) path
           (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
@@ -720,7 +720,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             (InferenceBase.instantiateCtorScheme initial.supply
               scheme).value.2)) := by
       exact ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
-        DDSynth.ctor lookup childrenRaw, rfl,
+        DemandSynth.ctor lookup childrenRaw, rfl,
         by simpa [finishExpr] using ctorOrigin,
         by simpa [finishExpr] using Nonempty.intro ctorAudit⟩
     simpa only [visit, InferState.recordEvent_supply,
@@ -747,12 +747,12 @@ private theorem inferExprFuel_certifiedRunAtAux
               scheme).value.2)).trans history)
     rcases childrenIH final terminal rfl bridge childrenHistory with
       ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    let childrenCertified : DDChecksCertifiedRun terminal.prevailing signature
+    let childrenCertified : DemandChecksCertifiedRun terminal.prevailing signature
         context expressions
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprPrim path) scheme).2
         final := ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    unfold DDChecksCertifiedRun at childrenCertified
+    unfold DemandChecksCertifiedRun at childrenCertified
     have entrySupply :
         (instantiateCtorInState (visit initial .exprPrim path)
           scheme).2.supply =
@@ -785,10 +785,10 @@ private theorem inferExprFuel_certifiedRunAtAux
     rw [entrySupply, entryPrevailing, entryLedger] at childrenCertified
     rcases childrenCertified with
       ⟨childrenRaw, childrenOrigin, ⟨childrenAudit⟩⟩
-    let primOrigin := DDSynthOrigin.prim lookup childrenOrigin
-    let primAudit : DDSynthTerminalAudit terminal.prevailing signature
-        primOrigin := DDSynthTerminalAudit.prim (lookup := lookup) childrenAudit
-    have base : DDSynthCertifiedRun terminal.prevailing signature context
+    let primOrigin := DemandSynthOrigin.prim lookup childrenOrigin
+    let primAudit : DemandSynthTerminalAudit terminal.prevailing signature
+        primOrigin := DemandSynthTerminalAudit.prim (lookup := lookup) childrenAudit
+    have base : DemandSynthCertifiedRun terminal.prevailing signature context
         (.prim op expressions) initial
         (finishExpr (.prim op expressions) path
           (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
@@ -797,7 +797,7 @@ private theorem inferExprFuel_certifiedRunAtAux
             (InferenceBase.instantiateCtorScheme initial.supply
               scheme).value.2)) := by
       exact ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
-        DDSynth.prim lookup childrenRaw, rfl,
+        DemandSynth.prim lookup childrenRaw, rfl,
         by simpa [finishExpr] using primOrigin,
         by simpa [finishExpr] using Nonempty.intro primAudit⟩
     simpa only [visit, InferState.recordEvent_supply,
@@ -833,10 +833,10 @@ private theorem inferExprFuel_certifiedRunAtAux
       InferState.prevailing_recordEvent,
       InferState.recordEvent_capabilityOrigins] at valueRaw valueOrigin valueAudit bodyRaw bodyOrigin bodyAudit
     have facts := DDTerminalAudit.LetFacts.ofWBridgeWF bridge eventHistory
-    let letOrigin := DDSynthOrigin.letE valueOrigin bodyOrigin
-    let letAudit : DDSynthTerminalAudit terminal.prevailing signature
-        letOrigin := DDSynthTerminalAudit.letE valueAudit bodyAudit facts
-    exact ⟨bodyResult.target, DDSynth.letE valueRaw bodyRaw,
+    let letOrigin := DemandSynthOrigin.letE valueOrigin bodyOrigin
+    let letAudit : DemandSynthTerminalAudit terminal.prevailing signature
+        letOrigin := DemandSynthTerminalAudit.letE valueAudit bodyAudit facts
+    exact ⟨bodyResult.target, DemandSynth.letE valueRaw bodyRaw,
       by simp [finishExpr],
       by exact letOrigin,
       by simpa [finishExpr, letOrigin, letAudit] using
@@ -857,10 +857,10 @@ private theorem inferExprFuel_certifiedRunAtAux
         matcherResult.state).trans history
     rcases matcherIH matcherResult terminal rfl bridge matcherHistory with
       ⟨rawTarget, matcherRaw, targetEq, matcherOrigin, ⟨matcherAudit⟩⟩
-    change DDSynth signature initial.supply initial.prevailing context
+    change DemandSynth signature initial.supply initial.prevailing context
       (.matcher clauses) rawTarget matcherResult.state.supply
         matcherResult.state.prevailing at matcherRaw
-    change DDSynthOrigin signature matcherRaw initial.capabilityOrigins
+    change DemandSynthOrigin signature matcherRaw initial.capabilityOrigins
       matcherResult.state.capabilityOrigins at matcherOrigin
     exact ⟨rawTarget, matcherRaw, by simpa [finishExpr] using targetEq,
       matcherOrigin, ⟨matcherAudit⟩⟩
@@ -891,26 +891,26 @@ private theorem inferExprFuel_certifiedRunAtAux
       ⟨alignedSupply, alignedLedger, targetAligned⟩
     have matcherCertified :=
       matcherIH matcherFinal terminal rfl bridge matcherHistory
-    unfold DDCheckCertifiedRun at matcherCertified
+    unfold DemandCheckCertifiedRun at matcherCertified
     rw [alignedSupply, alignedLedger] at matcherCertified
     rcases matcherCertified with
       ⟨matcherRaw, matcherOrigin, ⟨matcherAudit⟩⟩
     rcases bodyIH bodyResult terminal rfl bridge bodyHistory with
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin, ⟨bodyAudit⟩⟩
     subst targetTarget
-    change DDSynth signature initial.supply initial.prevailing context target
+    change DemandSynth signature initial.supply initial.prevailing context target
       targetResult.target targetResult.state.supply
         targetResult.state.prevailing at targetRaw
-    change DDSynthOrigin signature targetRaw initial.capabilityOrigins
+    change DemandSynthOrigin signature targetRaw initial.capabilityOrigins
       targetResult.state.capabilityOrigins at targetOrigin
     exact ⟨Ty.listT bodyTarget,
-      DDSynth.matchAll targetRaw patternRaw targetAligned.erase matcherRaw
+      DemandSynth.matchAll targetRaw patternRaw targetAligned.erase matcherRaw
         bodyRaw,
       by simp [finishExpr, bodyTargetEq],
       by simpa [finishExpr] using
-        DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
+        DemandSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
           matcherOrigin bodyOrigin,
-      ⟨DDSynthTerminalAudit.matchAll (targetAligned := targetAligned)
+      ⟨DemandSynthTerminalAudit.matchAll (targetAligned := targetAligned)
         targetAudit patternAudit matcherAudit bodyAudit⟩⟩
   case case42 =>
     rename_i fuel signature context parameters bindings selfEnv path initial
@@ -989,11 +989,11 @@ private theorem inferExprFuel_certifiedRunAtAux
     rcases alignExprResultAtExpected_ddAlignRun alignEq with
       ⟨supplyEq, ledgerEq, aligned⟩
     subst rawTarget
-    unfold DDCheckCertifiedRun
+    unfold DemandCheckCertifiedRun
     rw [supplyEq, ledgerEq]
-    exact ⟨DDCheck.mk synthRaw aligned.erase,
-      DDCheckOrigin.mk synthOrigin aligned,
-      ⟨DDCheckTerminalAudit.mk (aligned := aligned) synthAudit⟩⟩
+    exact ⟨DemandCheck.mk synthRaw aligned.erase,
+      DemandCheckOrigin.mk synthOrigin aligned,
+      ⟨DemandCheckTerminalAudit.mk (aligned := aligned) synthAudit⟩⟩
   case case54 =>
     rename_i fuel signature context parameters bindings selfEnv path initial
       name patterns entry lookup expecteds target instState instEq children
@@ -1226,14 +1226,14 @@ private theorem inferExprFuel_certifiedRunAtAux
           clausesResult.rawHoleLists) = true := by
       simpa [terminalHoleCaps, finalHoleLists, List.map_map,
         Function.comp_def] using clauseCaps
-    let rawDerived := DDSynth.matcher clausesRaw collected shapeEq clauseCaps'
+    let rawDerived := DemandSynth.matcher clausesRaw collected shapeEq clauseCaps'
       catchAll binders arms coverage
-    let rawOrigin := DDSynthOrigin.matcher clausesOrigin collected shapeEq
+    let rawOrigin := DemandSynthOrigin.matcher clausesOrigin collected shapeEq
       clauseCaps' catchAll binders arms coverage
-    change DDSynth signature initial.supply initial.prevailing context
+    change DemandSynth signature initial.supply initial.prevailing context
       (.matcher clauses) (.matcher capability (.var initial.supply.nextTy))
       clausesResult.state.supply clausesResult.state.prevailing at rawDerived
-    change DDSynthOrigin signature rawDerived initial.capabilityOrigins
+    change DemandSynthOrigin signature rawDerived initial.capabilityOrigins
       (DDLedger.freezeMatcherProducer clausesResult.state.capabilityOrigins
         capability) at rawOrigin
     have localMembership : finalizationEvent ∈
@@ -1243,8 +1243,8 @@ private theorem inferExprFuel_certifiedRunAtAux
     have facts := DDTerminalAudit.MatcherFacts.ofWBridgeWF bridge
       (history.event_mem localMembership)
     have sourceAudit : Nonempty
-        (DDSynthTerminalAudit terminal.prevailing signature rawOrigin) :=
-      ⟨DDSynthTerminalAudit.matcher (collected := collected)
+        (DemandSynthTerminalAudit terminal.prevailing signature rawOrigin) :=
+      ⟨DemandSynthTerminalAudit.matcher (collected := collected)
         (inferred := shapeEq) (clauseCaps := clauseCaps')
         (catchAll := catchAll) (binders := binders) (arms := arms)
         (coverage := coverage) clausesAudit facts⟩
@@ -1252,7 +1252,7 @@ private theorem inferExprFuel_certifiedRunAtAux
       rfl, ?_, ?_⟩
     · simpa [DDLedger.freezeMatcherProducer,
         DDLedger.matcherProducerLeaves] using rawOrigin
-    · exact DDSynthTerminalAudit.transportRawOrigin sourceAudit
+    · exact DemandSynthTerminalAudit.transportRawOrigin sourceAudit
   case case81 =>
     rename_i fuel signature context selfEnv path index target initial result
       terminal resultEq bridge history
@@ -1318,18 +1318,18 @@ private theorem inferExprFuel_certifiedRunAtAux
     have namesDistinct :=
       (namesDisjoint_eq_true patternResult.bindings.names
         ppBindings.names).mp distinct
-    have bodyRaw' : DDCheck signature patternResult.state.supply
+    have bodyRaw' : DemandCheck signature patternResult.state.supply
         patternResult.state.prevailing
         (patternResult.bindings.toContext ++ ppBindings.toContext ++ context)
         body bodyTarget bodyFinal.supply bodyFinal.prevailing := by
       simpa only [List.append_assoc] using bodyRaw
-    have bodyOrigin' : DDCheckOrigin signature bodyRaw'
+    have bodyOrigin' : DemandCheckOrigin signature bodyRaw'
         patternResult.state.capabilityOrigins
         bodyFinal.capabilityOrigins := by
       simpa only [List.append_assoc] using bodyOrigin
     have bodyAudit' : Nonempty
-        (DDCheckTerminalAudit terminal.prevailing signature bodyOrigin') :=
-      DDCheckTerminalAudit.transportRawOrigin ⟨bodyAudit⟩
+        (DemandCheckTerminalAudit terminal.prevailing signature bodyOrigin') :=
+      DemandCheckTerminalAudit.transportRawOrigin ⟨bodyAudit⟩
     rcases bodyAudit' with ⟨bodyAudit'⟩
     let armsOrigin := DDArmsOrigin.cons patternOrigin namesDistinct
       bodyOrigin' tailOrigin
@@ -1341,8 +1341,8 @@ private theorem inferExprFuel_certifiedRunAtAux
     rename_i fuel signature context selfEnv parent index initial final terminal
       resultEq bridge history
     subst final
-    exact ⟨DDChecks.nil, DDChecksOrigin.nil,
-      ⟨DDChecksTerminalAudit.nil⟩⟩
+    exact ⟨DemandChecks.nil, DemandChecksOrigin.nil,
+      ⟨DemandChecksTerminalAudit.nil⟩⟩
   case case100 =>
     rename_i fuel signature context selfEnv parent index expression expressions
       expected expecteds initial middle headEq final terminal headIH tailIH
@@ -1353,15 +1353,15 @@ private theorem inferExprFuel_certifiedRunAtAux
     have headCertified := headIH middle terminal rfl bridge headHistory
     rcases headCertified with ⟨headRaw, headOrigin, ⟨headAudit⟩⟩
     rcases tailCertified with ⟨tailRaw, tailOrigin, ⟨tailAudit⟩⟩
-    exact ⟨DDChecks.cons headRaw tailRaw,
-      DDChecksOrigin.cons headOrigin tailOrigin,
-      ⟨DDChecksTerminalAudit.cons headAudit tailAudit⟩⟩
+    exact ⟨DemandChecks.cons headRaw tailRaw,
+      DemandChecksOrigin.cons headOrigin tailOrigin,
+      ⟨DemandChecksTerminalAudit.cons headAudit tailAudit⟩⟩
   case case103 =>
     rename_i fuel signature context selfEnv parent index initial result terminal
       resultEq bridge history
     subst result
-    exact ⟨[], DDSynths.nil, rfl, DDSynthsOrigin.nil,
-      ⟨DDSynthsTerminalAudit.nil⟩⟩
+    exact ⟨[], DemandSynths.nil, rfl, DemandSynthsOrigin.nil,
+      ⟨DemandSynthsTerminalAudit.nil⟩⟩
   case case106 =>
     rename_i fuel signature context selfEnv parent index expression expressions
       initial head headEq tail tailEq result terminal headIH tailIH resultEq
@@ -1377,9 +1377,9 @@ private theorem inferExprFuel_certifiedRunAtAux
       ⟨tailTargets, tailRaw, tailTargetsEq, tailOrigin, ⟨tailAudit⟩⟩
     subst headTarget
     subst tailTargets
-    exact ⟨_, DDSynths.cons headRaw tailRaw, rfl,
-      DDSynthsOrigin.cons headOrigin tailOrigin,
-      ⟨DDSynthsTerminalAudit.cons headAudit tailAudit⟩⟩
+    exact ⟨_, DemandSynths.cons headRaw tailRaw, rfl,
+      DemandSynthsOrigin.cons headOrigin tailOrigin,
+      ⟨DemandSynthsTerminalAudit.cons headAudit tailAudit⟩⟩
 
 /-- Public expression projection of terminal-audited mutual soundness. -/
 theorem inferExprFuel_certifiedRunAt
@@ -1390,7 +1390,7 @@ theorem inferExprFuel_certifiedRunAt
       initial = some result)
     (bridge : Reconstruction.WBridgeWF signature terminal)
     (history : result.state.HistoryPrefix terminal) :
-    DDSynthCertifiedRun terminal.prevailing signature context expression
+    DemandSynthCertifiedRun terminal.prevailing signature context expression
       initial result :=
   inferExprFuel_certifiedRunAtAux result terminal success bridge history
 

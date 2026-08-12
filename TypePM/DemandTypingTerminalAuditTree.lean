@@ -18,58 +18,58 @@ namespace TypePM
 
 mutual
 
-inductive DDSynthTerminalAudit (terminal : Subst) (signature : FrozenSig) :
+inductive DemandSynthTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expression : Expr} -> {target : Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDSynth signature q S context expression target q' S'} ->
+    {raw : DemandSynth signature q S context expression target q' S'} ->
     {ledger ledger' : CapabilityOriginLedger} ->
-    DDSynthOrigin signature raw ledger ledger' -> Type where
-  | var : DDSynthTerminalAudit terminal signature
-      (DDSynthOrigin.var lookup)
-  | lam (body : DDSynthTerminalAudit terminal signature bodyOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.lam bodyOrigin)
-  | fix (body : DDSynthTerminalAudit terminal signature bodyOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned)
+    DemandSynthOrigin signature raw ledger ledger' -> Type where
+  | var : DemandSynthTerminalAudit terminal signature
+      (DemandSynthOrigin.var lookup)
+  | lam (body : DemandSynthTerminalAudit terminal signature bodyOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.lam bodyOrigin)
+  | fix (body : DemandSynthTerminalAudit terminal signature bodyOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned)
   | app
-      (function : DDSynthTerminalAudit terminal signature functionOrigin)
-      (argument : DDCheckTerminalAudit terminal signature argumentOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.app functionOrigin aligned argumentOrigin)
-  | lit : DDSynthTerminalAudit terminal signature DDSynthOrigin.lit
-  | tuple (children : DDSynthsTerminalAudit terminal signature childrenOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.tuple childrenOrigin)
-  | ctor (children : DDChecksTerminalAudit terminal signature childrenOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.ctor lookup childrenOrigin)
-  | prim (children : DDChecksTerminalAudit terminal signature childrenOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.prim lookup childrenOrigin)
+      (function : DemandSynthTerminalAudit terminal signature functionOrigin)
+      (argument : DemandCheckTerminalAudit terminal signature argumentOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.app functionOrigin aligned argumentOrigin)
+  | lit : DemandSynthTerminalAudit terminal signature DemandSynthOrigin.lit
+  | tuple (children : DemandSynthsTerminalAudit terminal signature childrenOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.tuple childrenOrigin)
+  | ctor (children : DemandChecksTerminalAudit terminal signature childrenOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.ctor lookup childrenOrigin)
+  | prim (children : DemandChecksTerminalAudit terminal signature childrenOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.prim lookup childrenOrigin)
   | letE
       {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {name : String} {valueExpr bodyExpr : Expr} {valueTarget : Ty}
       {q1 : InferenceBase.FreshSupply} {valueSubst : Subst}
       {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst}
       {ledger ledger1 ledger' : CapabilityOriginLedger}
-      {valueRaw : DDSynth signature q S context valueExpr valueTarget q1
+      {valueRaw : DemandSynth signature q S context valueExpr valueTarget q1
         valueSubst}
-      {valueOrigin : DDSynthOrigin signature valueRaw ledger ledger1}
-      {bodyRaw : DDSynth signature q1 valueSubst
+      {valueOrigin : DemandSynthOrigin signature valueRaw ledger ledger1}
+      {bodyRaw : DemandSynth signature q1 valueSubst
         ((name, signature.generalize (context.applySubst valueSubst)
           (valueSubst.apply valueTarget)) :: context)
         bodyExpr bodyTarget q' S'}
-      {bodyOrigin : DDSynthOrigin signature bodyRaw ledger1 ledger'}
-      (value : DDSynthTerminalAudit terminal signature valueOrigin)
-      (body : DDSynthTerminalAudit terminal signature bodyOrigin)
+      {bodyOrigin : DemandSynthOrigin signature bodyRaw ledger1 ledger'}
+      (value : DemandSynthTerminalAudit terminal signature valueOrigin)
+      (body : DemandSynthTerminalAudit terminal signature bodyOrigin)
       (facts : DDTerminalAudit.LetFacts terminal signature context valueTarget
         valueSubst) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.letE valueOrigin bodyOrigin)
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.letE valueOrigin bodyOrigin)
   | something :
-      DDSynthTerminalAudit terminal signature DDSynthOrigin.something
+      DemandSynthTerminalAudit terminal signature DemandSynthOrigin.something
   | matcher
       {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {clauses : List Clause} {rawHoleLists : List (List Dual)}
@@ -95,61 +95,61 @@ inductive DDSynthTerminalAudit (terminal : Subst) (signature : FrozenSig) :
       (clausesAudit : DDClausesTerminalAudit terminal signature clausesOrigin)
       (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
         rawHoleLists capability (.var q.nextTy)) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
           catchAll binders arms coverage)
   | matchAll
-      (target : DDSynthTerminalAudit terminal signature targetOrigin)
+      (target : DemandSynthTerminalAudit terminal signature targetOrigin)
       (pattern : DDPatternTerminalAudit terminal signature patternOrigin)
-      (matcher : DDCheckTerminalAudit terminal signature matcherOrigin)
-      (body : DDSynthTerminalAudit terminal signature bodyOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
+      (matcher : DemandCheckTerminalAudit terminal signature matcherOrigin)
+      (body : DemandSynthTerminalAudit terminal signature bodyOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
           matcherOrigin bodyOrigin)
   | fixMatcher
-      (body : DDSynthTerminalAudit terminal signature bodyOrigin) :
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin
+      (body : DemandSynthTerminalAudit terminal signature bodyOrigin) :
+      DemandSynthTerminalAudit terminal signature
+        (DemandSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin
           aligned)
 
-inductive DDSynthsTerminalAudit (terminal : Subst) (signature : FrozenSig) :
+inductive DemandSynthsTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expressions : List Expr} -> {targets : List Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDSynths signature q S context expressions targets q' S'} ->
+    {raw : DemandSynths signature q S context expressions targets q' S'} ->
     {ledger ledger' : CapabilityOriginLedger} ->
-    DDSynthsOrigin signature raw ledger ledger' -> Type where
-  | nil : DDSynthsTerminalAudit terminal signature DDSynthsOrigin.nil
+    DemandSynthsOrigin signature raw ledger ledger' -> Type where
+  | nil : DemandSynthsTerminalAudit terminal signature DemandSynthsOrigin.nil
   | cons
-      (head : DDSynthTerminalAudit terminal signature headOrigin)
-      (tail : DDSynthsTerminalAudit terminal signature tailOrigin) :
-      DDSynthsTerminalAudit terminal signature
-        (DDSynthsOrigin.cons headOrigin tailOrigin)
+      (head : DemandSynthTerminalAudit terminal signature headOrigin)
+      (tail : DemandSynthsTerminalAudit terminal signature tailOrigin) :
+      DemandSynthsTerminalAudit terminal signature
+        (DemandSynthsOrigin.cons headOrigin tailOrigin)
 
-inductive DDCheckTerminalAudit (terminal : Subst) (signature : FrozenSig) :
+inductive DemandCheckTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expression : Expr} -> {expected : Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDCheck signature q S context expression expected q' S'} ->
+    {raw : DemandCheck signature q S context expression expected q' S'} ->
     {ledger ledger' : CapabilityOriginLedger} ->
-    DDCheckOrigin signature raw ledger ledger' -> Type where
-  | mk (synth : DDSynthTerminalAudit terminal signature synthOrigin) :
-      DDCheckTerminalAudit terminal signature
-        (DDCheckOrigin.mk synthOrigin aligned)
+    DemandCheckOrigin signature raw ledger ledger' -> Type where
+  | mk (synth : DemandSynthTerminalAudit terminal signature synthOrigin) :
+      DemandCheckTerminalAudit terminal signature
+        (DemandCheckOrigin.mk synthOrigin aligned)
 
-inductive DDChecksTerminalAudit (terminal : Subst) (signature : FrozenSig) :
+inductive DemandChecksTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
     {expressions : List Expr} -> {expecteds : List Ty} ->
     {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDChecks signature q S context expressions expecteds q' S'} ->
+    {raw : DemandChecks signature q S context expressions expecteds q' S'} ->
     {ledger ledger' : CapabilityOriginLedger} ->
-    DDChecksOrigin signature raw ledger ledger' -> Type where
-  | nil : DDChecksTerminalAudit terminal signature DDChecksOrigin.nil
+    DemandChecksOrigin signature raw ledger ledger' -> Type where
+  | nil : DemandChecksTerminalAudit terminal signature DemandChecksOrigin.nil
   | cons
-      (head : DDCheckTerminalAudit terminal signature headOrigin)
-      (tail : DDChecksTerminalAudit terminal signature tailOrigin) :
-      DDChecksTerminalAudit terminal signature
-        (DDChecksOrigin.cons headOrigin tailOrigin)
+      (head : DemandCheckTerminalAudit terminal signature headOrigin)
+      (tail : DemandChecksTerminalAudit terminal signature tailOrigin) :
+      DemandChecksTerminalAudit terminal signature
+        (DemandChecksOrigin.cons headOrigin tailOrigin)
 
 inductive DDPatternTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
@@ -162,7 +162,7 @@ inductive DDPatternTerminalAudit (terminal : Subst) (signature : FrozenSig) :
   | pvar : DDPatternTerminalAudit terminal signature
       (DDPatternOrigin.pvar freshName)
   | wild : DDPatternTerminalAudit terminal signature DDPatternOrigin.wild
-  | pval (expression : DDSynthTerminalAudit terminal signature origin) :
+  | pval (expression : DemandSynthTerminalAudit terminal signature origin) :
       DDPatternTerminalAudit terminal signature
         (DDPatternOrigin.pval origin)
   | embed : DDPatternTerminalAudit terminal signature
@@ -186,7 +186,7 @@ inductive DDPatternTerminalAudit (terminal : Subst) (signature : FrozenSig) :
         parameters bindings patterns duals bindings' q1 S1}
       {childrenOrigin : DDPatternsOrigin signature childrenRaw
         (DDLedger.markCtorInstance ledger q entry.scheme) ledger1}
-      {targetsAligned : DDAlignTargetListWithLedger ledger1 S1 duals
+      {targetsAligned : DemandAlignTargetListWithLedger ledger1 S1 duals
         (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S2}
       {capRaw : DDPatternCtorCap signature entry q1 S2
         (duals.map Dual.cap) capability q2 S3}
@@ -242,7 +242,7 @@ inductive DDArmsTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     DDArmsOrigin signature raw ledger ledger' -> Type where
   | nil : DDArmsTerminalAudit terminal signature DDArmsOrigin.nil
   | cons
-      (body : DDCheckTerminalAudit terminal signature bodyOrigin)
+      (body : DemandCheckTerminalAudit terminal signature bodyOrigin)
       (tail : DDArmsTerminalAudit terminal signature tailOrigin) :
       DDArmsTerminalAudit terminal signature
         (DDArmsOrigin.cons patternOrigin disjoint bodyOrigin tailOrigin)
@@ -255,7 +255,7 @@ inductive DDClauseTerminalAudit (terminal : Subst) (signature : FrozenSig) :
     {ledger ledger' : CapabilityOriginLedger} ->
     DDClauseOrigin signature raw ledger ledger' -> Type where
   | mk
-      (next : DDChecksTerminalAudit terminal signature nextOrigin)
+      (next : DemandChecksTerminalAudit terminal signature nextOrigin)
       (arms : DDArmsTerminalAudit terminal signature armsOrigin) :
       DDClauseTerminalAudit terminal signature
         (DDClauseOrigin.mk ppOrigin decomposed nextOrigin armsOrigin)
@@ -286,8 +286,8 @@ independent of the much larger raw-derivation telescope.
 
 mutual
 
-def DDSynthTerminalAudit.depth
-    (audit : DDSynthTerminalAudit terminal signature origin) : Nat :=
+def DemandSynthTerminalAudit.depth
+    (audit : DemandSynthTerminalAudit terminal signature origin) : Nat :=
   match audit with
   | .var => 1
   | .lam body => body.depth + 1
@@ -304,19 +304,19 @@ def DDSynthTerminalAudit.depth
       max target.depth (max pattern.depth (max matcher.depth body.depth)) + 1
   | .fixMatcher body => body.depth + 1
 
-def DDSynthsTerminalAudit.depth
-    (audit : DDSynthsTerminalAudit terminal signature origin) : Nat :=
+def DemandSynthsTerminalAudit.depth
+    (audit : DemandSynthsTerminalAudit terminal signature origin) : Nat :=
   match audit with
   | .nil => 1
   | .cons head tail => max head.depth tail.depth + 1
 
-def DDCheckTerminalAudit.depth
-    (audit : DDCheckTerminalAudit terminal signature origin) : Nat :=
+def DemandCheckTerminalAudit.depth
+    (audit : DemandCheckTerminalAudit terminal signature origin) : Nat :=
   match audit with
   | .mk synth => synth.depth + 1
 
-def DDChecksTerminalAudit.depth
-    (audit : DDChecksTerminalAudit terminal signature origin) : Nat :=
+def DemandChecksTerminalAudit.depth
+    (audit : DemandChecksTerminalAudit terminal signature origin) : Nat :=
   match audit with
   | .nil => 1
   | .cons head tail => max head.depth tail.depth + 1
@@ -362,35 +362,35 @@ end
 /-- Origin certificates are propositions, so an audit built against one
 proof of the same indexed origin judgment can be reused with any other proof.
 -/
-def DDSynthTerminalAudit.transportOrigin
+def DemandSynthTerminalAudit.transportOrigin
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {target : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDSynth signature q S context expression target q' S'}
+    {S' : Subst} {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    {left right : DDSynthOrigin signature raw ledger ledger'}
-    (audit : DDSynthTerminalAudit terminal signature left) :
-    DDSynthTerminalAudit terminal signature right := by
+    {left right : DemandSynthOrigin signature raw ledger ledger'}
+    (audit : DemandSynthTerminalAudit terminal signature left) :
+    DemandSynthTerminalAudit terminal signature right := by
   have equality : left = right := Subsingleton.elim _ _
   exact equality ▸ audit
 
 /-! ## Public audited source typing -/
 
-/-- Public source acceptance consists of chronological DD reconstruction and
+/-- Public source acceptance consists of chronological demand-directed reconstruction and
 a terminal audit of every nested producer boundary. -/
-def DDTyping (signature : FrozenSig) (context : Context)
+def SourceTyping (signature : FrozenSig) (context : Context)
     (expression : Expr) (target : Ty) : Prop :=
   ∃ raw q' S',
-    ∃ derived : DDSynth signature (Inference.initialSupply signature context)
+    ∃ derived : DemandSynth signature (Inference.initialSupply signature context)
         Subst.id context expression raw q' S',
-      ∃ ledger', ∃ origin : DDSynthOrigin signature derived [] ledger',
-        ∃ _audit : DDSynthTerminalAudit S' signature origin,
+      ∃ ledger', ∃ origin : DemandSynthOrigin signature derived [] ledger',
+        ∃ _audit : DemandSynthTerminalAudit S' signature origin,
           target = S'.apply raw
 
 /-- Every audited published type is bounded by the terminal supply. -/
-theorem DDTyping.published_boundedBy {signature : FrozenSig}
+theorem SourceTyping.published_boundedBy {signature : FrozenSig}
     {context : Context} {expression : Expr} {target : Ty}
-    (typed : DDTyping signature context expression target)
+    (typed : SourceTyping signature context expression target)
     (closed : signature.SchemesClosed) :
     ∃ q', SupplyExtends (Inference.initialSupply signature context) q' ∧
       Ty.BoundedBy q' target := by

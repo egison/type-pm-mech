@@ -138,28 +138,28 @@ private def FreshSkeletonMaskedRun (observable : Shape.Observability)
       some (capabilities, final.supply) ∧
     FreshCapExtension initial final
 
-private theorem DDSynthOrigin.transportRawLocal
+private theorem DemandSynthOrigin.transportRawLocal
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw raw' : DDSynth signature q S context expression target q' S'}
+    {raw raw' : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger') :
-    DDSynthOrigin signature raw' ledger ledger' := by
+    (origin : DemandSynthOrigin signature raw ledger ledger') :
+    DemandSynthOrigin signature raw' ledger ledger' := by
   have equality : raw = raw' := Subsingleton.elim _ _
   subst raw'
   exact origin
 
-private theorem DDSynthOrigin.transportInitial
+private theorem DemandSynthOrigin.transportInitial
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S T : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynth signature q S context expression target q' S'}
+    {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' terminal : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger terminal)
+    (origin : DemandSynthOrigin signature raw ledger terminal)
     (substEq : S = T) (ledgerEq : ledger = ledger') :
-    ∃ raw' : DDSynth signature q T context expression target q' S',
-      DDSynthOrigin signature raw' ledger' terminal := by
+    ∃ raw' : DemandSynth signature q T context expression target q' S',
+      DemandSynthOrigin signature raw' ledger' terminal := by
   subst T
   subst ledger'
   exact ⟨raw, origin⟩
@@ -300,7 +300,7 @@ end
 
 /-- Public exact-state surface of skeleton freshening.  Downstream
 soundness slices need only agreement with the pure supply twin and the two
-state components consumed by DD origin certificates; the internal extension
+state components consumed by demand-directed origin certificates; the internal extension
 representation remains private to this module. -/
 theorem freshenSkeleton_supplyExact
     {observable : Shape.Observability} {origin : ConstraintOrigin}
@@ -470,7 +470,7 @@ private theorem recursiveMatcherTemplate_ddRun
             extension⟩
 
 /-- Exact correspondence between the executable matcher placeholder and the
-pure supply-indexed placeholder used by `DDSynth.fixMatcher`. -/
+pure supply-indexed placeholder used by `DemandSynth.fixMatcher`. -/
 theorem buildFixPlaceholder_matcher_ddRun
     {signature : FrozenSig} {path : SyntaxPath} {clauses : List Clause}
     {initial final : InferState} {domain codomain : Ty}
@@ -540,7 +540,7 @@ theorem buildFixPlaceholder_matcher_ddRun
 
 /-- Reconstruct recursive matcher synthesis from its exact placeholder cut,
 body run, and final codomain alignment. -/
-theorem DDSynthRun.fixMatcher
+theorem DemandSynthRun.fixMatcher
     {signature : FrozenSig} {context : Context} {self argument : String}
     {clauses : List Clause} {initial bodyInitial : InferState}
     {path : SyntaxPath} {domain codomain : Ty}
@@ -553,36 +553,36 @@ theorem DDSynthRun.fixMatcher
     (bodyLedger : bodyInitial.capabilityOrigins =
       DDLedger.markCapRange initial.capabilityOrigins initial.supply
         bodyInitial.supply)
-    (bodyRun : DDSynthRun signature
+    (bodyRun : DemandSynthRun signature
       ((argument, Scheme.mono domain) ::
         (self, Scheme.mono (.fn domain codomain)) :: context)
       (.matcher clauses) bodyInitial bodyResult)
-    (alignRun : DDAlignTypesRun bodyResult.target codomain bodyResult.state
+    (alignRun : DemandAlignTypesRun bodyResult.target codomain bodyResult.state
       alignedState) :
-    DDSynthRun signature context (.fix self argument (.matcher clauses))
+    DemandSynthRun signature context (.fix self argument (.matcher clauses))
       initial
       (finishExpr (.fix self argument (.matcher clauses)) path
         (.fn domain codomain) alignedState) := by
   rcases bodyRun with ⟨bodyTarget, bodyDerived, bodyTargetEq, bodyOrigin⟩
   rcases alignRun with ⟨alignedSupplyEq, alignedLedgerEq, aligned⟩
   subst bodyTarget
-  rcases DDSynthOrigin.transportInitial bodyOrigin bodyPrevailing bodyLedger with
+  rcases DemandSynthOrigin.transportInitial bodyOrigin bodyPrevailing bodyLedger with
     ⟨bodyDerived', bodyOrigin'⟩
-  have baseRun : DDSynthRun signature context
+  have baseRun : DemandSynthRun signature context
       (.fix self argument (.matcher clauses)) initial
       ⟨.fn domain codomain, alignedState⟩ := by
-    unfold DDSynthRun
-    let rawDerived := DDSynth.fixMatcher distinct direct placeholder
+    unfold DemandSynthRun
+    let rawDerived := DemandSynth.fixMatcher distinct direct placeholder
       bodyDerived' aligned.erase
-    let finalDerived : DDSynth signature initial.supply initial.prevailing
+    let finalDerived : DemandSynth signature initial.supply initial.prevailing
         context (.fix self argument (.matcher clauses)) (.fn domain codomain)
         alignedState.supply alignedState.prevailing :=
       alignedSupplyEq.symm ▸ rawDerived
     refine ⟨.fn domain codomain, finalDerived, rfl, ?_⟩
     simp only [alignedSupplyEq, alignedLedgerEq]
-    exact DDSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin'
+    exact DemandSynthOrigin.fixMatcher distinct direct placeholder bodyOrigin'
       aligned
-  unfold DDSynthRun at baseRun ⊢
+  unfold DemandSynthRun at baseRun ⊢
   simpa [finishExpr] using baseRun
 
 /-- The matcher-bodied recursive branch can be called directly from the
@@ -596,11 +596,11 @@ theorem inferExprFuel_fixMatcher_ddSynthRun
         (bodyInitial : InferState) (bodyResult : ExprResult),
       inferExprFuel fuel signature bodyContext bodySelfEnv (0 :: path)
         (.matcher clauses) bodyInitial = some bodyResult →
-      DDSynthRun signature bodyContext (.matcher clauses) bodyInitial
+      DemandSynthRun signature bodyContext (.matcher clauses) bodyInitial
         bodyResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.fix self argument (.matcher clauses)) initial = some result) :
-    DDSynthRun signature context (.fix self argument (.matcher clauses))
+    DemandSynthRun signature context (.fix self argument (.matcher clauses))
       initial result := by
   cases gate : (self != argument &&
       DirectSelf.check self (.matcher clauses)) with
@@ -654,7 +654,7 @@ theorem inferExprFuel_fixMatcher_ddSynthRun
                   rcases buildFixPlaceholder_matcher_ddRun placeholderEq with
                     ⟨placeholderPure, placeholderPrevailing,
                       placeholderLedger⟩
-                  apply DDSynthRun.fixMatcher distinct direct placeholderPure
+                  apply DemandSynthRun.fixMatcher distinct direct placeholderPure
                   · simpa [bodyInitial, visited, InferState.recordEvent] using
                       placeholderPrevailing
                   · simpa [bodyInitial, visited, InferState.recordEvent] using

@@ -52,13 +52,13 @@ theorem TargetRenamingEquivalent.symm {left right : Ty}
   exact ⟨common, rightRenaming, leftRenaming⟩
 
 /-- Retain the proof-relevant deterministic root long enough to expose the
-local renaming from a published DD target to the executable normal form.
+local renaming from a published demand-directed target to the executable normal form.
 This remains an internal bridge: public acceptance completeness still erases
 the root at its existing Boolean boundary. -/
-theorem DDTyping.targetRenamingToExecutable
+theorem SourceTyping.targetRenamingToExecutable
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
-    (typed : DDTyping signature context expression target)
+    (typed : SourceTyping signature context expression target)
     (signatureWF : FrozenSigWF signature) :
     ∃ result : ExprResult,
       inferExprFuel (inferenceFuel expression) signature context [] []
@@ -102,16 +102,16 @@ theorem DDTyping.targetRenamingToExecutable
 term are unique modulo a local renaming of every residual capability and
 ordinary-type metavariable.  This holds for arbitrary well-formed frozen
 signatures and open contexts; no closed-program restriction is needed. -/
-theorem DDTyping.target_unique_modulo_renaming
+theorem SourceTyping.target_unique_modulo_renaming
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {left right : Ty}
-    (leftTyped : DDTyping signature context expression left)
-    (rightTyped : DDTyping signature context expression right)
+    (leftTyped : SourceTyping signature context expression left)
+    (rightTyped : SourceTyping signature context expression right)
     (signatureWF : FrozenSigWF signature) :
     TargetRenamingEquivalent left right := by
-  rcases DDTyping.targetRenamingToExecutable leftTyped signatureWF with
+  rcases SourceTyping.targetRenamingToExecutable leftTyped signatureWF with
     ⟨leftResult, leftSuccess, leftRenaming⟩
-  rcases DDTyping.targetRenamingToExecutable rightTyped signatureWF with
+  rcases SourceTyping.targetRenamingToExecutable rightTyped signatureWF with
     ⟨rightResult, rightSuccess, rightRenaming⟩
   have resultsEqual : leftResult = rightResult := by
     apply Option.some.inj

@@ -5,7 +5,7 @@ import TypePM.DemandTypingInferenceCompletenessInitial
 /-!
 # Root projection for paired completeness certificates
 
-Pattern-constructor audit facts mention the operands of the DD derivation,
+Pattern-constructor audit facts mention the operands of the demand-directed derivation,
 while the executable trace contains their bisimilar representatives.  This
 module closes that intentionally paired chronology at the public root and
 projects it directly to the nine finite validator conditions.
@@ -79,7 +79,7 @@ theorem PairedValidatorRunExtension.applyEmpty
             before)
 
 /-- Matcher-finalization witnesses are projected either from an exact audit
-event or directly from paired DD/executable operands. -/
+event or directly from paired demand-directed/executable operands. -/
 theorem PairedTerminalAuditEventCoverage.finalizations
     {terminal : Subst} {signature : FrozenSig}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -103,7 +103,7 @@ theorem PairedTerminalAuditEventCoverage.finalizations
               holes capability catchAll binders facts)
   | _ => trivial
 
-/-- Let-generalization witnesses project from either exact or paired DD /
+/-- Let-generalization witnesses project from either exact or paired demand-directed /
 executable operands. -/
 theorem PairedTerminalAuditEventCoverage.generalizations
     {terminal : Subst} {signature : FrozenSig}

@@ -16,13 +16,13 @@ $\mathsf{structuralFlexible}$ として ledger に追加する．
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash\$x\Rightarrow
   \chi_{q_\kappa}\triangleright\alpha_{q_\tau};
   \Delta,x:\alpha_{q_\tau}\dashv q+\langle1,1\rangle;S;\Omega'
-}\rn{DD-PAT-VAR}
+}\rn{demand-directed-PAT-VAR}
 
 \inferrule{\Omega'=\Omega[\chi_{q_\kappa}\mapsto\mathsf{structuralFlexible}]}{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash\_\Rightarrow
   \chi_{q_\kappa}\triangleright\alpha_{q_\tau};\Delta
   \dashv q+\langle1,1\rangle;S;\Omega'
-}\rn{DD-PAT-WILD}
+}\rn{demand-directed-PAT-WILD}
 
 \inferrule{
   q;S;\Omega;\mono\Delta,\Gamma\vdash e\Rightarrow\tau
@@ -32,12 +32,12 @@ $\mathsf{structuralFlexible}$ として ledger に追加する．
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash\#e\Rightarrow
   \chi_{(q_1)_\kappa}\triangleright\tau;\Delta
   \dashv q_1+\langle1,0\rangle;S_1;\Omega'
-}\rn{DD-PAT-VALUE}
+}\rn{demand-directed-PAT-VALUE}
 
 \inferrule{\Phi(x)=\kappa\triangleright\tau}{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash\widetilde x\Rightarrow
   \kappa\triangleright\tau;\Delta\dashv q;S;\Omega
-}\rn{DD-PAT-EMBED}
+}\rn{demand-directed-PAT-EMBED}
 \end{mathpar}
 
 tuple と constructor は子を先に合成する．constructor scheme は structural instanceを作り，
@@ -50,7 +50,7 @@ field target alignmentとcapability projectionの後，resultに残るstructural
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash(\overline p)\Rightarrow
   (\overline{\eta.\kappa})\triangleright(\overline{\eta.\tau});\Delta'
   \dashv q';S';\Omega'
-}\rn{DD-PAT-TUPLE}
+}\rn{demand-directed-PAT-TUPLE}
 
 \inferrule{
   \Inst^{\mathsf{str}}_q(\Omega,\Sighat_P(c))=
@@ -65,7 +65,7 @@ field target alignmentとcapability projectionの後，resultに残るstructural
 }{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash c\,\overline p\Rightarrow
     \kappa\triangleright\rho;\Delta'\dashv q_2;S_3;\Omega'
-}\rn{DD-PAT-CON}
+}\rn{demand-directed-PAT-CON}
 \end{mathpar}
 ここで $\vdash_c$ はsignature entryが定めるconstructor capability projectionである．
 規則中の$\capcompat$はこの局所cutでの検査である．公開終端まで後続solveが続く場合に備え，
@@ -84,7 +84,7 @@ $p_1\mathbin\&p_2$ は左のbindingsを右へ渡す．$p_1\mathbin|p_2$ は同�
 }{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash p_1\mathbin{\&}p_2\Rightarrow
     \eta_1;\Delta_2\dashv q_2;S';\Omega_2
-}\rn{DD-PAT-AND}
+}\rn{demand-directed-PAT-AND}
 
 \inferrule{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash p_1\Rightarrow
@@ -96,7 +96,7 @@ $p_1\mathbin\&p_2$ は左のbindingsを右へ渡す．$p_1\mathbin|p_2$ は同�
 }{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash p_1\mathbin{|}p_2\Rightarrow
     \eta_1;\Delta_1\dashv q_2;S';\Omega_2
-}\rn{DD-PAT-OR}
+}\rn{demand-directed-PAT-OR}
 \end{mathpar}
 
 pattern-function schemeのcapability binderはinstance時点からrename-onlyである．
@@ -110,7 +110,7 @@ pattern-function schemeのcapability binderはinstance時点からrename-onlyで
 }{
   q;S;\Omega;\Gamma;\Phi;\Delta\vdash f\,\overline p\Rightarrow
     \eta;\Delta'\dashv q_1;S';\Omega_1
-}\rn{DD-PAT-APP}
+}\rn{demand-directed-PAT-APP}
 \end{mathpar}
 
 \subsection{MatchAll の型付け}
@@ -133,7 +133,7 @@ $\mathtt{matchAll}$ はtargetを合成し，pattern targetとalignした後，ma
   q;S;\Omega;\Gamma\vdash
   \mathtt{matchAll}\ e_t\ \mathtt{as}\ e_m\ \mathtt{with}\ p\to e
   \Rightarrow\ListTy{\tau_r}\dashv q';S';\Omega'
-}\rn{DD-MATCHALL}
+}\rn{demand-directed-MATCHALL}
 \end{mathpar}
 
 \subsection{Primitive pattern と data pattern}
@@ -145,13 +145,13 @@ fresh consumer capabilityを生成する．
   q;S;\Omega\vdash\$\Leftarrow\tau\Rightarrow
   [\chi_{q_\kappa}\triangleright\tau];\varnothing
   \dashv q+\langle1,0\rangle;S;\Omega'
-}\rn{DD-PP-HOLE}
+}\rn{demand-directed-PP-HOLE}
 
 \inferrule{ }{q;S;\Omega\vdash\_\Leftarrow\tau\Rightarrow
-  [];\varnothing\dashv q;S;\Omega}\rn{DD-PP-WILD}
+  [];\varnothing\dashv q;S;\Omega}\rn{demand-directed-PP-WILD}
 
 \inferrule{ }{q;S;\Omega\vdash\#\$x\Leftarrow\tau\Rightarrow
-  [];x:\tau\dashv q;S;\Omega}\rn{DD-PP-VALUE}
+  [];x:\tau\dashv q;S;\Omega}\rn{demand-directed-PP-VALUE}
 
 \inferrule{
   \Inst^{\mathsf{str}}_q(\Omega,\Sighat_P(c))=
@@ -162,7 +162,7 @@ fresh consumer capabilityを生成する．
 }{
   q;S;\Omega\vdash c\,\overline{pp}\Leftarrow\tau\Rightarrow
     \overline\eta;\Delta\dashv q';S';\Omega_1
-}\rn{DD-PP-CON}
+}\rn{demand-directed-PP-CON}
 
 \inferrule{
   \mathsf{freshTargets}(n,q)=(\overline\alpha,q_0) \\
@@ -172,16 +172,16 @@ fresh consumer capabilityを生成する．
 }{
   q;S;\Omega\vdash(\overline{pp})\Leftarrow\tau\Rightarrow
     \overline\eta;\Delta\dashv q';S';\Omega'
-}\rn{DD-PP-TUPLE}
+}\rn{demand-directed-PP-TUPLE}
 \end{mathpar}
 
 data pattern判断はarmのbindingsを返す．
 \begin{mathpar}
 \inferrule{ }{q;S;\Omega\vdash\$x\Leftarrow\tau\Rightarrow
-  x:\tau\dashv q;S;\Omega}\rn{DD-DP-VAR}
+  x:\tau\dashv q;S;\Omega}\rn{demand-directed-DP-VAR}
 
 \inferrule{ }{q;S;\Omega\vdash\_\Leftarrow\tau\Rightarrow
-  \varnothing\dashv q;S;\Omega}\rn{DD-DP-WILD}
+  \varnothing\dashv q;S;\Omega}\rn{demand-directed-DP-WILD}
 
 \inferrule{
   \Inst^{\mathsf{str}}_q(\Omega,\Sighat_D(C))=
@@ -192,7 +192,7 @@ data pattern判断はarmのbindingsを返す．
 }{
   q;S;\Omega\vdash C\,\overline{dp}\Leftarrow\tau\Rightarrow
     \Delta\dashv q';S';\Omega'
-}\rn{DD-DP-CON}
+}\rn{demand-directed-DP-CON}
 
 \inferrule{
   \mathsf{freshTargets}(n,q)=(\overline\alpha,q_0) \\
@@ -202,7 +202,7 @@ data pattern判断はarmのbindingsを返す．
 }{
   q;S;\Omega\vdash(\overline{dp})\Leftarrow\tau\Rightarrow
     \Delta\dashv q';S';\Omega'
-}\rn{DD-DP-TUPLE}
+}\rn{demand-directed-DP-TUPLE}
 \end{mathpar}
 
 \subsection{Clause と matcher literal}
@@ -224,12 +224,12 @@ hole slotに対して同じchecking判断を使う．
   q;S;\Omega;\Gamma\vdash
     pp\ \mathtt{as}\ M\ \mathtt{with}\ \overline a
     \Leftarrow\tau\Rightarrow\overline\eta\dashv q';S';\Omega'
-}\rn{DD-CLAUSE}
+}\rn{demand-directed-CLAUSE}
 \end{mathpar}
 
 matcher literalは全clauseで一つのfresh targetを共有する．終端substitutionでhole dualを解決して
 evidenceを再計算し，shape，catch-all order，binder線形性，arm exhaustiveness，coverageを検査する．
-最後に，final capabilityに現れる全DD-owned explicit ledger keyのstructural leafだけをfreezeする．
+最後に，final capabilityに現れる全demand-owned explicit ledger keyのstructural leafだけをfreezeする．
 \begin{mathpar}
 \inferrule{
   q+\langle0,1\rangle;S;\Omega;\Gamma\vdash\mathit{cls}
@@ -248,14 +248,14 @@ evidenceを再計算し，shape，catch-all order，binder線形性，arm exhaus
 }{
   q;S;\Omega;\Gamma\vdash\mathtt{matcher}\;\mathit{cls}\Rightarrow
     \Matcher{\kappa}{\alpha_{q_\tau}}\dashv q';S';\Omega'
-}\rn{DD-MATCHER}
+}\rn{demand-directed-MATCHER}
 \end{mathpar}
 
 上のevidenceはmatcher自身の局所終端$S'$で計算される．matcherが外側の式の子である場合，root終端
 までのrename-only suffixでcapability名が変わり得る．terminal auditはroot終端でhole capabilityを
 解決し直し，evidence収集，shape，clause capability，arm exhaustiveness，coverageを再検査する．
-matcherの相互erasureはこの正規化済み事実から$\mathsf{RuntimeTyping}$ constructorを作り，局所の
-solver traceやMGUをruntime certificateへ残さない．
+matcherの相互erasureはこの正規化済み事実から$\mathsf{TypingInvariant}$ constructorを作り，局所の
+solver traceやMGUをtyping invariantへ残さない．
 
 matcher literalをbodyに持つrecursionは，clause skeletonからplaceholderを作る専用規則を使う．
 placeholder rangeのcapability keyはmatcher開始前にstructural-flexibleとしてledgerへ追加される．
@@ -273,6 +273,6 @@ placeholder rangeのcapability keyはmatcher開始前にstructural-flexibleと�
   q;S;\Omega;\Gamma\vdash
     \mathtt{fix}\ f\ x.(\mathtt{matcher}\;\mathit{cls})\Rightarrow
     \tau_d\to\tau_c\dashv q_1;S';\Omega_1
-}\rn{DD-FIX-MATCHER}
+}\rn{demand-directed-FIX-MATCHER}
 \end{mathpar}
-$\mathsf{NonMatcherBody}$ により通常の \textsc{DD-FIX} と排他的である．
+$\mathsf{NonMatcherBody}$ により通常の \textsc{demand-directed-FIX} と排他的である．

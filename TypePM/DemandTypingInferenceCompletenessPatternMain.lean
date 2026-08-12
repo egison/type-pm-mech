@@ -72,13 +72,13 @@ abbrev PatternSynthCompletenessMotive
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDSynth signature q S declarativeContext expression target q' S'}
-    {origin : DDSynthOrigin signature raw ledger ledger'},
+    {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+    {origin : DemandSynthOrigin signature raw ledger ledger'},
     (before : TraversalStateCorrespondence q S ledger state) →
     ContextBisimulation before.prevailing declarativeContext executableContext →
     declarativeContext.BoundedBy q →
     executableContext.BoundedBy q →
-    DDSynthTerminalAudit terminal signature origin →
+    DemandSynthTerminalAudit terminal signature origin →
     PatternSynthBudgetAdequate fuel expression →
     Nonempty { run : SynthRunCompletion before
       (inferExprFuel fuel signature executableContext selfEnv path expression
@@ -94,14 +94,14 @@ abbrev PatternSynthCompletenessBelow
       {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
       {q q' : InferenceBase.FreshSupply} {S S' : Subst}
       {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-      {raw : DDSynth signature q S declarativeContext expression target q' S'}
-      {origin : DDSynthOrigin signature raw ledger ledger'},
+      {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+      {origin : DemandSynthOrigin signature raw ledger ledger'},
       (before : TraversalStateCorrespondence q S ledger state) →
       ContextBisimulation before.prevailing declarativeContext
         executableContext →
       declarativeContext.BoundedBy q →
       executableContext.BoundedBy q →
-      DDSynthTerminalAudit terminal signature origin →
+      DemandSynthTerminalAudit terminal signature origin →
       PatternSynthBudgetAdequate fuel expression →
       Nonempty { run : SynthRunCompletion before
         (inferExprFuel fuel signature executableContext selfEnv path expression
@@ -334,11 +334,11 @@ noncomputable def patternPValOrigin_complete
     (bindingsBounded : declarativeBindings.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
     (executableBindingsBounded : executableBindings.BoundedBy q)
-    {raw : DDSynth signature q S
+    {raw : DemandSynth signature q S
       (declarativeBindings.toContext ++ declarativeContext) expression target
       q₁ S₁}
-    {origin : DDSynthOrigin signature raw ledger ledger₁}
-    (audit : DDSynthTerminalAudit terminal signature origin)
+    {origin : DemandSynthOrigin signature raw ledger ledger₁}
+    (audit : DemandSynthTerminalAudit terminal signature origin)
     (adequate : PatternBudgetAdequate (fuel + 1) (.pval expression)) :
     PatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature executableContext
@@ -410,11 +410,11 @@ noncomputable def boundedPatternPValOrigin_complete
     (bindingsBounded : declarativeBindings.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
     (executableBindingsBounded : executableBindings.BoundedBy q)
-    {raw : DDSynth signature q S
+    {raw : DemandSynth signature q S
       (declarativeBindings.toContext ++ declarativeContext) expression target
       q₁ S₁}
-    {origin : DDSynthOrigin signature raw ledger ledger₁}
-    (audit : DDSynthTerminalAudit terminal signature origin)
+    {origin : DemandSynthOrigin signature raw ledger ledger₁}
+    (audit : DemandSynthTerminalAudit terminal signature origin)
     (adequate : PatternBudgetAdequate (fuel + 1) (.pval expression)) :
     BoundedPatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature executableContext
@@ -689,7 +689,7 @@ noncomputable def boundedPatternAnd_complete
     (rightExtends : SupplyExtends q₁ q₂)
     (declarativeLeftBounded : leftDual.BoundedBy q₂)
     (declarativeRightBounded : rightDual.BoundedBy q₂)
-    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    (aligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
     BoundedPatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.pand left right) state)
@@ -725,8 +725,8 @@ noncomputable def boundedPatternOr_complete
     (declarativeRightDualBounded : rightDual.BoundedBy q₂)
     (declarativeLeftBindingsBounded : leftBindings.BoundedBy q₂)
     (declarativeRightBindingsBounded : rightBindings.BoundedBy q₂)
-    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
-    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃ leftBindings
+    (dualsAligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DemandAlignBindingsWithLedger ledger₂ S₃ leftBindings
       rightBindings S') :
     BoundedPatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature context parameters
@@ -815,7 +815,7 @@ noncomputable def boundedPatternCtor_complete
     (childrenExtends : SupplyExtends
       (InferenceBase.instantiateCtorScheme q entry.scheme).supply q₁)
     (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
-    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+    (targetsAligned : DemandAlignTargetListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
     (capRun :
       let instBounded := instantiateCtorScheme_boundedBy (q := q)
@@ -938,7 +938,7 @@ noncomputable def boundedPatternApp_complete
     (childrenExtends : SupplyExtends
       (InferenceBase.instantiateDualScheme q scheme).supply q₁)
     (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
-    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+    (aligned : DemandAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
     BoundedPatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature executableContext

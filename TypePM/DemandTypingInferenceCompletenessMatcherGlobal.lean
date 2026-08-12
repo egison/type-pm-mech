@@ -12,7 +12,7 @@ Matcher literals cross the expression/clause recursion boundary.  This module
 reconstructs that boundary without weakening terminal validation to an exact
 state equation: clause traversal and recursive expression checks retain their
 paired chronology, while the local matcher-finalization suffix is transferred
-across the resulting DD/executable bisimulation.
+across the resulting demand-directed/executable bisimulation.
 -/
 
 namespace TypePM

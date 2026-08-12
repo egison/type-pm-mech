@@ -184,10 +184,10 @@ theorem compatible_resolved_context :
       publicContext := by
   native_decide
 
-/-- Public success reconstructs the runtime certificate for the control twin. -/
+/-- Public success reconstructs the typing invariant for the control twin. -/
 theorem compatible_typed :
-    RuntimeTyping publicSignature publicContext compatibleProgram (Ty.listT .int) := by
-  have typing := Inference.infer_success_runtimeTyping
+    TypingInvariant publicSignature publicContext compatibleProgram (Ty.listT .int) := by
+  have typing := Inference.infer_success_typingInvariant
     compatible_public_inference_succeeds
   rw [compatible_result_type, compatible_resolved_context] at typing
   exact typing

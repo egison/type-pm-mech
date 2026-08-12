@@ -13,9 +13,9 @@ by a reconstruction result.
 Clients normally write
 
 ```lean
-have audit : DDSynthTerminalAudit terminal signature origin :=
-  DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of explicitAuditTree)
+have audit : DemandSynthTerminalAudit terminal signature origin :=
+  DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of explicitAuditTree)
 ```
 
 The explicit tree mirrors only the source program's structural constructors.
@@ -27,41 +27,41 @@ namespace TypePM
 
 /-- A proof-relevant package hiding the raw derivation and origin proof that
 index a structurally built audit. -/
-structure DDSynthTerminalAudit.BuiltAudit
+structure DemandSynthTerminalAudit.BuiltAudit
     (terminal : Subst) (signature : FrozenSig)
     (q : InferenceBase.FreshSupply) (S : Subst) (context : Context)
     (expression : Expr) (target : Ty) (q' : InferenceBase.FreshSupply)
     (S' : Subst) (ledger ledger' : CapabilityOriginLedger) : Type where
-  raw : DDSynth signature q S context expression target q' S'
-  origin : DDSynthOrigin signature raw ledger ledger'
-  audit : DDSynthTerminalAudit terminal signature origin
+  raw : DemandSynth signature q S context expression target q' S'
+  origin : DemandSynthOrigin signature raw ledger ledger'
+  audit : DemandSynthTerminalAudit terminal signature origin
 
 /-- Package an audit while inferring its hidden raw and origin witnesses from
 the certificate term. -/
-def DDSynthTerminalAudit.BuiltAudit.of
+def DemandSynthTerminalAudit.BuiltAudit.of
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {target : Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst} {ledger ledger' : CapabilityOriginLedger}
-    {raw : DDSynth signature q S context expression target q' S'}
-    {origin : DDSynthOrigin signature raw ledger ledger'}
-    (audit : DDSynthTerminalAudit terminal signature origin) :
-    DDSynthTerminalAudit.BuiltAudit terminal signature q S context expression
+    {raw : DemandSynth signature q S context expression target q' S'}
+    {origin : DemandSynthOrigin signature raw ledger ledger'}
+    (audit : DemandSynthTerminalAudit terminal signature origin) :
+    DemandSynthTerminalAudit.BuiltAudit terminal signature q S context expression
       target q' S' ledger ledger' :=
   ⟨raw, origin, audit⟩
 
 /-- Proof-term-insensitive transport across both the raw derivation proof and
 the origin proof indexed by it. -/
-def DDSynthTerminalAudit.transportBuilt
+def DemandSynthTerminalAudit.transportBuilt
     {terminal : Subst} {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
     {expression : Expr} {target : Ty} {q' : InferenceBase.FreshSupply}
-    {S' : Subst} {raw : DDSynth signature q S context expression target q' S'}
+    {S' : Subst} {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    {right : DDSynthOrigin signature raw ledger ledger'}
-    (source : DDSynthTerminalAudit.BuiltAudit terminal signature q S context
+    {right : DemandSynthOrigin signature raw ledger ledger'}
+    (source : DemandSynthTerminalAudit.BuiltAudit terminal signature q S context
       expression target q' S' ledger ledger') :
-    DDSynthTerminalAudit terminal signature right := by
+    DemandSynthTerminalAudit terminal signature right := by
   rcases source with ⟨raw', left, audit⟩
   have proofEq : raw' = raw := Subsingleton.elim _ _
   cases proofEq

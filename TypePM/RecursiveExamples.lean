@@ -242,12 +242,12 @@ theorem paperCompleteMultisetMatcher_reconstructed :
   simpa [Inference.ResolvedContext, Context.applySubst] using derivation
 
 theorem listMatcher_typed :
-    RuntimeTyping listSignature [] listMatcher matcherTy :=
-  listMatcher_reconstructed.toRuntimeTyping
+    TypingInvariant listSignature [] listMatcher matcherTy :=
+  listMatcher_reconstructed.toTypingInvariant
 
 theorem paperCompleteMultisetMatcher_typed :
-    RuntimeTyping multisetSignature [] paperCompleteMultisetMatcher matcherTy :=
-  paperCompleteMultisetMatcher_reconstructed.toRuntimeTyping
+    TypingInvariant multisetSignature [] paperCompleteMultisetMatcher matcherTy :=
+  paperCompleteMultisetMatcher_reconstructed.toTypingInvariant
 
 /-! ## Flagship recursive-matcher use through an element slot -/
 
@@ -286,10 +286,10 @@ theorem listMatcherMatchAllInferenceResult_target :
       listMatcherMatchAllTy := by
   native_decide
 
-/-- Public certified inference reconstructs the complete runtime certificate. -/
+/-- Public certified inference reconstructs the complete typing invariant. -/
 theorem listMatcherMatchAll_typed :
-    RuntimeTyping listSignature [] listMatcherMatchAll listMatcherMatchAllTy := by
-  have typing := Inference.infer_success_runtimeTyping
+    TypingInvariant listSignature [] listMatcherMatchAll listMatcherMatchAllTy := by
+  have typing := Inference.infer_success_typingInvariant
     listMatcherMatchAllInferenceResult_success
   rw [listMatcherMatchAllInferenceResult_target] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing

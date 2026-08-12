@@ -46,16 +46,16 @@ abbrev MatcherCheckCompletenessAt
     {declarativeExpected executableExpected : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDCheck signature q S declarativeContext expression
+    {raw : DemandCheck signature q S declarativeContext expression
       declarativeExpected q' S'}
-    {origin : DDCheckOrigin signature raw ledger ledger'},
+    {origin : DemandCheckOrigin signature raw ledger ledger'},
     (before : TraversalStateCorrespondence q S ledger state) →
     ContextBisimulation before.prevailing declarativeContext executableContext →
     TyBisimulation before.prevailing declarativeExpected executableExpected →
     declarativeContext.BoundedBy q → executableContext.BoundedBy q →
     declarativeExpected.BoundedBy q →
     executableExpected.BoundedBy q →
-    DDCheckTerminalAudit terminal signature origin →
+    DemandCheckTerminalAudit terminal signature origin →
     MatcherCheckBudgetAdequate fuel expression →
     Nonempty (StateRunCompletion before
       (checkExprFuel fuel signature executableContext selfEnv path expression
@@ -101,9 +101,9 @@ theorem checksOrigin_complete_nonempty_from_below
       expected.BoundedBy q)
     (expectedsRelated : TyListBisimulation before.prevailing
       declarativeExpecteds executableExpecteds)
-    {raw : DDChecks signature q S context expressions declarativeExpecteds q' S'}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {raw : DemandChecks signature q S context expressions declarativeExpecteds q' S'}
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     (adequate : MatcherChecksBudgetAdequate fuel expressions) :
     Nonempty (StateRunCompletion before
       (checkExprsFuel fuel signature context selfEnv parent index expressions
@@ -184,9 +184,9 @@ theorem checksOrigin_complete_nonempty_from_check
       expected.BoundedBy q)
     (expectedsRelated : TyListBisimulation before.prevailing
       declarativeExpecteds executableExpecteds)
-    {raw : DDChecks signature q S context expressions declarativeExpecteds q' S'}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {raw : DemandChecks signature q S context expressions declarativeExpecteds q' S'}
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     (adequate : MatcherChecksBudgetAdequate fuel expressions) :
     Nonempty (StateRunCompletion before
       (checkExprsFuel fuel signature context selfEnv parent index expressions

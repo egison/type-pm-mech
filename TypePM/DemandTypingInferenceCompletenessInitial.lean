@@ -3,7 +3,7 @@ import TypePM.DemandTypingInferenceCompletenessTraversal
 /-!
 # Initial state for inference completeness
 
-The public completeness theorem starts the DD derivation and executable
+The public completeness theorem starts the demand-directed derivation and executable
 traversal at the same canonical supply, identity substitution, and empty
 origin ledger.  This module packages that diagonal once, including every
 boundedness and producer-protection invariant required by the traversal
@@ -19,7 +19,7 @@ open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessIdempotence
 open DemandTypingInferenceCompletenessProtectedTrace
 
-/-- Canonical DD/executable correspondence at the public inference entry. -/
+/-- Canonical demand-directed/executable correspondence at the public inference entry. -/
 def initialTraversalState
     (signature : FrozenSig) (context : Context) :
     TraversalStateCorrespondence

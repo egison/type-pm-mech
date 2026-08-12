@@ -6,10 +6,10 @@ import TypePM.DemandTypingInferenceCompletenessOneWayCapability
 
 After the capability matcher has run, the dedicated producer-to-slot solver
 uses the ordinary target unifier on the two capability-adjusted targets.  A
-DD target solution need not itself be an executable target solution: the two
+demand-directed target solution need not itself be an executable target solution: the two
 states may use different representatives of their still-free metavariables.
 
-The theorem below conjugates the DD target solution by the scoped renaming
+The theorem below conjugates the demand-directed target solution by the scoped renaming
 between those representatives.  The reverse residual cancels the forward
 residual on every capability variable occurring in the executable adjusted
 targets.  Consequently the conjugate has identity capability action on the
@@ -37,7 +37,7 @@ private theorem applyCapability_eq_of_fcv_agree
 On variables occurring in the executable consumer this follows from
 uniqueness of `DemandMatches`.  Away from the consumer, both matcher
 substitutions are identities; injectivity of the scoped renaming ensures that
-an outside variable cannot be renamed into the DD consumer support. -/
+an outside variable cannot be renamed into the demand-directed consumer support. -/
 theorem oneWay_capConjugacy_on
     {forward reverse : Subst}
     {capScope : List CapVar} {targetScope : List TypePM.TyVar}
@@ -139,13 +139,13 @@ theorem oneWay_capConjugacy_on_targets
     consumerForward consumerReverse dd executable consumerCaps
       (targetCaps varId member)
 
-/-- The paired conjugate used to reflect a DD target solution back to the
+/-- The paired conjugate used to reflect a demand-directed target solution back to the
 executable representative. -/
 def targetConjugate (forward reverse : Subst) (ddTarget : TySubst) : Subst :=
   Subst.seq reverse
     (Subst.seq (Subst.mk CapSubst.id ddTarget) forward)
 
-/-- Conjugate for the complete one-way target phase.  The DD capability
+/-- Conjugate for the complete one-way target phase.  The demand-directed capability
 match is inserted before its target solve; the reverse ambient renaming then
 returns the result to the executable representative. -/
 def oneWayTargetConjugate (forward reverse : Subst)
@@ -154,11 +154,11 @@ def oneWayTargetConjugate (forward reverse : Subst)
     (Subst.seq (Subst.mk CapSubst.id ddTarget)
       (Subst.seq (Subst.mk ddCap TySubst.id) forward))
 
-/-- A target constraint related to a DD constraint by a scoped variable
-renaming is unifiable whenever the DD constraint is target-unifiable.
+/-- A target constraint related to a demand-directed constraint by a scoped variable
+renaming is unifiable whenever the demand-directed constraint is target-unifiable.
 
 Only capability variables of the executable constraint must lie in the
-certified scope.  Target variables introduced by the DD unifier are handled
+certified scope.  Target variables introduced by the demand-directed unifier are handled
 by the target component of the conjugate and need no inverse-side scope
 premise. -/
 theorem mguTy_complete_of_forward_renaming
@@ -215,7 +215,7 @@ theorem mguTy_complete_of_forward_renaming
     simpa only [Subst.apply, leftCapFixed, rightCapFixed] using pairedUnifies
   exact Unification.mguTy_complete targetUnifies
 
-/-- Convenient exact-MGU form used by the one-way DD rule. -/
+/-- Convenient exact-MGU form used by the one-way demand-directed rule. -/
 theorem mguTy_complete_of_exactTargetMGU_forward_renaming
     {forward reverse : Subst}
     {capScope : List CapVar} {targetScope : List TypePM.TyVar}
@@ -239,10 +239,10 @@ theorem mguTy_complete_of_exactTargetMGU_forward_renaming
 /-- One-way-cut form of target success transport.
 
 `capConjugacy` is the capability-phase correspondence left after transporting
-the executable `matchCap` result: ambient forward renaming, the DD capability
+the executable `matchCap` result: ambient forward renaming, the demand-directed capability
 match, and ambient reverse renaming agree with the executable capability
 match on every capability variable occurring in the two raw executable
-targets.  Under exactly that local equation, the DD target MGU supplies a
+targets.  Under exactly that local equation, the demand-directed target MGU supplies a
 target-only unifier for the executable capability-adjusted targets.
 
 The premise is deliberately pointwise on the finite target scope.  Callers

@@ -109,7 +109,7 @@ private theorem freshenSkeletonMasked_supplyExtends
 
 mutual
 
-/-- Skeleton freshening preserves the complete DD/executable traversal
+/-- Skeleton freshening preserves the complete demand-directed/executable traversal
 correspondence, including its exact structural capability range. -/
 theorem TraversalStateCorrespondence.freshenSkeleton
     {q : InferenceBase.FreshSupply} {S : Subst}

@@ -11,7 +11,7 @@ derived facts into success of `Inference.infer`.
 
 These lemmas are intentionally not the public completeness theorem: their
 premises are implementation-facing certificates produced inside the direct
-`DDTyping` recursion.
+`SourceTyping` recursion.
 -/
 
 namespace TypePM

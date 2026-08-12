@@ -7,7 +7,7 @@ The one-way branch has no capability-orientation ambiguity: `OneWayDelta`
 already records the exact `CapMatch` bindings used by the executable solver.
 Only the target MGU may choose a different solved orientation.  We retain
 that difference as mutual target-substitution factorization rather than
-requiring literal equality of the emitted and DD deltas.
+requiring literal equality of the emitted and demand-directed deltas.
 -/
 
 namespace TypePM
@@ -37,7 +37,7 @@ theorem admissibleCapPostCheck_complete
   | structuralFlexible =>
       simp
 
-/-- Correspondence between a DD one-way witness and the concrete solver step.
+/-- Correspondence between a demand-directed one-way witness and the concrete solver step.
 The capability components coincide.  The target components are mutually MGU
 instances, which is the strongest unconditional relationship in the presence
 of opposite variable orientations. -/
@@ -74,7 +74,7 @@ theorem OneWaySolverCorrespondence.declarative_delta_factorization
     rw [Ty.applyCapability_id]
     exact congrFun targetEq varId
 
-/-- Running the executable dedicated solver succeeds for every origin-safe DD
+/-- Running the executable dedicated solver succeeds for every origin-safe demand-directed
 one-way witness, at every trace count and source origin. -/
 theorem solveProducerToSlotWithLedger_complete
     {ledger : CapabilityOriginLedger}

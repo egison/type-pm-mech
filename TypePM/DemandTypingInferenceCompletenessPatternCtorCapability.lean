@@ -5,7 +5,7 @@ import TypePM.DemandTypingInferenceSoundnessFixMatcher
 # Pattern-constructor capability completeness
 
 This module completes the remaining capability-only traversal used by user
-pattern constructors.  It first lifts `DDAlignCtorCapsWithLedger` to the
+pattern constructors.  It first lifts `DemandAlignCtorCapsWithLedger` to the
 stateful field-demand executor, then packages complete constructor-capability
 runs including their returned capability.
 -/
@@ -263,7 +263,7 @@ theorem CapListBisimulation.wrapProd
 
 /-! ## Projection transport under the state residual renaming -/
 
-/-- Resolving corresponding child capabilities on both sides leaves the DD
+/-- Resolving corresponding child capabilities on both sides leaves the demand-directed
 list equal to the pointwise forward image of the executable list. -/
 theorem CapListBisimulation.forwardResolved
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -299,7 +299,7 @@ theorem CapListBisimulation.reverseResolved
       simp only [List.map_cons]
       rw [(Ty.matcher.inj head.reverse).1, induction]
 
-/-- The reverse residual is a genuine variable renaming on the finite DD
+/-- The reverse residual is a genuine variable renaming on the finite demand-directed
 child-capability image used by constructor projection. -/
 theorem CapListBisimulation.executableResolved_eq_applyRen
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -398,7 +398,7 @@ theorem CapListBisimulation.declarativeResolved_eq_applyRen
   rw [Cap.applyList_eq_map] at capabilities
   simpa [executableResolved] using capabilities
 
-/-- A successful DD projection is also successful on the corresponding
+/-- A successful demand-directed projection is also successful on the corresponding
 executable children, with the projected evidence changed only by renaming. -/
 theorem CapListBisimulation.projectSignature_success
     {observable : Shape.Observability}
@@ -424,9 +424,9 @@ theorem CapListBisimulation.projectSignature_success
   rw [equation, Shape.map_ofCap_applyRen]
   exact Projection.projectSignature_rename_of_success rename projection success
 
-/-- A DD projection miss remains a miss on corresponding executable children.
+/-- A demand-directed projection miss remains a miss on corresponding executable children.
 Otherwise executable success transports back along the forward residual and
-contradicts the DD result. -/
+contradicts the demand-directed result. -/
 theorem CapListBisimulation.projectSignature_miss
     {observable : Shape.Observability}
     {projection : Projection.ProjectionSignature observable}
@@ -904,7 +904,7 @@ theorem ddAlignCtorCapsWithLedger_complete_nonempty
       child.BoundedBy q)
     (executableDemandsBounded : ∀ demand ∈ executableDemands,
       ∀ capability, demand = some capability → capability.BoundedBy q)
-    (aligned : DDAlignCtorCapsWithLedger ledger S declarativeChildren
+    (aligned : DemandAlignCtorCapsWithLedger ledger S declarativeChildren
       declarativeDemands S') :
     Nonempty (StateRunCompletion relation
       (alignPatternCtorCapabilities initial origin executableChildren
@@ -1035,7 +1035,7 @@ noncomputable def ddAlignCtorCapsWithLedger_complete
       child.BoundedBy q)
     (executableDemandsBounded : ∀ demand ∈ executableDemands,
       ∀ capability, demand = some capability → capability.BoundedBy q)
-    (aligned : DDAlignCtorCapsWithLedger ledger S declarativeChildren
+    (aligned : DemandAlignCtorCapsWithLedger ledger S declarativeChildren
       declarativeDemands S') :
     StateRunCompletion relation
       (alignPatternCtorCapabilities initial origin executableChildren

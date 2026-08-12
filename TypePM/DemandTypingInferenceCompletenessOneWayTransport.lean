@@ -7,7 +7,7 @@ import TypePM.InferenceLocalFactorization
 /-!
 # Transport for heterogeneous producer-to-slot cuts
 
-`TyBisimulation` relates resolved DD and executable operands by a common
+`TyBisimulation` relates resolved demand-directed and executable operands by a common
 forward/reverse pair, but the resolved capability and target syntax need not
 be literally equal.  This file derives the corresponding executable
 `matchCap` and target-MGU run from that ordinary state relation.
@@ -239,7 +239,7 @@ structure ResolvedOneWayComponents
   consumerTargetReverse :
     executableConsumerTarget = reverse.apply declarativeConsumerTarget
 
-/-- The exact local fact needed after `matchCap` renaming transport: the DD
+/-- The exact local fact needed after `matchCap` renaming transport: the demand-directed
 and executable deltas mutually factor through one another under the same
 incoming residuals.  This is stronger than two independent MGU
 factorizations and is precisely what chronological state transport consumes.
@@ -260,7 +260,7 @@ structure OneWayDeltaBisimulation
   reverseAdmissible : AdmissiblePostBetween declarativeLedger
     executableLedger reverseAfter
 
-/-- Compose a heterogeneous DD/executable delta transport with a second
+/-- Compose a heterogeneous demand-directed/executable delta transport with a second
 transport that only changes the executable representative. -/
 def OneWayDeltaBisimulation.trans
     {declarativeLedger executableLedger : CapabilityOriginLedger}
@@ -704,10 +704,10 @@ structure BoundedOneWayCutCompletion
   forwardBounded : transition.after.forward.BoundedBy q
   reverseBounded : transition.after.reverse.BoundedBy q
 
-/-- Positive local transport theorem used by the coercive `DDAlign` branch.
+/-- Positive local transport theorem used by the coercive `DemandAlign` branch.
 It simultaneously obtains the executable origin-safe delta, the actual
 solver step, and the chronological bisimulation extension.  Thus callers do
-not have to identify the DD and executable `matchCap` bindings or choose a
+not have to identify the demand-directed and executable `matchCap` bindings or choose a
 canonical target-MGU orientation. -/
 noncomputable def oneWayCut_complete
     {ledger : CapabilityOriginLedger}
@@ -1036,10 +1036,10 @@ noncomputable def oneWayCut_complete_bounded
 
 /-! ## Why mutual instances alone were insufficient
 
-The following executable capabilities are mutual instances of the DD pair
+The following executable capabilities are mutual instances of the demand-directed pair
 under two collapsed, idempotent solved states.  The forward residual is
 admissible, but the reverse residual is not: it maps rigid `0` to structural
-`1`.  The DD match `2 ↦ 0` is legal, while the corresponding executable
+`1`.  The demand-directed match `2 ↦ 0` is legal, while the corresponding executable
 match `3 ↦ 1` violates the `renameOnly` image policy.
 -/
 

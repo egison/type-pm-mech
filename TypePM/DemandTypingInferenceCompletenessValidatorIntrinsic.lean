@@ -7,14 +7,14 @@ import TypePM.InferenceTraversalStateExtension
 
 Several terminal checks merely replay facts that the executable traversal
 itself established.  They do not depend on the proof-relevant terminal audit
-stored by `DDTyping`.  This module isolates the corresponding transport
+stored by `SourceTyping`.  This module isolates the corresponding transport
 lemmas.  In particular, an equality established at an alignment cut remains
 an equality after every later solver suffix, while the event's local views
 are recovered from the append-only history.
 
 The matcher-finalization, let-generalization, and pattern-constructor checks
 are intentionally absent: those are exactly the three terminal-sensitive
-facts represented in `DDSynthTerminalAudit`.
+facts represented in `DemandSynthTerminalAudit`.
 -/
 
 namespace TypePM
@@ -150,7 +150,7 @@ substitution. -/
 theorem ddAlignDual_output_equal_intrinsic
     {ledger : CapabilityOriginLedger} {S S' : Subst}
     {left right : Dual}
-    (aligned : DDAlignDualWithLedger ledger S left right S') :
+    (aligned : DemandAlignDualWithLedger ledger S left right S') :
     left.applySubst S' = right.applySubst S' := by
   cases aligned with
   | mk capSafe targetsAligned =>

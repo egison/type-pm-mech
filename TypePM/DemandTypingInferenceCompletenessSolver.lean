@@ -3,17 +3,17 @@ import TypePM.DemandTyping
 /-!
 # Solver correspondence for inference completeness
 
-An exact DD witness and the executable paired MGU need not be equal.  The
+An exact demand-directed witness and the executable paired MGU need not be equal.  The
 constraint `α = β`, for example, admits the two solved orientations
 `[α ↦ β]` and `[β ↦ α]`.  Requiring literal equality, or choosing a canonical
 orientation in the declarative judgment, would therefore be the wrong bridge
 for inference completeness.
 
-The traversal needs a weaker and more useful triangle.  The origin-safe DD
+The traversal needs a weaker and more useful triangle.  The origin-safe demand-directed
 solution is an admissible competitor of the executable kernel, so relative
 universality says that it *absorbs* the executable result.  Conversely, global
-most-generality of the DD witness makes the executable result an instance of
-it.  Thus inserting the executable solve before the DD residual leaves every
+most-generality of the demand-directed witness makes the executable result an instance of
+it.  Thus inserting the executable solve before the demand-directed residual leaves every
 subsequent normalized type, and the complete prevailing state, unchanged.
 -/
 
@@ -22,7 +22,7 @@ namespace DemandTypingInferenceCompletenessSolver
 
 open Inference
 
-/-- The state-level relation between one origin-safe exact DD solution and
+/-- The state-level relation between one origin-safe exact demand-directed solution and
 the executable result for the same already-resolved paired constraint. -/
 structure PairedStateCorrespondence
     (declarative executable : Subst) : Prop where
@@ -109,7 +109,7 @@ theorem solveCapEqWithLedger_complete
 
 /-- Any origin-admissible solution makes the executable target-equality
 solver emit a step retaining the proof-carrying kernel result.  This is the
-form needed when the DD and executable traversals use bisimilar, rather than
+form needed when the demand-directed and executable traversals use bisimilar, rather than
 literally identical, metavariable names. -/
 theorem solveTargetEqWithLedger_complete_of_admissible
     {ledger : CapabilityOriginLedger} {left right : Ty}
@@ -147,7 +147,7 @@ theorem solveTargetEqWithLedger_complete
   solveTargetEqWithLedger_complete_of_admissible
     dd.admissible dd.exact.1.1 solveCount origin
 
-/-- Applying the DD residual after the executable result gives exactly the DD
+/-- Applying the demand-directed residual after the executable result gives exactly the demand-directed
 normal form of every type.  This is the pointwise form used to transport raw
 traversal indices without choosing a variable renaming. -/
 theorem PairedStateCorrespondence.apply_triangle
@@ -160,7 +160,7 @@ theorem PairedStateCorrespondence.apply_triangle
     ← correspondence.declarativeAbsorbsExecutable]
 
 /-- The same triangle at the prevailing-state level.  If `initial` is the
-state before this cut, the executable successor followed by the DD residual
+state before this cut, the executable successor followed by the demand-directed residual
 is literally the declarative successor. -/
 theorem PairedStateCorrespondence.prevailing_triangle
     {declarative executable : Subst}
@@ -171,7 +171,7 @@ theorem PairedStateCorrespondence.prevailing_triangle
   rw [PhasedPost.seq_assoc,
     ← correspondence.declarativeAbsorbsExecutable]
 
-/-- Every executable normal form can be mapped back through the DD witness's
+/-- Every executable normal form can be mapped back through the demand-directed witness's
 instance residual.  This direction records mutual MGU generality without
 claiming that the residual is a mere syntactic variable permutation. -/
 theorem PairedStateCorrespondence.executable_apply_as_declarative_instance

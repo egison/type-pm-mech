@@ -4,7 +4,7 @@ import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
 # Checking-cut alignment completeness
 
 This module reconstructs the executable expected-type cut from one
-`DDAlignWithLedger` derivation.  The solver choices stay internal to the
+`DemandAlignWithLedger` derivation.  The solver choices stay internal to the
 alignment traversal packages; the final helper also records the public
 `slotAlignment` event produced by `alignExprResultAtExpected`.
 -/
@@ -988,7 +988,7 @@ noncomputable def ordinary_complete
       executableExpected)
     (ordinary : demandClass (S.apply declarativeRaw)
       (S.apply declarativeExpected) = .ordinary)
-    (aligned : DDAlignTypesWithLedger ledger S declarativeRaw
+    (aligned : DemandAlignTypesWithLedger ledger S declarativeRaw
       declarativeExpected S')
     (declarativeRawBounded : declarativeRaw.BoundedBy q)
     (declarativeExpectedBounded : declarativeExpected.BoundedBy q)
@@ -1026,7 +1026,7 @@ theorem ddAlignWithLedger_complete_nonempty
     (declarativeExpectedBounded : declarativeExpected.BoundedBy q)
     (executableRawBounded : executableRaw.BoundedBy q)
     (executableExpectedBounded : executableExpected.BoundedBy q)
-    (aligned : DDAlignWithLedger ledger S declarativeRaw
+    (aligned : DemandAlignWithLedger ledger S declarativeRaw
       declarativeExpected S') :
     Nonempty (StateRunCompletion relation
       (alignExprResultAtExpected path ⟨executableRaw, initial⟩
@@ -1069,7 +1069,7 @@ noncomputable def ddAlignWithLedger_complete
     (declarativeExpectedBounded : declarativeExpected.BoundedBy q)
     (executableRawBounded : executableRaw.BoundedBy q)
     (executableExpectedBounded : executableExpected.BoundedBy q)
-    (aligned : DDAlignWithLedger ledger S declarativeRaw
+    (aligned : DemandAlignWithLedger ledger S declarativeRaw
       declarativeExpected S') :
     StateRunCompletion relation
       (alignExprResultAtExpected path ⟨executableRaw, initial⟩

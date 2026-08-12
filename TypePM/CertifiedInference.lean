@@ -12,8 +12,8 @@ public inference carries enough algebraic evidence for reconstruction while
 remaining executable.
 
 The terminal validator alone has no unconstrained completeness claim.  The
-separate DD acceptance-completeness proof establishes that traces reconstructed
-from terminal-audited `DDTyping` derivations pass this validator.  No
+separate demand-directed acceptance-completeness proof establishes that traces reconstructed
+from terminal-audited `SourceTyping` derivations pass this validator.  No
 principality claim is made here.
 -/
 
@@ -51,7 +51,7 @@ private theorem enforceWBridgeResult_sound
 
 /-- A successful finite terminal audit is sufficient for the public result
 filter.  Completeness uses this direction only after reconstructing every
-validator condition from the DD derivation and the raw traversal. -/
+validator condition from the demand-directed derivation and the raw traversal. -/
 theorem enforceWBridgeResult_complete
     {signature : FrozenSig} {result : ExprResult}
     (checked : Reconstruction.wBridgeCheck signature result = true) :
@@ -88,8 +88,8 @@ private theorem infer_success_raw_and_checked
       exact ⟨rfl, checked⟩
 
 /-- Public inference success exposes the successful raw traversal needed by
-the direct `infer -> DDTyping` reconstruction.  The terminal bridge remains a
-separate, internal audit; reconstructing DD follows the traversal itself and
+the direct `infer -> SourceTyping` reconstruction.  The terminal bridge remains a
+separate, internal audit; reconstructing demand-directed follows the traversal itself and
 therefore needs no runtime-typing oracle. -/
 theorem infer_success_inferRaw
     {signature : FrozenSig} {context : Context} {expression : Expr}
@@ -153,14 +153,14 @@ theorem infer_success_reconstruct
 
 The theorem is stronger than the intended well-formed-input interface: the
 public terminal validator fails closed, so no separate caller premise is
-needed to construct the internal runtime certificate. -/
-theorem infer_success_runtimeTyping
+needed to construct the internal typing invariant. -/
+theorem infer_success_typingInvariant
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
     (success : infer signature context expression = some result) :
-    RuntimeTyping signature (ResolvedContext result.state.prevailing context)
+    TypingInvariant signature (ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget :=
-  (infer_success_reconstruct success).toRuntimeTyping
+  (infer_success_reconstruct success).toTypingInvariant
 
 /-- Public result type after certified replay. -/
 def inferType

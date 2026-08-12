@@ -6,7 +6,7 @@ import TypePM.Preservation
 /-!
 # Terminal-audit elimination through final state bisimulation
 
-Terminal DD and executable substitutions need not be equal.  Their reverse
+Terminal demand-directed and executable substitutions need not be equal.  Their reverse
 residual is nevertheless a variable renaming on the finite set of variables
 occurring in terminal-normalized audit operands.  This module extracts that
 renaming and consumes terminal facts observationally at the executable cut.
@@ -27,7 +27,7 @@ open DemandTypingInferenceCompletenessPatternCtorCapability
 open DemandTypingInferenceCompletenessMatcherTraversal
 
 /-- The reverse residual is a local renaming on all variables in a finite
-bundle of terminal-normalized DD operands. -/
+bundle of terminal-normalized demand-directed operands. -/
 theorem StateBisimulation.reverseLocalRenamingOn_bundleImages
     {ledger : CapabilityOriginLedger} {terminal : Subst}
     {state : InferState}
@@ -286,9 +286,9 @@ theorem Cap.length_applyRenList (rename : CapVar → CapVar) :
       simp only [Cap.applyRenList, List.length_cons, Nat.succ.injEq]
       exact Cap.length_applyRenList rename rest
 
-/-- Terminal constructor facts transfer across paired DD/executable operands.
+/-- Terminal constructor facts transfer across paired demand-directed/executable operands.
 This is the semantic core needed when a trace event stores executable raw
-operands while the terminal audit tree stores their DD counterparts. -/
+operands while the terminal audit tree stores their demand-directed counterparts. -/
 theorem DDTerminalAudit.PatternCtorFacts.compatible_bisimulation
     {terminal : Subst} {signature : FrozenSig} {state : InferState}
     {ledger : CapabilityOriginLedger}

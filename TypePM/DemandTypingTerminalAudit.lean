@@ -17,7 +17,7 @@ existing structural erasure recursion:
   capability.
 
 These certificates contain no inference state and add nothing to
-`RuntimeTyping`.  Reconstruction creates them after it knows the root terminal
+`TypingInvariant`.  Reconstruction creates them after it knows the root terminal
 substitution; erasure consumes them at the corresponding origin nodes.
 -/
 

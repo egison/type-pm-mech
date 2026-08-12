@@ -9,7 +9,7 @@ import TypePM.DemandTypingInferenceCompletenessSignatureBounds
 This module adds validator chronology to the bounded raw pattern dispatcher.
 The raw proof and its event-history proof remain separate fields, but the
 recursive public package is deliberately paired: a `pctor` audit mentions the
-DD dual/capability operands while its executable trace may contain only
+demand-directed dual/capability operands while its executable trace may contain only
 bisimilar representatives.  Exact leaves embed into that paired chronology,
 and recursive patterns preserve the operand relation for direct projection by
 `PairedRootCertifiedSynthesis`.
@@ -65,7 +65,7 @@ structure BoundedCertifiedPatternsRunCompletion
   validation : ValidatorRunExtension terminal signature initial
     bounded.run.result.state
 
-/-- Completeness-only wrapper whose sensitive constructor facts may retain DD
+/-- Completeness-only wrapper whose sensitive constructor facts may retain demand-directed
 operands paired with their executable representatives. -/
 structure BoundedPairedCertifiedPatternRunCompletion
     (terminal : Subst) (signature : FrozenSig)
@@ -170,14 +170,14 @@ structure CertifiedPatternSynthCompletenessBelow
       {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
       {target : Ty} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
       {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-      {raw : DDSynth signature q S declarativeContext expression target q' S'}
-      {origin : DDSynthOrigin signature raw ledger ledger'},
+      {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+      {origin : DemandSynthOrigin signature raw ledger ledger'},
       (before : TraversalStateCorrespondence q S ledger state) →
       SignatureVarsBelow q signature →
       ContextBisimulation before.prevailing declarativeContext
         executableContext →
       declarativeContext.BoundedBy q → executableContext.BoundedBy q →
-      DDSynthTerminalAudit terminal signature origin →
+      DemandSynthTerminalAudit terminal signature origin →
       PatternSynthBudgetAdequate fuel expression →
       Nonempty (BoundedPairedCertifiedPatternSynthRunCompletion terminal
         signature before
@@ -924,7 +924,7 @@ noncomputable def certifiedPatternAnd_complete
     (rightExtends : SupplyExtends q₁ q₂)
     (declarativeLeftBounded : leftDual.BoundedBy q₂)
     (declarativeRightBounded : rightDual.BoundedBy q₂)
-    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    (aligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
     BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.pand left right) state)
@@ -993,8 +993,8 @@ noncomputable def certifiedPatternOr_complete
     (declarativeRightDualBounded : rightDual.BoundedBy q₂)
     (declarativeLeftBindingsBounded : leftBindings.BoundedBy q₂)
     (declarativeRightBindingsBounded : rightBindings.BoundedBy q₂)
-    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
-    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+    (dualsAligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DemandAlignBindingsWithLedger ledger₂ S₃
       leftBindings rightBindings S') :
     BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
@@ -1093,7 +1093,7 @@ noncomputable def certifiedPatternApp_complete
     (childrenExtends : SupplyExtends
       (InferenceBase.instantiateDualScheme q scheme).supply q₁)
     (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
-    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+    (aligned : DemandAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
     BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature executableContext
@@ -1218,7 +1218,7 @@ noncomputable def certifiedPatternCtor_complete
     (childrenExtends : SupplyExtends
       (InferenceBase.instantiateCtorScheme q entry.scheme).supply q₁)
     (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
-    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+    (targetsAligned : DemandAlignTargetListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
     (capRun :
       let instBounded := instantiateCtorScheme_boundedBy (q := q)

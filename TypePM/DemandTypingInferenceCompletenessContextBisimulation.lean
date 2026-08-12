@@ -5,7 +5,7 @@ import TypePM.DemandTypingInferenceCompletenessGeneralizationTransport
 /-!
 # Paired contexts for inference completeness
 
-DD and executable traversal may use different raw contexts after a `let` or
+demand-directed and executable traversal may use different raw contexts after a `let` or
 pattern binding.  The invariant required by variable lookup is only that the
 contexts agree after their respective prevailing substitutions, up to the
 same forward and reverse residuals as the state relation.

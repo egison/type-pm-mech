@@ -69,9 +69,9 @@ abbrev PairedMatcherCheckCompletenessAt
     {declarativeExpected executableExpected : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDCheck signature q S declarativeContext expression
+    {raw : DemandCheck signature q S declarativeContext expression
       declarativeExpected q' S'}
-    {origin : DDCheckOrigin signature raw ledger ledger'},
+    {origin : DemandCheckOrigin signature raw ledger ledger'},
     (before : TraversalStateCorrespondence q S ledger state) →
     SignatureVarsBelow q signature →
     ContextBisimulation before.prevailing declarativeContext
@@ -79,7 +79,7 @@ abbrev PairedMatcherCheckCompletenessAt
     TyBisimulation before.prevailing declarativeExpected executableExpected →
     declarativeContext.BoundedBy q → executableContext.BoundedBy q →
     declarativeExpected.BoundedBy q → executableExpected.BoundedBy q →
-    DDCheckTerminalAudit terminal signature origin →
+    DemandCheckTerminalAudit terminal signature origin →
     MatcherCheckBudgetAdequate fuel expression →
     Nonempty (PairedCertifiedStateRunCompletion terminal signature before
       (checkExprFuel fuel signature executableContext selfEnv path expression
@@ -121,10 +121,10 @@ theorem checksOrigin_complete_certified_below
       expected.BoundedBy q)
     (expectedsRelated : TyListBisimulation before.prevailing
       declarativeExpecteds executableExpecteds)
-    {raw : DDChecks signature q S declarativeContext expressions
+    {raw : DemandChecks signature q S declarativeContext expressions
       declarativeExpecteds q' S'}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     (adequate : MatcherChecksBudgetAdequate fuel expressions) :
     Nonempty (PairedCertifiedStateRunCompletion terminal signature before
       (checkExprsFuel fuel signature executableContext selfEnv parent index expressions

@@ -3,10 +3,10 @@ import TypePM.CoherentTyping
 import TypePM.SignatureChecker
 
 /-!
-# DD acceptance and state-erasure boundary regressions
+# demand-directed acceptance and state-erasure boundary regressions
 
-This module tracks concrete boundaries of DD acceptance and the internal
-runtime certificate.  The first gap — an or-pattern binding the same
+This module tracks concrete boundaries of demand-directed acceptance and the internal
+typing invariant.  The first gap — an or-pattern binding the same
 variable in both alternatives, previously rejected because the traversal
 compared raw binding contexts for syntactic identity — is fixed: the or case
 now aligns binder names positionally and unifies the bound types
@@ -14,14 +14,14 @@ now aligns binder names positionally and unifies the bound types
 different positions of the alternatives are accepted.  Its runtime
 certificate is kept as a downstream safety witness.
 
-The second family shows why `RuntimeTyping` must not be read backwards as a
+The second family shows why `TypingInvariant` must not be read backwards as a
 source-acceptance rule: a shared monomorphic consumer receives the wildcard slot domain
 (`Slot Any (prod [Int, Int])`) and consumes both a bare `something` and a
 product of `something`s.  The exhibited derivations below choose
 `coerceMatcherToSlot` steps at argument positions where no slot demand exists
 — the domain is a plain lambda-bound metavariable, and those witnesses invent
 the slot structure that makes both coercions succeed.  No inversion theorem
-claiming that every `RuntimeTyping` certificate must have this form is made here.
+claiming that every `TypingInvariant` proof must have this form is made here.
 The pipeline is demand-directed:
 coercions are inserted only where the substituted expected type already
 demands a slot head, and unresolved domains are never structured to
@@ -78,7 +78,7 @@ theorem orMixedProgram_accepted :
     Inference.inferenceSucceeds emptySignature [] orMixedProgram = true := by
   native_decide
 
-/-- The prevailing substitution of the runtime certificate below. -/
+/-- The prevailing substitution of the typing invariant below. -/
 def orPrevailing : Subst :=
   Subst.mk (Unification.CapSubst.single 0 .any)
     (Unification.TySubst.single 0 .int)
@@ -104,17 +104,17 @@ theorem orPattern_resolved :
 
 /-- `something` inhabits the slot demanded by the match site. -/
 private theorem something_slot_typed :
-    RuntimeTyping emptySignature [] .something (.slot .any .int) := by
-  exact RuntimeTyping.coerceMatcherToSlot RuntimeTyping.something .equal
+    TypingInvariant emptySignature [] .something (.slot .any .int) := by
+  exact TypingInvariant.coerceMatcherToSlot TypingInvariant.something .equal
 
 /-- Declaratively the or-pattern program is typed at `List Integer`. -/
 theorem orProgram_typed :
-    RuntimeTyping emptySignature [] orProgram (Ty.listT .int) :=
-  RuntimeTyping.matchAll (prevailing := orPrevailing)
-    RuntimeTyping.lit orPattern_resolved something_slot_typed
-    (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _))
+    TypingInvariant emptySignature [] orProgram (Ty.listT .int) :=
+  TypingInvariant.matchAll (prevailing := orPrevailing)
+    TypingInvariant.lit orPattern_resolved something_slot_typed
+    (TypingInvariant.var rfl (Scheme.mono_valueFlowInst _))
 
-/-! ## Nested matcher capability: DD rejection boundary -/
+/-! ## Nested matcher capability: demand-directed rejection boundary -/
 
 /-- A shared monomorphic consumer applied to two matcher producers whose
 capabilities differ: the bare `something` synthesizes `Matcher Any ?τ`,
@@ -143,55 +143,55 @@ def consumerContext : Context :=
 
 /-- `something` fills the wildcard slot at the product target. -/
 private theorem something_sharedSlot_typed :
-    RuntimeTyping emptySignature consumerContext .something sharedSlot := by
-  exact RuntimeTyping.coerceMatcherToSlot RuntimeTyping.something .equal
+    TypingInvariant emptySignature consumerContext .something sharedSlot := by
+  exact TypingInvariant.coerceMatcherToSlot TypingInvariant.something .equal
 
 /-- The tuple of `something`s lifts to a product matcher. -/
 private theorem tuple_productMatcher_typed :
-    RuntimeTyping emptySignature consumerContext (.tuple [.something, .something])
+    TypingInvariant emptySignature consumerContext (.tuple [.something, .something])
       (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  RuntimeTyping.coerceProductMatcher
+  TypingInvariant.coerceProductMatcher
     (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
-    (RuntimeTyping.tuple (ExprsTy.cons RuntimeTyping.something
-      (ExprsTy.cons RuntimeTyping.something ExprsTy.nil)))
+    (TypingInvariant.tuple (ExprsTy.cons TypingInvariant.something
+      (ExprsTy.cons TypingInvariant.something ExprsTy.nil)))
 
 /-- The product matcher also fills the wildcard slot: the consumer-side
 literal `Any` accepts the structured producer capability. -/
 private theorem tuple_sharedSlot_typed :
-    RuntimeTyping emptySignature consumerContext (.tuple [.something, .something])
+    TypingInvariant emptySignature consumerContext (.tuple [.something, .something])
       sharedSlot := by
-  exact RuntimeTyping.coerceMatcherToSlot tuple_productMatcher_typed .any
+  exact TypingInvariant.coerceMatcherToSlot tuple_productMatcher_typed .any
 
 /-- The shared consumer variable at its monomorphic type. -/
 private theorem consumer_var_typed :
-    RuntimeTyping emptySignature consumerContext (.var "f")
+    TypingInvariant emptySignature consumerContext (.var "f")
       (.fn sharedSlot sharedSlot) :=
-  RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)
+  TypingInvariant.var rfl (Scheme.mono_valueFlowInst _)
 
 /-- Declaratively the program is typed: both producers coerce into the same
 wildcard slot domain. -/
 theorem nestedCapProgram_typed :
-    RuntimeTyping emptySignature [] nestedCapProgram
+    TypingInvariant emptySignature [] nestedCapProgram
       (.prod [sharedSlot, sharedSlot]) :=
-  RuntimeTyping.app
-    (RuntimeTyping.lam (RuntimeTyping.tuple
-      (ExprsTy.cons (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
+  TypingInvariant.app
+    (TypingInvariant.lam (TypingInvariant.tuple
+      (ExprsTy.cons (TypingInvariant.app consumer_var_typed something_sharedSlot_typed)
         (ExprsTy.cons
-          (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
+          (TypingInvariant.app consumer_var_typed tuple_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
+    (TypingInvariant.lam (TypingInvariant.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- The swapped order is typed by the same pieces. -/
 theorem nestedCapSwappedProgram_typed :
-    RuntimeTyping emptySignature [] nestedCapSwappedProgram
+    TypingInvariant emptySignature [] nestedCapSwappedProgram
       (.prod [sharedSlot, sharedSlot]) :=
-  RuntimeTyping.app
-    (RuntimeTyping.lam (RuntimeTyping.tuple
-      (ExprsTy.cons (RuntimeTyping.app consumer_var_typed tuple_sharedSlot_typed)
+  TypingInvariant.app
+    (TypingInvariant.lam (TypingInvariant.tuple
+      (ExprsTy.cons (TypingInvariant.app consumer_var_typed tuple_sharedSlot_typed)
         (ExprsTy.cons
-          (RuntimeTyping.app consumer_var_typed something_sharedSlot_typed)
+          (TypingInvariant.app consumer_var_typed something_sharedSlot_typed)
           ExprsTy.nil))))
-    (RuntimeTyping.lam (RuntimeTyping.var rfl (Scheme.mono_valueFlowInst _)))
+    (TypingInvariant.lam (TypingInvariant.var rfl (Scheme.mono_valueFlowInst _)))
 
 /-- Consuming the same producer twice is accepted: the shared domain
 resolves to one raw matcher type and the second use aligns rigidly. -/
@@ -382,8 +382,8 @@ def packProgram : Expr := .ctor "Pack" [.something]
 /-- Declaratively the constructor instance may choose `κ := Any`, so the
 program is typed. -/
 theorem packProgram_typed :
-    RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
-  refine RuntimeTyping.ctor (scheme := packScheme)
+    TypingInvariant packSignature [] packProgram (.data "Packed" []) := by
+  refine TypingInvariant.ctor (scheme := packScheme)
     (targets := [.matcher .any .int]) rfl ?_ ?_
   · refine ⟨Unification.CapSubst.single 0 .any,
       Unification.TySubst.single 0 .int, ?_,
@@ -394,7 +394,7 @@ theorem packProgram_typed :
       simp [Unification.CapSubst.single, reverse]
     · simp [packScheme, Subst.apply, Ty.applyCapability, Ty.applyTarget,
         Cap.apply, Unification.CapSubst.single, Unification.TySubst.single]
-  · exact ExprsTy.cons RuntimeTyping.something ExprsTy.nil
+  · exact ExprsTy.cons TypingInvariant.something ExprsTy.nil
 
 /-- Raw W accepts the local structural specialization. -/
 theorem packProgram_raw_accepted :
@@ -444,8 +444,8 @@ theorem packProgram_coherent :
 /-- Public inference independently reconstructs the advertised runtime
 certificate from the executable success equation. -/
 theorem packProgram_typed_by_inference :
-    RuntimeTyping packSignature [] packProgram (.data "Packed" []) := by
-  have typing := Inference.infer_success_runtimeTyping packProgram_result
+    TypingInvariant packSignature [] packProgram (.data "Packed" []) := by
+  have typing := Inference.infer_success_typingInvariant packProgram_result
   rw [packProgram_result_type] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing
 

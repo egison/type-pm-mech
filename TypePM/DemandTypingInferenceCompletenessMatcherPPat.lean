@@ -4,7 +4,7 @@ import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
 /-!
 # Heterogeneous primitive matcher-pattern completeness
 
-Matcher clauses pass a raw DD target and a possibly renamed executable target.
+Matcher clauses pass a raw demand-directed target and a possibly renamed executable target.
 This module generalizes primitive matcher-pattern traversal over that pair.
 -/
 
@@ -124,7 +124,7 @@ noncomputable def ppatCtor_complete_related_bounded
     (targetRelated : TyBisimulation before.prevailing target executableTarget)
     (targetBounded : target.BoundedBy q)
     (executableTargetBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q entry.scheme) S
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.2 target S₁)
     {q' : InferenceBase.FreshSupply} {holes : List Dual}
@@ -182,7 +182,7 @@ noncomputable def ppatTuple_complete_related_bounded
     (targetRelated : TyBisimulation before.prevailing target executableTarget)
     (targetBounded : target.BoundedBy q)
     (executableTargetBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) target S₁)
     {q' : InferenceBase.FreshSupply} {holes : List Dual}
     {bindings : MonoCtx}

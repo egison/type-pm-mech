@@ -6,8 +6,8 @@ import TypePM.InferenceLedgerAdmissibility
 
 This module starts the direct soundness proof from successful executable
 traversals to the public demand-directed judgment.  The intermediate
-`DDSynthRun` certificate deliberately retains only the pieces of `InferState`
-that occur in `DDSynth` and `DDSynthOrigin`: the fresh supply, prevailing
+`DemandSynthRun` certificate deliberately retains only the pieces of `InferState`
+that occur in `DemandSynth` and `DemandSynthOrigin`: the fresh supply, prevailing
 substitution, and capability-origin ledger.  Trace events remain evidence for
 constructing the certificate, rather than becoming an additional premise of
 source typing.
@@ -16,7 +16,7 @@ The initial slices cover variable lookup, lambda, tuple, the two expression
 leaves whose executable traversal performs no solve, and expression-list
 nil/cons.  Their shape is the mutual induction invariant required by the
 remaining expression constructors: executable raw targets are preserved, and
-the output indices of the DD derivation are exactly the output state of the
+the output indices of the demand-directed derivation are exactly the output state of the
 run.
 -/
 
@@ -118,7 +118,7 @@ namespace Inference
       DDLedger.markCtorInstance state.capabilityOrigins state.supply scheme :=
   rfl
 
-/-- Executable and DD export selection name the same surviving capability
+/-- Executable and demand-directed export selection name the same surviving capability
 leaves. -/
 theorem capabilityExportLeaves_eq_exportLeaves
     (state : InferState) (capImages : List CapVar) (exportedPayload : Ty) :
@@ -151,45 +151,45 @@ theorem capabilityExportLeaves_eq_exportLeaves
   simp [InferState.freezeCapabilityExport, DDLedger.freezeExport,
     capabilityExportLeaves_eq_exportLeaves]
 
-/-- The DD certificate reconstructed from one successful executable
+/-- The demand-directed certificate reconstructed from one successful executable
 expression traversal.  This is an internal induction package for proving
-`infer` sound with respect to `DDTyping`; it is not a second typing judgment. -/
-def DDSynthRun (signature : FrozenSig) (context : Context)
+`infer` sound with respect to `SourceTyping`; it is not a second typing judgment. -/
+def DemandSynthRun (signature : FrozenSig) (context : Context)
     (expression : Expr) (initial : InferState) (result : ExprResult) : Prop :=
   ∃ rawTarget,
-    ∃ derived : DDSynth signature initial.supply initial.prevailing context
+    ∃ derived : DemandSynth signature initial.supply initial.prevailing context
         expression rawTarget result.state.supply result.state.prevailing,
       result.target = rawTarget ∧
-        DDSynthOrigin signature derived initial.capabilityOrigins
+        DemandSynthOrigin signature derived initial.capabilityOrigins
           result.state.capabilityOrigins
 
-/-- List form of `DDSynthRun`, retaining the executable raw target list and
+/-- List form of `DemandSynthRun`, retaining the executable raw target list and
 the exact terminal state indices. -/
-def DDSynthsRun (signature : FrozenSig) (context : Context)
+def DemandSynthsRun (signature : FrozenSig) (context : Context)
     (expressions : List Expr) (initial : InferState)
     (result : ExprsResult) : Prop :=
   ∃ rawTargets,
-    ∃ derived : DDSynths signature initial.supply initial.prevailing context
+    ∃ derived : DemandSynths signature initial.supply initial.prevailing context
         expressions rawTargets result.state.supply result.state.prevailing,
       result.targets = rawTargets ∧
-        DDSynthsOrigin signature derived initial.capabilityOrigins
+        DemandSynthsOrigin signature derived initial.capabilityOrigins
           result.state.capabilityOrigins
 
 /-- Exact-state certificate for one checking traversal. -/
-def DDCheckRun (signature : FrozenSig) (context : Context)
+def DemandCheckRun (signature : FrozenSig) (context : Context)
     (expression : Expr) (expected : Ty) (initial final : InferState) : Prop :=
-  ∃ derived : DDCheck signature initial.supply initial.prevailing context
+  ∃ derived : DemandCheck signature initial.supply initial.prevailing context
       expression expected final.supply final.prevailing,
-    DDCheckOrigin signature derived initial.capabilityOrigins
+    DemandCheckOrigin signature derived initial.capabilityOrigins
       final.capabilityOrigins
 
 /-- Exact-state certificate for pointwise checking of expression/type lists. -/
-def DDChecksRun (signature : FrozenSig) (context : Context)
+def DemandChecksRun (signature : FrozenSig) (context : Context)
     (expressions : List Expr) (expecteds : List Ty)
     (initial final : InferState) : Prop :=
-  ∃ derived : DDChecks signature initial.supply initial.prevailing context
+  ∃ derived : DemandChecks signature initial.supply initial.prevailing context
       expressions expecteds final.supply final.prevailing,
-    DDChecksOrigin signature derived initial.capabilityOrigins
+    DemandChecksOrigin signature derived initial.capabilityOrigins
       final.capabilityOrigins
 
 /-- Exact-state certificate for one executable user-pattern traversal. -/
@@ -216,19 +216,19 @@ def DDPatternsRun (signature : FrozenSig) (context : Context)
 /-- State-indexed declarative image of an executable expected-type alignment.
 Alignment never allocates variables or changes the origin ledger; only its
 prevailing substitution advances. -/
-def DDAlignRun (raw expected : Ty) (initial final : InferState) : Prop :=
+def DemandAlignRun (raw expected : Ty) (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignWithLedger initial.capabilityOrigins initial.prevailing raw
+      DemandAlignWithLedger initial.capabilityOrigins initial.prevailing raw
         expected final.prevailing
 
 /-- Exact-state certificate for one executable ordinary type alignment.
 Alignment preserves the fresh supply and origin ledger while advancing the
 prevailing substitution by the declarative ledger-aware equality rule. -/
-def DDAlignTypesRun (left right : Ty) (initial final : InferState) : Prop :=
+def DemandAlignTypesRun (left right : Ty) (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignTypesWithLedger initial.capabilityOrigins initial.prevailing
+      DemandAlignTypesWithLedger initial.capabilityOrigins initial.prevailing
         left right final.prevailing
 
 /-- Dispatching a capability equality through the common resolved solver
@@ -311,7 +311,7 @@ theorem alignTypesCore_ordinary_ddAlignTypesRun
     (pairClass : alignPairClass (state.prevailing.apply left)
       (state.prevailing.apply right) = .ordinary)
     (success : alignTypesCore state origin left right = some final) :
-    DDAlignTypesRun left right state final := by
+    DemandAlignTypesRun left right state final := by
   unfold alignTypesCore at success
   simp only at success
   split at success
@@ -329,7 +329,7 @@ theorem alignTypesCore_ordinary_ddAlignTypesRun
         subst final
         refine ⟨rfl, rfl, ?_⟩
         rw [InferState.prevailing_recordSolve]
-        exact DDAlignTypesWithLedger.ordinary pairClass
+        exact DemandAlignTypesWithLedger.ordinary pairClass
           (solveResolvedWithLedger_targetEq_originSafeExactPairedMGU stepEq)
 
 /-- Reconstruct the two-step matcher/matcher branch: first solve its
@@ -343,7 +343,7 @@ theorem alignTypesCore_matcherPair_ddAlignTypesRun
     (rightView : state.prevailing.apply right =
       .matcher rightCap rightTarget)
     (success : alignTypesCore state origin left right = some final) :
-    DDAlignTypesRun left right state final := by
+    DemandAlignTypesRun left right state final := by
   unfold alignTypesCore at success
   simp only [leftView, rightView] at success
   rcases Option.bind_eq_some_iff.mp success with
@@ -383,7 +383,7 @@ theorem alignTypesCore_matcherPair_ddAlignTypesRun
     refine ⟨rfl, rfl, ?_⟩
     rw [InferState.prevailing_recordSolve,
       InferState.prevailing_recordSolve, capDeltaEq]
-    exact DDAlignTypesWithLedger.matcherPair leftView rightView exactCap
+    exact DemandAlignTypesWithLedger.matcherPair leftView rightView exactCap
       (adjustedLeftEq ▸ adjustedRightEq ▸ exactTarget)
   · rename_i afterLeft afterRight ignoredLeftCap adjustedLeftTarget
       ignoredRightCap adjustedRightTarget afterLeftView afterRightView
@@ -404,7 +404,7 @@ theorem alignTypesCore_slotPair_ddAlignTypesRun
     (leftView : state.prevailing.apply left = .slot leftCap leftTarget)
     (rightView : state.prevailing.apply right = .slot rightCap rightTarget)
     (success : alignTypesCore state origin left right = some final) :
-    DDAlignTypesRun left right state final := by
+    DemandAlignTypesRun left right state final := by
   unfold alignTypesCore at success
   simp only [leftView, rightView] at success
   rcases Option.bind_eq_some_iff.mp success with
@@ -453,7 +453,7 @@ theorem alignTypesCore_slotPair_ddAlignTypesRun
     refine ⟨rfl, rfl, ?_⟩
     rw [InferState.prevailing_recordSolve,
       InferState.prevailing_recordSolve, capDeltaEq]
-    exact DDAlignTypesWithLedger.slotPair leftView rightView exactCap
+    exact DemandAlignTypesWithLedger.slotPair leftView rightView exactCap
       (adjustedLeftEq ▸ adjustedRightEq ▸ exactTarget)
 
 /-- Every successful executable type-alignment core reconstructs the branch
@@ -462,7 +462,7 @@ theorem alignTypesCore_ddAlignTypesRun
     {state final : InferState} {origin : ConstraintOrigin}
     {left right : Ty}
     (success : alignTypesCore state origin left right = some final) :
-    DDAlignTypesRun left right state final := by
+    DemandAlignTypesRun left right state final := by
   cases leftEq : state.prevailing.apply left <;>
     cases rightEq : state.prevailing.apply right <;>
     first
@@ -472,12 +472,12 @@ theorem alignTypesCore_ddAlignTypesRun
         (by simp [alignPairClass, leftEq, rightEq]) success
 
 /-- Lift the complete type-alignment core through its event-only executable
-wrapper.  Recording the alignment event changes none of the DD state indices. -/
+wrapper.  Recording the alignment event changes none of the demand-directed state indices. -/
 theorem alignTypes_ddAlignTypesRun
     {state final : InferState} {origin : ConstraintOrigin}
     {left right : Ty}
     (success : alignTypes state origin left right = some final) :
-    DDAlignTypesRun left right state final := by
+    DemandAlignTypesRun left right state final := by
   unfold alignTypes at success
   rcases Option.bind_eq_some_iff.mp success with
     ⟨aligned, coreSuccess, finished⟩
@@ -486,7 +486,7 @@ theorem alignTypes_ddAlignTypesRun
       (state.prevailing.apply left) (state.prevailing.apply right)) = final :=
     Option.some.inj finished
   subst final
-  simpa [DDAlignTypesRun] using
+  simpa [DemandAlignTypesRun] using
     (alignTypesCore_ddAlignTypesRun coreSuccess)
 
 /-- Reconstruct the ordinary checking fallback.  An ordinary demand class
@@ -498,7 +498,7 @@ theorem alignAtSlot_ordinary_ddAlignRun
     (demand : demandClass (state.prevailing.apply raw)
       (state.prevailing.apply expected) = .ordinary)
     (success : alignAtSlot state origin raw expected = some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   unfold alignAtSlot at success
   simp only at success
   split at success
@@ -507,10 +507,10 @@ theorem alignAtSlot_ordinary_ddAlignRun
   · rcases alignTypes_ddAlignTypesRun success with
       ⟨supplyEq, ledgerEq, aligned⟩
     exact ⟨supplyEq, ledgerEq,
-      DDAlignWithLedger.ordinary demand aligned⟩
+      DemandAlignWithLedger.ordinary demand aligned⟩
 
 /-- The executable one-way solver returns exactly the origin-safe delta used
-by the DD matcher-to-slot rule. -/
+by the demand-directed matcher-to-slot rule. -/
 theorem solveResolvedWithLedger_originSafeOneWayDelta
     {ledger : CapabilityOriginLedger} {solveCount : Nat}
     {origin : ConstraintOrigin}
@@ -542,7 +542,7 @@ theorem solveResolvedWithLedger_originSafeOneWayDelta
 
 /-- Reconstruct the raw matcher-to-slot branch of executable slot alignment.
 The protected-producer check is retained by the executable success equation;
-the DD rule consumes the exact origin-safe one-way delta from the same solve. -/
+the demand-directed rule consumes the exact origin-safe one-way delta from the same solve. -/
 theorem alignAtSlot_matcherToSlot_ddAlignRun
     {state final : InferState} {origin : ConstraintOrigin}
     {raw expected : Ty} {producerCap consumerCap : Cap}
@@ -552,7 +552,7 @@ theorem alignAtSlot_matcherToSlot_ddAlignRun
     (expectedView : state.prevailing.apply expected =
       .slot consumerCap consumerTarget)
     (success : alignAtSlot state origin raw expected = some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   unfold alignAtSlot at success
   simp only [rawView, expectedView] at success
   unfold runResolvedConstraint at success
@@ -569,7 +569,7 @@ theorem alignAtSlot_matcherToSlot_ddAlignRun
         subst final
         refine ⟨rfl, rfl, ?_⟩
         rw [InferState.prevailing_recordSolve]
-        exact DDAlignWithLedger.matcherToSlot rawView expectedView
+        exact DemandAlignWithLedger.matcherToSlot rawView expectedView
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
 
@@ -584,7 +584,7 @@ theorem alignAtSlot_slotToSlot_ddAlignRun
     (expectedView : state.prevailing.apply expected =
       .slot requestedCap requestedTarget)
     (success : alignAtSlot state origin raw expected = some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   unfold alignAtSlot at success
   simp only [rawView, expectedView] at success
   rcases Option.bind_eq_some_iff.mp success with
@@ -627,7 +627,7 @@ theorem alignAtSlot_slotToSlot_ddAlignRun
   refine ⟨rfl, rfl, ?_⟩
   rw [InferState.prevailing_recordSolve,
     InferState.prevailing_recordSolve, capDeltaEq]
-  exact DDAlignWithLedger.slotToSlot rawView expectedView exactCap
+  exact DemandAlignWithLedger.slotToSlot rawView expectedView exactCap
     (adjustedSourceEq ▸ adjustedRequestedEq ▸ exactTarget)
 
 /-- A raw product-matcher view is preserved by the prevailing paired
@@ -685,7 +685,7 @@ theorem productMatcherDuals?_apply_none_of_productSlot
         Subst.apply_slot]
 
 /-- Reconstruct the product-matcher lift from the executable synthetic unary
-matcher source.  The DD rule remains indexed by the original product type. -/
+matcher source.  The demand-directed rule remains indexed by the original product type. -/
 theorem alignAtSlot_productMatcherLift_ddAlignRun
     {state final : InferState} {origin : ConstraintOrigin}
     {raw expected : Ty} {duals : List Dual}
@@ -695,7 +695,7 @@ theorem alignAtSlot_productMatcherLift_ddAlignRun
       .slot consumerCap consumerTarget)
     (success : alignAtSlot state origin (productMatcherTarget duals) expected =
       some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   let resolvedDuals := duals.map (Dual.applySubst state.prevailing)
   have sourceView : state.prevailing.apply (productMatcherTarget duals) =
       .matcher (.prod (resolvedDuals.map Dual.cap))
@@ -720,14 +720,14 @@ theorem alignAtSlot_productMatcherLift_ddAlignRun
         subst final
         refine ⟨rfl, rfl, ?_⟩
         rw [InferState.prevailing_recordSolve]
-        exact DDAlignWithLedger.productMatcherLift
+        exact DemandAlignWithLedger.productMatcherLift
           (by simpa [resolvedDuals] using productMatcherDuals?_apply rawView)
           expectedView
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
 
 /-- Reconstruct the slot-tuple lift from the executable synthetic unary slot.
-The DD rule remains indexed by the original raw product of slots. -/
+The demand-directed rule remains indexed by the original raw product of slots. -/
 theorem alignAtSlot_slotTupleLift_ddAlignRun
     {state final : InferState} {origin : ConstraintOrigin}
     {raw expected : Ty} {duals : List Dual}
@@ -739,7 +739,7 @@ theorem alignAtSlot_slotTupleLift_ddAlignRun
       (state.prevailing.apply expected) = .slotTupleLift)
     (success : alignAtSlot state origin (slotTupleTarget duals) expected =
       some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   let resolvedDuals := duals.map (Dual.applySubst state.prevailing)
   have sourceView : state.prevailing.apply (slotTupleTarget duals) =
       .slot (.prod (resolvedDuals.map Dual.cap))
@@ -790,13 +790,13 @@ theorem alignAtSlot_slotTupleLift_ddAlignRun
   refine ⟨rfl, rfl, ?_⟩
   rw [InferState.prevailing_recordSolve,
     InferState.prevailing_recordSolve, capDeltaEq]
-  exact DDAlignWithLedger.slotTupleLift demand
+  exact DemandAlignWithLedger.slotTupleLift demand
     (by simpa [resolvedDuals] using productSlotDuals?_apply rawView)
     expectedView exactCap
     (adjustedSourceEq ▸ adjustedRequestedEq ▸ exactTarget)
 
 /-- Reconstruct a product-matcher lift executed directly on the cut-resolved
-component views.  The DD indices remain the original raw source and expected
+component views.  The demand-directed indices remain the original raw source and expected
 types; the resolved dual list is used only by the local solver. -/
 theorem alignResolvedProductMatcherAtSlot_ddAlignRun
     {state final : InferState} {origin : ConstraintOrigin}
@@ -807,7 +807,7 @@ theorem alignResolvedProductMatcherAtSlot_ddAlignRun
       .slot consumerCap consumerTarget)
     (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
       consumerTarget = some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   unfold alignResolvedProductMatcherAtSlot at success
   unfold runResolvedConstraint at success
   cases stepEq : solveResolvedWithLedger state.capabilityOrigins
@@ -823,7 +823,7 @@ theorem alignResolvedProductMatcherAtSlot_ddAlignRun
         subst final
         refine ⟨rfl, rfl, ?_⟩
         rw [InferState.prevailing_recordSolve]
-        exact DDAlignWithLedger.productMatcherLift rawView expectedView
+        exact DemandAlignWithLedger.productMatcherLift rawView expectedView
           (solveResolvedWithLedger_originSafeOneWayDelta stepEq)
       · contradiction
 
@@ -839,7 +839,7 @@ theorem alignResolvedSlotTupleAtSlot_ddAlignRun
       .slot consumerCap consumerTarget)
     (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
       consumerTarget = some final) :
-    DDAlignRun raw expected state final := by
+    DemandAlignRun raw expected state final := by
   unfold alignResolvedSlotTupleAtSlot at success
   rcases Option.bind_eq_some_iff.mp success with
     ⟨capStep, capSuccess, targetSuccess⟩
@@ -857,7 +857,7 @@ theorem alignResolvedSlotTupleAtSlot_ddAlignRun
   refine ⟨rfl, rfl, ?_⟩
   rw [InferState.prevailing_recordSolve,
     InferState.prevailing_recordSolve, capDeltaEq]
-  exact DDAlignWithLedger.slotTupleLift demand rawView expectedView exactCap
+  exact DemandAlignWithLedger.slotTupleLift demand rawView expectedView exactCap
     (by
       simpa [InferState.recordSolve, Subst.apply, capTargetId,
         Ty.applyTarget_id] using exactTarget)
@@ -923,11 +923,11 @@ private theorem alignExprResultAtExpected_of_rawSource_ddAlignRun
       alignAtSlot expressionResult.state
         (freshOrigin .expression path "expected-type")
         expressionResult.target expected = some aligned →
-      DDAlignRun expressionResult.target expected expressionResult.state
+      DemandAlignRun expressionResult.target expected expressionResult.state
         aligned)
     (success : alignExprResultAtExpected path expressionResult expected =
       some final) :
-    DDAlignRun expressionResult.target expected expressionResult.state final := by
+    DemandAlignRun expressionResult.target expected expressionResult.state final := by
   unfold alignExprResultAtExpected at success
   cases alignmentEq : alignAtSlot expressionResult.state
       (freshOrigin .expression path "expected-type") expressionResult.target
@@ -949,7 +949,7 @@ theorem alignExprResultAtExpected_ddAlignRun
     {final : InferState}
     (success : alignExprResultAtExpected path expressionResult expected =
       some final) :
-    DDAlignRun expressionResult.target expected expressionResult.state final := by
+    DemandAlignRun expressionResult.target expected expressionResult.state final := by
   cases planEq : expectedCoercionPlan expressionResult.state
       expressionResult.target expected with
   | productMatcherLift duals =>
@@ -1040,22 +1040,22 @@ theorem alignExprResultAtExpected_ddAlignRun
                 simp_all)
             alignmentEq
 
-/-- Compose synthesis and expected-type alignment into the single public DD
+/-- Compose synthesis and expected-type alignment into the single public demand-directed
 checking rule. -/
-theorem DDSynthRun.check
+theorem DemandSynthRun.check
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {expected : Ty} {initial : InferState} {synthesized : ExprResult}
     {final : InferState}
-    (synthRun : DDSynthRun signature context expression initial synthesized)
-    (alignRun : DDAlignRun synthesized.target expected synthesized.state final) :
-    DDCheckRun signature context expression expected initial final := by
+    (synthRun : DemandSynthRun signature context expression initial synthesized)
+    (alignRun : DemandAlignRun synthesized.target expected synthesized.state final) :
+    DemandCheckRun signature context expression expected initial final := by
   rcases synthRun with ⟨raw, synthDerived, targetEq, synthOrigin⟩
   rcases alignRun with ⟨supplyEq, ledgerEq, aligned⟩
   subst raw
-  unfold DDCheckRun
+  unfold DemandCheckRun
   rw [supplyEq, ledgerEq]
-  refine ⟨DDCheck.mk synthDerived aligned.erase, ?_⟩
-  exact DDCheckOrigin.mk synthOrigin aligned
+  refine ⟨DemandCheck.mk synthDerived aligned.erase, ?_⟩
+  exact DemandCheckOrigin.mk synthOrigin aligned
 
 /-- Any successful checking traversal composes its synthesis run with the
 generic expected-alignment reconstruction. -/
@@ -1066,18 +1066,18 @@ theorem checkExprFuel_ddCheckRun
     {synthesized : ExprResult}
     (inferEq : inferExprFuel fuel signature context selfEnv path expression
       initial = some synthesized)
-    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (synthRun : DemandSynthRun signature context expression initial synthesized)
     (success : checkExprFuel (fuel + 1) signature context selfEnv path
       expression expected initial = some final) :
-    DDCheckRun signature context expression expected initial final := by
+    DemandCheckRun signature context expression expected initial final := by
   have alignmentEq :
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
-  exact DDSynthRun.check synthRun
+  exact DemandSynthRun.check synthRun
     (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
 /-- The matcher-to-slot branch of executable checking reconstructs the single
-DD checking rule from its synthesis induction hypothesis. -/
+demand-directed checking rule from its synthesis induction hypothesis. -/
 theorem checkExprFuel_matcherToSlot_ddCheckRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
@@ -1086,23 +1086,23 @@ theorem checkExprFuel_matcherToSlot_ddCheckRun
     {producerTarget consumerTarget : Ty}
     (inferEq : inferExprFuel fuel signature context selfEnv path expression
       initial = some synthesized)
-    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (synthRun : DemandSynthRun signature context expression initial synthesized)
     (rawView : synthesized.state.prevailing.apply synthesized.target =
       .matcher producerCap producerTarget)
     (expectedView : synthesized.state.prevailing.apply expected =
       .slot consumerCap consumerTarget)
     (success : checkExprFuel (fuel + 1) signature context selfEnv path
       expression expected initial = some final) :
-    DDCheckRun signature context expression expected initial final := by
+    DemandCheckRun signature context expression expected initial final := by
   let _ := rawView
   let _ := expectedView
   have alignmentEq :
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
-  exact DDSynthRun.check synthRun
+  exact DemandSynthRun.check synthRun
     (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
-/-- The raw product-matcher branch reconstructs the explicit DD product lift
+/-- The raw product-matcher branch reconstructs the explicit demand-directed product lift
 before composing it with checking. -/
 theorem checkExprFuel_productMatcherLift_ddCheckRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -1112,19 +1112,19 @@ theorem checkExprFuel_productMatcherLift_ddCheckRun
     {consumerCap : Cap} {consumerTarget : Ty}
     (inferEq : inferExprFuel fuel signature context selfEnv path expression
       initial = some synthesized)
-    (synthRun : DDSynthRun signature context expression initial synthesized)
+    (synthRun : DemandSynthRun signature context expression initial synthesized)
     (rawView : productMatcherDuals? synthesized.target = some duals)
     (expectedView : synthesized.state.prevailing.apply expected =
       .slot consumerCap consumerTarget)
     (success : checkExprFuel (fuel + 1) signature context selfEnv path
       expression expected initial = some final) :
-    DDCheckRun signature context expression expected initial final := by
+    DemandCheckRun signature context expression expected initial final := by
   let _ := rawView
   let _ := expectedView
   have alignmentEq :
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
-  exact DDSynthRun.check synthRun
+  exact DemandSynthRun.check synthRun
     (alignExprResultAtExpected_ddAlignRun alignmentEq)
 
 /-- The domain and state produced by the executable lambda-entry allocation. -/
@@ -1291,18 +1291,18 @@ theorem buildFixPlaceholder_nonMatcher
     simp [NonMatcherBody, matcherProducingRoot, buildFixPlaceholder,
       fixDomain, fixCodomain, fixFreshState] at nonMatcher ⊢
 
-/-- The empty executable expression-list result is the empty DD derivation. -/
-theorem DDSynthsRun.nil
+/-- The empty executable expression-list result is the empty demand-directed derivation. -/
+theorem DemandSynthsRun.nil
     (signature : FrozenSig) (context : Context) (initial : InferState) :
-    DDSynthsRun signature context [] initial ⟨[], initial⟩ := by
-  refine ⟨[], DDSynths.nil, rfl, ?_⟩
-  exact DDSynthsOrigin.nil
+    DemandSynthsRun signature context [] initial ⟨[], initial⟩ := by
+  refine ⟨[], DemandSynths.nil, rfl, ?_⟩
+  exact DemandSynthsOrigin.nil
 
 /-- Empty pointwise checking preserves the exact executable state. -/
-theorem DDChecksRun.nil
+theorem DemandChecksRun.nil
     (signature : FrozenSig) (context : Context) (initial : InferState) :
-    DDChecksRun signature context [] [] initial initial := by
-  exact ⟨DDChecks.nil, DDChecksOrigin.nil⟩
+    DemandChecksRun signature context [] [] initial initial := by
+  exact ⟨DemandChecks.nil, DemandChecksOrigin.nil⟩
 
 /-- Empty user-pattern-list synthesis preserves bindings and state exactly. -/
 theorem DDPatternsRun.nil
@@ -1313,34 +1313,34 @@ theorem DDPatternsRun.nil
   exact ⟨DDPatterns.nil, DDPatternsOrigin.nil⟩
 
 /-- Compose exact head and tail run certificates in source order. -/
-theorem DDSynthsRun.cons
+theorem DemandSynthsRun.cons
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {expressions : List Expr} {initial : InferState} {head : ExprResult}
     {tail : ExprsResult}
-    (headRun : DDSynthRun signature context expression initial head)
-    (tailRun : DDSynthsRun signature context expressions head.state tail) :
-    DDSynthsRun signature context (expression :: expressions) initial
+    (headRun : DemandSynthRun signature context expression initial head)
+    (tailRun : DemandSynthsRun signature context expressions head.state tail) :
+    DemandSynthsRun signature context (expression :: expressions) initial
       ⟨head.target :: tail.targets, tail.state⟩ := by
   rcases headRun with ⟨headTarget, headDerived, headEq, headOrigin⟩
   rcases tailRun with ⟨tailTargets, tailDerived, tailEq, tailOrigin⟩
-  refine ⟨headTarget :: tailTargets, DDSynths.cons headDerived tailDerived,
+  refine ⟨headTarget :: tailTargets, DemandSynths.cons headDerived tailDerived,
     ?_, ?_⟩
   · simp [headEq, tailEq]
-  · exact DDSynthsOrigin.cons headOrigin tailOrigin
+  · exact DemandSynthsOrigin.cons headOrigin tailOrigin
 
 /-- Compose exact head checking with the tail run in source order. -/
-theorem DDChecksRun.cons
+theorem DemandChecksRun.cons
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {expressions : List Expr} {expected : Ty} {expecteds : List Ty}
     {initial middle final : InferState}
-    (headRun : DDCheckRun signature context expression expected initial middle)
-    (tailRun : DDChecksRun signature context expressions expecteds middle final) :
-    DDChecksRun signature context (expression :: expressions)
+    (headRun : DemandCheckRun signature context expression expected initial middle)
+    (tailRun : DemandChecksRun signature context expressions expecteds middle final) :
+    DemandChecksRun signature context (expression :: expressions)
       (expected :: expecteds) initial final := by
   rcases headRun with ⟨headDerived, headOrigin⟩
   rcases tailRun with ⟨tailDerived, tailOrigin⟩
-  exact ⟨DDChecks.cons headDerived tailDerived,
-    DDChecksOrigin.cons headOrigin tailOrigin⟩
+  exact ⟨DemandChecks.cons headDerived tailDerived,
+    DemandChecksOrigin.cons headOrigin tailOrigin⟩
 
 /-- Compose exact head and tail user-pattern runs while threading the binding
 context and inference state left to right. -/
@@ -1360,54 +1360,54 @@ theorem DDPatternsRun.cons
     DDPatternsOrigin.cons headOrigin tailOrigin⟩
 
 /-- Reconstruct lambda synthesis from the exact body-entry run. -/
-theorem DDSynthRun.lam
+theorem DemandSynthRun.lam
     {signature : FrozenSig} {context : Context} {name : String} {body : Expr}
     {initial : InferState} {path : SyntaxPath} {bodyResult : ExprResult}
-    (bodyRun : DDSynthRun signature
+    (bodyRun : DemandSynthRun signature
       ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
       (lambdaEntryState initial path) bodyResult) :
-    DDSynthRun signature context (.lam name body) initial
+    DemandSynthRun signature context (.lam name body) initial
       (finishExpr (.lam name body) path
         (.fn (lambdaDomain initial path) bodyResult.target)
         bodyResult.state) := by
   rcases bodyRun with ⟨bodyTarget, bodyDerived, bodyEq, bodyOrigin⟩
-  change DDSynth signature
+  change DemandSynth signature
     { initial.supply with nextTy := initial.supply.nextTy + 1 }
     initial.prevailing
     ((name, Scheme.mono (.var initial.supply.nextTy)) :: context) body
     bodyTarget bodyResult.state.supply bodyResult.state.prevailing at bodyDerived
-  change DDSynthOrigin signature bodyDerived initial.capabilityOrigins
+  change DemandSynthOrigin signature bodyDerived initial.capabilityOrigins
     bodyResult.state.capabilityOrigins at bodyOrigin
   refine ⟨.fn (.var initial.supply.nextTy) bodyTarget,
-    DDSynth.lam bodyDerived, ?_, ?_⟩
+    DemandSynth.lam bodyDerived, ?_, ?_⟩
   · simp [finishExpr, bodyEq]
-  · simpa [finishExpr] using DDSynthOrigin.lam bodyOrigin
+  · simpa [finishExpr] using DemandSynthOrigin.lam bodyOrigin
 
 /-- Compose the ordinary recursive-body run with its codomain alignment.  The
-two acceptance events at body entry affect neither DD state index nor the
+two acceptance events at body entry affect neither demand-directed state index nor the
 origin ledger. -/
-theorem DDSynthRun.fix
+theorem DemandSynthRun.fix
     {signature : FrozenSig} {context : Context} {self argument : String}
     {body : Expr} {initial : InferState} {path : SyntaxPath}
     {bodyResult : ExprResult} {alignedState : InferState}
     (distinct : self ≠ argument)
     (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
-    (bodyRun : DDSynthRun signature
+    (bodyRun : DemandSynthRun signature
       ((argument, Scheme.mono (fixDomain initial path)) ::
         (self, Scheme.mono
           (.fn (fixDomain initial path) (fixCodomain initial path))) :: context)
       body (fixBodyEntryState initial path self argument) bodyResult)
-    (alignRun : DDAlignTypesRun bodyResult.target (fixCodomain initial path)
+    (alignRun : DemandAlignTypesRun bodyResult.target (fixCodomain initial path)
       bodyResult.state alignedState) :
-    DDSynthRun signature context (.fix self argument body) initial
+    DemandSynthRun signature context (.fix self argument body) initial
       (finishExpr (.fix self argument body) path
         (.fn (fixDomain initial path) (fixCodomain initial path))
         alignedState) := by
   rcases bodyRun with ⟨bodyTarget, bodyDerived, bodyTargetEq, bodyOrigin⟩
   rcases alignRun with ⟨alignedSupplyEq, alignedLedgerEq, aligned⟩
   subst bodyTarget
-  change DDSynth signature
+  change DemandSynth signature
     { initial.supply with nextTy := initial.supply.nextTy + 2 }
     initial.prevailing
     ((argument, Scheme.mono (.var initial.supply.nextTy)) ::
@@ -1416,16 +1416,16 @@ theorem DDSynthRun.fix
           (.var (initial.supply.nextTy + 1)))) :: context)
     body bodyResult.target bodyResult.state.supply
       bodyResult.state.prevailing at bodyDerived
-  change DDSynthOrigin signature bodyDerived initial.capabilityOrigins
+  change DemandSynthOrigin signature bodyDerived initial.capabilityOrigins
     bodyResult.state.capabilityOrigins at bodyOrigin
   simp only [fixCodomain_eq] at aligned
-  have baseRun : DDSynthRun signature context (.fix self argument body) initial
+  have baseRun : DemandSynthRun signature context (.fix self argument body) initial
       ⟨.fn (.var initial.supply.nextTy) (.var (initial.supply.nextTy + 1)),
         alignedState⟩ := by
-    unfold DDSynthRun
+    unfold DemandSynthRun
     let rawDerived :=
-      DDSynth.fix distinct direct nonMatcher bodyDerived aligned.erase
-    let finalDerived : DDSynth signature initial.supply initial.prevailing
+      DemandSynth.fix distinct direct nonMatcher bodyDerived aligned.erase
+    let finalDerived : DemandSynth signature initial.supply initial.prevailing
         context (.fix self argument body)
         (.fn (.var initial.supply.nextTy) (.var (initial.supply.nextTy + 1)))
         alignedState.supply alignedState.prevailing :=
@@ -1433,85 +1433,85 @@ theorem DDSynthRun.fix
     refine ⟨.fn (.var initial.supply.nextTy)
         (.var (initial.supply.nextTy + 1)), finalDerived, rfl, ?_⟩
     simp only [alignedSupplyEq, alignedLedgerEq]
-    exact DDSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned
-  unfold DDSynthRun at baseRun ⊢
+    exact DemandSynthOrigin.fix distinct direct nonMatcher bodyOrigin aligned
+  unfold DemandSynthRun at baseRun ⊢
   simpa [finishExpr] using baseRun
 
 /-- Reconstruct tuple synthesis from the exact expression-list run after the
 tuple visit event. -/
-theorem DDSynthRun.tuple
+theorem DemandSynthRun.tuple
     {signature : FrozenSig} {context : Context} {expressions : List Expr}
     {initial : InferState} {path : SyntaxPath} {children : ExprsResult}
-    (childrenRun : DDSynthsRun signature context expressions
+    (childrenRun : DemandSynthsRun signature context expressions
       (visit initial .exprTuple path) children) :
-    DDSynthRun signature context (.tuple expressions) initial
+    DemandSynthRun signature context (.tuple expressions) initial
       (finishExpr (.tuple expressions) path (.prod children.targets)
         children.state) := by
   rcases childrenRun with
     ⟨childTargets, childrenDerived, targetsEq, childrenOrigin⟩
-  change DDSynths signature initial.supply initial.prevailing context
+  change DemandSynths signature initial.supply initial.prevailing context
     expressions childTargets children.state.supply
     children.state.prevailing at childrenDerived
-  change DDSynthsOrigin signature childrenDerived initial.capabilityOrigins
+  change DemandSynthsOrigin signature childrenDerived initial.capabilityOrigins
     children.state.capabilityOrigins at childrenOrigin
-  refine ⟨.prod childTargets, DDSynth.tuple childrenDerived, ?_, ?_⟩
+  refine ⟨.prod childTargets, DemandSynth.tuple childrenDerived, ?_, ?_⟩
   · simp [finishExpr, targetsEq]
-  · simpa [finishExpr] using DDSynthOrigin.tuple childrenOrigin
+  · simpa [finishExpr] using DemandSynthOrigin.tuple childrenOrigin
 
 /-- Compose function synthesis, exact function-shape alignment, and generic
 argument checking into an application synthesis run. -/
-theorem DDSynthRun.app
+theorem DemandSynthRun.app
     {signature : FrozenSig} {context : Context}
     {function argument : Expr} {initial : InferState} {path : SyntaxPath}
     {functionResult : ExprResult} {functionAligned argumentFinal : InferState}
-    (functionRun : DDSynthRun signature context function
+    (functionRun : DemandSynthRun signature context function
       (visit initial .exprApp path) functionResult)
-    (functionAlignRun : DDAlignTypesRun functionResult.target
+    (functionAlignRun : DemandAlignTypesRun functionResult.target
       (.fn (applicationDomain functionResult path)
         (applicationResultTarget functionResult path))
       (applicationFreshState functionResult path) functionAligned)
-    (argumentRun : DDCheckRun signature context argument
+    (argumentRun : DemandCheckRun signature context argument
       (applicationDomain functionResult path) functionAligned argumentFinal) :
-    DDSynthRun signature context (.app function argument) initial
+    DemandSynthRun signature context (.app function argument) initial
       (finishExpr (.app function argument) path
         (applicationResultTarget functionResult path) argumentFinal) := by
   rcases functionRun with
     ⟨functionTarget, functionDerived, functionTargetEq, functionOrigin⟩
   rcases functionAlignRun with
     ⟨alignedSupplyEq, alignedLedgerEq, functionAlignedDD⟩
-  unfold DDCheckRun at argumentRun
+  unfold DemandCheckRun at argumentRun
   rw [alignedSupplyEq, alignedLedgerEq] at argumentRun
   simp only [applicationFreshState_supply, applicationFreshState_capabilityOrigins,
     applicationDomain_eq] at argumentRun
   rcases argumentRun with ⟨argumentDerived, argumentOrigin⟩
   subst functionTarget
-  change DDSynth signature initial.supply initial.prevailing context function
+  change DemandSynth signature initial.supply initial.prevailing context function
     functionResult.target functionResult.state.supply
       functionResult.state.prevailing at functionDerived
-  change DDSynthOrigin signature functionDerived initial.capabilityOrigins
+  change DemandSynthOrigin signature functionDerived initial.capabilityOrigins
     functionResult.state.capabilityOrigins at functionOrigin
   simp only [applicationFreshState_capabilityOrigins,
     applicationFreshState_prevailing, applicationDomain_eq,
     applicationResultTarget_eq] at functionAlignedDD
   refine ⟨.var (functionResult.state.supply.nextTy + 1),
-    DDSynth.app functionDerived functionAlignedDD.erase argumentDerived,
+    DemandSynth.app functionDerived functionAlignedDD.erase argumentDerived,
     ?_, ?_⟩
   · simp [finishExpr]
   · simpa [finishExpr] using
-      DDSynthOrigin.app functionOrigin functionAlignedDD argumentOrigin
+      DemandSynthOrigin.app functionOrigin functionAlignedDD argumentOrigin
 
 /-- Reconstruct a data-constructor result from exact pointwise argument
 checking and the executable export freeze. -/
-theorem DDSynthRun.ctor
+theorem DemandSynthRun.ctor
     {signature : FrozenSig} {context : Context} {name : String}
     {expressions : List Expr} {scheme : CtorScheme}
     {initial childrenFinal : InferState} {path : SyntaxPath}
     (lookup : signature.findDataCtor name = some scheme)
-    (childrenRun : DDChecksRun signature context expressions
+    (childrenRun : DemandChecksRun signature context expressions
       (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
       (instantiateCtorInState (visit initial .exprCtor path) scheme).2
       childrenFinal) :
-    DDSynthRun signature context (.ctor name expressions) initial
+    DemandSynthRun signature context (.ctor name expressions) initial
       (finishExpr (.ctor name expressions) path
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
         (childrenFinal.freezeCapabilityExport
@@ -1524,22 +1524,22 @@ theorem DDSynthRun.ctor
     InferState.recordEvent_supply, InferState.prevailing_recordEvent,
     InferState.recordEvent_capabilityOrigins] at childrenDerived childrenOrigin
   refine ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
-    DDSynth.ctor lookup childrenDerived, ?_, ?_⟩
+    DemandSynth.ctor lookup childrenDerived, ?_, ?_⟩
   · rfl
-  · simpa [finishExpr] using DDSynthOrigin.ctor lookup childrenOrigin
+  · simpa [finishExpr] using DemandSynthOrigin.ctor lookup childrenOrigin
 
 /-- Primitive application has the same instantiation, checking, and export
 freeze boundary as a data constructor. -/
-theorem DDSynthRun.prim
+theorem DemandSynthRun.prim
     {signature : FrozenSig} {context : Context} {op : PrimOp}
     {expressions : List Expr} {scheme : CtorScheme}
     {initial childrenFinal : InferState} {path : SyntaxPath}
     (lookup : signature.findPrimitive op = some scheme)
-    (childrenRun : DDChecksRun signature context expressions
+    (childrenRun : DemandChecksRun signature context expressions
       (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
       (instantiateCtorInState (visit initial .exprPrim path) scheme).2
       childrenFinal) :
-    DDSynthRun signature context (.prim op expressions) initial
+    DemandSynthRun signature context (.prim op expressions) initial
       (finishExpr (.prim op expressions) path
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.2
         (childrenFinal.freezeCapabilityExport
@@ -1552,28 +1552,28 @@ theorem DDSynthRun.prim
     InferState.recordEvent_supply, InferState.prevailing_recordEvent,
     InferState.recordEvent_capabilityOrigins] at childrenDerived childrenOrigin
   refine ⟨(InferenceBase.instantiateCtorScheme initial.supply scheme).value.2,
-    DDSynth.prim lookup childrenDerived, ?_, ?_⟩
+    DemandSynth.prim lookup childrenDerived, ?_, ?_⟩
   · rfl
-  · simpa [finishExpr] using DDSynthOrigin.prim lookup childrenOrigin
+  · simpa [finishExpr] using DemandSynthOrigin.prim lookup childrenOrigin
 
 /-- The empty branch of the executable expression-list traversal reconstructs
-the empty DD list certificate. -/
+the empty demand-directed list certificate. -/
 theorem inferExprsFuel_nil_ddSynthsRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {initial : InferState} {result : ExprsResult}
     (success : inferExprsFuel (fuel + 1) signature context selfEnv parent index
       [] initial = some result) :
-    DDSynthsRun signature context [] initial result := by
+    DemandSynthsRun signature context [] initial result := by
   simp only [inferExprsFuel] at success
   have resultEq := Option.some.inj success
   subst result
-  exact DDSynthsRun.nil signature context initial
+  exact DemandSynthsRun.nil signature context initial
 
 /-- The cons branch of expression-list traversal preserves the exact
 left-to-right state boundary.  The two functional premises are precisely the
 head and tail induction hypotheses that the eventual mutual traversal theorem
-will supply; no typing or runtime certificate is assumed. -/
+will supply; no typing or typing invariant is assumed. -/
 theorem inferExprsFuel_cons_ddSynthsRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
@@ -1582,14 +1582,14 @@ theorem inferExprsFuel_cons_ddSynthsRun
     (headSound : ∀ head : ExprResult,
       inferExprFuel fuel signature context selfEnv (index :: parent)
         expression initial = some head →
-      DDSynthRun signature context expression initial head)
+      DemandSynthRun signature context expression initial head)
     (tailSound : ∀ (head : ExprResult) (tail : ExprsResult),
       inferExprsFuel fuel signature context selfEnv parent (index + 1)
         expressions head.state = some tail →
-      DDSynthsRun signature context expressions head.state tail)
+      DemandSynthsRun signature context expressions head.state tail)
     (success : inferExprsFuel (fuel + 1) signature context selfEnv parent index
       (expression :: expressions) initial = some result) :
-    DDSynthsRun signature context (expression :: expressions) initial result := by
+    DemandSynthsRun signature context (expression :: expressions) initial result := by
   simp only [inferExprsFuel] at success
   cases headEq : inferExprFuel fuel signature context selfEnv
       (index :: parent) expression initial with
@@ -1601,21 +1601,21 @@ theorem inferExprsFuel_cons_ddSynthsRun
       | some tail =>
           simp only [headEq, tailEq, Option.some.injEq] at success
           subst result
-          exact DDSynthsRun.cons (headSound head headEq)
+          exact DemandSynthsRun.cons (headSound head headEq)
             (tailSound head tail tailEq)
 
-/-- Successful empty checking-list traversal is the exact empty DD run. -/
+/-- Successful empty checking-list traversal is the exact empty demand-directed run. -/
 theorem checkExprsFuel_nil_ddChecksRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {initial final : InferState}
     (success : checkExprsFuel (fuel + 1) signature context selfEnv parent index
       [] [] initial = some final) :
-    DDChecksRun signature context [] [] initial final := by
+    DemandChecksRun signature context [] [] initial final := by
   simp only [checkExprsFuel] at success
   have finalEq := Option.some.inj success
   subst final
-  exact DDChecksRun.nil signature context initial
+  exact DemandChecksRun.nil signature context initial
 
 /-- The cons branch checks its synthesized head through the generic checking
 bridge, then threads that exact terminal state into the tail list run. -/
@@ -1628,15 +1628,15 @@ theorem checkExprsFuel_cons_ddChecksRun
     (headSound : ∀ synthesized : ExprResult,
       inferExprFuel fuel signature context selfEnv (index :: parent)
         expression initial = some synthesized →
-      DDSynthRun signature context expression initial synthesized)
+      DemandSynthRun signature context expression initial synthesized)
     (tailSound : ∀ (middle tailFinal : InferState),
       checkExprsFuel (fuel + 1) signature context selfEnv parent (index + 1)
         expressions expecteds middle = some tailFinal →
-      DDChecksRun signature context expressions expecteds middle tailFinal)
+      DemandChecksRun signature context expressions expecteds middle tailFinal)
     (success : checkExprsFuel (fuel + 2) signature context selfEnv parent index
       (expression :: expressions) (expected :: expecteds) initial =
         some final) :
-    DDChecksRun signature context (expression :: expressions)
+    DemandChecksRun signature context (expression :: expressions)
       (expected :: expecteds) initial final := by
   simp only [checkExprsFuel] at success
   cases headCheckEq : checkExprFuel (fuel + 1) signature context selfEnv
@@ -1652,28 +1652,28 @@ theorem checkExprsFuel_cons_ddChecksRun
       | some synthesized =>
           have headRun := checkExprFuel_ddCheckRun headInferEq
             (headSound synthesized headInferEq) headCheckEq
-          exact DDChecksRun.cons headRun
+          exact DemandChecksRun.cons headRun
             (tailSound middle final tailEq)
 
 /-- A reconstructed run from the executable initial state is already a
-public `DDTyping` derivation at the run's resolved result type. -/
-theorem DDSynthRun.toDDTyping
+public `SourceTyping` derivation at the run's resolved result type. -/
+theorem DemandSynthRun.toSourceTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
-    (run : DDSynthRun signature context expression
+    (run : DemandSynthRun signature context expression
       (initialState signature context) result)
     (audit : ∀ {rawTarget}
-      {derived : DDSynth signature (initialSupply signature context) Subst.id
+      {derived : DemandSynth signature (initialSupply signature context) Subst.id
         context expression rawTarget result.state.supply
         result.state.prevailing}
-      (origin : DDSynthOrigin signature derived []
+      (origin : DemandSynthOrigin signature derived []
         result.state.capabilityOrigins),
-      DDSynthTerminalAudit result.state.prevailing signature origin) :
-    DDTyping signature context expression result.resolvedTarget := by
+      DemandSynthTerminalAudit result.state.prevailing signature origin) :
+    SourceTyping signature context expression result.resolvedTarget := by
   rcases run with ⟨rawTarget, derived, targetEq, origin⟩
-  change DDSynth signature (initialSupply signature context) Subst.id context
+  change DemandSynth signature (initialSupply signature context) Subst.id context
     expression rawTarget result.state.supply result.state.prevailing at derived
-  change DDSynthOrigin signature derived []
+  change DemandSynthOrigin signature derived []
     result.state.capabilityOrigins at origin
   refine ⟨rawTarget, result.state.supply, result.state.prevailing, ?_,
     result.state.capabilityOrigins, ?_, ?_, ?_⟩
@@ -1694,12 +1694,12 @@ theorem inferExprFuel_lam_ddSynthRun
         ((name, Scheme.mono (lambdaDomain initial path)) :: context)
         (selfEnv.erase name) (0 :: path) body
         (lambdaEntryState initial path) = some bodyResult →
-      DDSynthRun signature
+      DemandSynthRun signature
         ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
         (lambdaEntryState initial path) bodyResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.lam name body) initial = some result) :
-    DDSynthRun signature context (.lam name body) initial result := by
+    DemandSynthRun signature context (.lam name body) initial result := by
   cases bodyEq : inferExprFuel fuel signature
       ((name, Scheme.mono (lambdaDomain initial path)) :: context)
       (selfEnv.erase name) (0 :: path) body
@@ -1718,7 +1718,7 @@ theorem inferExprFuel_lam_ddSynthRun
         apply Option.some.inj
         simpa [inferExprFuel, lambdaDomain, actualBodyEq] using success
       subst result
-      exact DDSynthRun.lam (bodySound bodyResult bodyEq)
+      exact DemandSynthRun.lam (bodySound bodyResult bodyEq)
 
 /-- The ordinary (non-matcher-literal) recursive branch reconstructs the
 declarative gate, its two-fresh monomorphic placeholder, the exact recursive
@@ -1732,10 +1732,10 @@ theorem inferExprFuel_fix_nonMatcher_ddSynthRun
         (bodyInitial : InferState) (bodyResult : ExprResult),
       inferExprFuel fuel signature bodyContext bodySelfEnv (0 :: path) body
         bodyInitial = some bodyResult →
-      DDSynthRun signature bodyContext body bodyInitial bodyResult)
+      DemandSynthRun signature bodyContext body bodyInitial bodyResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.fix self argument body) initial = some result) :
-    DDSynthRun signature context (.fix self argument body) initial result := by
+    DemandSynthRun signature context (.fix self argument body) initial result := by
   cases gate : (self != argument && DirectSelf.check self body) with
   | false => simp [inferExprFuel, gate] at success
   | true =>
@@ -1785,7 +1785,7 @@ theorem inferExprFuel_fix_nonMatcher_ddSynthRun
                 simpa [inferExprFuel, gate, actualPlaceholderEq, actualBodyEq,
                   actualAlignEq, fixDomain, fixCodomain] using success
               subst result
-              exact DDSynthRun.fix distinct direct nonMatcher
+              exact DemandSynthRun.fix distinct direct nonMatcher
                 (bodySound _ _ _ bodyResult bodyEq)
                 (alignTypes_ddAlignTypesRun alignEq)
 
@@ -1798,11 +1798,11 @@ theorem inferExprFuel_tuple_ddSynthRun
     (childrenSound : ∀ children : ExprsResult,
       inferExprsFuel fuel signature context selfEnv path 0 expressions
         (visit initial .exprTuple path) = some children →
-      DDSynthsRun signature context expressions
+      DemandSynthsRun signature context expressions
         (visit initial .exprTuple path) children)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.tuple expressions) initial = some result) :
-    DDSynthRun signature context (.tuple expressions) initial result := by
+    DemandSynthRun signature context (.tuple expressions) initial result := by
   cases childrenEq : inferExprsFuel fuel signature context selfEnv path 0
       expressions (visit initial .exprTuple path) with
   | none => simp [inferExprFuel, childrenEq] at success
@@ -1813,7 +1813,7 @@ theorem inferExprFuel_tuple_ddSynthRun
         apply Option.some.inj
         simpa [inferExprFuel, childrenEq] using success
       subst result
-      exact DDSynthRun.tuple (childrenSound children childrenEq)
+      exact DemandSynthRun.tuple (childrenSound children childrenEq)
 
 /-- The application branch uses the function synthesis hypothesis, aligns it
 with the two freshly allocated arrow indices, and checks the argument through
@@ -1825,16 +1825,16 @@ theorem inferExprFuel_app_ddSynthRun
     (functionSound : ∀ functionResult : ExprResult,
       inferExprFuel fuel signature context selfEnv (0 :: path) function
         (visit initial .exprApp path) = some functionResult →
-      DDSynthRun signature context function (visit initial .exprApp path)
+      DemandSynthRun signature context function (visit initial .exprApp path)
         functionResult)
     (argumentSound : ∀ (argumentInitial : InferState)
         (argumentResult : ExprResult),
       inferExprFuel fuel signature context selfEnv (1 :: path) argument
         argumentInitial = some argumentResult →
-      DDSynthRun signature context argument argumentInitial argumentResult)
+      DemandSynthRun signature context argument argumentInitial argumentResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.app function argument) initial = some result) :
-    DDSynthRun signature context (.app function argument) initial result := by
+    DemandSynthRun signature context (.app function argument) initial result := by
   cases functionEq : inferExprFuel fuel signature context selfEnv (0 :: path)
       function (visit initial .exprApp path) with
   | none => simp [inferExprFuel, functionEq] at success
@@ -1887,12 +1887,12 @@ theorem inferExprFuel_app_ddSynthRun
                   have argumentRun := checkExprFuel_ddCheckRun argumentEq
                     (argumentSound functionAligned argumentResult argumentEq)
                     argumentCheckSuccess
-                  exact DDSynthRun.app
+                  exact DemandSynthRun.app
                     (functionSound functionResult functionEq)
                     (alignTypes_ddAlignTypesRun functionAlignEq) argumentRun
 
 /-- A successful constructor branch instantiates its scheme, checks all
-arguments, freezes the exported result leaves, and reconstructs `DDSynth.ctor`. -/
+arguments, freezes the exported result leaves, and reconstructs `DemandSynth.ctor`. -/
 theorem inferExprFuel_ctor_ddSynthRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
@@ -1902,13 +1902,13 @@ theorem inferExprFuel_ctor_ddSynthRun
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprCtor path) scheme).2 =
           some childrenFinal →
-      DDChecksRun signature context expressions
+      DemandChecksRun signature context expressions
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprCtor path) scheme).2
         childrenFinal)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.ctor name expressions) initial = some result) :
-    DDSynthRun signature context (.ctor name expressions) initial result := by
+    DemandSynthRun signature context (.ctor name expressions) initial result := by
   cases lookup : signature.findDataCtor name with
   | none => simp [inferExprFuel, lookup] at success
   | some scheme =>
@@ -1932,11 +1932,11 @@ theorem inferExprFuel_ctor_ddSynthRun
             apply Option.some.inj
             simpa [inferExprFuel, lookup, visit, actualChildrenEq] using success
           subst result
-          exact DDSynthRun.ctor lookup
+          exact DemandSynthRun.ctor lookup
             (childrenSound scheme childrenFinal childrenEq)
 
 /-- Primitive synthesis shares the constructor instantiation/check/freeze
-pipeline and reconstructs `DDSynth.prim`. -/
+pipeline and reconstructs `DemandSynth.prim`. -/
 theorem inferExprFuel_prim_ddSynthRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {op : PrimOp}
@@ -1946,13 +1946,13 @@ theorem inferExprFuel_prim_ddSynthRun
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprPrim path) scheme).2 =
           some childrenFinal →
-      DDChecksRun signature context expressions
+      DemandChecksRun signature context expressions
         (InferenceBase.instantiateCtorScheme initial.supply scheme).value.1
         (instantiateCtorInState (visit initial .exprPrim path) scheme).2
         childrenFinal)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.prim op expressions) initial = some result) :
-    DDSynthRun signature context (.prim op expressions) initial result := by
+    DemandSynthRun signature context (.prim op expressions) initial result := by
   cases lookup : signature.findPrimitive op with
   | none => simp [inferExprFuel, lookup] at success
   | some scheme =>
@@ -1976,19 +1976,19 @@ theorem inferExprFuel_prim_ddSynthRun
             apply Option.some.inj
             simpa [inferExprFuel, lookup, visit, actualChildrenEq] using success
           subst result
-          exact DDSynthRun.prim lookup
+          exact DemandSynthRun.prim lookup
             (childrenSound scheme childrenFinal childrenEq)
 
 /-- Context lookup uses the executable scheme-instantiation helper and
 reconstructs the matching rename-only origin transition.  A direct-self hit
-adds only trace/source evidence and therefore does not change any DD index. -/
+adds only trace/source evidence and therefore does not change any demand-directed index. -/
 theorem inferExprFuel_var_ddSynthRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.var name) initial = some result) :
-    DDSynthRun signature context (.var name) initial result := by
+    DemandSynthRun signature context (.var name) initial result := by
   let entered := visit initial .exprVar path
   let normalizedContext := context.applySubst entered.prevailing
   cases lookup : normalizedContext.find? name with
@@ -2005,11 +2005,11 @@ theorem inferExprFuel_var_ddSynthRun
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
           refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
-            DDSynth.var ddLookup, ?_, ?_⟩
+            DemandSynth.var ddLookup, ?_, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit]
           · simpa [finishExpr, visit,
               DDLedger.markSchemeInstance] using
-              (DDSynthOrigin.var (signature := signature)
+              (DemandSynthOrigin.var (signature := signature)
                 (q := initial.supply) (S := initial.prevailing)
                 (context := context) (ledger := initial.capabilityOrigins)
                 ddLookup)
@@ -2022,50 +2022,50 @@ theorem inferExprFuel_var_ddSynthRun
               (context.applySubst initial.prevailing).find? name = some scheme := by
             simpa [normalizedContext, entered, visit] using lookup
           refine ⟨(InferenceBase.instantiateScheme initial.supply scheme).value,
-            DDSynth.var ddLookup, ?_, ?_⟩
+            DemandSynth.var ddLookup, ?_, ?_⟩
           · simp [finishExpr, instantiateSchemeInState, visit,
               recordSelfReference]
           · simpa [finishExpr, visit,
               recordSelfReference, DDLedger.markSchemeInstance] using
-              (DDSynthOrigin.var (signature := signature)
+              (DemandSynthOrigin.var (signature := signature)
                 (q := initial.supply) (S := initial.prevailing)
                 (context := context) (ledger := initial.capabilityOrigins)
                 ddLookup)
 
 /-- A successful literal traversal directly reconstructs the corresponding
-DD synthesis and its unchanged origin ledger. -/
+demand-directed synthesis and its unchanged origin ledger. -/
 theorem inferExprFuel_lit_ddSynthRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {value : Int}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.lit value) initial = some result) :
-    DDSynthRun signature context (.lit value) initial result := by
+    DemandSynthRun signature context (.lit value) initial result := by
   simp only [inferExprFuel, finishExpr, visit] at success
   have resultEq := Option.some.inj success
   subst result
-  refine ⟨.int, DDSynth.lit, rfl, ?_⟩
-  exact DDSynthOrigin.lit
+  refine ⟨.int, DemandSynth.lit, rfl, ?_⟩
+  exact DemandSynthOrigin.lit
 
 /-- A successful `something` traversal reconstructs the same one-target-meta
-allocation as the DD rule, while leaving the origin ledger unchanged. -/
+allocation as the demand-directed rule, while leaving the origin ledger unchanged. -/
 theorem inferExprFuel_something_ddSynthRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath}
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       .something initial = some result) :
-    DDSynthRun signature context .something initial result := by
+    DemandSynthRun signature context .something initial result := by
   simp only [inferExprFuel, finishExpr, visit] at success
   have resultEq := Option.some.inj success
   subst result
-  refine ⟨.matcher .any (.var initial.supply.nextTy), DDSynth.something,
+  refine ⟨.matcher .any (.var initial.supply.nextTy), DemandSynth.something,
     rfl, ?_⟩
-  exact DDSynthOrigin.something
+  exact DemandSynthOrigin.something
 
 /-! ## User-pattern reconstruction slices -/
 
-/-- The empty executable pattern-list traversal is the exact nil DD run. -/
+/-- The empty executable pattern-list traversal is the exact nil demand-directed run. -/
 theorem inferPatternsFuel_nil_ddPatternsRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
@@ -2078,7 +2078,7 @@ theorem inferPatternsFuel_nil_ddPatternsRun
   subst result
   exact DDPatternsRun.nil signature context parameters bindings initial
 
-/-- The executable pattern-list cons branch is exactly the left-to-right DD
+/-- The executable pattern-list cons branch is exactly the left-to-right demand-directed
 composition of its head and tail induction hypotheses. -/
 theorem inferPatternsFuel_cons_ddPatternsRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
@@ -2182,7 +2182,7 @@ theorem inferPatternFuel_pval_ddPatternRun
       inferExprFuel fuel signature (bindings.toContext ++ context) selfEnv
         (0 :: path) expression (visit initial .patternValue path) =
           some expressionResult →
-      DDSynthRun signature (bindings.toContext ++ context) expression
+      DemandSynthRun signature (bindings.toContext ++ context) expression
         (visit initial .patternValue path) expressionResult)
     (success : inferPatternFuel (fuel + 1) signature context parameters
       bindings selfEnv path (.pval expression) initial = some result) :
@@ -2215,7 +2215,7 @@ theorem inferPatternFuel_pval_ddPatternRun
         DDPatternOrigin.pval (parameters := parameters) expressionOrigin⟩
 
 /-- A successful parameter embedding performs no allocation or solve, so its
-lookup directly gives the exact DD pattern and origin certificates. -/
+lookup directly gives the exact demand-directed pattern and origin certificates. -/
 theorem inferPatternFuel_embed_ddPatternRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}
@@ -2242,7 +2242,7 @@ theorem inferPatternFuel_embed_ddPatternRun
           (ledger := initial.capabilityOrigins) lookup⟩
 
 /-- Tuple-pattern synthesis is the direct image of its exact list traversal;
-the trailing trace event changes none of the DD indices. -/
+the trailing trace event changes none of the demand-directed indices. -/
 theorem inferPatternFuel_ptuple_ddPatternRun
     {fuel : Nat} {signature : FrozenSig} {context : Context}
     {parameters : PatternCtx} {bindings : MonoCtx} {selfEnv : SelfEnv}

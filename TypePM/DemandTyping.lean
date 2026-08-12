@@ -6,20 +6,20 @@ import TypePM.SchemeBoundedness
 # Raw demand-directed typing derivations
 
 This module defines the syntax-directed, state-threaded demand-directed
-judgments `DDSynth`/`DDCheck` announced by the roadmap, independently of the
+judgments `DemandSynth`/`DemandCheck` announced by the roadmap, independently of the
 executable inference functions.  The two judgments thread a fresh supply `q`
 and a prevailing substitution `S` in input/output position:
 
 ```
-q; S; Γ ⊢ e ⇒ τraw ⊣ q'; S'       -- DDSynth
-q; S; Γ ⊢ e ⇐ τexpected ⊣ q'; S'  -- DDCheck
+q; S; Γ ⊢ e ⇒ τraw ⊣ q'; S'       -- DemandSynth
+q; S; Γ ⊢ e ⇐ τexpected ⊣ q'; S'  -- DemandCheck
 ```
 
 Design commitments realized here:
 
-* **Synthesis-first checking.**  `DDCheck` has exactly one rule: synthesize
+* **Synthesis-first checking.**  `DemandCheck` has exactly one rule: synthesize
   the expression without an expected type, then align the raw result with the
-  expected type at the exact output cut `q₁; S₁` (`DDAlign`).
+  expected type at the exact output cut `q₁; S₁` (`DemandAlign`).
 * **Slot-demand coercion.**  A non-identity coercion branch is available only
   when the substituted expected type already exposes a `MatcherSlot` head at
   the cut.  Branch selection is classified by the deterministic
@@ -47,14 +47,14 @@ The judgments cover the full core syntax.  The pattern layer mirrors the
 executable traversal through supply-indexed pure twins of its fresh
 allocators (`freshTargetsSupply`, `freshenSkeletonSupply`,
 `patternCtorAssignmentsSupply`, `fixMatcherPlaceholderSupply`) and
-relational forms of its solver sequences (`DDAlignDual`,
-`DDAlignTargetList`, `DDAlignBindings`, `DDAlignCtorCaps`,
+relational forms of its solver sequences (`DemandAlignDual`,
+`DemandAlignTargetList`, `DemandAlignBindings`, `DemandAlignCtorCaps`,
 `DDPatternCtorCap`); matcher-literal finalization consumes the same
 executable coverage checks as the declarative rule.  Intrinsic Origin
 certificates index the capability-freeze/export ledger transitions of these
 raw judgments.  The public wrapper additionally carries a recursive audit at
 the published terminal substitution; together they support the proved
-state-erasure map to the internal `RuntimeTyping` certificate without making
+state-erasure map to the internal `TypingInvariant` without making
 that certificate a second source-typing relation.
 -/
 
@@ -774,7 +774,7 @@ theorem PairedUnification.PairedResult.exactPairedMGU
     exact result.targetCapRange source image imageMem
 
 /-- Exactness plus the kernel's ledger admissibility is precisely the
-origin-safe capability MGU premise used by ledger-aware DD rules. -/
+origin-safe capability MGU premise used by ledger-aware demand-directed rules. -/
 theorem PairedUnification.OrientedCapResult.originSafeExactCapMGU
     {ledger : CapabilityOriginLedger} {left right : Cap}
     (result : PairedUnification.OrientedCapResult ledger left right) :
@@ -1933,7 +1933,7 @@ theorem PairedMGU.varConstraint_target_image_var
 
 Checking dispatches on cut-resolved views only.  The classifiers make the
 branch choice a function of the two resolved types, so the coercion rules of
-`DDAlign` are mutually exclusive by construction and the selector-determinacy
+`DemandAlign` are mutually exclusive by construction and the selector-determinacy
 principle holds definitionally.
 -/
 
@@ -1996,16 +1996,16 @@ theorem demandClass_matcherExpected (source : Ty)
 
 /-! ## State-threaded alignment relations
 
-`DDAlignTypes` mirrors ordinary equality alignment: annotated pairs solve the
+`DemandAlignTypes` mirrors ordinary equality alignment: annotated pairs solve the
 capability sort first and then the capability-adjusted targets; every other
-pair is one paired solve of the resolved views.  `DDAlign` is the complete
+pair is one paired solve of the resolved views.  `DemandAlign` is the complete
 checking cut: branch selection by `demandClass` on the resolved views,
 followed by the alignment steps of the selected branch.  Each solve composes
 its delta onto the prevailing substitution with cross-sort-aware sequencing.
 -/
 
 /-- Ordinary equality alignment at one cut. -/
-inductive DDAlignTypes : Subst → Ty → Ty → Subst → Prop where
+inductive DemandAlignTypes : Subst → Ty → Ty → Subst → Prop where
   | matcherPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
       {leftTarget rightTarget : Ty} {capDelta : CapSubst}
       {targetDelta : Subst} :
@@ -2014,7 +2014,7 @@ inductive DDAlignTypes : Subst → Ty → Ty → Subst → Prop where
       ExactCapMGU leftCap rightCap capDelta →
       ExactPairedMGU (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
-      DDAlignTypes S left right
+      DemandAlignTypes S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | slotPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
       {leftTarget rightTarget : Ty} {capDelta : CapSubst}
@@ -2024,23 +2024,23 @@ inductive DDAlignTypes : Subst → Ty → Ty → Subst → Prop where
       ExactCapMGU leftCap rightCap capDelta →
       ExactPairedMGU (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
-      DDAlignTypes S left right
+      DemandAlignTypes S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | ordinary {S : Subst} {left right : Ty} {delta : Subst} :
       alignPairClass (S.apply left) (S.apply right) = .ordinary →
       ExactPairedMGU (S.apply left) (S.apply right) delta →
-      DDAlignTypes S left right (Subst.seq delta S)
+      DemandAlignTypes S left right (Subst.seq delta S)
 
 /-- The complete checking cut: demand-classified coercion selection and
 alignment of one raw synthesized type against one raw expected type. -/
-inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
+inductive DemandAlign : Subst → Ty → Ty → Subst → Prop where
   | productMatcherLift {S : Subst} {raw expected : Ty} {duals : List Dual}
       {consumerCap : Cap} {consumerTarget : Ty} {delta : Subst} :
       productMatcherDuals? (S.apply raw) = some duals →
       S.apply expected = .slot consumerCap consumerTarget →
       OneWayDelta (.prod (duals.map Dual.cap)) (.prod (duals.map Dual.target))
         consumerCap consumerTarget delta →
-      DDAlign S raw expected (Subst.seq delta S)
+      DemandAlign S raw expected (Subst.seq delta S)
   | slotTupleLift {S : Subst} {raw expected : Ty} {duals : List Dual}
       {consumerCap : Cap} {consumerTarget : Ty} {capDelta : CapSubst}
       {targetDelta : Subst} :
@@ -2051,7 +2051,7 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       ExactPairedMGU
         ((Ty.prod (duals.map Dual.target)).applyCapability capDelta)
         (consumerTarget.applyCapability capDelta) targetDelta →
-      DDAlign S raw expected
+      DemandAlign S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | matcherToSlot {S : Subst} {raw expected : Ty}
       {producerCap : Cap} {producerTarget : Ty}
@@ -2060,7 +2060,7 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       S.apply expected = .slot consumerCap consumerTarget →
       OneWayDelta producerCap producerTarget consumerCap consumerTarget
         delta →
-      DDAlign S raw expected (Subst.seq delta S)
+      DemandAlign S raw expected (Subst.seq delta S)
   | slotToSlot {S : Subst} {raw expected : Ty}
       {sourceCap : Cap} {sourceTarget : Ty}
       {requestedCap : Cap} {requestedTarget : Ty} {capDelta : CapSubst}
@@ -2070,19 +2070,19 @@ inductive DDAlign : Subst → Ty → Ty → Subst → Prop where
       ExactCapMGU sourceCap requestedCap capDelta →
       ExactPairedMGU (sourceTarget.applyCapability capDelta)
         (requestedTarget.applyCapability capDelta) targetDelta →
-      DDAlign S raw expected
+      DemandAlign S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | ordinary {S : Subst} {raw expected : Ty} {S' : Subst} :
       demandClass (S.apply raw) (S.apply expected) = .ordinary →
-      DDAlignTypes S raw expected S' →
-      DDAlign S raw expected S'
+      DemandAlignTypes S raw expected S' →
+      DemandAlign S raw expected S'
 
 /-! The ledger-aware forms below are additive counterparts of the existing
 alignment relations.  They expose the same output substitution, but every
 local solve must also respect the capability-origin policy at this cut. -/
 
 /-- Origin-safe ordinary equality alignment at one cut. -/
-inductive DDAlignTypesWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignTypesWithLedger (ledger : CapabilityOriginLedger) :
     Subst → Ty → Ty → Subst → Prop where
   | matcherPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
       {leftTarget rightTarget : Ty} {capDelta : CapSubst}
@@ -2093,7 +2093,7 @@ inductive DDAlignTypesWithLedger (ledger : CapabilityOriginLedger) :
       OriginSafeExactPairedMGU ledger
         (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
-      DDAlignTypesWithLedger ledger S left right
+      DemandAlignTypesWithLedger ledger S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | slotPair {S : Subst} {left right : Ty} {leftCap rightCap : Cap}
       {leftTarget rightTarget : Ty} {capDelta : CapSubst}
@@ -2104,15 +2104,15 @@ inductive DDAlignTypesWithLedger (ledger : CapabilityOriginLedger) :
       OriginSafeExactPairedMGU ledger
         (leftTarget.applyCapability capDelta)
         (rightTarget.applyCapability capDelta) targetDelta →
-      DDAlignTypesWithLedger ledger S left right
+      DemandAlignTypesWithLedger ledger S left right
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | ordinary {S : Subst} {left right : Ty} {delta : Subst} :
       alignPairClass (S.apply left) (S.apply right) = .ordinary →
       OriginSafeExactPairedMGU ledger (S.apply left) (S.apply right) delta →
-      DDAlignTypesWithLedger ledger S left right (Subst.seq delta S)
+      DemandAlignTypesWithLedger ledger S left right (Subst.seq delta S)
 
 /-- Origin-safe complete checking-cut alignment. -/
-inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignWithLedger (ledger : CapabilityOriginLedger) :
     Subst → Ty → Ty → Subst → Prop where
   | productMatcherLift {S : Subst} {raw expected : Ty} {duals : List Dual}
       {consumerCap : Cap} {consumerTarget : Ty} {delta : Subst} :
@@ -2120,7 +2120,7 @@ inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
       S.apply expected = .slot consumerCap consumerTarget →
       OriginSafeOneWayDelta ledger (.prod (duals.map Dual.cap))
         (.prod (duals.map Dual.target)) consumerCap consumerTarget delta →
-      DDAlignWithLedger ledger S raw expected (Subst.seq delta S)
+      DemandAlignWithLedger ledger S raw expected (Subst.seq delta S)
   | slotTupleLift {S : Subst} {raw expected : Ty} {duals : List Dual}
       {consumerCap : Cap} {consumerTarget : Ty} {capDelta : CapSubst}
       {targetDelta : Subst} :
@@ -2132,7 +2132,7 @@ inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
       OriginSafeExactPairedMGU ledger
         ((Ty.prod (duals.map Dual.target)).applyCapability capDelta)
         (consumerTarget.applyCapability capDelta) targetDelta →
-      DDAlignWithLedger ledger S raw expected
+      DemandAlignWithLedger ledger S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | matcherToSlot {S : Subst} {raw expected : Ty}
       {producerCap : Cap} {producerTarget : Ty}
@@ -2141,7 +2141,7 @@ inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
       S.apply expected = .slot consumerCap consumerTarget →
       OriginSafeOneWayDelta ledger producerCap producerTarget consumerCap
         consumerTarget delta →
-      DDAlignWithLedger ledger S raw expected (Subst.seq delta S)
+      DemandAlignWithLedger ledger S raw expected (Subst.seq delta S)
   | slotToSlot {S : Subst} {raw expected : Ty}
       {sourceCap : Cap} {sourceTarget : Ty}
       {requestedCap : Cap} {requestedTarget : Ty} {capDelta : CapSubst}
@@ -2152,19 +2152,19 @@ inductive DDAlignWithLedger (ledger : CapabilityOriginLedger) :
       OriginSafeExactPairedMGU ledger
         (sourceTarget.applyCapability capDelta)
         (requestedTarget.applyCapability capDelta) targetDelta →
-      DDAlignWithLedger ledger S raw expected
+      DemandAlignWithLedger ledger S raw expected
         (Subst.seq targetDelta (Subst.seq ⟨capDelta, TySubst.id⟩ S))
   | ordinary {S : Subst} {raw expected : Ty} {S' : Subst} :
       demandClass (S.apply raw) (S.apply expected) = .ordinary →
-      DDAlignTypesWithLedger ledger S raw expected S' →
-      DDAlignWithLedger ledger S raw expected S'
+      DemandAlignTypesWithLedger ledger S raw expected S' →
+      DemandAlignWithLedger ledger S raw expected S'
 
 /-- Ledger-aware ordinary alignment makes its two inputs equal under the
 output substitution. -/
-theorem DDAlignTypesWithLedger.output_equal
+theorem DemandAlignTypesWithLedger.output_equal
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
     {S' : Subst}
-    (aligned : DDAlignTypesWithLedger ledger S left right S') :
+    (aligned : DemandAlignTypesWithLedger ledger S left right S') :
     S'.apply left = S'.apply right := by
   cases aligned with
   | matcherPair leftView rightView capSafe targetSafe =>
@@ -2191,10 +2191,10 @@ theorem DDAlignTypesWithLedger.output_equal
 
 /-- Every ledger-aware ordinary alignment factors its output into the input
 followed by one origin-admissible post. -/
-theorem DDAlignTypesWithLedger.relativeAdmissible
+theorem DemandAlignTypesWithLedger.relativeAdmissible
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
     {S' : Subst}
-    (aligned : DDAlignTypesWithLedger ledger S left right S') :
+    (aligned : DemandAlignTypesWithLedger ledger S left right S') :
     ∃ post, S' = Subst.seq post S ∧ AdmissiblePost ledger post := by
   cases aligned with
   | matcherPair _ _ capSafe targetSafe =>
@@ -2213,10 +2213,10 @@ theorem DDAlignTypesWithLedger.relativeAdmissible
 /-- Solving a variable against a fresh function shape cannot structure either
 fresh component.  In particular, the fresh domain remains a bare target
 variable at the output cut. -/
-theorem DDAlignTypesWithLedger.var_fn_domain_variable
+theorem DemandAlignTypesWithLedger.var_fn_domain_variable
     {ledger : CapabilityOriginLedger} {shared domain codomain : TypePM.TyVar}
     {S' : Subst}
-    (aligned : DDAlignTypesWithLedger ledger Subst.id (.var shared)
+    (aligned : DemandAlignTypesWithLedger ledger Subst.id (.var shared)
       (.fn (.var domain) (.var codomain)) S')
     (sharedNeDomain : shared ≠ domain)
     (sharedNeCodomain : shared ≠ codomain)
@@ -2247,10 +2247,10 @@ theorem DDAlignTypesWithLedger.var_fn_domain_variable
 
 /-- A non-structural capability variable cannot be equated with `Any` by an
 origin-safe ordinary alignment. -/
-theorem DDAlignTypesWithLedger.not_of_nonStructuralMatcher_any
+theorem DemandAlignTypesWithLedger.not_of_nonStructuralMatcher_any
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
     {S' : Subst} {varId : CapVar} {leftTarget rightTarget : Ty}
-    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (aligned : DemandAlignTypesWithLedger ledger S left right S')
     (leftView : S.apply left = .matcher (.var varId) leftTarget)
     (rightView : S.apply right = .matcher .any rightTarget)
     (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
@@ -2280,11 +2280,11 @@ theorem DDAlignTypesWithLedger.not_of_nonStructuralMatcher_any
       cases pairClass
 
 /-- Symmetric orientation of
-`DDAlignTypesWithLedger.not_of_nonStructuralMatcher_any`. -/
-theorem DDAlignTypesWithLedger.not_of_any_nonStructuralMatcher
+`DemandAlignTypesWithLedger.not_of_nonStructuralMatcher_any`. -/
+theorem DemandAlignTypesWithLedger.not_of_any_nonStructuralMatcher
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
     {S' : Subst} {varId : CapVar} {leftTarget rightTarget : Ty}
-    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (aligned : DemandAlignTypesWithLedger ledger S left right S')
     (leftView : S.apply left = .matcher .any leftTarget)
     (rightView : S.apply right = .matcher (.var varId) rightTarget)
     (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
@@ -2316,10 +2316,10 @@ theorem DDAlignTypesWithLedger.not_of_any_nonStructuralMatcher
 
 /-- The complete checking cut inherits the same non-structural matcher/`Any`
 separation: every coercive branch requires a slot-headed expectation. -/
-theorem DDAlignWithLedger.not_of_nonStructuralMatcher_any
+theorem DemandAlignWithLedger.not_of_nonStructuralMatcher_any
     {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
     {S' : Subst} {varId : CapVar} {rawTarget expectedTarget : Ty}
-    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (aligned : DemandAlignWithLedger ledger S raw expected S')
     (rawView : S.apply raw = .matcher (.var varId) rawTarget)
     (expectedView : S.apply expected = .matcher .any expectedTarget)
     (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
@@ -2341,11 +2341,11 @@ theorem DDAlignWithLedger.not_of_nonStructuralMatcher_any
         expectedView nonStructural
 
 /-- Symmetric orientation of
-`DDAlignWithLedger.not_of_nonStructuralMatcher_any`. -/
-theorem DDAlignWithLedger.not_of_any_nonStructuralMatcher
+`DemandAlignWithLedger.not_of_nonStructuralMatcher_any`. -/
+theorem DemandAlignWithLedger.not_of_any_nonStructuralMatcher
     {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
     {S' : Subst} {varId : CapVar} {rawTarget expectedTarget : Ty}
-    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (aligned : DemandAlignWithLedger ledger S raw expected S')
     (rawView : S.apply raw = .matcher .any rawTarget)
     (expectedView : S.apply expected = .matcher (.var varId) expectedTarget)
     (nonStructural : ledger.originOf varId ≠ .structuralFlexible) : False := by
@@ -2367,11 +2367,11 @@ theorem DDAlignWithLedger.not_of_any_nonStructuralMatcher
         expectedView nonStructural
 
 /-- Forgetting ledger admissibility recovers ordinary equality alignment. -/
-theorem DDAlignTypesWithLedger.erase
+theorem DemandAlignTypesWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Ty}
     {S' : Subst}
-    (aligned : DDAlignTypesWithLedger ledger S left right S') :
-    DDAlignTypes S left right S' := by
+    (aligned : DemandAlignTypesWithLedger ledger S left right S') :
+    DemandAlignTypes S left right S' := by
   cases aligned with
   | matcherPair leftView rightView capDelta targetDelta =>
       exact .matcherPair leftView rightView capDelta.exact targetDelta.exact
@@ -2381,10 +2381,10 @@ theorem DDAlignTypesWithLedger.erase
       exact .ordinary ordinaryClass delta.exact
 
 /-- Forgetting ledger admissibility recovers the original checking cut. -/
-theorem DDAlignWithLedger.erase
+theorem DemandAlignWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {raw expected : Ty}
-    {S' : Subst} (aligned : DDAlignWithLedger ledger S raw expected S') :
-    DDAlign S raw expected S' := by
+    {S' : Subst} (aligned : DemandAlignWithLedger ledger S raw expected S') :
+    DemandAlign S raw expected S' := by
   cases aligned with
   | productMatcherLift productView slotView delta =>
       exact .productMatcherLift productView slotView delta.exact
@@ -2402,9 +2402,9 @@ theorem DDAlignWithLedger.erase
 /-- Any checking cut whose derivation is not ordinary alignment already has a
 slot-headed resolved expected view: the slot-demand principle at the level of
 the judgment. -/
-theorem DDAlign.slotDemand {S : Subst} {raw expected : Ty} {S' : Subst}
-    (aligned : DDAlign S raw expected S') :
-    DDAlignTypes S raw expected S' ∨
+theorem DemandAlign.slotDemand {S : Subst} {raw expected : Ty} {S' : Subst}
+    (aligned : DemandAlign S raw expected S') :
+    DemandAlignTypes S raw expected S' ∨
       ∃ consumerCap consumerTarget,
         S.apply expected = .slot consumerCap consumerTarget := by
   cases aligned with
@@ -2417,12 +2417,12 @@ theorem DDAlign.slotDemand {S : Subst} {raw expected : Ty} {S' : Subst}
 /-- Under a matcher-headed resolved expectation every checking-cut derivation
 degenerates to ordinary alignment: matcher expectations admit only the
 ordinary alignment of the raw synthesized type. -/
-theorem DDAlign.matcherExpected {S : Subst} {raw expected : Ty} {S' : Subst}
+theorem DemandAlign.matcherExpected {S : Subst} {raw expected : Ty} {S' : Subst}
     {consumerCap : Cap} {consumerTarget : Ty}
-    (aligned : DDAlign S raw expected S')
+    (aligned : DemandAlign S raw expected S')
     (matcherView :
       S.apply expected = .matcher consumerCap consumerTarget) :
-    DDAlignTypes S raw expected S' := by
+    DemandAlignTypes S raw expected S' := by
   cases aligned with
   | productMatcherLift _ slotView _ =>
       rw [matcherView] at slotView; cases slotView
@@ -2582,60 +2582,60 @@ most general solution of exactly the constraint resolved at its cut.
 
 /-- Dual alignment at one cut: capability solve on the resolved views, then
 ordinary alignment of the raw targets under the extended substitution. -/
-inductive DDAlignDual : Subst → Dual → Dual → Subst → Prop where
+inductive DemandAlignDual : Subst → Dual → Dual → Subst → Prop where
   | mk {S : Subst} {left right : Dual} {capDelta : CapSubst} {S' : Subst} :
       ExactCapMGU (left.cap.apply S.cap) (right.cap.apply S.cap)
         capDelta →
-      DDAlignTypes (Subst.seq ⟨capDelta, TySubst.id⟩ S)
+      DemandAlignTypes (Subst.seq ⟨capDelta, TySubst.id⟩ S)
         left.target right.target S' →
-      DDAlignDual S left right S'
+      DemandAlignDual S left right S'
 
 /-- Pointwise dual-list alignment. -/
-inductive DDAlignDualList : Subst → List Dual → List Dual → Subst → Prop where
-  | nil {S : Subst} : DDAlignDualList S [] [] S
+inductive DemandAlignDualList : Subst → List Dual → List Dual → Subst → Prop where
+  | nil {S : Subst} : DemandAlignDualList S [] [] S
   | cons {S : Subst} {left right : Dual} {lefts rights : List Dual}
       {S₁ S' : Subst} :
-      DDAlignDual S left right S₁ →
-      DDAlignDualList S₁ lefts rights S' →
-      DDAlignDualList S (left :: lefts) (right :: rights) S'
+      DemandAlignDual S left right S₁ →
+      DemandAlignDualList S₁ lefts rights S' →
+      DemandAlignDualList S (left :: lefts) (right :: rights) S'
 
 /-- Pointwise alignment of pattern-result targets against instantiated
 constructor fields. -/
-inductive DDAlignTargetList : Subst → List Dual → List Ty → Subst → Prop where
-  | nil {S : Subst} : DDAlignTargetList S [] [] S
+inductive DemandAlignTargetList : Subst → List Dual → List Ty → Subst → Prop where
+  | nil {S : Subst} : DemandAlignTargetList S [] [] S
   | cons {S : Subst} {dual : Dual} {expected : Ty} {duals : List Dual}
       {expecteds : List Ty} {S₁ S' : Subst} :
-      DDAlignTypes S dual.target expected S₁ →
-      DDAlignTargetList S₁ duals expecteds S' →
-      DDAlignTargetList S (dual :: duals) (expected :: expecteds) S'
+      DemandAlignTypes S dual.target expected S₁ →
+      DemandAlignTargetList S₁ duals expecteds S' →
+      DemandAlignTargetList S (dual :: duals) (expected :: expecteds) S'
 
 /-- Entrywise or-alternative binding alignment: binder names must coincide
 positionally while the bound types are unified. -/
-inductive DDAlignBindings : Subst → MonoCtx → MonoCtx → Subst → Prop where
-  | nil {S : Subst} : DDAlignBindings S [] [] S
+inductive DemandAlignBindings : Subst → MonoCtx → MonoCtx → Subst → Prop where
+  | nil {S : Subst} : DemandAlignBindings S [] [] S
   | cons {S : Subst} {left right : String × Ty} {lefts rights : MonoCtx}
       {S₁ S' : Subst} :
       left.1 = right.1 →
-      DDAlignTypes S left.2 right.2 S₁ →
-      DDAlignBindings S₁ lefts rights S' →
-      DDAlignBindings S (left :: lefts) (right :: rights) S'
+      DemandAlignTypes S left.2 right.2 S₁ →
+      DemandAlignBindings S₁ lefts rights S' →
+      DemandAlignBindings S (left :: lefts) (right :: rights) S'
 
 /-- Consumer-side pattern-constructor capability solving against the shared
 structural demands; a field with no observable path to a result variable
 contributes no constraint. -/
-inductive DDAlignCtorCaps :
+inductive DemandAlignCtorCaps :
     Subst → List Cap → List (Option Cap) → Subst → Prop where
-  | nil {S : Subst} : DDAlignCtorCaps S [] [] S
+  | nil {S : Subst} : DemandAlignCtorCaps S [] [] S
   | skip {S : Subst} {child : Cap} {children : List Cap}
       {demands : List (Option Cap)} {S' : Subst} :
-      DDAlignCtorCaps S children demands S' →
-      DDAlignCtorCaps S (child :: children) (none :: demands) S'
+      DemandAlignCtorCaps S children demands S' →
+      DemandAlignCtorCaps S (child :: children) (none :: demands) S'
   | solve {S : Subst} {child expected : Cap} {children : List Cap}
       {demands : List (Option Cap)} {capDelta : CapSubst} {S' : Subst} :
       ExactCapMGU (child.apply S.cap) (expected.apply S.cap) capDelta →
-      DDAlignCtorCaps (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands
+      DemandAlignCtorCaps (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands
         S' →
-      DDAlignCtorCaps S (child :: children) (some expected :: demands) S'
+      DemandAlignCtorCaps S (child :: children) (some expected :: demands) S'
 
 /-- Pattern-constructor capability inference from actual child consumers:
 exact projection on the resolved children is the fast path; otherwise one
@@ -2668,7 +2668,7 @@ inductive DDPatternCtorCap (signature : FrozenSig)
         resultVariables.eraseDups
         (patternCtorAssignmentsSupply resultVariables.eraseDups q).1
         entry.projection.fieldTypes = some demands →
-      DDAlignCtorCaps S childCaps demands S₁ →
+      DemandAlignCtorCaps S childCaps demands S₁ →
       Projection.projectSignature entry.projection
         ((childCaps.map fun child => child.apply S₁.cap).map Shape.ofCap) =
           some projected →
@@ -2680,119 +2680,119 @@ inductive DDPatternCtorCap (signature : FrozenSig)
 /-! ### Ledger-aware pattern-layer alignments
 
 These five relations complete the additive ledger-aware alignment surface.
-Together with `DDAlignTypesWithLedger` and `DDAlignWithLedger`, every alignment
+Together with `DemandAlignTypesWithLedger` and `DemandAlignWithLedger`, every alignment
 cut used by the expression and pattern families can state admissibility
-without changing the existing DD derivations yet.
+without changing the existing demand-directed derivations yet.
 -/
 
 /-- Origin-safe dual alignment: capability solve followed by target
 alignment. -/
-inductive DDAlignDualWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignDualWithLedger (ledger : CapabilityOriginLedger) :
     Subst → Dual → Dual → Subst → Prop where
   | mk {S : Subst} {left right : Dual} {capDelta : CapSubst} {S' : Subst} :
       OriginSafeExactCapMGU ledger (left.cap.apply S.cap)
         (right.cap.apply S.cap) capDelta →
-      DDAlignTypesWithLedger ledger
+      DemandAlignTypesWithLedger ledger
         (Subst.seq ⟨capDelta, TySubst.id⟩ S) left.target right.target S' →
-      DDAlignDualWithLedger ledger S left right S'
+      DemandAlignDualWithLedger ledger S left right S'
 
 /-- Origin-safe pointwise dual-list alignment. -/
-inductive DDAlignDualListWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignDualListWithLedger (ledger : CapabilityOriginLedger) :
     Subst → List Dual → List Dual → Subst → Prop where
-  | nil {S : Subst} : DDAlignDualListWithLedger ledger S [] [] S
+  | nil {S : Subst} : DemandAlignDualListWithLedger ledger S [] [] S
   | cons {S : Subst} {left right : Dual} {lefts rights : List Dual}
       {S₁ S' : Subst} :
-      DDAlignDualWithLedger ledger S left right S₁ →
-      DDAlignDualListWithLedger ledger S₁ lefts rights S' →
-      DDAlignDualListWithLedger ledger S (left :: lefts) (right :: rights) S'
+      DemandAlignDualWithLedger ledger S left right S₁ →
+      DemandAlignDualListWithLedger ledger S₁ lefts rights S' →
+      DemandAlignDualListWithLedger ledger S (left :: lefts) (right :: rights) S'
 
 /-- Origin-safe pointwise alignment of pattern-result targets. -/
-inductive DDAlignTargetListWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignTargetListWithLedger (ledger : CapabilityOriginLedger) :
     Subst → List Dual → List Ty → Subst → Prop where
-  | nil {S : Subst} : DDAlignTargetListWithLedger ledger S [] [] S
+  | nil {S : Subst} : DemandAlignTargetListWithLedger ledger S [] [] S
   | cons {S : Subst} {dual : Dual} {expected : Ty} {duals : List Dual}
       {expecteds : List Ty} {S₁ S' : Subst} :
-      DDAlignTypesWithLedger ledger S dual.target expected S₁ →
-      DDAlignTargetListWithLedger ledger S₁ duals expecteds S' →
-      DDAlignTargetListWithLedger ledger S (dual :: duals)
+      DemandAlignTypesWithLedger ledger S dual.target expected S₁ →
+      DemandAlignTargetListWithLedger ledger S₁ duals expecteds S' →
+      DemandAlignTargetListWithLedger ledger S (dual :: duals)
         (expected :: expecteds) S'
 
 /-- Origin-safe entrywise alignment of or-alternative bindings. -/
-inductive DDAlignBindingsWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignBindingsWithLedger (ledger : CapabilityOriginLedger) :
     Subst → MonoCtx → MonoCtx → Subst → Prop where
-  | nil {S : Subst} : DDAlignBindingsWithLedger ledger S [] [] S
+  | nil {S : Subst} : DemandAlignBindingsWithLedger ledger S [] [] S
   | cons {S : Subst} {left right : String × Ty} {lefts rights : MonoCtx}
       {S₁ S' : Subst} :
       left.1 = right.1 →
-      DDAlignTypesWithLedger ledger S left.2 right.2 S₁ →
-      DDAlignBindingsWithLedger ledger S₁ lefts rights S' →
-      DDAlignBindingsWithLedger ledger S (left :: lefts) (right :: rights) S'
+      DemandAlignTypesWithLedger ledger S left.2 right.2 S₁ →
+      DemandAlignBindingsWithLedger ledger S₁ lefts rights S' →
+      DemandAlignBindingsWithLedger ledger S (left :: lefts) (right :: rights) S'
 
 /-- Origin-safe consumer-side pattern-constructor capability alignment. -/
-inductive DDAlignCtorCapsWithLedger (ledger : CapabilityOriginLedger) :
+inductive DemandAlignCtorCapsWithLedger (ledger : CapabilityOriginLedger) :
     Subst → List Cap → List (Option Cap) → Subst → Prop where
-  | nil {S : Subst} : DDAlignCtorCapsWithLedger ledger S [] [] S
+  | nil {S : Subst} : DemandAlignCtorCapsWithLedger ledger S [] [] S
   | skip {S : Subst} {child : Cap} {children : List Cap}
       {demands : List (Option Cap)} {S' : Subst} :
-      DDAlignCtorCapsWithLedger ledger S children demands S' →
-      DDAlignCtorCapsWithLedger ledger S (child :: children) (none :: demands)
+      DemandAlignCtorCapsWithLedger ledger S children demands S' →
+      DemandAlignCtorCapsWithLedger ledger S (child :: children) (none :: demands)
         S'
   | solve {S : Subst} {child expected : Cap} {children : List Cap}
       {demands : List (Option Cap)} {capDelta : CapSubst} {S' : Subst} :
       OriginSafeExactCapMGU ledger (child.apply S.cap)
         (expected.apply S.cap) capDelta →
-      DDAlignCtorCapsWithLedger ledger
+      DemandAlignCtorCapsWithLedger ledger
         (Subst.seq ⟨capDelta, TySubst.id⟩ S) children demands S' →
-      DDAlignCtorCapsWithLedger ledger S (child :: children)
+      DemandAlignCtorCapsWithLedger ledger S (child :: children)
         (some expected :: demands) S'
 
 /-- Erase origin evidence from one dual alignment. -/
-theorem DDAlignDualWithLedger.erase
+theorem DemandAlignDualWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : Dual}
-    {S' : Subst} (aligned : DDAlignDualWithLedger ledger S left right S') :
-    DDAlignDual S left right S' := by
+    {S' : Subst} (aligned : DemandAlignDualWithLedger ledger S left right S') :
+    DemandAlignDual S left right S' := by
   cases aligned with
   | mk capDelta targets => exact .mk capDelta.exact targets.erase
 
 /-- Erase origin evidence from pointwise dual alignment. -/
-theorem DDAlignDualListWithLedger.erase
+theorem DemandAlignDualListWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : List Dual}
     {S' : Subst}
-    (aligned : DDAlignDualListWithLedger ledger S left right S') :
-    DDAlignDualList S left right S' := by
+    (aligned : DemandAlignDualListWithLedger ledger S left right S') :
+    DemandAlignDualList S left right S' := by
   induction aligned with
   | nil => exact .nil
   | cons head tail tailInduction =>
       exact .cons head.erase tailInduction
 
 /-- Erase origin evidence from pattern-result target alignment. -/
-theorem DDAlignTargetListWithLedger.erase
+theorem DemandAlignTargetListWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {duals : List Dual}
     {expecteds : List Ty} {S' : Subst}
-    (aligned : DDAlignTargetListWithLedger ledger S duals expecteds S') :
-    DDAlignTargetList S duals expecteds S' := by
+    (aligned : DemandAlignTargetListWithLedger ledger S duals expecteds S') :
+    DemandAlignTargetList S duals expecteds S' := by
   induction aligned with
   | nil => exact .nil
   | cons head tail tailInduction =>
       exact .cons head.erase tailInduction
 
 /-- Erase origin evidence from or-alternative binding alignment. -/
-theorem DDAlignBindingsWithLedger.erase
+theorem DemandAlignBindingsWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {left right : MonoCtx}
     {S' : Subst}
-    (aligned : DDAlignBindingsWithLedger ledger S left right S') :
-    DDAlignBindings S left right S' := by
+    (aligned : DemandAlignBindingsWithLedger ledger S left right S') :
+    DemandAlignBindings S left right S' := by
   induction aligned with
   | nil => exact .nil
   | cons names head tail tailInduction =>
       exact .cons names head.erase tailInduction
 
 /-- Erase origin evidence from pattern-constructor capability alignment. -/
-theorem DDAlignCtorCapsWithLedger.erase
+theorem DemandAlignCtorCapsWithLedger.erase
     {ledger : CapabilityOriginLedger} {S : Subst} {children : List Cap}
     {demands : List (Option Cap)} {S' : Subst}
-    (aligned : DDAlignCtorCapsWithLedger ledger S children demands S') :
-    DDAlignCtorCaps S children demands S' := by
+    (aligned : DemandAlignCtorCapsWithLedger ledger S children demands S') :
+    DemandAlignCtorCaps S children demands S' := by
   induction aligned with
   | nil => exact .nil
   | skip tail tailInduction => exact .skip tailInduction
@@ -2824,7 +2824,7 @@ inductive DDDPat (signature : FrozenSig) :
       {S₁ : Subst} {bindings : MonoCtx} {q' : InferenceBase.FreshSupply}
       {S' : Subst} :
       signature.findDataCtor name = some scheme →
-      DDAlignTypes S (InferenceBase.instantiateCtorScheme q scheme).value.2
+      DemandAlignTypes S (InferenceBase.instantiateCtorScheme q scheme).value.2
         expectedTarget S₁ →
       DDDPats signature (InferenceBase.instantiateCtorScheme q scheme).supply
         S₁ patterns (InferenceBase.instantiateCtorScheme q scheme).value.1
@@ -2833,7 +2833,7 @@ inductive DDDPat (signature : FrozenSig) :
   | tuple {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List DPat}
       {expectedTarget : Ty} {S₁ : Subst} {bindings : MonoCtx}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
+      DemandAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
         expectedTarget S₁ →
       DDDPats signature (freshTargetsSupply patterns.length q).2 S₁ patterns
         (freshTargetsSupply patterns.length q).1 bindings q' S' →
@@ -2897,7 +2897,7 @@ inductive DDPPat (signature : FrozenSig) :
       {holes : List Dual} {bindings : MonoCtx}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       signature.findPatternCtor name = some entry →
-      DDAlignTypes S
+      DemandAlignTypes S
         (InferenceBase.instantiateCtorScheme q entry.scheme).value.2
         expectedTarget S₁ →
       DDPPats signature
@@ -2909,7 +2909,7 @@ inductive DDPPat (signature : FrozenSig) :
   | tuple {q : InferenceBase.FreshSupply} {S : Subst} {patterns : List PPat}
       {expectedTarget : Ty} {S₁ : Subst} {holes : List Dual}
       {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
+      DemandAlignTypes S (.prod (freshTargetsSupply patterns.length q).1)
         expectedTarget S₁ →
       DDPPats signature (freshTargetsSupply patterns.length q).2 S₁ patterns
         (freshTargetsSupply patterns.length q).1 holes bindings q' S' →
@@ -2958,21 +2958,21 @@ infers the pattern, aligns the pattern target, and demands a slot from the
 matcher expression; `matcher` literals allocate one shared target, traverse
 every clause, and finalize through the same executable coverage checks
 consumed by the declarative rule. -/
-inductive DDSynth (signature : FrozenSig) :
+inductive DemandSynth (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → Expr → Ty →
       InferenceBase.FreshSupply → Subst → Prop where
   | var {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {name : String} {scheme : Scheme} :
       (Γ.applySubst S).find? name = some scheme →
-      DDSynth signature q S Γ (.var name)
+      DemandSynth signature q S Γ (.var name)
         (InferenceBase.instantiateScheme q scheme).value
         (InferenceBase.instantiateScheme q scheme).supply S
   | lam {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {name : String} {body : Expr} {bodyTarget : Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDSynth signature { q with nextTy := q.nextTy + 1 } S
+      DemandSynth signature { q with nextTy := q.nextTy + 1 } S
         ((name, Scheme.mono (.var q.nextTy)) :: Γ) body bodyTarget q' S' →
-      DDSynth signature q S Γ (.lam name body)
+      DemandSynth signature q S Γ (.lam name body)
         (.fn (.var q.nextTy) bodyTarget) q' S'
   | fix {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {self argument : String} {body : Expr} {bodyTarget : Ty}
@@ -2980,62 +2980,62 @@ inductive DDSynth (signature : FrozenSig) :
       self ≠ argument →
       DirectSelf.Holds self body →
       NonMatcherBody body →
-      DDSynth signature { q with nextTy := q.nextTy + 2 } S
+      DemandSynth signature { q with nextTy := q.nextTy + 2 } S
         ((argument, Scheme.mono (.var q.nextTy)) ::
           (self, Scheme.mono
             (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) :: Γ)
         body bodyTarget q₁ S₁ →
-      DDAlignTypes S₁ bodyTarget (.var (q.nextTy + 1)) S' →
-      DDSynth signature q S Γ (.fix self argument body)
+      DemandAlignTypes S₁ bodyTarget (.var (q.nextTy + 1)) S' →
+      DemandSynth signature q S Γ (.fix self argument body)
         (.fn (.var q.nextTy) (.var (q.nextTy + 1))) q₁ S'
   | app {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {function argument : Expr} {functionTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
       {q₂ : InferenceBase.FreshSupply} {S₃ : Subst} :
-      DDSynth signature q S Γ function functionTarget q₁ S₁ →
-      DDAlignTypes S₁ functionTarget
+      DemandSynth signature q S Γ function functionTarget q₁ S₁ →
+      DemandAlignTypes S₁ functionTarget
         (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂ →
-      DDCheck signature { q₁ with nextTy := q₁.nextTy + 2 } S₂ Γ argument
+      DemandCheck signature { q₁ with nextTy := q₁.nextTy + 2 } S₂ Γ argument
         (.var q₁.nextTy) q₂ S₃ →
-      DDSynth signature q S Γ (.app function argument)
+      DemandSynth signature q S Γ (.app function argument)
         (.var (q₁.nextTy + 1)) q₂ S₃
   | lit {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {value : Int} :
-      DDSynth signature q S Γ (.lit value) .int q S
+      DemandSynth signature q S Γ (.lit value) .int q S
   | tuple {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {expressions : List Expr} {targets : List Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDSynths signature q S Γ expressions targets q' S' →
-      DDSynth signature q S Γ (.tuple expressions) (.prod targets) q' S'
+      DemandSynths signature q S Γ expressions targets q' S' →
+      DemandSynth signature q S Γ (.tuple expressions) (.prod targets) q' S'
   | ctor {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {name : String} {expressions : List Expr} {scheme : CtorScheme}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       signature.findDataCtor name = some scheme →
-      DDChecks signature (InferenceBase.instantiateCtorScheme q scheme).supply
+      DemandChecks signature (InferenceBase.instantiateCtorScheme q scheme).supply
         S Γ expressions
         (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S' →
-      DDSynth signature q S Γ (.ctor name expressions)
+      DemandSynth signature q S Γ (.ctor name expressions)
         (InferenceBase.instantiateCtorScheme q scheme).value.2 q' S'
   | prim {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {op : PrimOp} {expressions : List Expr} {scheme : CtorScheme}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       signature.findPrimitive op = some scheme →
-      DDChecks signature (InferenceBase.instantiateCtorScheme q scheme).supply
+      DemandChecks signature (InferenceBase.instantiateCtorScheme q scheme).supply
         S Γ expressions
         (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S' →
-      DDSynth signature q S Γ (.prim op expressions)
+      DemandSynth signature q S Γ (.prim op expressions)
         (InferenceBase.instantiateCtorScheme q scheme).value.2 q' S'
   | letE {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {name : String} {value body : Expr} {valueTarget : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} {bodyTarget : Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDSynth signature q S Γ value valueTarget q₁ S₁ →
-      DDSynth signature q₁ S₁
+      DemandSynth signature q S Γ value valueTarget q₁ S₁ →
+      DemandSynth signature q₁ S₁
         ((name, signature.generalize (Γ.applySubst S₁)
           (S₁.apply valueTarget)) :: Γ) body bodyTarget q' S' →
-      DDSynth signature q S Γ (.letE name value body) bodyTarget q' S'
+      DemandSynth signature q S Γ (.letE name value body) bodyTarget q' S'
   | something {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} :
-      DDSynth signature q S Γ .something (.matcher .any (.var q.nextTy))
+      DemandSynth signature q S Γ .something (.matcher .any (.var q.nextTy))
         { q with nextTy := q.nextTy + 1 } S
   | matcher {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {clauses : List Clause} {rawHoleLists : List (List Dual)}
@@ -3054,7 +3054,7 @@ inductive DDSynth (signature : FrozenSig) :
         (S'.apply (.var q.nextTy)) = true →
       Inference.coverageCheck signature.toMatcherSig clauses capability =
         true →
-      DDSynth signature q S Γ (.matcher clauses)
+      DemandSynth signature q S Γ (.matcher clauses)
         (.matcher capability (.var q.nextTy)) q' S'
   | matchAll {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {target matcher : Expr} {pattern : Pattern} {body : Expr}
@@ -3062,12 +3062,12 @@ inductive DDSynth (signature : FrozenSig) :
       {dual : Dual} {Δ : MonoCtx} {q₂ : InferenceBase.FreshSupply}
       {S₂ S₃ : Subst} {q₃ : InferenceBase.FreshSupply} {S₄ : Subst}
       {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDSynth signature q S Γ target targetTarget q₁ S₁ →
+      DemandSynth signature q S Γ target targetTarget q₁ S₁ →
       DDPattern signature q₁ S₁ Γ [] [] pattern dual Δ q₂ S₂ →
-      DDAlignTypes S₂ dual.target targetTarget S₃ →
-      DDCheck signature q₂ S₃ Γ matcher (.slot dual.cap targetTarget) q₃ S₄ →
-      DDSynth signature q₃ S₄ (Δ.toContext ++ Γ) body bodyTarget q' S' →
-      DDSynth signature q S Γ (.matchAll target matcher pattern body)
+      DemandAlignTypes S₂ dual.target targetTarget S₃ →
+      DemandCheck signature q₂ S₃ Γ matcher (.slot dual.cap targetTarget) q₃ S₄ →
+      DemandSynth signature q₃ S₄ (Δ.toContext ++ Γ) body bodyTarget q' S' →
+      DemandSynth signature q S Γ (.matchAll target matcher pattern body)
         (Ty.listT bodyTarget) q' S'
   | fixMatcher {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {self argument : String} {clauses : List Clause} {domain codomain : Ty}
@@ -3077,54 +3077,54 @@ inductive DDSynth (signature : FrozenSig) :
       DirectSelf.Holds self (.matcher clauses) →
       fixMatcherPlaceholderSupply signature clauses q =
         some (domain, codomain, q₀) →
-      DDSynth signature q₀ S
+      DemandSynth signature q₀ S
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: Γ)
         (.matcher clauses) bodyTarget q₁ S₁ →
-      DDAlignTypes S₁ bodyTarget codomain S' →
-      DDSynth signature q S Γ (.fix self argument (.matcher clauses))
+      DemandAlignTypes S₁ bodyTarget codomain S' →
+      DemandSynth signature q S Γ (.fix self argument (.matcher clauses))
         (.fn domain codomain) q₁ S'
 
 /-- Left-to-right synthesis of an expression list. -/
-inductive DDSynths (signature : FrozenSig) :
+inductive DemandSynths (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → List Expr → List Ty →
       InferenceBase.FreshSupply → Subst → Prop where
   | nil {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} :
-      DDSynths signature q S Γ [] [] q S
+      DemandSynths signature q S Γ [] [] q S
   | cons {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {expression : Expr} {expressions : List Expr} {target : Ty}
       {targets : List Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDSynth signature q S Γ expression target q₁ S₁ →
-      DDSynths signature q₁ S₁ Γ expressions targets q' S' →
-      DDSynths signature q S Γ (expression :: expressions)
+      DemandSynth signature q S Γ expression target q₁ S₁ →
+      DemandSynths signature q₁ S₁ Γ expressions targets q' S' →
+      DemandSynths signature q S Γ (expression :: expressions)
         (target :: targets) q' S'
 
 /-- Demand-directed checking `q; S; Γ ⊢ e ⇐ τexpected ⊣ q'; S'`: synthesize
 first, then align at the exact output cut. -/
-inductive DDCheck (signature : FrozenSig) :
+inductive DemandCheck (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → Expr → Ty →
       InferenceBase.FreshSupply → Subst → Prop where
   | mk {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {expression : Expr} {expected raw : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ S' : Subst} :
-      DDSynth signature q S Γ expression raw q₁ S₁ →
-      DDAlign S₁ raw expected S' →
-      DDCheck signature q S Γ expression expected q₁ S'
+      DemandSynth signature q S Γ expression raw q₁ S₁ →
+      DemandAlign S₁ raw expected S' →
+      DemandCheck signature q S Γ expression expected q₁ S'
 
 /-- Pointwise checking of equal-length expression/type lists. -/
-inductive DDChecks (signature : FrozenSig) :
+inductive DemandChecks (signature : FrozenSig) :
     InferenceBase.FreshSupply → Subst → Context → List Expr → List Ty →
       InferenceBase.FreshSupply → Subst → Prop where
   | nil {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} :
-      DDChecks signature q S Γ [] [] q S
+      DemandChecks signature q S Γ [] [] q S
   | cons {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {expression : Expr} {expressions : List Expr} {expected : Ty}
       {expecteds : List Ty} {q₁ : InferenceBase.FreshSupply} {S₁ : Subst}
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
-      DDCheck signature q S Γ expression expected q₁ S₁ →
-      DDChecks signature q₁ S₁ Γ expressions expecteds q' S' →
-      DDChecks signature q S Γ (expression :: expressions)
+      DemandCheck signature q S Γ expression expected q₁ S₁ →
+      DemandChecks signature q₁ S₁ Γ expressions expecteds q' S' →
+      DemandChecks signature q S Γ (expression :: expressions)
         (expected :: expecteds) q' S'
 
 /-- Demand-directed user-pattern synthesis
@@ -3148,7 +3148,7 @@ inductive DDPattern (signature : FrozenSig) :
   | pval {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {Φ : PatternCtx} {Δ : MonoCtx} {expression : Expr} {target : Ty}
       {q₁ : InferenceBase.FreshSupply} {S₁ : Subst} :
-      DDSynth signature q S (Δ.toContext ++ Γ) expression target q₁ S₁ →
+      DemandSynth signature q S (Δ.toContext ++ Γ) expression target q₁ S₁ →
       DDPattern signature q S Γ Φ Δ (.pval expression)
         ⟨.var ⟨q₁.nextCap⟩, target⟩ Δ
         { q₁ with nextCap := q₁.nextCap + 1 } S₁
@@ -3174,7 +3174,7 @@ inductive DDPattern (signature : FrozenSig) :
       DDPatterns signature
         (InferenceBase.instantiateCtorScheme q entry.scheme).supply S Γ Φ Δ
         patterns duals Δ' q₁ S₁ →
-      DDAlignTargetList S₁ duals
+      DemandAlignTargetList S₁ duals
         (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂ →
       DDPatternCtorCap signature entry q₁ S₂ (duals.map Dual.cap) capability
         q₂ S₃ →
@@ -3192,7 +3192,7 @@ inductive DDPattern (signature : FrozenSig) :
       {q₂ : InferenceBase.FreshSupply} {S₂ S' : Subst} :
       DDPattern signature q S Γ Φ Δ left leftDual Δₗ q₁ S₁ →
       DDPattern signature q₁ S₁ Γ Φ Δₗ right rightDual Δ' q₂ S₂ →
-      DDAlignDual S₂ leftDual rightDual S' →
+      DemandAlignDual S₂ leftDual rightDual S' →
       DDPattern signature q S Γ Φ Δ (.pand left right) leftDual Δ' q₂ S'
   | por {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {Φ : PatternCtx} {Δ : MonoCtx} {left right : Pattern}
@@ -3201,8 +3201,8 @@ inductive DDPattern (signature : FrozenSig) :
       {q₂ : InferenceBase.FreshSupply} {S₂ S₃ S' : Subst} :
       DDPattern signature q S Γ Φ Δ left leftDual Δₗ q₁ S₁ →
       DDPattern signature q₁ S₁ Γ Φ Δ right rightDual Δᵣ q₂ S₂ →
-      DDAlignDual S₂ leftDual rightDual S₃ →
-      DDAlignBindings S₃ Δₗ Δᵣ S' →
+      DemandAlignDual S₂ leftDual rightDual S₃ →
+      DemandAlignBindings S₃ Δₗ Δᵣ S' →
       DDPattern signature q S Γ Φ Δ (.por left right) leftDual Δₗ q₂ S'
   | papp {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {Φ : PatternCtx} {Δ : MonoCtx} {name : String}
@@ -3212,7 +3212,7 @@ inductive DDPattern (signature : FrozenSig) :
       DDPatterns signature
         (InferenceBase.instantiateDualScheme q scheme).supply S Γ Φ Δ
         patterns duals Δ' q₁ S₁ →
-      DDAlignDualList S₁ duals
+      DemandAlignDualList S₁ duals
         (InferenceBase.instantiateDualScheme q scheme).value.1 S' →
       DDPattern signature q S Γ Φ Δ (.papp name patterns)
         (InferenceBase.instantiateDualScheme q scheme).value.2 Δ' q₁ S'
@@ -3251,7 +3251,7 @@ inductive DDArms (signature : FrozenSig) :
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       DDDPat signature q S dataPattern clauseTarget armBindings q₁ S₁ →
       (∀ name, name ∈ armBindings.names → name ∉ ppBindings.names) →
-      DDCheck signature q₁ S₁
+      DemandCheck signature q₁ S₁
         (armBindings.toContext ++ ppBindings.toContext ++ Γ) body bodyTarget
         q₂ S₂ →
       DDArms signature q₂ S₂ Γ ppBindings arms clauseTarget bodyTarget
@@ -3272,7 +3272,7 @@ inductive DDClause (signature : FrozenSig) :
       {q' : InferenceBase.FreshSupply} {S' : Subst} :
       DDPPat signature q S pp sharedTarget holes ppBindings q₁ S₁ →
       decomposeME next holes.length = some nextMatchers →
-      DDChecks signature q₁ S₁ Γ nextMatchers
+      DemandChecks signature q₁ S₁ Γ nextMatchers
         (holes.map fun hole => .slot hole.cap hole.target) q₂ S₂ →
       DDArms signature q₂ S₂ Γ ppBindings arms sharedTarget
         (Ty.listT (prodTy (holes.map Dual.target))) q' S' →
@@ -3362,8 +3362,8 @@ theorem ReplayExtends.apply_eq
   exact replayDeltas_apply_eq equal deltas
 
 /-- Ordinary alignment extends the prevailing substitution by replay. -/
-theorem DDAlignTypes.replayExtends {S : Subst} {left right : Ty} {S' : Subst}
-    (aligned : DDAlignTypes S left right S') : ReplayExtends S S' := by
+theorem DemandAlignTypes.replayExtends {S : Subst} {left right : Ty} {S' : Subst}
+    (aligned : DemandAlignTypes S left right S') : ReplayExtends S S' := by
   cases aligned with
   | matcherPair _ _ _ _ =>
       exact ⟨[⟨_, TySubst.id⟩, _], rfl⟩
@@ -3373,8 +3373,8 @@ theorem DDAlignTypes.replayExtends {S : Subst} {left right : Ty} {S' : Subst}
       exact ⟨[_], rfl⟩
 
 /-- Every checking cut extends the prevailing substitution by replay. -/
-theorem DDAlign.replayExtends {S : Subst} {raw expected : Ty} {S' : Subst}
-    (aligned : DDAlign S raw expected S') : ReplayExtends S S' := by
+theorem DemandAlign.replayExtends {S : Subst} {raw expected : Ty} {S' : Subst}
+    (aligned : DemandAlign S raw expected S') : ReplayExtends S S' := by
   cases aligned with
   | productMatcherLift _ _ _ => exact ⟨[_], rfl⟩
   | slotTupleLift _ _ _ _ _ => exact ⟨[⟨_, TySubst.id⟩, _], rfl⟩
@@ -3383,39 +3383,39 @@ theorem DDAlign.replayExtends {S : Subst} {raw expected : Ty} {S' : Subst}
   | ordinary _ aligned => exact aligned.replayExtends
 
 /-- Dual alignment extends the prevailing substitution by replay. -/
-theorem DDAlignDual.replayExtends {S : Subst} {left right : Dual}
-    {S' : Subst} (aligned : DDAlignDual S left right S') :
+theorem DemandAlignDual.replayExtends {S : Subst} {left right : Dual}
+    {S' : Subst} (aligned : DemandAlignDual S left right S') :
     ReplayExtends S S' := by
   cases aligned with
   | mk _ typesAligned =>
       exact (ReplayExtends.solve _).trans typesAligned.replayExtends
 
 /-- Dual-list alignment extends the prevailing substitution by replay. -/
-theorem DDAlignDualList.replayExtends {S : Subst} {lefts rights : List Dual}
+theorem DemandAlignDualList.replayExtends {S : Subst} {lefts rights : List Dual}
     {S' : Subst} :
-    DDAlignDualList S lefts rights S' → ReplayExtends S S'
+    DemandAlignDualList S lefts rights S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .cons head tail => (head.replayExtends).trans tail.replayExtends
 
 /-- Target-list alignment extends the prevailing substitution by replay. -/
-theorem DDAlignTargetList.replayExtends {S : Subst} {duals : List Dual}
+theorem DemandAlignTargetList.replayExtends {S : Subst} {duals : List Dual}
     {expecteds : List Ty} {S' : Subst} :
-    DDAlignTargetList S duals expecteds S' → ReplayExtends S S'
+    DemandAlignTargetList S duals expecteds S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .cons head tail => (head.replayExtends).trans tail.replayExtends
 
 /-- Binding alignment extends the prevailing substitution by replay. -/
-theorem DDAlignBindings.replayExtends {S : Subst} {lefts rights : MonoCtx}
+theorem DemandAlignBindings.replayExtends {S : Subst} {lefts rights : MonoCtx}
     {S' : Subst} :
-    DDAlignBindings S lefts rights S' → ReplayExtends S S'
+    DemandAlignBindings S lefts rights S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .cons _ head tail => (head.replayExtends).trans tail.replayExtends
 
 /-- Constructor-capability demand solving extends the substitution by
 replay. -/
-theorem DDAlignCtorCaps.replayExtends {S : Subst} {children : List Cap}
+theorem DemandAlignCtorCaps.replayExtends {S : Subst} {children : List Cap}
     {demands : List (Option Cap)} {S' : Subst} :
-    DDAlignCtorCaps S children demands S' → ReplayExtends S S'
+    DemandAlignCtorCaps S children demands S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .skip rest => rest.replayExtends
   | .solve _ rest => (ReplayExtends.solve _).trans rest.replayExtends
@@ -3491,10 +3491,10 @@ end
 mutual
 
 /-- Synthesis extends the prevailing substitution by chronological replay. -/
-theorem DDSynth.replayExtends {signature : FrozenSig}
+theorem DemandSynth.replayExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
     {τ : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDSynth signature q S Γ e τ q' S' → ReplayExtends S S'
+    DemandSynth signature q S Γ e τ q' S' → ReplayExtends S S'
   | .var _ => ReplayExtends.refl _
   | .lam body => body.replayExtends
   | .fix _ _ _ body aligned =>
@@ -3518,29 +3518,29 @@ theorem DDSynth.replayExtends {signature : FrozenSig}
       (body.replayExtends).trans aligned.replayExtends
 
 /-- List synthesis extends the prevailing substitution by replay. -/
-theorem DDSynths.replayExtends {signature : FrozenSig}
+theorem DemandSynths.replayExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
     {es : List Expr} {τs : List Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst} :
-    DDSynths signature q S Γ es τs q' S' → ReplayExtends S S'
+    DemandSynths signature q S Γ es τs q' S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .cons head tail =>
       (head.replayExtends).trans tail.replayExtends
 
 /-- Checking extends the prevailing substitution by replay. -/
-theorem DDCheck.replayExtends {signature : FrozenSig}
+theorem DemandCheck.replayExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
     {expected : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDCheck signature q S Γ e expected q' S' → ReplayExtends S S'
+    DemandCheck signature q S Γ e expected q' S' → ReplayExtends S S'
   | .mk synthesized aligned =>
       (synthesized.replayExtends).trans aligned.replayExtends
 
 /-- List checking extends the prevailing substitution by replay. -/
-theorem DDChecks.replayExtends {signature : FrozenSig}
+theorem DemandChecks.replayExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
     {es : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDChecks signature q S Γ es expecteds q' S' → ReplayExtends S S'
+    DemandChecks signature q S Γ es expecteds q' S' → ReplayExtends S S'
   | .nil => ReplayExtends.refl _
   | .cons head tail =>
       (head.replayExtends).trans tail.replayExtends
@@ -3824,10 +3824,10 @@ end
 mutual
 
 /-- Synthesis only advances the fresh supply. -/
-theorem DDSynth.supplyExtends {signature : FrozenSig}
+theorem DemandSynth.supplyExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
     {τ : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDSynth signature q S Γ e τ q' S' → SupplyExtends q q'
+    DemandSynth signature q S Γ e τ q' S' → SupplyExtends q q'
   | .var (scheme := scheme) _ => SupplyExtends.instantiateScheme _ scheme
   | .lam body =>
       (SupplyExtends.bumpTy _ 1).trans body.supplyExtends
@@ -3856,28 +3856,28 @@ theorem DDSynth.supplyExtends {signature : FrozenSig}
       (SupplyExtends.fixMatcherPlaceholder built).trans body.supplyExtends
 
 /-- List synthesis only advances the fresh supply. -/
-theorem DDSynths.supplyExtends {signature : FrozenSig}
+theorem DemandSynths.supplyExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
     {es : List Expr} {τs : List Ty} {q' : InferenceBase.FreshSupply}
     {S' : Subst} :
-    DDSynths signature q S Γ es τs q' S' → SupplyExtends q q'
+    DemandSynths signature q S Γ es τs q' S' → SupplyExtends q q'
   | .nil => SupplyExtends.refl _
   | .cons head tail =>
       (head.supplyExtends).trans tail.supplyExtends
 
 /-- Checking only advances the fresh supply. -/
-theorem DDCheck.supplyExtends {signature : FrozenSig}
+theorem DemandCheck.supplyExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
     {expected : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDCheck signature q S Γ e expected q' S' → SupplyExtends q q'
+    DemandCheck signature q S Γ e expected q' S' → SupplyExtends q q'
   | .mk synthesized _ => synthesized.supplyExtends
 
 /-- List checking only advances the fresh supply. -/
-theorem DDChecks.supplyExtends {signature : FrozenSig}
+theorem DemandChecks.supplyExtends {signature : FrozenSig}
     {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
     {es : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst} :
-    DDChecks signature q S Γ es expecteds q' S' → SupplyExtends q q'
+    DemandChecks signature q S Γ es expecteds q' S' → SupplyExtends q q'
   | .nil => SupplyExtends.refl _
   | .cons head tail =>
       (head.supplyExtends).trans tail.supplyExtends
@@ -4513,9 +4513,9 @@ theorem OneWayDelta.boundedBy {producerCap : Cap} {producerTarget : Ty}
 
 /-- Ordinary equality alignment preserves boundedness of the prevailing
 substitution. -/
-theorem DDAlignTypes.boundedBy {S : Subst} {left right : Ty} {S' : Subst}
+theorem DemandAlignTypes.boundedBy {S : Subst} {left right : Ty} {S' : Subst}
     {q : InferenceBase.FreshSupply}
-    (aligned : DDAlignTypes S left right S') (Sb : S.BoundedBy q)
+    (aligned : DemandAlignTypes S left right S') (Sb : S.BoundedBy q)
     (leftBounded : left.BoundedBy q) (rightBounded : right.BoundedBy q) :
     S'.BoundedBy q := by
   cases aligned with
@@ -4547,8 +4547,8 @@ theorem DDAlignTypes.boundedBy {S : Subst} {left right : Ty} {S' : Subst}
 
 /-- Every checking cut preserves boundedness of the prevailing
 substitution. -/
-theorem DDAlign.boundedBy {S : Subst} {raw expected : Ty} {S' : Subst}
-    {q : InferenceBase.FreshSupply} (aligned : DDAlign S raw expected S')
+theorem DemandAlign.boundedBy {S : Subst} {raw expected : Ty} {S' : Subst}
+    {q : InferenceBase.FreshSupply} (aligned : DemandAlign S raw expected S')
     (Sb : S.BoundedBy q) (rawBounded : raw.BoundedBy q)
     (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q := by
   cases aligned with
@@ -4636,8 +4636,8 @@ def Dual.BoundedBy (q : InferenceBase.FreshSupply) (dual : Dual) : Prop :=
   dual.cap.BoundedBy q ∧ dual.target.BoundedBy q
 
 /-- Dual alignment preserves boundedness of the prevailing substitution. -/
-theorem DDAlignDual.boundedBy {S : Subst} {left right : Dual} {S' : Subst}
-    {q : InferenceBase.FreshSupply} (aligned : DDAlignDual S left right S')
+theorem DemandAlignDual.boundedBy {S : Subst} {left right : Dual} {S' : Subst}
+    {q : InferenceBase.FreshSupply} (aligned : DemandAlignDual S left right S')
     (Sb : S.BoundedBy q) (leftBounded : left.BoundedBy q)
     (rightBounded : right.BoundedBy q) : S'.BoundedBy q := by
   cases aligned with
@@ -4648,9 +4648,9 @@ theorem DDAlignDual.boundedBy {S : Subst} {left right : Dual} {S' : Subst}
         rightBounded.2
 
 /-- Dual-list alignment preserves boundedness. -/
-theorem DDAlignDualList.boundedBy {S : Subst} {lefts rights : List Dual}
+theorem DemandAlignDualList.boundedBy {S : Subst} {lefts rights : List Dual}
     {S' : Subst} {q : InferenceBase.FreshSupply} :
-    DDAlignDualList S lefts rights S' → S.BoundedBy q →
+    DemandAlignDualList S lefts rights S' → S.BoundedBy q →
     (∀ dual ∈ lefts, Dual.BoundedBy q dual) →
     (∀ dual ∈ rights, Dual.BoundedBy q dual) → S'.BoundedBy q
   | .nil, Sb, _, _ => Sb
@@ -4661,9 +4661,9 @@ theorem DDAlignDualList.boundedBy {S : Subst} {lefts rights : List Dual}
         (fun dual mem => rightsB dual (by simp [mem]))
 
 /-- Target-list alignment preserves boundedness. -/
-theorem DDAlignTargetList.boundedBy {S : Subst} {duals : List Dual}
+theorem DemandAlignTargetList.boundedBy {S : Subst} {duals : List Dual}
     {expecteds : List Ty} {S' : Subst} {q : InferenceBase.FreshSupply} :
-    DDAlignTargetList S duals expecteds S' → S.BoundedBy q →
+    DemandAlignTargetList S duals expecteds S' → S.BoundedBy q →
     (∀ dual ∈ duals, Dual.BoundedBy q dual) →
     (∀ expected ∈ expecteds, Ty.BoundedBy q expected) → S'.BoundedBy q
   | .nil, Sb, _, _ => Sb
@@ -4674,9 +4674,9 @@ theorem DDAlignTargetList.boundedBy {S : Subst} {duals : List Dual}
         (fun expected mem => expectedsB expected (by simp [mem]))
 
 /-- Binding alignment preserves boundedness. -/
-theorem DDAlignBindings.boundedBy {S : Subst} {lefts rights : MonoCtx}
+theorem DemandAlignBindings.boundedBy {S : Subst} {lefts rights : MonoCtx}
     {S' : Subst} {q : InferenceBase.FreshSupply} :
-    DDAlignBindings S lefts rights S' → S.BoundedBy q →
+    DemandAlignBindings S lefts rights S' → S.BoundedBy q →
     (∀ entry ∈ lefts, Ty.BoundedBy q entry.2) →
     (∀ entry ∈ rights, Ty.BoundedBy q entry.2) → S'.BoundedBy q
   | .nil, Sb, _, _ => Sb
@@ -4687,10 +4687,10 @@ theorem DDAlignBindings.boundedBy {S : Subst} {lefts rights : MonoCtx}
         (fun entry mem => rightsB entry (by simp [mem]))
 
 /-- Constructor-capability demand solving preserves boundedness. -/
-theorem DDAlignCtorCaps.boundedBy {S : Subst} {children : List Cap}
+theorem DemandAlignCtorCaps.boundedBy {S : Subst} {children : List Cap}
     {demands : List (Option Cap)} {S' : Subst}
     {q : InferenceBase.FreshSupply} :
-    DDAlignCtorCaps S children demands S' → S.BoundedBy q →
+    DemandAlignCtorCaps S children demands S' → S.BoundedBy q →
     (∀ child ∈ children, Cap.BoundedBy q child) →
     (∀ demand ∈ demands, ∀ capability, demand = some capability →
       Cap.BoundedBy q capability) → S'.BoundedBy q
@@ -5644,10 +5644,10 @@ end
 mutual
 
 /-- Synthesis preserves boundedness and publishes a bounded raw type. -/
-theorem DDSynth.boundedBy {signature : FrozenSig} :
+theorem DemandSynth.boundedBy {signature : FrozenSig} :
     ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
       {τ : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst},
-      DDSynth signature q S Γ e τ q' S' →
+      DemandSynth signature q S Γ e τ q' S' →
       signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
       S'.BoundedBy q' ∧ τ.BoundedBy q'
   | q, _, _, _, _, _, _, .var (scheme := scheme) hfind, _, Sb, Γb => by
@@ -5791,11 +5791,11 @@ theorem DDSynth.boundedBy {signature : FrozenSig} :
         Ty.BoundedBy.fnOf (domB.mono ext₁) (codB.mono ext₁)⟩
 
 /-- List synthesis preserves boundedness. -/
-theorem DDSynths.boundedBy {signature : FrozenSig} :
+theorem DemandSynths.boundedBy {signature : FrozenSig} :
     ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {es : List Expr} {τs : List Ty} {q' : InferenceBase.FreshSupply}
       {S' : Subst},
-      DDSynths signature q S Γ es τs q' S' →
+      DemandSynths signature q S Γ es τs q' S' →
       signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
       S'.BoundedBy q' ∧ ∀ τ ∈ τs, τ.BoundedBy q'
   | _, _, _, _, _, _, _, .nil, _, Sb, _ => by
@@ -5813,10 +5813,10 @@ theorem DDSynths.boundedBy {signature : FrozenSig} :
       · exact tailB τ h
 
 /-- Checking preserves boundedness. -/
-theorem DDCheck.boundedBy {signature : FrozenSig} :
+theorem DemandCheck.boundedBy {signature : FrozenSig} :
     ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context} {e : Expr}
       {expected : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst},
-      DDCheck signature q S Γ e expected q' S' →
+      DemandCheck signature q S Γ e expected q' S' →
       signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
       expected.BoundedBy q → S'.BoundedBy q'
   | _, _, _, _, _, _, _, .mk synthesized aligned, closed, Sb, Γb,
@@ -5826,11 +5826,11 @@ theorem DDCheck.boundedBy {signature : FrozenSig} :
         (expectedB.mono synthesized.supplyExtends)
 
 /-- List checking preserves boundedness. -/
-theorem DDChecks.boundedBy {signature : FrozenSig} :
+theorem DemandChecks.boundedBy {signature : FrozenSig} :
     ∀ {q : InferenceBase.FreshSupply} {S : Subst} {Γ : Context}
       {es : List Expr} {expecteds : List Ty}
       {q' : InferenceBase.FreshSupply} {S' : Subst},
-      DDChecks signature q S Γ es expecteds q' S' →
+      DemandChecks signature q S Γ es expecteds q' S' →
       signature.SchemesClosed → S.BoundedBy q → Context.BoundedBy q Γ →
       (∀ expected ∈ expecteds, expected.BoundedBy q) → S'.BoundedBy q'
   | _, _, _, _, _, _, _, .nil, _, Sb, _, _ => Sb

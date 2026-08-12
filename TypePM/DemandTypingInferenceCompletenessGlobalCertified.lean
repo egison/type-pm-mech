@@ -73,15 +73,15 @@ abbrev PairedAuditedSynthCompletenessAt
     {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDSynth signature q S declarativeContext expression target q' S'}
-    {origin : DDSynthOrigin signature raw ledger ledger'},
+    {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+    {origin : DemandSynthOrigin signature raw ledger ledger'},
     (before : TraversalStateCorrespondence q S ledger state) →
     SignatureVarsBelow q signature →
     ContextBisimulation before.prevailing declarativeContext
       executableContext →
     declarativeContext.BoundedBy q →
     executableContext.BoundedBy q →
-    DDSynthTerminalAudit terminal signature origin →
+    DemandSynthTerminalAudit terminal signature origin →
     SynthBudgetAdequate fuel expression →
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
       before (inferExprFuel fuel signature executableContext selfEnv path
@@ -128,10 +128,10 @@ theorem auditedSynthLeaf_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {raw : DDSynth signature q S declarativeContext expression target q' S'}
-    {origin : DDSynthOrigin signature raw ledger ledger'}
-    (audit : DDSynthTerminalAudit terminal signature origin)
-    (leaf : DDSynthLeafOrigin signature origin)
+    {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+    {origin : DemandSynthOrigin signature raw ledger ledger'}
+    (audit : DemandSynthTerminalAudit terminal signature origin)
+    (leaf : DemandSynthLeafOrigin signature origin)
     (adequate : SynthBudgetAdequate fuel expression) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
       before (inferExprFuel fuel signature executableContext selfEnv path
@@ -242,11 +242,11 @@ theorem auditedSynthLam_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
+    {bodyRaw : DemandSynth signature { q with nextTy := q.nextTy + 1 } S
       ((name, Scheme.mono (.var q.nextTy)) :: declarativeContext)
       body bodyTarget q' S'}
-    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger'}
-    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    {bodyOrigin : DemandSynthOrigin signature bodyRaw ledger ledger'}
+    (bodyAudit : DemandSynthTerminalAudit terminal signature bodyOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.lam name body)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
       before (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -324,9 +324,9 @@ theorem auditedSynths_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {raw : DDSynths signature q S declarativeContext expressions targets q' S'}
-    {origin : DDSynthsOrigin signature raw ledger ledger'}
-    (audit : DDSynthsTerminalAudit terminal signature origin)
+    {raw : DemandSynths signature q S declarativeContext expressions targets q' S'}
+    {origin : DemandSynthsOrigin signature raw ledger ledger'}
+    (audit : DemandSynthsTerminalAudit terminal signature origin)
     (adequate : SynthsBudgetAdequate fuel expressions) :
     Nonempty (BoundedPairedCertifiedSynthsRunCompletion terminal signature
       before (inferExprsFuel fuel signature executableContext selfEnv parent
@@ -397,17 +397,17 @@ theorem auditedSynthApp_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {functionRaw : DDSynth signature q S declarativeContext function
+    {functionRaw : DemandSynth signature q S declarativeContext function
       functionTarget q₁ S₁}
-    {functionOrigin : DDSynthOrigin signature functionRaw ledger ledger₁}
-    (aligned : DDAlignTypesWithLedger ledger₁ S₁ functionTarget
+    {functionOrigin : DemandSynthOrigin signature functionRaw ledger ledger₁}
+    (aligned : DemandAlignTypesWithLedger ledger₁ S₁ functionTarget
       (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂)
-    {argumentRaw : DDCheck signature
+    {argumentRaw : DemandCheck signature
       { q₁ with nextTy := q₁.nextTy + 2 } S₂ declarativeContext argument
       (.var q₁.nextTy) q₂ S₃}
-    {argumentOrigin : DDCheckOrigin signature argumentRaw ledger₁ ledger₃}
-    (functionAudit : DDSynthTerminalAudit terminal signature functionOrigin)
-    (argumentAudit : DDCheckTerminalAudit terminal signature argumentOrigin)
+    {argumentOrigin : DemandCheckOrigin signature argumentRaw ledger₁ ledger₃}
+    (functionAudit : DemandSynthTerminalAudit terminal signature functionOrigin)
+    (argumentAudit : DemandCheckTerminalAudit terminal signature argumentOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.app function argument)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
       (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -612,10 +612,10 @@ theorem auditedSynthTuple_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {childrenRaw : DDSynths signature q S declarativeContext expressions
+    {childrenRaw : DemandSynths signature q S declarativeContext expressions
       targets q' S'}
-    {childrenOrigin : DDSynthsOrigin signature childrenRaw ledger ledger'}
-    (childrenAudit : DDSynthsTerminalAudit terminal signature childrenOrigin)
+    {childrenOrigin : DemandSynthsOrigin signature childrenRaw ledger ledger'}
+    (childrenAudit : DemandSynthsTerminalAudit terminal signature childrenOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.tuple expressions)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
       before (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -670,16 +670,16 @@ theorem auditedSynthLet_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {valueRaw : DDSynth signature q S declarativeContext value valueTarget
+    {valueRaw : DemandSynth signature q S declarativeContext value valueTarget
       q₁ S₁}
-    {valueOrigin : DDSynthOrigin signature valueRaw ledger ledger₁}
-    {bodyRaw : DDSynth signature q₁ S₁
+    {valueOrigin : DemandSynthOrigin signature valueRaw ledger ledger₁}
+    {bodyRaw : DemandSynth signature q₁ S₁
       ((name, signature.generalize (declarativeContext.applySubst S₁)
         (S₁.apply valueTarget)) :: declarativeContext)
       body bodyTarget q' S'}
-    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger'}
-    (valueAudit : DDSynthTerminalAudit terminal signature valueOrigin)
-    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    {bodyOrigin : DemandSynthOrigin signature bodyRaw ledger₁ ledger'}
+    (valueAudit : DemandSynthTerminalAudit terminal signature valueOrigin)
+    (bodyAudit : DemandSynthTerminalAudit terminal signature bodyOrigin)
     (facts : DDTerminalAudit.LetFacts terminal signature declarativeContext
       valueTarget S₁)
     (adequate : SynthBudgetAdequate (fuel + 1) (.letE name value body)) :
@@ -798,9 +798,9 @@ theorem auditedCheck_complete_paired
     {declarativeExpected executableExpected : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDCheck signature q S declarativeContext expression
+    {raw : DemandCheck signature q S declarativeContext expression
       declarativeExpected q' S'}
-    {origin : DDCheckOrigin signature raw ledger ledger'}
+    {origin : DemandCheckOrigin signature raw ledger ledger'}
     (before : TraversalStateCorrespondence q S ledger state)
     (signatureBelow : SignatureVarsBelow q signature)
     (contexts : ContextBisimulation before.prevailing declarativeContext
@@ -811,7 +811,7 @@ theorem auditedCheck_complete_paired
     (executableContextBounded : executableContext.BoundedBy q)
     (expectedBounded : declarativeExpected.BoundedBy q)
     (executableExpectedBounded : executableExpected.BoundedBy q)
-    (audit : DDCheckTerminalAudit terminal signature origin)
+    (audit : DemandCheckTerminalAudit terminal signature origin)
     (adequate : MatcherCheckBudgetAdequate fuel expression) :
     Nonempty (PairedCertifiedStateRunCompletion terminal signature before
       (checkExprFuel fuel signature executableContext selfEnv path expression
@@ -872,10 +872,10 @@ theorem auditedChecks_complete_paired
       expected.BoundedBy q)
     (expectedsRelated : TyListBisimulation before.prevailing
       declarativeExpecteds executableExpecteds)
-    {raw : DDChecks signature q S declarativeContext expressions
+    {raw : DemandChecks signature q S declarativeContext expressions
       declarativeExpecteds q' S'}
-    {origin : DDChecksOrigin signature raw ledger ledger'}
-    (audit : DDChecksTerminalAudit terminal signature origin)
+    {origin : DemandChecksOrigin signature raw ledger ledger'}
+    (audit : DemandChecksTerminalAudit terminal signature origin)
     (adequate : MatcherChecksBudgetAdequate fuel expressions) :
     Nonempty (PairedCertifiedStateRunCompletion terminal signature before
       (checkExprsFuel fuel signature executableContext selfEnv parent index
@@ -964,13 +964,13 @@ theorem auditedSynthCtor_complete_paired
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
     (lookup : signature.findDataCtor name = some scheme)
-    {childrenRaw : DDChecks signature
+    {childrenRaw : DemandChecks signature
       (InferenceBase.instantiateCtorScheme q scheme).supply S
       declarativeContext expressions
       (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
-    {childrenOrigin : DDChecksOrigin signature childrenRaw
+    {childrenOrigin : DemandChecksOrigin signature childrenRaw
       (DDLedger.markCtorInstance ledger q scheme) ledger₁}
-    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (childrenAudit : DemandChecksTerminalAudit terminal signature childrenOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.ctor name expressions)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
       (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -1066,16 +1066,16 @@ theorem auditedSynthFix_complete_paired
     (executableContextBounded : executableContext.BoundedBy q)
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
-    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
+    {bodyRaw : DemandSynth signature { q with nextTy := q.nextTy + 2 } S
       ((argument, Scheme.mono (.var q.nextTy)) ::
         (self, Scheme.mono
           (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
         declarativeContext)
       body bodyTarget q₁ S₁}
-    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁}
-    (aligned : DDAlignTypesWithLedger ledger₁ S₁ bodyTarget
+    {bodyOrigin : DemandSynthOrigin signature bodyRaw ledger ledger₁}
+    (aligned : DemandAlignTypesWithLedger ledger₁ S₁ bodyTarget
       (.var (q.nextTy + 1)) S')
-    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (bodyAudit : DemandSynthTerminalAudit terminal signature bodyOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.fix self argument body)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
       (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -1284,14 +1284,14 @@ theorem auditedSynthFixMatcher_complete_paired
     (direct : DirectSelf.Holds self (.matcher clauses))
     (placeholder : fixMatcherPlaceholderSupply signature clauses q =
       some (domain, codomain, q₀))
-    {bodyRaw : DDSynth signature q₀ S
+    {bodyRaw : DemandSynth signature q₀ S
       ((argument, Scheme.mono domain) ::
         (self, Scheme.mono (.fn domain codomain)) :: declarativeContext)
       (.matcher clauses) bodyTarget q₁ S₁}
-    {bodyOrigin : DDSynthOrigin signature bodyRaw
+    {bodyOrigin : DemandSynthOrigin signature bodyRaw
       (DDLedger.markCapRange ledger q q₀) ledger₁}
-    (aligned : DDAlignTypesWithLedger ledger₁ S₁ bodyTarget codomain S')
-    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (aligned : DemandAlignTypesWithLedger ledger₁ S₁ bodyTarget codomain S')
+    (bodyAudit : DemandSynthTerminalAudit terminal signature bodyOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1)
       (.fix self argument (.matcher clauses))) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
@@ -1436,13 +1436,13 @@ theorem auditedSynthPrim_complete_paired
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
     (lookup : signature.findPrimitive op = some scheme)
-    {childrenRaw : DDChecks signature
+    {childrenRaw : DemandChecks signature
       (InferenceBase.instantiateCtorScheme q scheme).supply S
       declarativeContext expressions
       (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
-    {childrenOrigin : DDChecksOrigin signature childrenRaw
+    {childrenOrigin : DemandChecksOrigin signature childrenRaw
       (DDLedger.markCtorInstance ledger q scheme) ledger₁}
-    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (childrenAudit : DemandChecksTerminalAudit terminal signature childrenOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1) (.prim op expressions)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
       (inferExprFuel (fuel + 1) signature executableContext selfEnv path
@@ -1569,24 +1569,24 @@ theorem auditedSynthMatchAll_complete_paired
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    {targetRaw : DDSynth signature q S declarativeContext target targetTarget
+    {targetRaw : DemandSynth signature q S declarativeContext target targetTarget
       q₁ S₁}
-    {targetOrigin : DDSynthOrigin signature targetRaw ledger ledger₁}
+    {targetOrigin : DemandSynthOrigin signature targetRaw ledger ledger₁}
     {patternRaw : DDPattern signature q₁ S₁ declarativeContext [] [] pattern
       dual bindings q₂ S₂}
     {patternOrigin : DDPatternOrigin signature patternRaw ledger₁ ledger₂}
-    (targetAligned : DDAlignTypesWithLedger ledger₂ S₂ dual.target
+    (targetAligned : DemandAlignTypesWithLedger ledger₂ S₂ dual.target
       targetTarget S₃)
-    {matcherRaw : DDCheck signature q₂ S₃ declarativeContext matcher
+    {matcherRaw : DemandCheck signature q₂ S₃ declarativeContext matcher
       (.slot dual.cap targetTarget) q₃ S₄}
-    {matcherOrigin : DDCheckOrigin signature matcherRaw ledger₂ ledger₃}
-    {bodyRaw : DDSynth signature q₃ S₄
+    {matcherOrigin : DemandCheckOrigin signature matcherRaw ledger₂ ledger₃}
+    {bodyRaw : DemandSynth signature q₃ S₄
       (bindings.toContext ++ declarativeContext) body bodyTarget q' S'}
-    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger₃ ledger'}
-    (targetAudit : DDSynthTerminalAudit terminal signature targetOrigin)
+    {bodyOrigin : DemandSynthOrigin signature bodyRaw ledger₃ ledger'}
+    (targetAudit : DemandSynthTerminalAudit terminal signature targetOrigin)
     (patternAudit : DDPatternTerminalAudit terminal signature patternOrigin)
-    (matcherAudit : DDCheckTerminalAudit terminal signature matcherOrigin)
-    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (matcherAudit : DemandCheckTerminalAudit terminal signature matcherOrigin)
+    (bodyAudit : DemandSynthTerminalAudit terminal signature bodyOrigin)
     (adequate : SynthBudgetAdequate (fuel + 1)
       (.matchAll target matcher pattern body)) :
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
@@ -1771,15 +1771,15 @@ theorem auditedSynth_complete_paired_except_matchers
     {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    {raw : DDSynth signature q S declarativeContext expression target q' S'}
-    {origin : DDSynthOrigin signature raw ledger ledger'}
+    {raw : DemandSynth signature q S declarativeContext expression target q' S'}
+    {origin : DemandSynthOrigin signature raw ledger ledger'}
     (before : TraversalStateCorrespondence q S ledger state)
     (signatureBelow : SignatureVarsBelow q signature)
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
     (executableContextBounded : executableContext.BoundedBy q)
-    (audit : DDSynthTerminalAudit terminal signature origin)
+    (audit : DemandSynthTerminalAudit terminal signature origin)
     (adequate : SynthBudgetAdequate fuel expression)
     (matcherCase : ∀ {clauses : List Clause} {rawHoleLists : List (List Dual)}
       {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -1820,10 +1820,10 @@ theorem auditedSynth_complete_paired_except_matchers
     (matchAllCase : ∀ {targetExpr matcher : Expr} {pattern : Pattern}
       {body : Expr} {bodyTy : Ty} {q' : InferenceBase.FreshSupply}
       {S' : Subst} {ledger' : CapabilityOriginLedger}
-      {raw : DDSynth signature q S declarativeContext
+      {raw : DemandSynth signature q S declarativeContext
         (.matchAll targetExpr matcher pattern body) (.listT bodyTy) q' S'}
-      {origin : DDSynthOrigin signature raw ledger ledger'},
-      DDSynthTerminalAudit terminal signature origin →
+      {origin : DemandSynthOrigin signature raw ledger ledger'},
+      DemandSynthTerminalAudit terminal signature origin →
       SynthBudgetAdequate fuel
         (.matchAll targetExpr matcher pattern body) →
       Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
@@ -1838,8 +1838,8 @@ theorem auditedSynth_complete_paired_except_matchers
       rename_i name scheme lookup
       exact auditedSynthLeaf_complete_paired fuel before contexts contextBounded
         executableContextBounded
-        (audit := DDSynthTerminalAudit.var (lookup := lookup))
-        (leaf := DDSynthLeafOrigin.var (q := q) (ledger := ledger) lookup)
+        (audit := DemandSynthTerminalAudit.var (lookup := lookup))
+        (leaf := DemandSynthLeafOrigin.var (q := q) (ledger := ledger) lookup)
         adequate
   | lit =>
       exact auditedSynthLeaf_complete_paired fuel before contexts contextBounded
@@ -1923,11 +1923,11 @@ theorem auditedSynth_complete_paired_except_matchers
         patternRaw patternOrigin matcherRaw matcherOrigin targetRaw bodyRaw
         targetOrigin bodyOrigin
       exact matchAllCase
-        (raw := DDSynth.matchAll targetRaw patternRaw targetAligned.erase
+        (raw := DemandSynth.matchAll targetRaw patternRaw targetAligned.erase
           matcherRaw bodyRaw)
-        (origin := DDSynthOrigin.matchAll targetOrigin patternOrigin
+        (origin := DemandSynthOrigin.matchAll targetOrigin patternOrigin
           targetAligned matcherOrigin bodyOrigin)
-        (DDSynthTerminalAudit.matchAll (targetAligned := targetAligned)
+        (DemandSynthTerminalAudit.matchAll (targetAligned := targetAligned)
           targetAudit patternAudit matcherAudit bodyAudit) adequate
 
 

@@ -1,7 +1,7 @@
 import TypePM.DemandTypingInferenceSoundnessFixMatcher
 
 /-!
-# Pattern-layer slices of executable-to-DD soundness
+# Pattern-layer slices of executable-to-demand-directed soundness
 
 This module supplies the exact-state alignment bridges and constructor slices
 needed by the user-pattern part of the mutual inference soundness proof.  The
@@ -13,43 +13,43 @@ namespace TypePM
 namespace Inference
 
 /-- Exact-state certificate for capability/target dual alignment. -/
-def DDAlignDualRun (left right : Dual) (initial final : InferState) : Prop :=
+def DemandAlignDualRun (left right : Dual) (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignDualWithLedger initial.capabilityOrigins initial.prevailing
+      DemandAlignDualWithLedger initial.capabilityOrigins initial.prevailing
         left right final.prevailing
 
 /-- Exact-state certificate for pointwise dual-list alignment. -/
-def DDAlignDualListRun (left right : List Dual)
+def DemandAlignDualListRun (left right : List Dual)
     (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignDualListWithLedger initial.capabilityOrigins initial.prevailing
+      DemandAlignDualListWithLedger initial.capabilityOrigins initial.prevailing
         left right final.prevailing
 
 /-- Exact-state certificate for constructor-field target alignment. -/
-def DDAlignPatternTargetsRun (duals : List Dual) (targets : List Ty)
+def DemandAlignPatternTargetsRun (duals : List Dual) (targets : List Ty)
     (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignTargetListWithLedger initial.capabilityOrigins
+      DemandAlignTargetListWithLedger initial.capabilityOrigins
         initial.prevailing duals targets final.prevailing
 
 /-- Exact-state certificate for entrywise or-pattern binding alignment. -/
-def DDAlignBindingsRun (left right : MonoCtx)
+def DemandAlignBindingsRun (left right : MonoCtx)
     (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignBindingsWithLedger initial.capabilityOrigins initial.prevailing
+      DemandAlignBindingsWithLedger initial.capabilityOrigins initial.prevailing
         left right final.prevailing
 
 /-- Exact-state certificate for consumer-side constructor capability
 alignment. -/
-def DDAlignCtorCapsRun (children : List Cap) (demands : List (Option Cap))
+def DemandAlignCtorCapsRun (children : List Cap) (demands : List (Option Cap))
     (initial final : InferState) : Prop :=
   final.supply = initial.supply ∧
     final.capabilityOrigins = initial.capabilityOrigins ∧
-      DDAlignCtorCapsWithLedger initial.capabilityOrigins initial.prevailing
+      DemandAlignCtorCapsWithLedger initial.capabilityOrigins initial.prevailing
         children demands final.prevailing
 
 /-- Exact-state certificate for pattern-constructor capability inference. -/
@@ -87,12 +87,12 @@ private theorem runResolvedConstraint_capEq_exact
       exact ⟨step, rfl, targetId, exactCap⟩
 
 /-- Successful executable dual alignment is exactly the corresponding
-ledger-aware DD alignment. -/
+ledger-aware demand-directed alignment. -/
 theorem alignDuals_ddAlignDualRun
     {initial final : InferState} {origin : ConstraintOrigin}
     {left right : Dual}
     (success : alignDuals initial origin left right = some final) :
-    DDAlignDualRun left right initial final := by
+    DemandAlignDualRun left right initial final := by
   unfold alignDuals at success
   rcases Option.bind_eq_some_iff.mp success with
     ⟨middle, capSuccess, afterCap⟩
@@ -118,15 +118,15 @@ theorem alignDuals_ddAlignDualRun
       rw [← targetId]
     rw [InferState.prevailing_recordSolve, stepEq] at targetAligned
     exact
-      (DDAlignDualWithLedger.mk capExact targetAligned)
+      (DemandAlignDualWithLedger.mk capExact targetAligned)
 
-/-- Successful pointwise dual-list traversal reconstructs its DD list
+/-- Successful pointwise dual-list traversal reconstructs its demand-directed list
 alignment in source order. -/
 theorem alignDualLists_ddAlignDualListRun
     {initial final : InferState} {origin : ConstraintOrigin}
     {left right : List Dual}
     (success : alignDualLists initial origin left right = some final) :
-    DDAlignDualListRun left right initial final := by
+    DemandAlignDualListRun left right initial final := by
   induction left generalizing right initial with
   | nil =>
       cases right with
@@ -149,7 +149,7 @@ theorem alignDualLists_ddAlignDualListRun
           rw [headLedger] at tailDD
           refine ⟨tailSupply.trans headSupply, tailLedger.trans headLedger,
             ?_⟩
-          exact DDAlignDualListWithLedger.cons headDD tailDD
+          exact DemandAlignDualListWithLedger.cons headDD tailDD
 
 /-- Successful constructor-field target alignment reconstructs the
 ledger-aware target-list relation. -/
@@ -157,7 +157,7 @@ theorem alignPatternTargets_ddAlignPatternTargetsRun
     {initial final : InferState} {origin : ConstraintOrigin}
     {duals : List Dual} {targets : List Ty}
     (success : alignPatternTargets initial origin duals targets = some final) :
-    DDAlignPatternTargetsRun duals targets initial final := by
+    DemandAlignPatternTargetsRun duals targets initial final := by
   induction duals generalizing targets initial with
   | nil =>
       cases targets with
@@ -180,15 +180,15 @@ theorem alignPatternTargets_ddAlignPatternTargetsRun
           rw [headLedger] at tailDD
           refine ⟨tailSupply.trans headSupply, tailLedger.trans headLedger,
             ?_⟩
-          exact DDAlignTargetListWithLedger.cons headDD tailDD
+          exact DemandAlignTargetListWithLedger.cons headDD tailDD
 
-/-- Successful binding-context alignment reconstructs its origin-safe DD
+/-- Successful binding-context alignment reconstructs its origin-safe demand-directed
 relation, including the executable positional name check. -/
 theorem alignBindings_ddAlignBindingsRun
     {initial final : InferState} {origin : ConstraintOrigin}
     {left right : MonoCtx}
     (success : alignBindings initial origin left right = some final) :
-    DDAlignBindingsRun left right initial final := by
+    DemandAlignBindingsRun left right initial final := by
   induction left generalizing right initial with
   | nil =>
       cases right with
@@ -213,7 +213,7 @@ theorem alignBindings_ddAlignBindingsRun
             rw [headLedger] at tailDD
             refine ⟨tailSupply.trans headSupply,
               tailLedger.trans headLedger, ?_⟩
-            exact DDAlignBindingsWithLedger.cons namesEq headDD tailDD
+            exact DemandAlignBindingsWithLedger.cons namesEq headDD tailDD
           · contradiction
 
 /-- Successful constructor-capability alignment reconstructs its exact
@@ -223,7 +223,7 @@ theorem alignPatternCtorCapabilities_ddAlignCtorCapsRun
     {children : List Cap} {demands : List (Option Cap)}
     (success : alignPatternCtorCapabilities initial origin children demands =
       some final) :
-    DDAlignCtorCapsRun children demands initial final := by
+    DemandAlignCtorCapsRun children demands initial final := by
   induction children generalizing demands initial with
   | nil =>
       cases demands with
@@ -243,7 +243,7 @@ theorem alignPatternCtorCapabilities_ddAlignCtorCapsRun
               simp only [alignPatternCtorCapabilities] at success
               rcases induction success with ⟨supplyEq, ledgerEq, tail⟩
               exact ⟨supplyEq, ledgerEq,
-                DDAlignCtorCapsWithLedger.skip tail⟩
+                DemandAlignCtorCapsWithLedger.skip tail⟩
           | some expected =>
               simp only [alignPatternCtorCapabilities] at success
               rcases Option.bind_eq_some_iff.mp success with
@@ -265,10 +265,10 @@ theorem alignPatternCtorCapabilities_ddAlignCtorCapsRun
                 rw [← targetId]
               rw [InferState.prevailing_recordSolve, stepEq] at tail
               exact ⟨supplyEq, ledgerEq,
-                DDAlignCtorCapsWithLedger.solve exactCap tail⟩
+                DemandAlignCtorCapsWithLedger.solve exactCap tail⟩
 
 /-- The executable pattern-constructor capability solver agrees with its
-pure supply-indexed DD relation in both projection and fallback branches. -/
+pure supply-indexed demand-directed relation in both projection and fallback branches. -/
 theorem solvePatternCtorCapability_ddPatternCtorCapRun
     {signature : FrozenSig}
     {entry : PatternCtorScheme signature.observability}
@@ -319,7 +319,7 @@ theorem solvePatternCtorCapability_ddPatternCtorCapRun
       ⟨alignedSupply, alignedLedger, alignedDD⟩
     rcases freshenSkeleton_supplyExact skeletonEq with
       ⟨freshened, finalPrevailing, finalLedger⟩
-    have alignedDD' : DDAlignCtorCapsWithLedger
+    have alignedDD' : DemandAlignCtorCapsWithLedger
         (DDLedger.markCapRange initial.capabilityOrigins initial.supply
           (patternCtorAssignmentsSupply uniqueVariables initial.supply).2)
         initial.prevailing children demands alignedState.prevailing := by
@@ -1369,7 +1369,7 @@ theorem checkArmsFuel_cons_ddArmsRun
           (ppBindings.names ++ patternResult.bindings.names))
         (1 :: index :: parent) body bodyTarget patternResult.state =
           some bodyFinal →
-      DDCheckRun signature
+      DemandCheckRun signature
         (patternResult.bindings.toContext ++
           (ppBindings.toContext ++ context))
         body bodyTarget patternResult.state bodyFinal)
@@ -1421,13 +1421,13 @@ theorem checkArmsFuel_cons_ddArmsRun
                 have disjoint :=
                   (namesDisjoint_eq_true patternResult.bindings.names
                     ppBindings.names).mp disjointCheck
-                have bodyRaw' : DDCheck signature
+                have bodyRaw' : DemandCheck signature
                     patternResult.state.supply patternResult.state.prevailing
                     (patternResult.bindings.toContext ++
                       ppBindings.toContext ++ context)
                     body bodyTarget bodyFinal.supply bodyFinal.prevailing := by
                   simpa only [List.append_assoc] using bodyRaw
-                have bodyOrigin' : DDCheckOrigin signature bodyRaw'
+                have bodyOrigin' : DemandCheckOrigin signature bodyRaw'
                     patternResult.state.capabilityOrigins
                     bodyFinal.capabilityOrigins := by
                   simpa only [List.append_assoc] using bodyOrigin
@@ -1451,7 +1451,7 @@ theorem inferClauseFuel_ddClauseRun
       checkExprsFuel fuel signature context selfEnv (1 :: path) 0 nextMatchers
         (ppResult.holes.map fun hole => .slot hole.cap hole.target)
         ppResult.state = some nextFinal →
-      DDChecksRun signature context nextMatchers
+      DemandChecksRun signature context nextMatchers
         (ppResult.holes.map fun hole => .slot hole.cap hole.target)
         ppResult.state nextFinal)
     (armsSound : ∀ (ppResult : PPatResult) (armsInitial armsFinal : InferState),

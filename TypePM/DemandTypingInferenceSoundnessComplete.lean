@@ -3,7 +3,7 @@ import TypePM.DemandTypingInferenceSoundnessLet
 import TypePM.DemandTypingInferenceSoundnessPatterns
 
 /-!
-# Complete executable-to-DD soundness
+# Complete executable-to-demand-directed soundness
 
 The local reconstruction slices retain exact executable state indices.  This
 module combines them with the terminal validator at one enclosing root cut.
@@ -11,51 +11,51 @@ The combined certificates contain both the chronological raw/Origin witness
 and a nonempty proof-relevant terminal-audit tree.  Keeping nonemptiness in
 `Prop` permits structural composition without eliminating an opaque Origin
 proof into `Type`; the final public theorem chooses the already-proved audit
-witness only when it packages `DDTyping`.
+witness only when it packages `SourceTyping`.
 -/
 
 namespace TypePM
 namespace Inference
 
-def DDSynthCertifiedRun (terminal : Subst) (signature : FrozenSig)
+def DemandSynthCertifiedRun (terminal : Subst) (signature : FrozenSig)
     (context : Context) (expression : Expr) (initial : InferState)
     (result : ExprResult) : Prop :=
   ∃ rawTarget,
-    ∃ derived : DDSynth signature initial.supply initial.prevailing context
+    ∃ derived : DemandSynth signature initial.supply initial.prevailing context
         expression rawTarget result.state.supply result.state.prevailing,
       result.target = rawTarget ∧
-        ∃ origin : DDSynthOrigin signature derived
+        ∃ origin : DemandSynthOrigin signature derived
             initial.capabilityOrigins result.state.capabilityOrigins,
-          Nonempty (DDSynthTerminalAudit terminal signature origin)
+          Nonempty (DemandSynthTerminalAudit terminal signature origin)
 
-def DDSynthsCertifiedRun (terminal : Subst) (signature : FrozenSig)
+def DemandSynthsCertifiedRun (terminal : Subst) (signature : FrozenSig)
     (context : Context) (expressions : List Expr) (initial : InferState)
     (result : ExprsResult) : Prop :=
   ∃ rawTargets,
-    ∃ derived : DDSynths signature initial.supply initial.prevailing context
+    ∃ derived : DemandSynths signature initial.supply initial.prevailing context
         expressions rawTargets result.state.supply result.state.prevailing,
       result.targets = rawTargets ∧
-        ∃ origin : DDSynthsOrigin signature derived
+        ∃ origin : DemandSynthsOrigin signature derived
             initial.capabilityOrigins result.state.capabilityOrigins,
-          Nonempty (DDSynthsTerminalAudit terminal signature origin)
+          Nonempty (DemandSynthsTerminalAudit terminal signature origin)
 
-def DDCheckCertifiedRun (terminal : Subst) (signature : FrozenSig)
+def DemandCheckCertifiedRun (terminal : Subst) (signature : FrozenSig)
     (context : Context) (expression : Expr) (expected : Ty)
     (initial final : InferState) : Prop :=
-  ∃ derived : DDCheck signature initial.supply initial.prevailing context
+  ∃ derived : DemandCheck signature initial.supply initial.prevailing context
       expression expected final.supply final.prevailing,
-    ∃ origin : DDCheckOrigin signature derived initial.capabilityOrigins
+    ∃ origin : DemandCheckOrigin signature derived initial.capabilityOrigins
         final.capabilityOrigins,
-      Nonempty (DDCheckTerminalAudit terminal signature origin)
+      Nonempty (DemandCheckTerminalAudit terminal signature origin)
 
-def DDChecksCertifiedRun (terminal : Subst) (signature : FrozenSig)
+def DemandChecksCertifiedRun (terminal : Subst) (signature : FrozenSig)
     (context : Context) (expressions : List Expr) (expecteds : List Ty)
     (initial final : InferState) : Prop :=
-  ∃ derived : DDChecks signature initial.supply initial.prevailing context
+  ∃ derived : DemandChecks signature initial.supply initial.prevailing context
       expressions expecteds final.supply final.prevailing,
-    ∃ origin : DDChecksOrigin signature derived initial.capabilityOrigins
+    ∃ origin : DemandChecksOrigin signature derived initial.capabilityOrigins
         final.capabilityOrigins,
-      Nonempty (DDChecksTerminalAudit terminal signature origin)
+      Nonempty (DemandChecksTerminalAudit terminal signature origin)
 
 def DDPatternCertifiedRun (terminal : Subst) (signature : FrozenSig)
     (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
@@ -107,33 +107,33 @@ def DDClausesCertifiedRun (terminal : Subst) (signature : FrozenSig)
         result.state.capabilityOrigins,
       Nonempty (DDClausesTerminalAudit terminal signature origin)
 
-theorem DDSynthCertifiedRun.toRun
-    (certified : DDSynthCertifiedRun terminal signature context expression
+theorem DemandSynthCertifiedRun.toRun
+    (certified : DemandSynthCertifiedRun terminal signature context expression
       initial result) :
-    DDSynthRun signature context expression initial result := by
+    DemandSynthRun signature context expression initial result := by
   rcases certified with
     ⟨rawTarget, derived, targetEq, origin, _audit⟩
   exact ⟨rawTarget, derived, targetEq, origin⟩
 
-theorem DDSynthsCertifiedRun.toRun
-    (certified : DDSynthsCertifiedRun terminal signature context expressions
+theorem DemandSynthsCertifiedRun.toRun
+    (certified : DemandSynthsCertifiedRun terminal signature context expressions
       initial result) :
-    DDSynthsRun signature context expressions initial result := by
+    DemandSynthsRun signature context expressions initial result := by
   rcases certified with
     ⟨rawTargets, derived, targetsEq, origin, _audit⟩
   exact ⟨rawTargets, derived, targetsEq, origin⟩
 
-theorem DDCheckCertifiedRun.toRun
-    (certified : DDCheckCertifiedRun terminal signature context expression
+theorem DemandCheckCertifiedRun.toRun
+    (certified : DemandCheckCertifiedRun terminal signature context expression
       expected initial final) :
-    DDCheckRun signature context expression expected initial final := by
+    DemandCheckRun signature context expression expected initial final := by
   rcases certified with ⟨derived, origin, _audit⟩
   exact ⟨derived, origin⟩
 
-theorem DDChecksCertifiedRun.toRun
-    (certified : DDChecksCertifiedRun terminal signature context expressions
+theorem DemandChecksCertifiedRun.toRun
+    (certified : DemandChecksCertifiedRun terminal signature context expressions
       expecteds initial final) :
-    DDChecksRun signature context expressions expecteds initial final := by
+    DemandChecksRun signature context expressions expecteds initial final := by
   rcases certified with ⟨derived, origin, _audit⟩
   exact ⟨derived, origin⟩
 
@@ -155,12 +155,12 @@ theorem DDPatternsCertifiedRun.toRun
 
 /-- A certified run from the canonical initial state already contains every
 witness required by public source acceptance. -/
-theorem DDSynthCertifiedRun.toDDTyping
+theorem DemandSynthCertifiedRun.toSourceTyping
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : ExprResult}
-    (certified : DDSynthCertifiedRun result.state.prevailing signature context
+    (certified : DemandSynthCertifiedRun result.state.prevailing signature context
       expression (initialState signature context) result) :
-    DDTyping signature context expression result.resolvedTarget := by
+    SourceTyping signature context expression result.resolvedTarget := by
   rcases certified with
     ⟨rawTarget, derived, targetEq, origin, ⟨audit⟩⟩
   refine ⟨rawTarget, result.state.supply, result.state.prevailing, ?_,

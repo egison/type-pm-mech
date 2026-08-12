@@ -10,7 +10,7 @@ singleton direct-self side conditions as the core.
 
 The main theorem `DM.Typing.emb` maps every derivation in this
 direct-self-restricted Damas–Milner system into the two-sort state-free
-`RuntimeTyping` certificate over any closed frozen signature, with the
+`TypingInvariant` proof over any closed frozen signature, with the
 capability sort inert.  Under the embedding,
 capability binder lists are empty, capability substitutions act trivially, and
 `let` generalization commutes with the two-sort generalizer.  The converse
@@ -581,27 +581,27 @@ theorem Typing.emb {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
     ∀ {context : SCtx} {expression : Expr} {target : STy},
       Typing context expression target →
-      TypePM.RuntimeTyping signature (SCtx.emb context) expression target.emb
+      TypePM.TypingInvariant signature (SCtx.emb context) expression target.emb
   | _, _, _, .var found instantiation =>
-      TypePM.RuntimeTyping.var (SCtx.find?_emb found)
+      TypePM.TypingInvariant.var (SCtx.find?_emb found)
         (SScheme.emb_valueFlowInst instantiation)
   | _, _, _, .lam bodyTyping =>
-      TypePM.RuntimeTyping.lam (by
+      TypePM.TypingInvariant.lam (by
         simpa [SCtx.emb] using Typing.emb sigFtv bodyTyping)
   | _, _, _, .app functionTyping argumentTyping =>
-      TypePM.RuntimeTyping.app (Typing.emb sigFtv functionTyping)
+      TypePM.TypingInvariant.app (Typing.emb sigFtv functionTyping)
         (Typing.emb sigFtv argumentTyping)
   | _, _, _, .letE valueTyping bodyTyping => by
-      refine TypePM.RuntimeTyping.letE (Typing.emb sigFtv valueTyping) ?_
+      refine TypePM.TypingInvariant.letE (Typing.emb sigFtv valueTyping) ?_
       rw [generalize_emb sigFtv]
       exact Typing.emb sigFtv bodyTyping
   | _, _, _, .fixE distinct direct bodyTyping =>
-      TypePM.RuntimeTyping.fixE distinct direct (by
+      TypePM.TypingInvariant.fixE distinct direct (by
         simpa [SCtx.emb, STy.emb] using Typing.emb sigFtv bodyTyping)
   | _, _, _, .lit =>
-      TypePM.RuntimeTyping.lit
+      TypePM.TypingInvariant.lit
   | _, _, _, .tuple componentTypings =>
-      TypePM.RuntimeTyping.tuple (Typings.emb sigFtv componentTypings)
+      TypePM.TypingInvariant.tuple (Typings.emb sigFtv componentTypings)
 
 /-- List form of `Typing.emb`. -/
 theorem Typings.emb {signature : FrozenSig}
@@ -640,7 +640,7 @@ theorem idProgram_dm_typed : Typing [] idProgram .int := by
 `Int` through the embedding. -/
 theorem idProgram_two_sort_typed {signature : FrozenSig}
     (sigFtv : signature.ftv = []) :
-    TypePM.RuntimeTyping signature [] idProgram .int :=
+    TypePM.TypingInvariant signature [] idProgram .int :=
   Typing.emb sigFtv idProgram_dm_typed
 
 end DM

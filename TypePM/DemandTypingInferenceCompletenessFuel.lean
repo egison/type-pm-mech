@@ -3,7 +3,7 @@ import TypePM.Inference
 /-!
 # Structural fuel for inference completeness
 
-The completeness recursion is indexed by a DD derivation, whereas the
+The completeness recursion is indexed by a demand-directed derivation, whereas the
 executable traversal is guarded by a natural-number fuel.  The executable
 structural measures deliberately sum children and siblings, so strict
 adequacy at a parent implies strict adequacy for every recursive call after

@@ -3,11 +3,11 @@ import TypePM.DemandTypingInferenceSoundnessLet
 import TypePM.DemandTypingInferenceSoundnessMatcher
 
 /-!
-# Mutual executable-to-DD soundness
+# Mutual executable-to-demand-directed soundness
 
 This module closes the raw, exact-state soundness argument for the ten
 mutually recursive executable traversal families.  Each induction motive
-records the corresponding `DD*Run` package, so recursive calls can be fed
+records the corresponding `demand-directed*Run` package, so recursive calls can be fed
 directly to the constructor-specific reconstruction slices.
 -/
 
@@ -26,7 +26,7 @@ private theorem soundOfSome
 
 mutual
 
-/-- Successful primitive-pattern traversal reconstructs its exact DD run. -/
+/-- Successful primitive-pattern traversal reconstructs its exact demand-directed run. -/
 theorem inferPPatFuel_ddPPatRun
     {fuel : Nat} {signature : FrozenSig} {path : SyntaxPath}
     {pattern : PPat} {expected : Ty} {initial : InferState}
@@ -50,7 +50,7 @@ theorem inferPPatFuel_ddPPatRun
             (fun _ _ _ _ _ childrenSuccess =>
               inferPPatsFuel_ddPPatsRun childrenSuccess) success
 
-/-- Successful primitive-pattern-list traversal reconstructs its exact DD
+/-- Successful primitive-pattern-list traversal reconstructs its exact demand-directed
 run. -/
 theorem inferPPatsFuel_ddPPatsRun
     {fuel : Nat} {signature : FrozenSig} {parent : SyntaxPath} {index : Nat}
@@ -76,7 +76,7 @@ theorem inferPPatsFuel_ddPPatsRun
                 (fun _ tail tailSuccess =>
                   inferPPatsFuel_ddPPatsRun tailSuccess) success
 
-/-- Successful data-pattern traversal reconstructs its exact DD run. -/
+/-- Successful data-pattern traversal reconstructs its exact demand-directed run. -/
 theorem inferDPatFuel_ddDPatRun
     {fuel : Nat} {signature : FrozenSig} {path : SyntaxPath}
     {pattern : DPat} {expected : Ty} {initial : InferState}
@@ -99,7 +99,7 @@ theorem inferDPatFuel_ddDPatRun
             (fun _ _ _ _ _ childrenSuccess =>
               inferDPatsFuel_ddDPatsRun childrenSuccess) success
 
-/-- Successful data-pattern-list traversal reconstructs its exact DD run. -/
+/-- Successful data-pattern-list traversal reconstructs its exact demand-directed run. -/
 theorem inferDPatsFuel_ddDPatsRun
     {fuel : Nat} {signature : FrozenSig} {parent : SyntaxPath} {index : Nat}
     {patterns : List DPat} {targets : List Ty} {initial : InferState}
@@ -135,20 +135,20 @@ theorem inferExprFuel_ddSynthRun
     {initial : InferState} {result : ExprResult}
     (success : inferExprFuel fuel signature context selfEnv path expression
       initial = some result) :
-    DDSynthRun signature context expression initial result := by
+    DemandSynthRun signature context expression initial result := by
   revert result
   apply inferExprFuel.induct
     (motive1 := fun fuel signature context selfEnv path expression initial =>
       ∀ result,
         inferExprFuel fuel signature context selfEnv path expression initial =
             some result →
-        DDSynthRun signature context expression initial result)
+        DemandSynthRun signature context expression initial result)
     (motive2 := fun fuel signature context selfEnv path expression expected
         initial =>
       ∀ final,
         checkExprFuel fuel signature context selfEnv path expression expected
             initial = some final →
-        DDCheckRun signature context expression expected initial final)
+        DemandCheckRun signature context expression expected initial final)
     (motive3 := fun fuel signature context parameters bindings selfEnv path
         pattern initial =>
       ∀ result,
@@ -167,7 +167,7 @@ theorem inferExprFuel_ddSynthRun
       ∀ result,
         inferMatcherFuel fuel signature context selfEnv path clauses initial =
             some result →
-        DDSynthRun signature context (.matcher clauses) initial result)
+        DemandSynthRun signature context (.matcher clauses) initial result)
     (motive6 := fun fuel signature context selfEnv parent index clauses target
         initial =>
       ∀ result,
@@ -191,13 +191,13 @@ theorem inferExprFuel_ddSynthRun
       ∀ final,
         checkExprsFuel fuel signature context selfEnv parent index expressions
             expecteds initial = some final →
-        DDChecksRun signature context expressions expecteds initial final)
+        DemandChecksRun signature context expressions expecteds initial final)
     (motive10 := fun fuel signature context selfEnv parent index expressions
         initial =>
       ∀ result,
         inferExprsFuel fuel signature context selfEnv parent index expressions
             initial = some result →
-        DDSynthsRun signature context expressions initial result)
+        DemandSynthsRun signature context expressions initial result)
   all_goals intros
   all_goals try simp_all (config := { zetaDelta := true }) only
     [inferExprFuel, checkExprFuel, inferPatternFuel, inferPatternsFuel,
@@ -215,12 +215,12 @@ theorem inferExprFuel_ddSynthRun
     rename_i fuel signature context selfEnv path initial name body domain
       bodyInitial bodyResult bodyEq visited result freshEq bodyIH resultEq
     subst result
-    have bodyRun : DDSynthRun signature
+    have bodyRun : DemandSynthRun signature
         ((name, Scheme.mono (lambdaDomain initial path)) :: context) body
         (lambdaEntryState initial path) bodyResult := by
       simpa [lambdaDomain, lambdaEntryState, freshEq] using
         (bodyIH bodyResult rfl)
-    simpa [lambdaDomain, freshEq] using DDSynthRun.lam bodyRun
+    simpa [lambdaDomain, freshEq] using DemandSynthRun.lam bodyRun
   case case9 =>
     rename_i fuel signature context selfEnv path initial self argument body gate
       domain codomain placeholderState placeholder bodyInitial shadowed
@@ -240,14 +240,14 @@ theorem inferExprFuel_ddSynthRun
       subst domain
       subst codomain
       subst placeholderState
-      exact DDSynthRun.fix distinct direct nonMatcher
+      exact DemandSynthRun.fix distinct direct nonMatcher
         (bodyIH bodyResult rfl) (alignTypes_ddAlignTypesRun alignEq)
     · cases body <;>
         simp [NonMatcherBody, matcherProducingRoot] at nonMatcher
       rename_i clauses
       rcases buildFixPlaceholder_matcher_ddRun placeholderEq with
         ⟨placeholderPure, placeholderPrevailing, placeholderLedger⟩
-      apply DDSynthRun.fixMatcher distinct direct placeholderPure
+      apply DemandSynthRun.fixMatcher distinct direct placeholderPure
       · simpa [bodyInitial, visited, InferState.recordEvent] using
           placeholderPrevailing
       · simpa [bodyInitial, visited, InferState.recordEvent] using
@@ -261,21 +261,21 @@ theorem inferExprFuel_ddSynthRun
       argumentFinal argumentAlignEq visited result functionEq functionIH
       argumentIH resultEq
     subst result
-    have argumentCheck : DDCheckRun signature context argument
+    have argumentCheck : DemandCheckRun signature context argument
         (applicationDomain functionResult path) functionAligned
         argumentFinal :=
-      DDSynthRun.check (argumentIH argumentResult rfl)
+      DemandSynthRun.check (argumentIH argumentResult rfl)
         (by
           simpa [applicationDomain, domainEq] using
             alignExprResultAtExpected_ddAlignRun argumentAlignEq)
-    have functionAlignRun : DDAlignTypesRun functionResult.target
+    have functionAlignRun : DemandAlignTypesRun functionResult.target
         (.fn (applicationDomain functionResult path)
           (applicationResultTarget functionResult path))
         (applicationFreshState functionResult path) functionAligned := by
       simpa [applicationDomain, applicationResultTarget,
         applicationFreshState, domainEq, resultFreshEq] using
         alignTypes_ddAlignTypesRun functionAlignEq
-    have run := DDSynthRun.app (functionIH functionResult rfl)
+    have run := DemandSynthRun.app (functionIH functionResult rfl)
       functionAlignRun argumentCheck
     have resultTargetEq : applicationResultTarget functionResult path =
         resultTarget := by
@@ -296,7 +296,7 @@ theorem inferExprFuel_ddSynthRun
     rename_i fuel signature context selfEnv path initial expressions children
       visited result childrenEq childrenIH resultEq
     subst result
-    exact DDSynthRun.tuple (childrenIH children rfl)
+    exact DemandSynthRun.tuple (childrenIH children rfl)
   case case21 =>
     rename_i fuel signature context selfEnv path initial name expressions scheme
       lookup expecteds target instState final childrenEq visited result instEq
@@ -305,7 +305,7 @@ theorem inferExprFuel_ddSynthRun
     have childrenRun := childrenIH final rfl
     simp only [instantiateCtorInState] at instEq
     cases instEq
-    exact DDSynthRun.ctor lookup childrenRun
+    exact DemandSynthRun.ctor lookup childrenRun
   case case24 =>
     rename_i fuel signature context selfEnv path initial op expressions scheme
       lookup expecteds target instState final childrenEq visited result instEq
@@ -314,13 +314,13 @@ theorem inferExprFuel_ddSynthRun
     have childrenRun := childrenIH final rfl
     simp only [instantiateCtorInState] at instEq
     cases instEq
-    exact DDSynthRun.prim lookup childrenRun
+    exact DemandSynthRun.prim lookup childrenRun
   case case27 =>
     rename_i fuel signature context selfEnv path initial name value body
       valueResult normalizedContext normalizedValue scheme bodyInitial bodyResult
       visited result bodyEq valueEq valueIH bodyIH resultEq
     subst result
-    exact DDSynthRun.letE (valueIH valueResult rfl)
+    exact DemandSynthRun.letE (valueIH valueResult rfl)
       (bodyIH bodyResult rfl)
   case case28 =>
     rename_i fuel signature context selfEnv path initial target freshState
@@ -349,28 +349,28 @@ theorem inferExprFuel_ddSynthRun
     rcases alignTypes_ddAlignTypesRun targetAlignEq with
       ⟨alignedSupply, alignedLedger, targetAligned⟩
     have matcherRun := matcherIH matcherFinal rfl
-    unfold DDCheckRun at matcherRun
+    unfold DemandCheckRun at matcherRun
     rw [alignedSupply, alignedLedger] at matcherRun
     rcases matcherRun with ⟨matcherRaw, matcherOrigin⟩
     rcases bodyIH bodyResult rfl with
       ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin⟩
     subst targetTarget
-    change DDSynth signature initial.supply initial.prevailing context target
+    change DemandSynth signature initial.supply initial.prevailing context target
       targetResult.target targetResult.state.supply
         targetResult.state.prevailing at targetRaw
-    change DDSynthOrigin signature targetRaw initial.capabilityOrigins
+    change DemandSynthOrigin signature targetRaw initial.capabilityOrigins
       targetResult.state.capabilityOrigins at targetOrigin
     refine ⟨Ty.listT bodyTarget,
-      DDSynth.matchAll targetRaw patternRaw targetAligned.erase matcherRaw
+      DemandSynth.matchAll targetRaw patternRaw targetAligned.erase matcherRaw
         bodyRaw, ?_, ?_⟩
     · simp [finishExpr, bodyTargetEq]
     · simpa [finishExpr] using
-        DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
+        DemandSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
           matcherOrigin bodyOrigin
   case case39 =>
     rename_i fuel signature context selfEnv path expression expected initial
       synthesized inferEq final synthIH alignEq
-    exact DDSynthRun.check (synthIH synthesized rfl)
+    exact DemandSynthRun.check (synthIH synthesized rfl)
       (alignExprResultAtExpected_ddAlignRun alignEq)
   case case42 =>
     rename_i fuel signature context parameters bindings selfEnv path initial
@@ -557,14 +557,14 @@ theorem inferExprFuel_ddSynthRun
           clausesResult.rawHoleLists) = true := by
       simpa [terminalHoleCaps, finalHoleLists, List.map_map,
         Function.comp_def] using clauseCaps
-    let rawDerived := DDSynth.matcher clausesRaw collected shapeEq clauseCaps'
+    let rawDerived := DemandSynth.matcher clausesRaw collected shapeEq clauseCaps'
       catchAll binders arms coverage
-    let rawOrigin := DDSynthOrigin.matcher clausesOrigin collected shapeEq
+    let rawOrigin := DemandSynthOrigin.matcher clausesOrigin collected shapeEq
       clauseCaps' catchAll binders arms coverage
-    change DDSynth signature initial.supply initial.prevailing context
+    change DemandSynth signature initial.supply initial.prevailing context
       (.matcher clauses) (.matcher capability (.var initial.supply.nextTy))
       clausesResult.state.supply clausesResult.state.prevailing at rawDerived
-    change DDSynthOrigin signature rawDerived initial.capabilityOrigins
+    change DemandSynthOrigin signature rawDerived initial.capabilityOrigins
       (DDLedger.freezeMatcherProducer clausesResult.state.capabilityOrigins
         capability) at rawOrigin
     refine ⟨.matcher capability (.var initial.supply.nextTy), ?_, rfl, ?_⟩
@@ -619,12 +619,12 @@ theorem inferExprFuel_ddSynthRun
     have namesDistinct :=
       (namesDisjoint_eq_true patternResult.bindings.names
         ppBindings.names).mp distinct
-    have bodyRaw' : DDCheck signature patternResult.state.supply
+    have bodyRaw' : DemandCheck signature patternResult.state.supply
         patternResult.state.prevailing
         (patternResult.bindings.toContext ++ ppBindings.toContext ++ context)
         body bodyTarget bodyFinal.supply bodyFinal.prevailing := by
       simpa only [List.append_assoc] using bodyRaw
-    have bodyOrigin' : DDCheckOrigin signature bodyRaw'
+    have bodyOrigin' : DemandCheckOrigin signature bodyRaw'
         patternResult.state.capabilityOrigins
         bodyFinal.capabilityOrigins := by
       simpa only [List.append_assoc] using bodyOrigin
@@ -633,20 +633,20 @@ theorem inferExprFuel_ddSynthRun
   case case98 =>
     rename_i fuel signature context selfEnv parent index initial final resultEq
     subst final
-    exact DDChecksRun.nil signature context initial
+    exact DemandChecksRun.nil signature context initial
   case case100 =>
     rename_i fuel signature context selfEnv parent index expression expressions
       expected expecteds initial middle headEq final headIH tailIH tailEq
-    exact DDChecksRun.cons (headIH middle rfl) (tailIH final rfl)
+    exact DemandChecksRun.cons (headIH middle rfl) (tailIH final rfl)
   case case103 =>
     rename_i fuel signature context selfEnv parent index initial result resultEq
     subst result
-    exact DDSynthsRun.nil signature context initial
+    exact DemandSynthsRun.nil signature context initial
   case case106 =>
     rename_i fuel signature context selfEnv parent index expression expressions
       initial head headEq tail tailEq result headIH tailIH resultEq
     subst result
-    exact DDSynthsRun.cons (headIH head rfl) (tailIH tail rfl)
+    exact DemandSynthsRun.cons (headIH head rfl) (tailIH tail rfl)
 
 /-! ## Standalone projections of the mutual theorem -/
 
@@ -657,7 +657,7 @@ theorem checkExprFuel_ddCheckRun_mutual
     {expected : Ty} {initial final : InferState}
     (success : checkExprFuel fuel signature context selfEnv path expression
       expected initial = some final) :
-    DDCheckRun signature context expression expected initial final := by
+    DemandCheckRun signature context expression expected initial final := by
   cases fuel with
   | zero => simp [checkExprFuel] at success
   | succ fuel =>
@@ -668,7 +668,7 @@ theorem checkExprFuel_ddCheckRun_mutual
           have alignEq : alignExprResultAtExpected path synthesized expected =
               some final := by
             simpa [checkExprFuel, inferEq] using success
-          exact DDSynthRun.check (inferExprFuel_ddSynthRun inferEq)
+          exact DemandSynthRun.check (inferExprFuel_ddSynthRun inferEq)
             (alignExprResultAtExpected_ddAlignRun alignEq)
 
 mutual
@@ -751,7 +751,7 @@ private theorem checkExprsFuel_ddChecksRun_pre
     {initial final : InferState}
     (success : checkExprsFuel fuel signature context selfEnv parent index
       expressions expecteds initial = some final) :
-    DDChecksRun signature context expressions expecteds initial final := by
+    DemandChecksRun signature context expressions expecteds initial final := by
   induction fuel generalizing index expressions expecteds initial with
   | zero => simp [checkExprsFuel] at success
   | succ fuel induction =>
@@ -772,7 +772,7 @@ private theorem checkExprsFuel_ddChecksRun_pre
                       parent (index + 1) expressions expecteds middle =
                         some final := by
                     simpa [checkExprsFuel, headEq] using success
-                  exact DDChecksRun.cons
+                  exact DemandChecksRun.cons
                     (checkExprFuel_ddCheckRun_mutual headEq)
                     (induction tailEq)
 
@@ -786,7 +786,7 @@ theorem inferMatcherFuel_ddSynthRun_mutual
     {initial : InferState} {result : ExprResult}
     (success : inferMatcherFuel fuel signature context selfEnv path clauses
       initial = some result) :
-    DDSynthRun signature context (.matcher clauses) initial result := by
+    DemandSynthRun signature context (.matcher clauses) initial result := by
   cases fuel with
   | zero => simp [inferMatcherFuel] at success
   | succ fuel =>
@@ -872,7 +872,7 @@ theorem checkExprsFuel_ddChecksRun_mutual
     {initial final : InferState}
     (success : checkExprsFuel fuel signature context selfEnv parent index
       expressions expecteds initial = some final) :
-    DDChecksRun signature context expressions expecteds initial final :=
+    DemandChecksRun signature context expressions expecteds initial final :=
   checkExprsFuel_ddChecksRun_pre success
 
 /-- Standalone synthesis-list projection of raw mutual soundness. -/
@@ -882,7 +882,7 @@ theorem inferExprsFuel_ddSynthsRun_mutual
     {expressions : List Expr} {initial : InferState} {result : ExprsResult}
     (success : inferExprsFuel fuel signature context selfEnv parent index
       expressions initial = some result) :
-    DDSynthsRun signature context expressions initial result := by
+    DemandSynthsRun signature context expressions initial result := by
   induction fuel generalizing index expressions initial result with
   | zero => simp [inferExprsFuel] at success
   | succ fuel induction =>

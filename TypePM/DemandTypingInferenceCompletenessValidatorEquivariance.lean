@@ -5,7 +5,7 @@ import TypePM.SourceSubstitution
 /-!
 # Equivariance of terminal-audit facts
 
-The DD terminal substitution and the executable terminal prevailing
+The demand-directed terminal substitution and the executable terminal prevailing
 substitution are mutually factoring solved forms, but need not be literally
 equal.  This module isolates the semantic reason that the three terminal
 audits can nevertheless be consumed by the executable validator:

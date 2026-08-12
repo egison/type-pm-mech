@@ -7,7 +7,7 @@ import TypePM.DemandTypingInferenceCompletenessDataBisimulation
 The ordinary type-alignment completeness theorem is the atomic cut used by
 four pattern-layer executors.  This module lifts that theorem to duals,
 dual lists, pattern-target lists, and monomorphic binding contexts.  The
-wrappers derive every solver fact internally; callers provide only the DD
+wrappers derive every solver fact internally; callers provide only the demand-directed
 alignment, the paired traversal data, and the usual supply bounds.
 -/
 
@@ -99,7 +99,7 @@ private def StateRunCompletion.finishAlignDuals
     simp [capSuccess, targetSuccess]
 
 /-- Completeness of one dual alignment.  Capability solver success and its
-orientation are reconstructed from the ledger-aware DD MGU. -/
+orientation are reconstructed from the ledger-aware demand-directed MGU. -/
 theorem ddAlignDualWithLedger_complete_nonempty
     {q : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
@@ -114,7 +114,7 @@ theorem ddAlignDualWithLedger_complete_nonempty
     (declarativeRightBounded : Dual.BoundedBy q declarativeRight)
     (executableLeftBounded : Dual.BoundedBy q executableLeft)
     (executableRightBounded : Dual.BoundedBy q executableRight)
-    (aligned : DDAlignDualWithLedger ledger S declarativeLeft declarativeRight
+    (aligned : DemandAlignDualWithLedger ledger S declarativeLeft declarativeRight
       S') :
     Nonempty (StateRunCompletion relation
       (alignDuals initial origin executableLeft executableRight) q S' ledger) := by
@@ -189,7 +189,7 @@ noncomputable def ddAlignDualWithLedger_complete
     (declarativeRightBounded : Dual.BoundedBy q declarativeRight)
     (executableLeftBounded : Dual.BoundedBy q executableLeft)
     (executableRightBounded : Dual.BoundedBy q executableRight)
-    (aligned : DDAlignDualWithLedger ledger S declarativeLeft declarativeRight
+    (aligned : DemandAlignDualWithLedger ledger S declarativeLeft declarativeRight
       S') :
     StateRunCompletion relation
       (alignDuals initial origin executableLeft executableRight) q S' ledger :=
@@ -217,7 +217,7 @@ theorem ddAlignDualListWithLedger_complete_nonempty
       Dual.BoundedBy q dual)
     (executableRightsBounded : ∀ dual ∈ executableRights,
       Dual.BoundedBy q dual)
-    (aligned : DDAlignDualListWithLedger ledger S declarativeLefts
+    (aligned : DemandAlignDualListWithLedger ledger S declarativeLefts
       declarativeRights S') :
     Nonempty (StateRunCompletion relation
       (alignDualLists initial origin executableLefts executableRights) q S'
@@ -271,7 +271,7 @@ noncomputable def ddAlignDualListWithLedger_complete
       Dual.BoundedBy q dual)
     (executableRightsBounded : ∀ dual ∈ executableRights,
       Dual.BoundedBy q dual)
-    (aligned : DDAlignDualListWithLedger ledger S declarativeLefts
+    (aligned : DemandAlignDualListWithLedger ledger S declarativeLefts
       declarativeRights S') :
     StateRunCompletion relation
       (alignDualLists initial origin executableLefts executableRights) q S'
@@ -300,7 +300,7 @@ theorem ddAlignTargetListWithLedger_complete_nonempty
       Dual.BoundedBy q dual)
     (executableExpectedsBounded : ∀ target ∈ executableExpecteds,
       Ty.BoundedBy q target)
-    (aligned : DDAlignTargetListWithLedger ledger S declarativeDuals
+    (aligned : DemandAlignTargetListWithLedger ledger S declarativeDuals
       declarativeExpecteds S') :
     Nonempty (StateRunCompletion relation
       (alignPatternTargets initial origin executableDuals executableExpecteds)
@@ -356,7 +356,7 @@ noncomputable def ddAlignTargetListWithLedger_complete
       Dual.BoundedBy q dual)
     (executableExpectedsBounded : ∀ target ∈ executableExpecteds,
       Ty.BoundedBy q target)
-    (aligned : DDAlignTargetListWithLedger ledger S declarativeDuals
+    (aligned : DemandAlignTargetListWithLedger ledger S declarativeDuals
       declarativeExpecteds S') :
     StateRunCompletion relation
       (alignPatternTargets initial origin executableDuals executableExpecteds)
@@ -382,7 +382,7 @@ theorem ddAlignBindingsWithLedger_complete_nonempty
     (declarativeRightsBounded : MonoCtx.BoundedBy q declarativeRights)
     (executableLeftsBounded : MonoCtx.BoundedBy q executableLefts)
     (executableRightsBounded : MonoCtx.BoundedBy q executableRights)
-    (aligned : DDAlignBindingsWithLedger ledger S declarativeLefts
+    (aligned : DemandAlignBindingsWithLedger ledger S declarativeLefts
       declarativeRights S') :
     Nonempty (StateRunCompletion relation
       (alignBindings initial origin executableLefts executableRights) q S'
@@ -437,7 +437,7 @@ noncomputable def ddAlignBindingsWithLedger_complete
     (declarativeRightsBounded : MonoCtx.BoundedBy q declarativeRights)
     (executableLeftsBounded : MonoCtx.BoundedBy q executableLefts)
     (executableRightsBounded : MonoCtx.BoundedBy q executableRights)
-    (aligned : DDAlignBindingsWithLedger ledger S declarativeLefts
+    (aligned : DemandAlignBindingsWithLedger ledger S declarativeLefts
       declarativeRights S') :
     StateRunCompletion relation
       (alignBindings initial origin executableLefts executableRights) q S'

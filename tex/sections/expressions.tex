@@ -17,7 +17,7 @@ type との ordinary alignment，argument checking の順で進む．
 }{
   q;S;\Omega;\Gamma\vdash x\Rightarrow\tau
     \dashv q';S;\Omega'
-}\rn{DD-VAR}
+}\rn{demand-directed-VAR}
 
 \inferrule{
   q+\langle0,1\rangle;S;\Omega;
@@ -26,7 +26,7 @@ type との ordinary alignment，argument checking の順で進む．
 }{
   q;S;\Omega;\Gamma\vdash\lambda x.e\Rightarrow
     \alpha_{q_\tau}\to\tau\dashv q';S';\Omega'
-}\rn{DD-LAM}
+}\rn{demand-directed-LAM}
 
 \inferrule{
   q;S;\Omega;\Gamma\vdash e_1\Rightarrow\tau_f
@@ -39,7 +39,7 @@ type との ordinary alignment，argument checking の順で進む．
 }{
   q;S;\Omega;\Gamma\vdash e_1\,e_2\Rightarrow
     \alpha_{(q_1)_\tau+1}\dashv q_2;S_3;\Omega_2
-}\rn{DD-APP}
+}\rn{demand-directed-APP}
 \end{mathpar}
 function domain が slot に解決された場合，argument の構文に関係なく，最後の checking cut で
 matcher-to-slot coercion を選べる．
@@ -60,7 +60,7 @@ maskingやcapture条件も必要ない．
 \inferrule{ }{
   q;S;\Omega;\Gamma\vdash n\Rightarrow\mathsf{Int}
     \dashv q;S;\Omega
-}\rn{DD-LIT}
+}\rn{demand-directed-LIT}
 
 \inferrule{
   q;S;\Omega;\Gamma\vdash\overline e\Rightarrow\overline\tau
@@ -68,7 +68,7 @@ maskingやcapture条件も必要ない．
 }{
   q;S;\Omega;\Gamma\vdash(\overline e)\Rightarrow
     (\overline\tau)\dashv q';S';\Omega'
-}\rn{DD-TUPLE}
+}\rn{demand-directed-TUPLE}
 
 \inferrule{
   \Inst^{\mathsf{str}}_q(\Omega,\Sighat_D(C))=
@@ -79,7 +79,7 @@ maskingやcapture条件も必要ない．
 }{
   q;S;\Omega;\Gamma\vdash C\,\overline e\Rightarrow
     \rho\dashv q';S';\Omega'
-}\rn{DD-CON}
+}\rn{demand-directed-CON}
 
 \inferrule{
   \Inst^{\mathsf{str}}_q(\Omega,\Sighat_{\mathit{prim}}(op))=
@@ -90,7 +90,7 @@ maskingやcapture条件も必要ない．
 }{
   q;S;\Omega;\Gamma\vdash op(\overline e)\Rightarrow
     \rho\dashv q';S';\Omega'
-}\rn{DD-PRIM}
+}\rn{demand-directed-PRIM}
 \end{mathpar}
 $\mathsf{freezeExport}$ は exported result に残る structural leaf だけを rename-only にする．
 
@@ -108,7 +108,7 @@ $\mathsf{freezeExport}$ は exported result に残る structural leaf だけを 
   q;S;\Omega;\Gamma\vdash
   \mathtt{let}\ x=e_1\ \mathtt{in}\ e_2\Rightarrow
     \tau_2\dashv q';S';\Omega'
-}\rn{DD-LET}
+}\rn{demand-directed-LET}
 
 \inferrule{
   f\ne x \quad \DirectSelf(f,e)\quad\mathsf{NonMatcherBody}(e) \\
@@ -120,7 +120,7 @@ $\mathsf{freezeExport}$ は exported result に残る structural leaf だけを 
 }{
   q;S;\Omega;\Gamma\vdash\mathtt{fix}\ f\ x.e\Rightarrow
     \alpha_{q_\tau}\to\alpha_{q_\tau+1}\dashv q_1;S';\Omega_1
-}\rn{DD-FIX}
+}\rn{demand-directed-FIX}
 \end{mathpar}
 $\mathtt{let}$ の局所安定性だけでは，外側の後続solveを越えた公開終端での一般化一致は表せない．
 そこでterminal auditは，rootの終端contextと終端value typeから$\Gen$を再計算し，bodyで使った
@@ -137,7 +137,7 @@ head に限る．matcher literal を body に持つ recursion は次章の専用
   q;S;\Omega;\Gamma\vdash\mathtt{something}\Rightarrow
     \Matcher{\Any}{\alpha_{q_\tau}}\dashv
     q+\langle0,1\rangle;S;\Omega
-}\rn{DD-SOMETHING}
+}\rn{demand-directed-SOMETHING}
 \end{mathpar}
 $\mathtt{something}$ 自身は matcher producer である．slot が必要かどうかはこの規則では決めず，
 外側の checking cut が expected head を見て決める．

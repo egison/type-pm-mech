@@ -2,7 +2,7 @@ import TypePM.DemandTypingErasureFactorization
 import TypePM.DemandTypingErasureTransport
 
 /-!
-# State-free runtime erasure for patterns and matcher clauses
+# State-free typing-invariant erasure for patterns and matcher clauses
 
 This module gives the pattern-side target propositions for demand-typing
 state erasure.  Each proposition applies the terminal substitution uniformly
@@ -13,7 +13,7 @@ constructor instances, and terminal expression typings.
 
 No definition below stores a demand-typing derivation in the target
 certificate.  In particular, expression leaves take a concrete terminal
-`RuntimeTyping` premise rather than using the source derivation as an oracle.
+`TypingInvariant` premise rather than using the source derivation as an oracle.
 -/
 
 namespace TypePM
@@ -54,7 +54,7 @@ end CtorScheme
 namespace DDDPatOrigin
 
 /-- Terminal state-free conclusion for one primitive data pattern. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {expected : Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -63,18 +63,18 @@ def RuntimeErasure
     (_origin : DDDPatOrigin signature raw ledger ledger') : Prop :=
   DPatTy signature pattern (S'.apply expected) (bindings.applySubst S')
 
-theorem runtimeErasure_var
+theorem typingInvariantErasure_var
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (name : String) (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDDPatOrigin.var (signature := signature) (q := q) (S := S)
         (name := name) (expectedTarget := expected) (ledger := ledger)) := by
   exact DPatTy.var
 
-theorem runtimeErasure_wild
+theorem typingInvariantErasure_wild
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDDPatOrigin.wild (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   exact DPatTy.wild
@@ -84,7 +84,7 @@ end DDDPatOrigin
 namespace DDDPatsOrigin
 
 /-- Terminal state-free conclusion for a primitive data-pattern list. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {targets : List Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -94,10 +94,10 @@ def RuntimeErasure
   DPatTys signature patterns (targets.map S'.apply)
     (bindings.applySubst S')
 
-theorem runtimeErasure_nil
+theorem typingInvariantErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDDPatsOrigin.nil (signature := signature) (q := q) (S := S)
         (ledger := ledger)) := by
   exact DPatTys.nil
@@ -108,14 +108,14 @@ namespace DDDPatOrigin
 
 /-- A data constructor is structural once its children, terminal result
 equality, and terminal constructor instance have been supplied. -/
-theorem runtimeErasure_ctor_of_children
+theorem typingInvariantErasure_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {name : String} {patterns : List DPat} {expected : Ty}
     {scheme : CtorScheme} {S₁ : Subst} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q scheme) S
       (InferenceBase.instantiateCtorScheme q scheme).value.2 expected S₁)
     {children : DDDPats signature
@@ -123,14 +123,14 @@ theorem runtimeErasure_ctor_of_children
       (InferenceBase.instantiateCtorScheme q scheme).value.1 bindings q' S'}
     (childrenOrigin : DDDPatsOrigin signature children
       (DDLedger.markCtorInstance ledger q scheme) ledger₂)
-    (childrenErasure : DDDPatsOrigin.RuntimeErasure childrenOrigin)
+    (childrenErasure : DDDPatsOrigin.TypingInvariantErasure childrenOrigin)
     (resultEquality :
       S'.apply (InferenceBase.instantiateCtorScheme q scheme).value.2 =
         S'.apply expected)
     (instantiation : scheme.Inst
       ((InferenceBase.instantiateCtorScheme q scheme).value.1.map S'.apply)
       (S'.apply (InferenceBase.instantiateCtorScheme q scheme).value.2)) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDDPatOrigin.ctor lookup aligned childrenOrigin) := by
   change DPatTy signature (.ctor name patterns) (S'.apply expected)
     (bindings.applySubst S')
@@ -139,22 +139,22 @@ theorem runtimeErasure_ctor_of_children
 
 /-- Tuple construction has the same terminal-equality boundary as ordinary
 constructor construction. -/
-theorem runtimeErasure_tuple_of_children
+theorem typingInvariantErasure_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {expected : Ty} {S₁ : Subst}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expected S₁)
     {children : DDDPats signature
       (freshTargetsSupply patterns.length q).2 S₁ patterns
       (freshTargetsSupply patterns.length q).1 bindings q' S'}
     (childrenOrigin : DDDPatsOrigin signature children ledger ledger')
-    (childrenErasure : DDDPatsOrigin.RuntimeErasure childrenOrigin)
+    (childrenErasure : DDDPatsOrigin.TypingInvariantErasure childrenOrigin)
     (resultEquality :
       S'.apply (.prod (freshTargetsSupply patterns.length q).1) =
         S'.apply expected) :
-    RuntimeErasure (DDDPatOrigin.tuple aligned childrenOrigin) := by
+    TypingInvariantErasure (DDDPatOrigin.tuple aligned childrenOrigin) := by
   change DPatTy signature (.tuple patterns) (S'.apply expected)
     (bindings.applySubst S')
   rw [← resultEquality]
@@ -164,7 +164,7 @@ end DDDPatOrigin
 
 namespace DDDPatsOrigin
 
-theorem runtimeErasure_cons_of_terminal_head
+theorem typingInvariantErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {patterns : List DPat} {target : Ty}
     {targets : List Ty} {bindings restBindings : MonoCtx}
@@ -179,8 +179,8 @@ theorem runtimeErasure_cons_of_terminal_head
       name ∉ restBindings.names)
     (headAtTerminal : DPatTy signature pattern (S'.apply target)
       (bindings.applySubst S'))
-    (tailErasure : RuntimeErasure tailOrigin) :
-    RuntimeErasure
+    (tailErasure : TypingInvariantErasure tailOrigin) :
+    TypingInvariantErasure
       (DDDPatsOrigin.cons headOrigin tailOrigin disjoint) := by
   change DPatTys signature (pattern :: patterns)
     ((target :: targets).map S'.apply)
@@ -197,7 +197,7 @@ end DDDPatsOrigin
 namespace DDPPatOrigin
 
 /-- Terminal state-free conclusion for one primitive-pattern pattern. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {expected : Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -207,27 +207,27 @@ def RuntimeErasure
   TerminalPPatResolution signature S' pattern (S'.apply expected)
     (holes.map (Dual.applySubst S')) (bindings.applySubst S')
 
-theorem runtimeErasure_hole
+theorem typingInvariantErasure_hole
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {expected : Ty} {ledger : CapabilityOriginLedger}
     (fresh : signature.FreshCapFor ⟨q.nextCap⟩ expected) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPPatOrigin.hole (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   exact TerminalPPatResolution.hole fresh
 
-theorem runtimeErasure_wild
+theorem typingInvariantErasure_wild
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPPatOrigin.wild (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   exact TerminalPPatResolution.wild
 
-theorem runtimeErasure_pval
+theorem typingInvariantErasure_pval
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (name : String) (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPPatOrigin.pval (signature := signature) (q := q) (S := S)
         (name := name) (expectedTarget := expected) (ledger := ledger)) := by
   exact TerminalPPatResolution.pval
@@ -237,7 +237,7 @@ end DDPPatOrigin
 namespace DDPPatsOrigin
 
 /-- Terminal state-free conclusion for a primitive-pattern list. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {targets : List Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -247,10 +247,10 @@ def RuntimeErasure
   TerminalPPatResolutions signature S' patterns (targets.map S'.apply)
     (holes.map (Dual.applySubst S')) (bindings.applySubst S')
 
-theorem runtimeErasure_nil
+theorem typingInvariantErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPPatsOrigin.nil (signature := signature) (q := q) (S := S)
         (ledger := ledger)) := by
   exact TerminalPPatResolutions.nil
@@ -259,7 +259,7 @@ end DDPPatsOrigin
 
 namespace DDPPatOrigin
 
-theorem runtimeErasure_ctor_of_children
+theorem typingInvariantErasure_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {name : String} {patterns : List PPat} {expected : Ty}
     {entry : PatternCtorScheme signature.observability} {S₁ : Subst}
@@ -267,7 +267,7 @@ theorem runtimeErasure_ctor_of_children
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger}
     (lookup : signature.findPatternCtor name = some entry)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q entry.scheme) S
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.2 expected S₁)
     {children : DDPPats signature
@@ -276,14 +276,14 @@ theorem runtimeErasure_ctor_of_children
       q' S'}
     (childrenOrigin : DDPPatsOrigin signature children
       (DDLedger.markCtorInstance ledger q entry.scheme) ledger₂)
-    (childrenErasure : DDPPatsOrigin.RuntimeErasure childrenOrigin)
+    (childrenErasure : DDPPatsOrigin.TypingInvariantErasure childrenOrigin)
     (resultEquality :
       S'.apply (InferenceBase.instantiateCtorScheme q entry.scheme).value.2 =
         S'.apply expected)
     (instantiation : entry.Inst
       ((InferenceBase.instantiateCtorScheme q entry.scheme).value.1.map S'.apply)
       (S'.apply (InferenceBase.instantiateCtorScheme q entry.scheme).value.2)) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPPatOrigin.ctor lookup aligned childrenOrigin) := by
   change TerminalPPatResolution signature S' (.ctor name patterns)
     (S'.apply expected) (holes.map (Dual.applySubst S'))
@@ -291,23 +291,23 @@ theorem runtimeErasure_ctor_of_children
   rw [← resultEquality]
   exact TerminalPPatResolution.ctor lookup childrenErasure instantiation
 
-theorem runtimeErasure_tuple_of_children
+theorem typingInvariantErasure_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {expected : Ty} {S₁ : Subst}
     {holes : List Dual} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expected S₁)
     {children : DDPPats signature
       (freshTargetsSupply patterns.length q).2 S₁ patterns
       (freshTargetsSupply patterns.length q).1 holes bindings q' S'}
     (childrenOrigin : DDPPatsOrigin signature children ledger ledger')
-    (childrenErasure : DDPPatsOrigin.RuntimeErasure childrenOrigin)
+    (childrenErasure : DDPPatsOrigin.TypingInvariantErasure childrenOrigin)
     (resultEquality :
       S'.apply (.prod (freshTargetsSupply patterns.length q).1) =
         S'.apply expected) :
-    RuntimeErasure (DDPPatOrigin.tuple aligned childrenOrigin) := by
+    TypingInvariantErasure (DDPPatOrigin.tuple aligned childrenOrigin) := by
   change TerminalPPatResolution signature S' (.tuple patterns)
     (S'.apply expected) (holes.map (Dual.applySubst S'))
     (bindings.applySubst S')
@@ -319,7 +319,7 @@ end DDPPatOrigin
 
 namespace DDPPatsOrigin
 
-theorem runtimeErasure_cons_of_terminal_head
+theorem typingInvariantErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {patterns : List PPat} {target : Ty}
     {targets : List Ty} {holes restHoles : List Dual}
@@ -337,8 +337,8 @@ theorem runtimeErasure_cons_of_terminal_head
     (headAtTerminal : TerminalPPatResolution signature S' pattern
       (S'.apply target) (holes.map (Dual.applySubst S'))
       (bindings.applySubst S'))
-    (tailErasure : RuntimeErasure tailOrigin) :
-    RuntimeErasure
+    (tailErasure : TypingInvariantErasure tailOrigin) :
+    TypingInvariantErasure
       (DDPPatsOrigin.cons headOrigin tailOrigin disjoint) := by
   change TerminalPPatResolutions signature S' (pattern :: patterns)
     ((target :: targets).map S'.apply)
@@ -356,7 +356,7 @@ end DDPPatsOrigin
 namespace DDPatternOrigin
 
 /-- Terminal actual-indexed resolution for one user pattern. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {pattern : Pattern} {dual : Dual} {bindingsOut : MonoCtx}
@@ -374,7 +374,7 @@ end DDPatternOrigin
 namespace DDPatternsOrigin
 
 /-- Terminal actual-indexed resolution for a user-pattern list. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindingsIn : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindingsOut : MonoCtx}
@@ -386,11 +386,11 @@ def RuntimeErasure
     (parameters.applySubst S') (bindingsIn.applySubst S') patterns
     (duals.map (Dual.applySubst S')) (bindingsOut.applySubst S')
 
-theorem runtimeErasure_nil
+theorem typingInvariantErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPatternsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (parameters := parameters) (bindings := bindings)
         (ledger := ledger)) := by
@@ -400,14 +400,14 @@ end DDPatternsOrigin
 
 namespace DDPatternOrigin
 
-theorem runtimeErasure_pvar
+theorem typingInvariantErasure_pvar
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {ledger : CapabilityOriginLedger}
     (missing : name ∉ bindings.names)
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
-    RuntimeErasure
+    TypingInvariantErasure
       (@DDPatternOrigin.pvar signature q S context parameters bindings name
         ledger missing) := by
   change TerminalPatternResolution signature S (context.applySubst S)
@@ -418,13 +418,13 @@ theorem runtimeErasure_pvar
     (TerminalPatternResolution.pvar (prevailing := S)
       (actualContext := context.applySubst S) missing freshCap freshTy)
 
-theorem runtimeErasure_wild
+theorem typingInvariantErasure_wild
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {ledger : CapabilityOriginLedger}
     (freshCap : FreshCap signature context parameters bindings ⟨q.nextCap⟩)
     (freshTy : FreshTy signature context parameters bindings q.nextTy) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPatternOrigin.wild (signature := signature) (q := q) (S := S)
         (context := context) (parameters := parameters) (bindings := bindings)
         (ledger := ledger)) := by
@@ -436,21 +436,21 @@ theorem runtimeErasure_wild
     (TerminalPatternResolution.wild (prevailing := S)
       (actualContext := context.applySubst S) freshCap freshTy)
 
-theorem runtimeErasure_pval_of_expression
+theorem typingInvariantErasure_pval_of_expression
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {expression : Expr} {target : Ty} {q₁ : InferenceBase.FreshSupply}
     {S₁ : Subst} {ledger ledger₁ : CapabilityOriginLedger}
-    {expressionRaw : DDSynth signature q S
+    {expressionRaw : DemandSynth signature q S
       (bindings.toContext ++ context) expression target q₁ S₁}
-    (expressionOrigin : DDSynthOrigin signature expressionRaw ledger ledger₁)
+    (expressionOrigin : DemandSynthOrigin signature expressionRaw ledger ledger₁)
     (freshCap : FreshCap signature context parameters bindings
       ⟨q₁.nextCap⟩)
     (separate : ⟨q₁.nextCap⟩ ∉ target.fcv)
-    (expressionAtTerminal : RuntimeTyping signature
+    (expressionAtTerminal : TypingInvariant signature
       ((bindings.applySubst S₁).toContext ++ context.applySubst S₁)
       expression (S₁.apply target)) :
-    RuntimeErasure
+    TypingInvariantErasure
       (@DDPatternOrigin.pval signature parameters q S context parameters
         bindings expression target q₁ S₁ ledger ledger₁ expressionRaw
         expressionOrigin) := by
@@ -463,12 +463,12 @@ theorem runtimeErasure_pval_of_expression
       (actualContext := context.applySubst S₁) freshCap separate
       expressionAtTerminal)
 
-theorem runtimeErasure_embed
+theorem typingInvariantErasure_embed
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {dual : Dual} {ledger : CapabilityOriginLedger}
     (lookup : parameters.find? name = some dual) :
-    RuntimeErasure
+    TypingInvariantErasure
       (@DDPatternOrigin.embed signature q S context bindings q S context
         parameters bindings name dual ledger lookup) := by
   change TerminalPatternResolution signature S (context.applySubst S)
@@ -481,7 +481,7 @@ theorem runtimeErasure_embed
   rw [PatternCtx.find?_applySubst, lookup]
   rfl
 
-theorem runtimeErasure_ptuple_of_children
+theorem typingInvariantErasure_ptuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
@@ -490,8 +490,8 @@ theorem runtimeErasure_ptuple_of_children
     {children : DDPatterns signature q S context parameters bindings patterns
       duals bindings' q' S'}
     (childrenOrigin : DDPatternsOrigin signature children ledger ledger')
-    (childrenErasure : DDPatternsOrigin.RuntimeErasure childrenOrigin) :
-    RuntimeErasure (DDPatternOrigin.ptuple childrenOrigin) := by
+    (childrenErasure : DDPatternsOrigin.TypingInvariantErasure childrenOrigin) :
+    TypingInvariantErasure (DDPatternOrigin.ptuple childrenOrigin) := by
   change TerminalPatternResolution signature S' (context.applySubst S')
     (parameters.applySubst S') (bindings.applySubst S')
     (.ptuple patterns) ((Cap.prod (duals.map Dual.cap)).apply S'.cap)
@@ -504,7 +504,7 @@ theorem runtimeErasure_ptuple_of_children
 /-- User-pattern constructor erasure is structural after child traversal,
 target alignment, and capability projection have all been observed at the
 same terminal cut. -/
-theorem runtimeErasure_pctor_of_terminal_children
+theorem typingInvariantErasure_pctor_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern}
@@ -519,7 +519,7 @@ theorem runtimeErasure_pctor_of_terminal_children
       parameters bindings patterns duals bindings' q₁ S₁}
     (childrenOrigin : DDPatternsOrigin signature children
       (DDLedger.markCtorInstance ledger q entry.scheme) ledger₁)
-    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+    (targetsAligned : DemandAlignTargetListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
     {capRaw : DDPatternCtorCap signature entry q₁ S₂
       (duals.map Dual.cap) capability q₂ S₃}
@@ -535,7 +535,7 @@ theorem runtimeErasure_pctor_of_terminal_children
       ((duals.map (Dual.applySubst S₃)).map Dual.target)
       (S₃.apply
         (InferenceBase.instantiateCtorScheme q entry.scheme).value.2)) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPatternOrigin.pctor lookup childrenOrigin targetsAligned capOrigin
         compatibleCheck) := by
   change TerminalPatternResolution signature S₃
@@ -556,7 +556,7 @@ theorem runtimeErasure_pctor_of_terminal_children
 /-- Pattern-function application has no residual work once its canonical
 value-flow instance and all argument patterns are available at the terminal
 cut. -/
-theorem runtimeErasure_papp_of_terminal_children
+theorem typingInvariantErasure_papp_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {name : String} {patterns : List Pattern} {scheme : DualScheme}
@@ -569,7 +569,7 @@ theorem runtimeErasure_papp_of_terminal_children
       parameters bindings patterns duals bindings' q₁ S₁}
     (childrenOrigin : DDPatternsOrigin signature children
       (DDLedger.markDualInstance ledger q scheme) ledger₁)
-    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+    (aligned : DemandAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S')
     (childrenErasure : TerminalPatternResolutions signature S'
       (context.applySubst S') (parameters.applySubst S')
@@ -578,7 +578,7 @@ theorem runtimeErasure_papp_of_terminal_children
     (instanceAtTerminal : scheme.ValueFlowInst
       (duals.map (Dual.applySubst S'))
       ((InferenceBase.instantiateDualScheme q scheme).value.2.applySubst S')) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPatternOrigin.papp lookup childrenOrigin aligned) := by
   change TerminalPatternResolution signature S' (context.applySubst S')
     (parameters.applySubst S') (bindings.applySubst S')
@@ -589,7 +589,7 @@ theorem runtimeErasure_papp_of_terminal_children
   exact TerminalPatternResolution.app lookup childrenErasure
     instanceAtTerminal
 
-theorem runtimeErasure_pand_of_children
+theorem typingInvariantErasure_pand_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
@@ -602,7 +602,7 @@ theorem runtimeErasure_pand_of_children
     {rightRaw : DDPattern signature q₁ S₁ context parameters leftBindings
       right rightDual bindings' q₂ S₂}
     (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
-    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S')
+    (aligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S')
     (leftAtTerminal : TerminalPatternResolution signature S'
       (context.applySubst S') (parameters.applySubst S')
       (bindings.applySubst S') left (leftDual.cap.apply S'.cap)
@@ -611,10 +611,10 @@ theorem runtimeErasure_pand_of_children
       (context.applySubst S') (parameters.applySubst S')
       (leftBindings.applySubst S') right (leftDual.cap.apply S'.cap)
       (S'.apply leftDual.target) (bindings'.applySubst S')) :
-    RuntimeErasure (DDPatternOrigin.pand leftOrigin rightOrigin aligned) := by
+    TypingInvariantErasure (DDPatternOrigin.pand leftOrigin rightOrigin aligned) := by
   exact TerminalPatternResolution.and leftAtTerminal rightAtTerminal
 
-theorem runtimeErasure_por_of_children
+theorem typingInvariantErasure_por_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {left right : Pattern} {leftDual : Dual} {leftBindings : MonoCtx}
@@ -627,9 +627,9 @@ theorem runtimeErasure_por_of_children
     {rightRaw : DDPattern signature q₁ S₁ context parameters bindings
       right rightDual rightBindings q₂ S₂}
     (rightOrigin : DDPatternOrigin signature rightRaw ledger₁ ledger₂)
-    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual
+    (dualsAligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual
       rightDual S₃)
-    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+    (bindingsAligned : DemandAlignBindingsWithLedger ledger₂ S₃
       leftBindings rightBindings S')
     (leftAtTerminal : TerminalPatternResolution signature S'
       (context.applySubst S') (parameters.applySubst S')
@@ -639,7 +639,7 @@ theorem runtimeErasure_por_of_children
       (context.applySubst S') (parameters.applySubst S')
       (bindings.applySubst S') right (leftDual.cap.apply S'.cap)
       (S'.apply leftDual.target) (leftBindings.applySubst S')) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDPatternOrigin.por leftOrigin rightOrigin dualsAligned
         bindingsAligned) := by
   exact TerminalPatternResolution.or leftAtTerminal rightAtTerminal
@@ -648,7 +648,7 @@ end DDPatternOrigin
 
 namespace DDPatternsOrigin
 
-theorem runtimeErasure_cons_of_terminal_head
+theorem typingInvariantErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
     {pattern : Pattern} {patterns : List Pattern} {dual : Dual}
@@ -666,8 +666,8 @@ theorem runtimeErasure_cons_of_terminal_head
       (context.applySubst S') (parameters.applySubst S')
       (bindings.applySubst S') pattern (dual.cap.apply S'.cap)
       (S'.apply dual.target) (bindings₁.applySubst S'))
-    (tailErasure : RuntimeErasure tailOrigin) :
-    RuntimeErasure (DDPatternsOrigin.cons headOrigin tailOrigin) := by
+    (tailErasure : TypingInvariantErasure tailOrigin) :
+    TypingInvariantErasure (DDPatternsOrigin.cons headOrigin tailOrigin) := by
   change TerminalPatternResolutions signature S' (context.applySubst S')
     (parameters.applySubst S') (bindings.applySubst S')
     (pattern :: patterns) ((dual :: duals).map (Dual.applySubst S'))
@@ -680,7 +680,7 @@ end DDPatternsOrigin
 namespace DDArmsOrigin
 
 /-- Terminal state-free conclusion for a matcher-clause arm list. -/
-def RuntimeErasure
+def TypingInvariantErasure
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {ppBindings : MonoCtx} {arms : List Arm}
     {clauseTarget bodyTarget : Ty} {q' : InferenceBase.FreshSupply}
@@ -691,18 +691,18 @@ def RuntimeErasure
   ArmsTy signature (context.applySubst S') (S'.apply clauseTarget)
     (ppBindings.applySubst S') (S'.apply bodyTarget) arms
 
-theorem runtimeErasure_nil
+theorem typingInvariantErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (ppBindings : MonoCtx) (clauseTarget bodyTarget : Ty)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasure
+    TypingInvariantErasure
       (DDArmsOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (ppBindings := ppBindings)
         (clauseTarget := clauseTarget) (bodyTarget := bodyTarget)
         (ledger := ledger)) := by
   exact ArmsTy.nil
 
-theorem runtimeErasure_cons_of_terminal_children
+theorem typingInvariantErasure_cons_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {ppBindings : MonoCtx} {dataPattern : DPat}
     {body : Expr} {arms : List Arm} {clauseTarget bodyTarget : Ty}
@@ -714,21 +714,21 @@ theorem runtimeErasure_cons_of_terminal_children
     (patternOrigin : DDDPatOrigin signature patternRaw ledger ledger₁)
     (disjoint : ∀ name, name ∈ armBindings.names →
       name ∉ ppBindings.names)
-    {bodyRaw : DDCheck signature q₁ S₁
+    {bodyRaw : DemandCheck signature q₁ S₁
       (armBindings.toContext ++ ppBindings.toContext ++ context) body
       bodyTarget q₂ S₂}
-    (bodyOrigin : DDCheckOrigin signature bodyRaw ledger₁ ledger₂)
+    (bodyOrigin : DemandCheckOrigin signature bodyRaw ledger₁ ledger₂)
     {tailRaw : DDArms signature q₂ S₂ context ppBindings arms
       clauseTarget bodyTarget q' S'}
     (tailOrigin : DDArmsOrigin signature tailRaw ledger₂ ledger')
     (patternAtTerminal : DPatTy signature dataPattern (S'.apply clauseTarget)
       (armBindings.applySubst S'))
-    (bodyAtTerminal : RuntimeTyping signature
+    (bodyAtTerminal : TypingInvariant signature
       ((armBindings.applySubst S').toContext ++
         (ppBindings.applySubst S').toContext ++ context.applySubst S')
       body (S'.apply bodyTarget))
-    (tailErasure : RuntimeErasure tailOrigin) :
-    RuntimeErasure
+    (tailErasure : TypingInvariantErasure tailOrigin) :
+    TypingInvariantErasure
       (DDArmsOrigin.cons patternOrigin disjoint bodyOrigin tailOrigin) := by
   exact ArmsTy.cons (ArmTy.mk patternAtTerminal bodyAtTerminal) tailErasure
 
@@ -738,7 +738,7 @@ namespace DDClauseOrigin
 
 /-- One clause erased at a selected matcher capability and evidence.  These
 two indices are chosen by matcher finalization, not by `DDClause` itself. -/
-def RuntimeErasureAt
+def TypingInvariantErasureAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clause : Clause} {sharedTarget : Ty}
     {holes : List Dual} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -749,7 +749,7 @@ def RuntimeErasureAt
   ClauseTy signature S' (context.applySubst S') clause capability
     (S'.apply sharedTarget) evidence
 
-theorem runtimeErasure_mk_of_terminal_children
+theorem typingInvariantErasure_mk_of_terminal_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {pp : PPat} {next : Expr} {arms : List Arm}
     {sharedTarget : Ty} {holes : List Dual} {ppBindings : MonoCtx}
@@ -760,9 +760,9 @@ theorem runtimeErasure_mk_of_terminal_children
     {ppRaw : DDPPat signature q S pp sharedTarget holes ppBindings q₁ S₁}
     (ppOrigin : DDPPatOrigin signature ppRaw ledger ledger₁)
     (decomposed : decomposeME next holes.length = some nextMatchers)
-    {nextRaw : DDChecks signature q₁ S₁ context nextMatchers
+    {nextRaw : DemandChecks signature q₁ S₁ context nextMatchers
       (holes.map fun hole => .slot hole.cap hole.target) q₂ S₂}
-    (nextOrigin : DDChecksOrigin signature nextRaw ledger₁ ledger₂)
+    (nextOrigin : DemandChecksOrigin signature nextRaw ledger₁ ledger₂)
     {armsRaw : DDArms signature q₂ S₂ context ppBindings arms
       sharedTarget (Ty.listT (prodTy (holes.map Dual.target))) q' S'}
     (armsOrigin : DDArmsOrigin signature armsRaw ledger₂ ledger')
@@ -781,7 +781,7 @@ theorem runtimeErasure_mk_of_terminal_children
       (S'.apply (Ty.listT (prodTy (holes.map Dual.target)))) arms)
     (evidenceAtTerminal : clauseEvidence signature.toMatcherSig pp
       ((holes.map (Dual.applySubst S')).map Dual.cap) = some evidence) :
-    RuntimeErasureAt
+    TypingInvariantErasureAt
       (DDClauseOrigin.mk ppOrigin decomposed nextOrigin armsOrigin)
       capability evidence := by
   exact ClauseTy.mk coreOrder (.ofTerminal ppAtTerminal) capsAtTerminal
@@ -796,7 +796,7 @@ namespace DDClausesOrigin
 
 /-- Clause-list erasure at the capability and evidence list selected by
 matcher finalization. -/
-def RuntimeErasureAt
+def TypingInvariantErasureAt
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List Clause} {sharedTarget : Ty}
     {holeLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
@@ -808,17 +808,17 @@ def RuntimeErasureAt
   ClausesTy signature S' (context.applySubst S') clauses capability
     (S'.apply sharedTarget) evidences
 
-theorem runtimeErasure_nil
+theorem typingInvariantErasure_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (context : Context) (sharedTarget : Ty) (ledger : CapabilityOriginLedger)
     (capability : Cap) :
-    RuntimeErasureAt
+    TypingInvariantErasureAt
       (DDClausesOrigin.nil (signature := signature) (q := q) (S := S)
         (context := context) (sharedTarget := sharedTarget) (ledger := ledger))
       capability [] := by
   exact ClausesTy.nil
 
-theorem runtimeErasure_cons_of_terminal_head
+theorem typingInvariantErasure_cons_of_terminal_head
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clause : Clause} {clauses : List Clause}
     {sharedTarget : Ty} {holes : List Dual} {holeLists : List (List Dual)}
@@ -834,8 +834,8 @@ theorem runtimeErasure_cons_of_terminal_head
     {evidences : List Shape.Evidence}
     (headAtTerminal : ClauseTy signature S' (context.applySubst S') clause
       capability (S'.apply sharedTarget) evidence)
-    (tailErasure : RuntimeErasureAt tailOrigin capability evidences) :
-    RuntimeErasureAt (DDClausesOrigin.cons headOrigin tailOrigin) capability
+    (tailErasure : TypingInvariantErasureAt tailOrigin capability evidences) :
+    TypingInvariantErasureAt (DDClausesOrigin.cons headOrigin tailOrigin) capability
       (evidence :: evidences) := by
   exact ClausesTy.cons headAtTerminal tailErasure
 

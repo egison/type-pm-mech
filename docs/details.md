@@ -27,9 +27,9 @@ matcher literal の各 clause は primitive pattern，next-matcher expression，
 [`TypePM/Shape.lean`](../TypePM/Shape.lean) は hole の順序，shape capability，catch-all，coverage
 に必要な有限 evidence を定義する．
 
-## 2. 唯一の source typing: DDTyping
+## 2. 唯一の source typing: SourceTyping
 
-[`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) が raw な DD family を，
+[`TypePM/DemandTyping.lean`](../TypePM/DemandTyping.lean) が raw な demand-directed family を，
 [`TypePM/DemandTypingOrigin.lean`](../TypePM/DemandTypingOrigin.lean) が各 raw derivation と同じ形の
 intrinsic Origin certificateを，
 [`TypePM/DemandTypingTerminalAuditTree.lean`](../TypePM/DemandTypingTerminalAuditTree.lean) が
@@ -41,7 +41,7 @@ q; S; Ω; Γ ⊢ e ⇐ τexpected ⊣ q'; S'; Ω'    checking
 S; Ω ⊢ τraw ≼ τexpected    ⊣ S'             alignment
 ```
 
-`DDTyping Σ Γ e τ` は `initialSupply Σ Γ`，`Subst.id`，空ledgerから上のsynthesisを開始し，
+`SourceTyping Σ Γ e τ` は `initialSupply Σ Γ`，`Subst.id`，空ledgerから上のsynthesisを開始し，
 終端substitutionをraw resultへ適用した型だけを公開するwrapperである．Lean上ではraw derivation
 とOrigin certificateを別のinductive familyにすることで，既存のtyping構造を複製せずにledgerの
 履歴をintrinsicに対応付けている．source acceptance はこの二つに，同じOrigin proofを辿る
@@ -64,9 +64,9 @@ terminal auditを組み合わせる．Origin情報または公開終端で必要
 
 expression schemeとpattern-function dual schemeのbinder imageはinstance生成時から
 `renameOnly` になる．constructor／primitive instance，fresh pattern hole，`fixMatcher`
-placeholderなどDD内部の局所変数は `structuralFlexible` として生成される．constructor exportは
+placeholderなどdemand-directed内部の局所変数は `structuralFlexible` として生成される．constructor exportは
 公開payloadに残る像のstructural leafだけを選択的にfreezeする．matcher finalizationは最終
-capabilityに現れる全DD-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
+capabilityに現れる全demand-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
 生成された `fixMatcher` placeholderのowned leafも対象になる．
 
 lambda は fresh domain を生成する．application は fresh domain／codomain pair を用意し，function
@@ -78,9 +78,9 @@ Origin certificateは，bodyの終端substitutionを適用しても同じscheme�
 
 ### 2.2 synthesis-first checking
 
-`DDCheck` の規則は一つだけである．
+`DemandCheck` の規則は一つだけである．
 
-1. expected type を使わず `DDSynth` する．
+1. expected type を使わず `DemandSynth` する．
 2. synthesis の出力 cut でalignmentを一回行う．
 
 このため matcher producer と slot demand の対応は，特定の source constructor ではなく
@@ -139,7 +139,7 @@ Dunfield--Krishnaswamiのcomplete contextは記号 `Ω` を使い，unsolved exi
 
 ### 2.5 pattern，arm，clause
 
-式以外の DD family は executable traversal と同じ割当順を関係として記述する．主な family は
+式以外の demand-directed family は executable traversal と同じ割当順を関係として記述する．主な family は
 `DDPattern`／`DDPatterns`，`DDPPat`／`DDPPats`，`DDDPat`／`DDDPats`，
 `DDArms`，`DDClause`／`DDClauses` である．
 
@@ -148,13 +148,13 @@ pattern constructor は target instance と capability projection を同じ sign
 literal は全 clause の共有 target を生成し，shape，catch-all order，data-arm exhaustiveness，
 primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を finalization で要求する．
 
-### 2.6 DDTyping と ledger の証明済み性質
+### 2.6 SourceTyping と ledger の証明済み性質
 
 - alignmentの非 ordinary branchならexpected typeはslot-headedである．
 - matcher-headed expected type の derivation は ordinary equality に限られる．
 - 各 family の出力 supply は入力 supply を拡張する．
 - 出力 substitution は入力 substitution と solve delta の chronological replay に分解できる．
-- 恒等 substitution から始まる全14 raw DD family は solved form を保存する．より一般に，各 family
+- 恒等 substitution から始まる全14 raw demand-directed family は solved form を保存する．より一般に，各 family
   は入力 substitution の冪等性から出力 substitution の冪等性を導く．
 - 公開型，dual，bindings，hole ledger の flexible variable は終端 supply で有界である．
 - exact MGU は constraint 外の fresh variable を slot や matcher に構造化しない．
@@ -166,10 +166,10 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
   facts は `let` generalization，matcher finalization，pattern-constructor compatibility の三種であり，
   再帰的 terminal audit が公開する終端 substitution に対して保持する．
 - closed signature 上で terminal audit を持つ closed-program derivation は，全 family の相互 state erasure により
-  `RuntimeTyping` へ射影できる．
+  `TypingInvariant` へ射影できる．
 - source-facingな安全性境界では，このsignature closednessを`FrozenSigWF.schemesClosed`から
   供給し，callerに別premiseとして要求しない．
-- `capFreezeProgram` と `letCapFreezeProgram` はpublic `DDTyping`では導出不能である．
+- `capFreezeProgram` と `letCapFreezeProgram` はpublic `SourceTyping`では導出不能である．
 
 ## 3. executable inference
 
@@ -178,9 +178,9 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
 capability-origin ledger を持つ．`infer` は `inferRaw` の結果を有限の `wBridgeCheck` で検査し，
 失敗時は `none` を返す．
 
-executable traversalのorigin ledgerとDD側のintrinsic Origin certificateは，同じ三originと
+executable traversalのorigin ledgerとdemand-directed側のintrinsic Origin certificateは，同じ三originと
 freeze policyを別々の役割で記録する．前者はsolverを実行時にfail closedにする状態，後者は
-関係的なDD derivationで各solveが許可されたことを証明する履歴である．consumer demandのために
+関係的なdemand-directed derivationで各solveが許可されたことを証明する履歴である．consumer demandのために
 生成したvariableはstructural solveを許せるが，value-flow instanceやexport後のproducer imageは
 variable-onlyにfreezeされる．
 
@@ -204,8 +204,8 @@ variable-onlyにfreezeされる．
 `InferenceInputWF` は入力境界を記述するが，公開成功定理の caller premise ではない．validator
 が必要な `WBridgeWF` を成功 result から構成する．
 
-`infer` 成功から `DDTyping` へのsoundnessは三段で構成する．第一段はsolver bridgeとconstructor
-sliceであり，successful traversalのsupply，prevailing substitution，origin ledgerをraw DD
+`infer` 成功から `SourceTyping` へのsoundnessは三段で構成する．第一段はsolver bridgeとconstructor
+sliceであり，successful traversalのsupply，prevailing substitution，origin ledgerをraw demand-directed
 derivationの入出力indexへ正確に一致させる．第二段の10-family相互帰納はexpression synthesis／
 checking，expression list，user pattern／pattern list，matcher，arm，clauseを同じfuel inductionで
 再構成する．第三段はappend-only historyで全recursive callを一つのroot終端へ接続し，validatorの
@@ -215,27 +215,27 @@ checking，expression list，user pattern／pattern list，matcher，arm，claus
 公開定理はcaller premiseを成功等式だけに戻す．
 
 ```text
-Inference.infer_success_ddTyping :
+Inference.infer_success_sourceTyping :
   infer signature context expression = some result →
-  DDTyping signature context expression result.resolvedTarget
+  SourceTyping signature context expression result.resolvedTarget
 ```
 
 したがって `WBridgeWF` と `HistoryPrefix` はcertified runを組み立てる内部indexであり，公開APIへ
-漏れない．この経路は `RuntimeTyping` を介さずsource typingを直接構成する．一方，次節の
-`infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
+漏れない．この経路は `TypingInvariant` を介さずsource typingを直接構成する．一方，次節の
+`infer_success_typingInvariant` は動的メタ理論向けの独立した内部経路として維持する．
 
-逆向きの受理完全性はDDのOrigin treeとterminal auditを同時に再帰する．exact solver witnessを
+逆向きの受理完全性はdemand-directedのOrigin treeとterminal auditを同時に再帰する．exact solver witnessを
 実行solverのresultへ移し，fresh allocation，context normalization，producer protection，fuel boundを
 保ったfuelled traversalを全expression／checking／pattern／arm／clause familyについて構成する．
-DD側と実行側のprevailing substitutionは同一である必要はなく，相互にfactorするidempotent stateの
+demand-directed側と実行側のprevailing substitutionは同一である必要はなく，相互にfactorするidempotent stateの
 `StateBisimulation`で結ぶ．このためraw metavariable名の違いを公開定理へ漏らさない．
 
 各局所runは成功等式だけでなくvalidator eventのcoverage extensionを返す．ordinary eventは
 traversal自身から，`let` generalization，matcher finalization，pattern-constructor compatibilityは
-terminal auditから得る．ただしpattern constructorのauditはDD側のdual／capabilityを記録する一方，
+terminal auditから得る．ただしpattern constructorのauditはdemand-directed側のdual／capabilityを記録する一方，
 実行traceはbisimilarだが名前の異なるoperandsを持ちうる．そこで`PairedValidatorRunExtension`は
 両operandsとそのbisimulationを保持する．exact-state leafはその対角な特別場合として埋め込み，
-matcher／`let` eventは各局所cutのDD／実行operandを保持したままpaired chronologyへ合成する．rootの
+matcher／`let` eventは各局所cutのdemand-directed／実行operandを保持したままpaired chronologyへ合成する．rootの
 `PairedRootCertifiedSynthesis`はこのchronologyとtype／dual alignmentを束ね，三種のterminal-sensitive
 条件をpaired witnessから`wBridgeCheck`の全有限条件へ射影する．Originとauditは`Prop`，concrete runは
 `Type`なので，fuelに対するstrong recursionは各cutのpaired runを`Nonempty`で返す．canonical
@@ -243,8 +243,8 @@ initial cutで`PairedRootCertifiedSynthesis`へ束ね，公開facadeが受理命
 境界を開く．
 
 ```text
-DDTyping.infer_isSome :
-  DDTyping signature context expression target →
+SourceTyping.infer_isSome :
+  SourceTyping signature context expression target →
   FrozenSigWF signature →
   (infer signature context expression).isSome = true
 ```
@@ -252,69 +252,69 @@ DDTyping.infer_isSome :
 `FrozenSigWF`はM4と共有するglobal signature条件である．terminal factsをbisimulation越しに移す際，
 その`schemesClosed`と`armExhaustiveBasic`を使う．`RawSourceVisible`，`FreezeCompatible`，solver
 success，validator bridge，既知のinference successは公開premiseではない．ここで証明したのは
-validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `DDTyping` fragmentから
+validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `SourceTyping` fragmentから
 再構成したtraceに対する受理完全性である．
 
 soundnessと受理完全性は
 [`TypePM/DemandTypingInferenceEquivalence.lean`](../TypePM/DemandTypingInferenceEquivalence.lean)
-で合成する．中心定理`Inference.ddTypable_iff_infer_isSome`は一般contextに対して
+で合成する．中心定理`Inference.sourceTypable_iff_infer_isSome`は一般contextに対して
 
 ```text
 FrozenSigWF signature →
-  ((∃ target, DDTyping signature context expression target) ↔
+  ((∃ target, SourceTyping signature context expression target) ↔
     (infer signature context expression).isSome = true)
 ```
 
 を与える．`Inference.annotation_freeness`は空contextへの特殊化である．sourceの`Expr`には
-type-ascription constructorがないため，型を入力として要求せずclosed termのDD typabilityを
-判定できる，という意味でannotation-freenessと呼ぶ．`Inference.ddTypableDecidable`は
+type-ascription constructorがないため，型を入力として要求せずclosed termのsource typabilityを
+判定できる，という意味でannotation-freenessと呼ぶ．`Inference.sourceTypableDecidable`は
 `FrozenSigWF`の証明を受け，同じ実行可能なBoolean判定から
-`Decidable (∃ target, DDTyping ...)`を構成する．
+`Decidable (∃ target, SourceTyping ...)`を構成する．
 
-型を返すAPIについては，`Inference.inferType_success_ddTyping`が
+型を返すAPIについては，`Inference.inferType_success_sourceTyping`が
 
 ```text
 inferType signature context expression = some target →
-  DDTyping signature context expression target
+  SourceTyping signature context expression target
 ```
 
-を証明する．さらに`ddTypable_iff_inferType_some_ddTyping`は，DD typabilityがあれば
-`inferType`の具体的な返値とその返値自身のDD derivationを同時に得る．一方，入力した任意の
-DD derivationのtargetと返値型が構文的に等しいとは主張しない．
+を証明する．さらに`sourceTypable_iff_inferType_some_sourceTyping`は，source typabilityがあれば
+`inferType`の具体的な返値とその返値自身の`SourceTyping` derivationを同時に得る．一方，入力した任意の
+`SourceTyping` derivationのtargetと返値型が構文的に等しいとは主張しない．
 
-`DDTyping.target_unique_modulo_renaming`は，完全性内部の同じ決定的な実行runを共通代表として
-二つのDD targetを結ぶ．各辺の`TargetRenaming`は，公開型に残るcapability／target variableの
+`SourceTyping.target_unique_modulo_renaming`は，完全性内部の同じ決定的な実行runを共通代表として
+二つの`SourceTyping` targetを結ぶ．各辺の`TargetRenaming`は，公開型に残るcapability／target variableの
 全有限scope上でforward／reverse substitutionがpointwise inverseな`LocalRenamingOn`であり，
 source targetと共通実行targetを両方向に写す．これは一般contextにも成立する．ただしinitial
 supply以前のmetaまで固定する形は偽である．`f : ?0 -> ?0, x : ?1`のcontextで`f x`を導出すると，
 argument constraint `?1 = ?0`のexact MGUをどちら向きに取るかにより`?0`と`?1`の双方を公開できる．
-`DemandTypingTargetUniquenessRegression`は両方をterminal audit込みの`DDTyping`として固定する．
+`DemandTypingTargetUniquenessRegression`は両方をterminal audit込みの`SourceTyping`として固定する．
 型のinstance preorder上のprincipalityは，このrenaming一意性とは別の定理を要する．
 
-## 4. RuntimeTyping は内部 certificate である
+## 4. TypingInvariant は内部 invariant である
 
-[`TypePM/Source.lean`](../TypePM/Source.lean) の `RuntimeTyping` は fresh supply，prevailing solver
-state，origin ledger を消去した expression certificate である．`ExprsTy`，pattern resolution，
+[`TypePM/Source.lean`](../TypePM/Source.lean) の `TypingInvariant` は fresh supply，prevailing solver
+state，origin ledger を消去した expression invariant である．`ExprsTy`，pattern resolution，
 arm／clause certificate と相互に構成される．source acceptance は定義しない．
 
-coercion certificate も同じ消去原則に従う．`RuntimeTyping` と `ValueTy` の matcher-to-slot
+coercion certificate も同じ消去原則に従う．`TypingInvariant` と `ValueTy` の matcher-to-slot
 constructor は終端 producer／consumer capability 間の `CapabilityDemand` だけを持ち，raw
 matching，MGU，後続 substitution を持たない．slot-to-slot solve は終端 slot 型の等しさで
-premise を書き換えるため，専用 runtime constructor を持たない．実行可能な
+premise を書き換えるため，専用 `TypingInvariant` constructor を持たない．実行可能な
 `MatcherToSlotRawCert`／`SlotToSlotRawCert` は reconstruction 境界まで保持され，そこで終端
 demand または等式へ射影される．
 
-`RuntimeTyping.coerceProductMatcher` は product-to-slot の直接constructorへ融合せず，独立した
+`TypingInvariant.coerceProductMatcher` は product-to-slot の直接constructorへ融合せず，独立した
 unary product liftとして維持する．融合は検討済みだが，`let`をまたいでmatcher viewの選択を
 利用位置まで遅延できることと，明示的coercion planの二段構造を失うため採用しない．
 
 この family が state-free であることにより，closure body，matcher literal，substitution，
-preservation の帰納法を推論器の履歴から独立に記述できる．その代わり，DD derivation から
-certificate を作る際には，消去する state が value-flow freeze 条件を満たした証明が必要になる．
+preservation の帰納法を推論器の履歴から独立に記述できる．その代わり，`SourceTyping` derivation から
+invariant を作る際には，消去する state が value-flow freeze 条件を満たした証明が必要になる．
 
 [`TypePM/Reconstruction.lean`](../TypePM/Reconstruction.lean) の `ExprDeriv` family は successful
-inference trace の proof-relevant reconstruction である．constructor が `RuntimeTyping` を
-oracle として保持することはない．`ExprDeriv.toRuntimeTyping` が最終的に state-free certificate
+inference trace の proof-relevant reconstruction である．constructor が `TypingInvariant` を
+oracle として保持することはない．`ExprDeriv.toTypingInvariant` が最終的に state-free invariant
 へ射影する．
 
 ```text
@@ -322,16 +322,16 @@ infer Σ Γ e = some result
   → infer_success_reconstruct
   → ExprDeriv Σ (ResolvedContext result.state.prevailing Γ)
       e result.resolvedTarget
-  → infer_success_runtimeTyping
-  → RuntimeTyping Σ (ResolvedContext result.state.prevailing Γ)
+  → infer_success_typingInvariant
+  → TypingInvariant Σ (ResolvedContext result.state.prevailing Γ)
       e result.resolvedTarget
 ```
 
 `CoherentExpr` は `ExprDeriv` の役割名であり，別コピーの judgment ではない．`CoreTyping` と
 canonical coercion plan は reconstruction の factorization を表す内部補助層である．
 
-`PrincipalityCounterexample` は `RuntimeTyping` certificate family 全体を source principal-type
-specification として使えないことだけを示す．`DDTyping` の principality に関する結果ではない．
+`PrincipalityCounterexample` は `TypingInvariant` family 全体を source principal-type
+specification として使えないことだけを示す．`SourceTyping` の principality に関する結果ではない．
 
 ## 5. canonical scheme と terminal state erasure
 
@@ -358,7 +358,7 @@ state erasure は終端 substitution が solved form であることを使う．
 paired，二段階 matcher／slot solve，one-way capability matching の各局所操作について，入力が
 冪等なら時系列合成後も冪等であることを証明している．この局所結果を traversal の順に合成し，
 alignment family と，expression synthesis／checking，list，user／primitive／data pattern，arm，
-clause，pattern-constructor capability を含む全14 raw DD familyについて
+clause，pattern-constructor capability を含む全14 raw demand-directed familyについて
 
 ```text
 S.Idempotent → S'.Idempotent
@@ -368,18 +368,18 @@ S.Idempotent → S'.Idempotent
 
 ### 5.3 terminal audit
 
-Origin certificate は chronological な生成・solve・freeze を記録するが，runtime erasure は root の
+Origin certificate は chronological な生成・solve・freeze を記録するが，`TypingInvariant` への射影は root の
 終端 substitution で行う．そこで terminal audit は導出木を同じ形で辿り，追加の終端事実を必要とする
 三つの境界を記録する．`LetFacts` は終端 context／value から再計算した generalization の一致，
 `MatcherFacts` は terminal hole capability から再収集した evidence，shape，clause capability，arm
 exhaustiveness，coverage，`PatternCtorFacts` は終端 dual／capability 間の `CapCompatible` を保持する．
 variable node 自体に追加 field はなく，canonical scheme opening の代数的 transportから終端instanceを
-直接構成する．audit factsはsolver stateを `RuntimeTyping` に持ち込まず，erasure時に必要な終端事実だけを
+直接構成する．audit factsはsolver stateを `TypingInvariant` に持ち込まず，erasure時に必要な終端事実だけを
 供給する．
 
 capability-origin ledger と Origin certificate は引き続き instance，fresh allocation，selective
 export，matcher finalization，solve admissibility を時系列に保証する．`capFreezeProgram` と
-`letCapFreezeProgram` は public `DDTyping` では導出不能であり，or-pattern，delegating matcher，
+`letCapFreezeProgram` は public `SourceTyping` では導出不能であり，or-pattern，delegating matcher，
 let-polymorphic producer は positive regression として維持されている．
 
 ### 5.4 terminal-fixed mutual erasure
@@ -388,7 +388,7 @@ let-polymorphic producer は positive regression として維持されている�
 Origin family の相互 factorization と terminal audit を組み合わせ，expression，expression list，
 checking，user／primitive／data pattern，pattern list，arm，clauseを同じ終端 cutへ固定した相互帰納で
 消去する．各 child の局所 substitution を公開型へ残さず，終端 context，終端 type，終端 capability
-だけから対応する `RuntimeTyping`／pattern／arm／clause certificate を構成する．
+だけから対応する `TypingInvariant`／pattern／arm／clause certificate を構成する．
 
 特に variable／`let` は canonical scheme transport，matcher は terminal evidence，pattern constructor
 は terminal compatibility を使う．matcher-to-slot alignment は終端 `CapabilityDemand`，slot-to-slot
@@ -396,10 +396,10 @@ alignment は終端型等式へ射影される．これにより closed-program 
 
 ```text
 signature.SchemesClosed →
-DDTyping signature [] e τ → RuntimeTyping signature [] e τ
+SourceTyping signature [] e τ → TypingInvariant signature [] e τ
 ```
 
-が `DDTyping.runtimeTyping` として成立する．`RuntimeTyping` の存在を DD rule の premise に置く循環はなく，この定理は DD derivation
+が `SourceTyping.typingInvariant` として成立する．`TypingInvariant` の存在を demand-directed rule の premise に置く循環はなく，この定理は `SourceTyping` derivation
 自身の solved-form preservation，Origin history，terminal audit から得られる．これはstate erasureの
 正確な低レベルinterfaceであり，公開M4では`FrozenSigWF.schemesClosed`が先頭のpremiseを供給する．
 
@@ -408,13 +408,13 @@ DDTyping signature [] e τ → RuntimeTyping signature [] e τ
 [`TypePM/Semantics.lean`](../TypePM/Semantics.lean) は type-erased evaluation と matching machine
 を定義する．[`TypePM/Dynamic.lean`](../TypePM/Dynamic.lean) の `ValueTy` は literal，constructor，
 tuple，closure，matcher literal，coerced matcher value を型付けする．closure body と matcher
-literal は `RuntimeTyping` certificate を保持する．
+literal は `TypingInvariant` proof を保持する．
 
 [`TypePM/Preservation.lean`](../TypePM/Preservation.lean)，
 [`TypePM/DynamicMetatheory.lean`](../TypePM/DynamicMetatheory.lean)，
 [`TypePM/Safety.lean`](../TypePM/Safety.lean) は次を証明する．
 
-- typed environment での expression evaluation は `RuntimeTyping` を `ValueTy` へ保存する．
+- typed environment での expression evaluation は `TypingInvariant` を `ValueTy` へ保存する．
 - typed matching state の全 successor は typed である．
 - 非終端 typed state は局所 `StepReady` の下で一段進む．
 - 一段保存を反復し，到達可能な全 matching state が typed である．
@@ -433,16 +433,16 @@ scheme closednessも直接検査する有限checkerであり，`frozenSigWFCheck
 source-facingな公開安全性は次の形で機械化済みである．
 
 ```text
-DDTyping signature [] e τ
+SourceTyping signature [] e τ
   + FrozenSigWF signature
-      ├─ schemesClosed ─→ DDTyping.runtimeTyping
+      ├─ schemesClosed ─→ SourceTyping.typingInvariant
       └─────────────────→ core_safety
-  → DDTyping.SafeResult signature e τ SF
+  → SourceTyping.SafeResult signature e τ SF
 ```
 
-`DDTyping.safe`は同じ公開型の内部`RuntimeTyping`と，preservation／progress／到達可能性／
+`SourceTyping.safe`は同じ公開型の内部`TypingInvariant`と，preservation／progress／到達可能性／
 matching consistencyを含む`CoreSafety`を束ねる．`Inference.SafeResult`は推論成功から再構成した
-source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inferenceをこのDD経路へ接続する．
+source `SourceTyping`も保持し，`Inference.infer_closed_safe`はclosed inferenceをこのdemand-directed経路へ接続する．
 低レベルstate erasureがclosednessを明示的に受けることと，公開callerが別premiseを渡さないことを
 区別する．
 
@@ -450,7 +450,7 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
 
 [`TypePM/DamasMilner.lean`](../TypePM/DamasMilner.lean) は pattern-free な一 sort system を
 `DM.Typing`／`DM.Typings` として定義する．recursion は core と同じ direct-self singleton に
-制限される．`DM.Typing.emb` は capability binder を使わず二 sort の `RuntimeTyping` certificate
+制限される．`DM.Typing.emb` は capability binder を使わず二 sort の `TypingInvariant` proof
 へ埋め込み，`dm_coherent` は reconstruction certificate まで持ち上げる．
 
 [`TypePM/DMTerminalAcceptance.lean`](../TypePM/DMTerminalAcceptance.lean) は terminal acceptance
@@ -458,8 +458,8 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
 
 ## 8. 回帰の読み方
 
-- `DemandTypingRegression`: raw DD の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
-- `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，unresolved lambda domainの
+- `DemandTypingRegression`: raw demand-directed の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
+- `AcceptanceGapRegression`: or-pattern 正例，nested matcher demand-directed 拒否，unresolved lambda domainの
   source-order正負，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
@@ -467,14 +467,14 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
 - `SignatureChecker`: 全tableのscheme closedness，open pattern-function scheme，lookupで隠れる
   open schemeの拒否．
 - `DemandTypingInferenceSoundnessRegression`: terminal `let` とrecursive matcherに対するpublic
-  `infer_success_ddTyping`．
+  `infer_success_sourceTyping`．
 - `DemandTypingInferenceCompletenessRegression`: list／multiset matcherと`matchAll`に対する
-  premise-free `DDTyping.infer_isSome`．
+  premise-free `SourceTyping.infer_isSome`．
 - `DemandTypingInferenceEquivalenceRegression`: 一般／closed受理同値の両方向，`inferType`返値の
-  DD soundness，DD typabilityの`Decidable` API．
+  demand-directed soundness，source typabilityの`Decidable` API．
 - `DemandTypingTargetUniquenessRegression`: open contextでsource metaを固定する一意性が偽である
   exact-MGU orientation境界．
-- `DemandTypingSafetyRegression`: closed inferenceから`DDTyping.safe`を通るevaluation safety．
+- `DemandTypingSafetyRegression`: closed inferenceから`SourceTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
 - `PatternFunctionSafetyRegression`: pattern function と matching safety の接続．
@@ -485,43 +485,43 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
 
-正例と負例は設計境界を対で固定する．変更時は受理結果だけでなく，DD derivation，raw trace，
-runtime certificate，実行結果のどの層を検査する回帰かを確認する．
+正例と負例は設計境界を対で固定する．変更時は受理結果だけでなく，`SourceTyping` derivation，raw trace，
+typing invariant，実行結果のどの層を検査する回帰かを確認する．
 
-DD関連moduleの役割は次のとおりである．
+demand-directed関連moduleの役割は次のとおりである．
 
 | module | 役割 |
 |---|---|
-| `DemandTyping` | raw DD family，ledger-aware alignment，pure ledger transition |
+| `DemandTyping` | raw demand-directed family，ledger-aware alignment，pure ledger transition |
 | `DemandTypingOrigin` | 全raw derivationに対応するintrinsic Origin certificate |
 | `DemandTypingLedgerMetatheory` | ledger extension，freeze，supply-scoped transition補題 |
 | `DemandTypingOriginMetatheory` | 全Origin familyのledger evolution定理 |
-| `DemandTypingIdempotence` | alignmentと全14 raw DD familyのsolved-form保存 |
+| `DemandTypingIdempotence` | alignmentと全14 raw demand-directed familyのsolved-form保存 |
 | `DemandTypingInferenceSoundness` | exact solver／alignment bridgeとexact-state runの基礎 |
 | `DemandTypingInferenceSoundnessFixMatcher`／`Let`／`Patterns`／`Matcher` | constructor別の再構成slice |
 | `DemandTypingInferenceSoundnessMutual` | 全10 traversal familyのraw exact-state相互再構成 |
-| `DemandTypingInferenceSoundnessComplete`／`Certified`／`Public` | terminal-audited run，validator bridge，公開 `infer_success_ddTyping` |
-| `DemandTypingInferenceCompletenessStateMutual`／`ContextBisimulation`／`Traversal` | DD／実行stateの相互factorization，context正規化，成功run package |
+| `DemandTypingInferenceSoundnessComplete`／`Certified`／`Public` | terminal-audited run，validator bridge，公開 `infer_success_sourceTyping` |
+| `DemandTypingInferenceCompletenessStateMutual`／`ContextBisimulation`／`Traversal` | demand-directed／実行stateの相互factorization，context正規化，成功run package |
 | `DemandTypingInferenceCompletenessPatternMain`／`MatcherMain`／`Main` | 全構文familyのfuel budget，raw traversal package，constructor別再構成 |
 | `DemandTypingInferenceCompletenessPatternCtorCapComplete`／`PatternCertified` | pattern-constructor capability推論の完全性，user-pattern相互再帰とpaired validation package |
 | `DemandTypingInferenceCompletenessPairedChecking`／`MatcherClauseCertified` | expression checking，matcher arm／clause listのpaired certified traversal |
 | `DemandTypingInferenceCompletenessMatcherFinalizationCertified`／`MatcherGlobal` | matcher finalizationのbisimulation輸送とmatcher literal全体のpaired reconstruction |
 | `DemandTypingInferenceCompletenessGlobalCertified`／`GlobalRecursion` | constructor dispatcherとfuelに対するclosed strong recursion |
-| `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun`／`PairedValidatorRun` | compositional event coverage，成功run，DD／実行operandを結ぶpaired chronology |
+| `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun`／`PairedValidatorRun` | compositional event coverage，成功run，demand-directed／実行operandを結ぶpaired chronology |
 | `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`PairedRoot` | terminal auditの実行stateへの輸送，paired rootから有限validatorへの直接射影 |
-| `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `DDTyping.infer_isSome`，premise-free recursive matcher回帰 |
+| `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `SourceTyping.infer_isSome`，premise-free recursive matcher回帰 |
 | `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
-| `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context DD target一意性，入力meta固定版の反例 |
+| `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context `SourceTyping` target一意性，入力meta固定版の反例 |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
-| `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
+| `DemandTypingErasureCore` | scoped residual post，factorization core，初期typing-invariant projection |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |
 | `DemandTypingErasureTransport` | canonical scheme openingの終端transport |
-| `DemandTypingTerminalAudit`／`DemandTypingTerminalAuditTree` | `let`／matcher／pattern constructorの三種の終端事実，再帰audit，public `DDTyping` wrapper |
+| `DemandTypingTerminalAudit`／`DemandTypingTerminalAuditTree` | `let`／matcher／pattern constructorの三種の終端事実，再帰audit，public `SourceTyping` wrapper |
 | `DemandTypingTerminalAuditBuilder` | raw derivation，Origin certificate，終端 substitution からの terminal audit 構築 tactic |
-| `DemandTypingTerminalAuditErasure`／`DemandTypingTerminalErasure` | terminal-fixedな相互runtime erasureとmatcher終端再構成 |
+| `DemandTypingTerminalAuditErasure`／`DemandTypingTerminalErasure` | terminal-fixedな`TypingInvariant`への相互射影とmatcher終端再構成 |
 | `DemandTypingRegression`／`DemandTypingTerminalAuditErasureRegression` | raw境界，Origin-aware局所solve，terminal audit，公開state-erasure定理の回帰 |
-| `Soundness` | `DDTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
-| `DemandTypingSafetyRegression` | closed inferenceを公開DD safety packageへ接続するend-to-end回帰 |
+| `Soundness` | `SourceTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
+| `DemandTypingSafetyRegression` | closed inferenceを公開`SourceTyping` safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件
 

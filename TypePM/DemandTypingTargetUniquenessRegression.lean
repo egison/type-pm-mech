@@ -7,7 +7,7 @@ import TypePM.RecursiveExamples
 
 Exact solved-form MGUs need not choose the same orientation when an
 application equates two metavariables already present in the source context.
-This regression gives two fully audited `DDTyping` derivations of the same
+This regression gives two fully audited `SourceTyping` derivations of the same
 open term whose published targets are the two distinct input metavariables.
 It rules out target uniqueness modulo renamings that must fix the complete
 initial source scope; a uniqueness theorem must allow residual source
@@ -19,29 +19,29 @@ namespace DemandTypingTargetUniquenessRegression
 
 abbrev regressionSignature : FrozenSig := RecursiveExamples.listSignature
 
-theorem DDSynthOrigin.transportRaw
+theorem DemandSynthOrigin.transportRaw
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw raw' : DDSynth signature q S context expression target q' S'}
+    {raw raw' : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger') :
-    DDSynthOrigin signature raw' ledger ledger' := by
+    (origin : DemandSynthOrigin signature raw ledger ledger') :
+    DemandSynthOrigin signature raw' ledger ledger' := by
   have proofEq : raw = raw' := Subsingleton.elim _ _
   cases proofEq
   exact origin
 
-theorem DDSynthOrigin.transportSome
+theorem DemandSynthOrigin.transportSome
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw' : DDSynth signature q S context expression target q' S'}
+    {raw' : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (source : ∃ raw : DDSynth signature q S context expression target q' S',
-      DDSynthOrigin signature raw ledger ledger') :
-    DDSynthOrigin signature raw' ledger ledger' := by
+    (source : ∃ raw : DemandSynth signature q S context expression target q' S',
+      DemandSynthOrigin signature raw ledger ledger') :
+    DemandSynthOrigin signature raw' ledger ledger' := by
   rcases source with ⟨raw, origin⟩
-  exact DDSynthOrigin.transportRaw origin
+  exact DemandSynthOrigin.transportRaw origin
 
 def originSafePairedCapId (ledger : CapabilityOriginLedger)
     {left right : Ty} {targetSubst : TySubst}
@@ -88,22 +88,22 @@ def orientationRightTerminal : Subst :=
     orientationFunctionSubst
 
 def orientationFunction_ddSynth :
-    DDSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
+    DemandSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
       (.var "f") (.fn (.var 0) (.var 0)) ⟨0, 2⟩ Subst.id := by
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := regressionSignature) (q := ⟨0, 2⟩)
+    (DemandSynth.var (signature := regressionSignature) (q := ⟨0, 2⟩)
       (S := Subst.id) (Γ := orientationContext) (name := "f")
       (scheme := Scheme.mono (.fn (.var 0) (.var 0))) (by
         simp [orientationContext, Context.applySubst, Context.find?]))
 
 def orientationArgument_ddSynth :
-    DDSynth regressionSignature ⟨0, 4⟩ orientationFunctionSubst
+    DemandSynth regressionSignature ⟨0, 4⟩ orientationFunctionSubst
       orientationContext (.var "x") (.var 1) ⟨0, 4⟩
       orientationFunctionSubst := by
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := regressionSignature) (q := ⟨0, 4⟩)
+    (DemandSynth.var (signature := regressionSignature) (q := ⟨0, 4⟩)
       (S := orientationFunctionSubst) (Γ := orientationContext)
       (name := "x") (scheme := Scheme.mono (.var 1)) (by
         simp [orientationContext, Context.applySubst, Context.find?,
@@ -113,7 +113,7 @@ def orientationArgument_ddSynth :
           Ty.applyTarget, fnFreshDelta]))
 
 theorem orientationLeftArgument_ddCheck :
-    DDCheck regressionSignature ⟨0, 4⟩ orientationFunctionSubst
+    DemandCheck regressionSignature ⟨0, 4⟩ orientationFunctionSubst
       orientationContext (.var "x") (.var 2) ⟨0, 4⟩
       orientationLeftTerminal := by
   exact .mk orientationArgument_ddSynth
@@ -121,7 +121,7 @@ theorem orientationLeftArgument_ddCheck :
       (ExactPairedMGU.varLeft 1 (.var 0) (by decide))))
 
 theorem orientationRightArgument_ddCheck :
-    DDCheck regressionSignature ⟨0, 4⟩ orientationFunctionSubst
+    DemandCheck regressionSignature ⟨0, 4⟩ orientationFunctionSubst
       orientationContext (.var "x") (.var 2) ⟨0, 4⟩
       orientationRightTerminal := by
   exact .mk orientationArgument_ddSynth
@@ -129,40 +129,40 @@ theorem orientationRightArgument_ddCheck :
       (ExactPairedMGU.varRight (.var 1) 0 (by decide))))
 
 def orientationLeft_ddSynth :
-    DDSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
+    DemandSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
       orientationExpr (.var 3) ⟨0, 4⟩ orientationLeftTerminal := by
   exact .app orientationFunction_ddSynth
     (.ordinary rfl orientationFunctionDelta_exact)
     orientationLeftArgument_ddCheck
 
 def orientationRight_ddSynth :
-    DDSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
+    DemandSynth regressionSignature ⟨0, 2⟩ Subst.id orientationContext
       orientationExpr (.var 3) ⟨0, 4⟩ orientationRightTerminal := by
   exact .app orientationFunction_ddSynth
     (.ordinary rfl orientationFunctionDelta_exact)
     orientationRightArgument_ddCheck
 
 def orientationFunction_ddSynthOrigin :
-    DDSynthOrigin regressionSignature orientationFunction_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin regressionSignature orientationFunction_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst Subst.id orientationContext).find? "f" =
       some (Scheme.mono (.fn (.var 0) (.var 0))) := by
     simp [orientationContext, Context.applySubst, Context.find?]
-  let raw₀ := DDSynth.var (signature := regressionSignature) (q := ⟨0, 2⟩)
+  let raw₀ := DemandSynth.var (signature := regressionSignature) (q := ⟨0, 2⟩)
     lookup
-  have origin₀ : DDSynthOrigin regressionSignature raw₀ [] [] := by
+  have origin₀ : DemandSynthOrigin regressionSignature raw₀ [] [] := by
     simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins,
       Scheme.canonicalCapImages, Scheme.mono] using
-      (DDSynthOrigin.var (signature := regressionSignature) (q := ⟨0, 2⟩)
+      (DemandSynthOrigin.var (signature := regressionSignature) (q := ⟨0, 2⟩)
         (ledger := []) lookup)
-  have source₀ : ∃ raw, DDSynthOrigin regressionSignature raw [] [] :=
+  have source₀ : ∃ raw, DemandSynthOrigin regressionSignature raw [] [] :=
     ⟨raw₀, origin₀⟩
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using source₀
 
 def orientationArgument_ddSynthOrigin :
-    DDSynthOrigin regressionSignature orientationArgument_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin regressionSignature orientationArgument_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup :
       (Context.applySubst orientationFunctionSubst orientationContext).find?
         "x" = some (Scheme.mono (.var 1)) := by
@@ -171,20 +171,20 @@ def orientationArgument_ddSynthOrigin :
       orientationFunctionDelta, Subst.seq, Subst.apply, Subst.id,
       CapSubst.id, TySubst.id, Ty.applyCapability,
       Ty.applyTarget, fnFreshDelta]
-  let raw₀ := DDSynth.var (signature := regressionSignature) (q := ⟨0, 4⟩)
+  let raw₀ := DemandSynth.var (signature := regressionSignature) (q := ⟨0, 4⟩)
     lookup
-  have origin₀ : DDSynthOrigin regressionSignature raw₀ [] [] := by
+  have origin₀ : DemandSynthOrigin regressionSignature raw₀ [] [] := by
     simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins,
       Scheme.canonicalCapImages, Scheme.mono] using
-      (DDSynthOrigin.var (signature := regressionSignature) (q := ⟨0, 4⟩)
+      (DemandSynthOrigin.var (signature := regressionSignature) (q := ⟨0, 4⟩)
         (ledger := []) lookup)
-  have source₀ : ∃ raw, DDSynthOrigin regressionSignature raw [] [] :=
+  have source₀ : ∃ raw, DemandSynthOrigin regressionSignature raw [] [] :=
     ⟨raw₀, origin₀⟩
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using source₀
 
 def orientationLeftArgument_ddCheckOrigin :
-    DDCheckOrigin regressionSignature orientationLeftArgument_ddCheck [] [] := by
+    DemandCheckOrigin regressionSignature orientationLeftArgument_ddCheck [] [] := by
   exact .mk orientationArgument_ddSynthOrigin
     (.ordinary (S := orientationFunctionSubst) (raw := .var 1)
       (expected := .var 2) rfl
@@ -192,7 +192,7 @@ def orientationLeftArgument_ddCheckOrigin :
         (ExactPairedMGU.varLeft 1 (.var 0) (by decide)))))
 
 def orientationRightArgument_ddCheckOrigin :
-    DDCheckOrigin regressionSignature orientationRightArgument_ddCheck [] [] := by
+    DemandCheckOrigin regressionSignature orientationRightArgument_ddCheck [] [] := by
   exact .mk orientationArgument_ddSynthOrigin
     (.ordinary (S := orientationFunctionSubst) (raw := .var 1)
       (expected := .var 2) rfl
@@ -200,31 +200,31 @@ def orientationRightArgument_ddCheckOrigin :
         (ExactPairedMGU.varRight (.var 1) 0 (by decide)))))
 
 def orientationLeft_ddSynthOrigin :
-    DDSynthOrigin regressionSignature orientationLeft_ddSynth [] [] := by
+    DemandSynthOrigin regressionSignature orientationLeft_ddSynth [] [] := by
   exact .app orientationFunction_ddSynthOrigin
     (.ordinary rfl
       (originSafePairedCapId [] orientationFunctionDelta_exact))
     orientationLeftArgument_ddCheckOrigin
 
 def orientationRight_ddSynthOrigin :
-    DDSynthOrigin regressionSignature orientationRight_ddSynth [] [] := by
+    DemandSynthOrigin regressionSignature orientationRight_ddSynth [] [] := by
   exact .app orientationFunction_ddSynthOrigin
     (.ordinary rfl
       (originSafePairedCapId [] orientationFunctionDelta_exact))
     orientationRightArgument_ddCheckOrigin
 
 def orientationFunction_terminalAudit (terminal : Subst) :
-    DDSynthTerminalAudit terminal regressionSignature
+    DemandSynthTerminalAudit terminal regressionSignature
       orientationFunction_ddSynthOrigin := by
   let lookup : (Context.applySubst Subst.id orientationContext).find? "f" =
       some (Scheme.mono (.fn (.var 0) (.var 0))) := by
     simp [orientationContext, Context.applySubst, Context.find?]
-  let origin₀ := DDSynthOrigin.var (signature := regressionSignature)
+  let origin₀ := DemandSynthOrigin.var (signature := regressionSignature)
     (q := ⟨0, 2⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit terminal regressionSignature origin₀ :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit terminal regressionSignature origin₀ :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
@@ -232,7 +232,7 @@ def orientationFunction_terminalAudit (terminal : Subst) :
     Scheme.FreshOpening.capImages, Scheme.mono] using source₀
 
 def orientationArgument_terminalAudit (terminal : Subst) :
-    DDSynthTerminalAudit terminal regressionSignature
+    DemandSynthTerminalAudit terminal regressionSignature
       orientationArgument_ddSynthOrigin := by
   let lookup :
       (Context.applySubst orientationFunctionSubst orientationContext).find?
@@ -242,12 +242,12 @@ def orientationArgument_terminalAudit (terminal : Subst) :
       orientationFunctionDelta, Subst.seq, Subst.apply, Subst.id,
       CapSubst.id, TySubst.id, Ty.applyCapability,
       Ty.applyTarget, fnFreshDelta]
-  let origin₀ := DDSynthOrigin.var (signature := regressionSignature)
+  let origin₀ := DemandSynthOrigin.var (signature := regressionSignature)
     (q := ⟨0, 4⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit terminal regressionSignature origin₀ :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit terminal regressionSignature origin₀ :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
@@ -255,49 +255,49 @@ def orientationArgument_terminalAudit (terminal : Subst) :
     Scheme.FreshOpening.capImages, Scheme.mono] using source₀
 
 def orientationLeft_terminalAudit :
-    DDSynthTerminalAudit orientationLeftTerminal regressionSignature
+    DemandSynthTerminalAudit orientationLeftTerminal regressionSignature
       orientationLeft_ddSynthOrigin := by
-  let argumentAligned : DDAlignWithLedger [] orientationFunctionSubst
+  let argumentAligned : DemandAlignWithLedger [] orientationFunctionSubst
       (.var 1) (.var 2) orientationLeftTerminal :=
     .ordinary rfl (.ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.varLeft 1 (.var 0) (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     (orientationArgument_terminalAudit orientationLeftTerminal)
-  let functionAligned : DDAlignTypesWithLedger [] Subst.id
+  let functionAligned : DemandAlignTypesWithLedger [] Subst.id
       (.fn (.var 0) (.var 0)) (.fn (.var 2) (.var 3))
       orientationFunctionSubst :=
     .ordinary rfl
       (originSafePairedCapId [] orientationFunctionDelta_exact)
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         (orientationFunction_terminalAudit orientationLeftTerminal)
         argumentAudit))
 
 def orientationRight_terminalAudit :
-    DDSynthTerminalAudit orientationRightTerminal regressionSignature
+    DemandSynthTerminalAudit orientationRightTerminal regressionSignature
       orientationRight_ddSynthOrigin := by
-  let argumentAligned : DDAlignWithLedger [] orientationFunctionSubst
+  let argumentAligned : DemandAlignWithLedger [] orientationFunctionSubst
       (.var 1) (.var 2) orientationRightTerminal :=
     .ordinary rfl (.ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.varRight (.var 1) 0 (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     (orientationArgument_terminalAudit orientationRightTerminal)
-  let functionAligned : DDAlignTypesWithLedger [] Subst.id
+  let functionAligned : DemandAlignTypesWithLedger [] Subst.id
       (.fn (.var 0) (.var 0)) (.fn (.var 2) (.var 3))
       orientationFunctionSubst :=
     .ordinary rfl
       (originSafePairedCapId [] orientationFunctionDelta_exact)
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         (orientationFunction_terminalAudit orientationRightTerminal)
         argumentAudit))
 
 /-- The first exact-MGU orientation publishes the first source metavariable. -/
-theorem orientation_ddTyping_left :
-    DDTyping regressionSignature orientationContext orientationExpr (.var 0) := by
-  unfold DDTyping
+theorem orientation_sourceTyping_left :
+    SourceTyping regressionSignature orientationContext orientationExpr (.var 0) := by
+  unfold SourceTyping
   rw [orientation_initialSupply]
   refine ⟨.var 3, ⟨0, 4⟩, orientationLeftTerminal,
     orientationLeft_ddSynth, [], orientationLeft_ddSynthOrigin,
@@ -306,9 +306,9 @@ theorem orientation_ddTyping_left :
 
 /-- The symmetric exact-MGU orientation publishes the second source
 metavariable for the same signature, context, and expression. -/
-theorem orientation_ddTyping_right :
-    DDTyping regressionSignature orientationContext orientationExpr (.var 1) := by
-  unfold DDTyping
+theorem orientation_sourceTyping_right :
+    SourceTyping regressionSignature orientationContext orientationExpr (.var 1) := by
+  unfold SourceTyping
   rw [orientation_initialSupply]
   refine ⟨.var 3, ⟨0, 4⟩, orientationRightTerminal,
     orientationRight_ddSynth, [], orientationRight_ddSynthOrigin,
@@ -336,8 +336,8 @@ signature is known well formed: the two distinct source variables rename to
 one common deterministic executable target. -/
 theorem orientation_targets_unique_modulo_renaming :
     DemandTypingTargetUniqueness.TargetRenamingEquivalent (.var 0) (.var 1) :=
-  DemandTypingTargetUniqueness.DDTyping.target_unique_modulo_renaming
-    orientation_ddTyping_left orientation_ddTyping_right
+  DemandTypingTargetUniqueness.SourceTyping.target_unique_modulo_renaming
+    orientation_sourceTyping_left orientation_sourceTyping_right
       RecursiveExamples.listSignature_wf
 
 end DemandTypingTargetUniquenessRegression

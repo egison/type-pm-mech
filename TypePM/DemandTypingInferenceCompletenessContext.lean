@@ -34,7 +34,7 @@ theorem normalizedContext_forward
     _ = (context.applySubst state.prevailing).applySubst relation.forward :=
       Context.applySubst_seq relation.forward state.prevailing context
 
-/-- A successful executable context lookup determines the corresponding DD
+/-- A successful executable context lookup determines the corresponding demand-directed
 lookup: its scheme is ambiently rewritten by the forward residual. -/
 theorem lookup_forward
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -47,7 +47,7 @@ theorem lookup_forward
   rw [normalizedContext_forward relation context,
     Context.find?_applySubst]
 
-/-- Pointed lookup transport, in the shape consumed by `DDSynth.var`. -/
+/-- Pointed lookup transport, in the shape consumed by `DemandSynth.var`. -/
 theorem lookup_forward_of_eq
     {ledger : CapabilityOriginLedger} {declarative : Subst}
     {state : InferState}
@@ -159,7 +159,7 @@ batch. -/
   cases scheme
   rfl
 
-/-- Consequently DD and executable variable instantiation perform the same
+/-- Consequently demand-directed and executable variable instantiation perform the same
 origin-ledger transition even though their looked-up schemes differ by the
 forward residual. -/
 @[simp] theorem markSchemeInstance_applyMeta

@@ -5,7 +5,7 @@ import TypePM.DemandTypingInferenceCompletenessMatcherTraversal
 
 This module sits above clause traversal to avoid an import cycle between the
 generic expression and matcher traversal modules.  It first establishes the
-heterogeneous selective-freezing bridge needed when DD and executable MGUs
+heterogeneous selective-freezing bridge needed when demand-directed and executable MGUs
 choose different capability representatives.
 -/
 
@@ -35,7 +35,7 @@ private theorem structural_origin_mem_keys
       · simp only [CapabilityOriginLedger.originOf, same, if_false] at origin
         simp [ih origin]
 
-/-- Selected executable matcher-producer representatives map to selected DD
+/-- Selected executable matcher-producer representatives map to selected demand-directed
 representatives under a mutually factoring solved state. -/
 theorem StateBisimulation.forwardMatcherProducerLeavesOfRelated
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -197,7 +197,7 @@ theorem StateBisimulation.reverseMatcherProducerLeavesOfRelated
     (structural_origin_mem_keys executableStructural)⟩,
     decide_eq_true executableStructural⟩
 
-/-- Freeze related DD/executable matcher capabilities and retain the complete
+/-- Freeze related demand-directed/executable matcher capabilities and retain the complete
 traversal correspondence. -/
 def TraversalStateCorrespondence.protectMatcherCapabilityRelated
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -317,7 +317,7 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
 
 /-! ## Completed matcher finalization -/
 
-/-- DD finalization evidence paired with the corresponding executable checks.
+/-- demand-directed finalization evidence paired with the corresponding executable checks.
 The executable half is kept as one proof-relevant package so the outer mutual
 recursion does not expose individual Boolean validator obligations. -/
 structure MatcherFinalizationCompletion
@@ -556,7 +556,7 @@ def inferMatcherFuel_complete
 The executable domain, codomain, and state are not exposed as independent
 choices: the success equation pins all three to `buildFixPlaceholder` at the
 visited state.  The ledger is exactly the capability-allocation range recorded
-by `DDSynthOrigin.fixMatcher`. -/
+by `DemandSynthOrigin.fixMatcher`. -/
 structure FixMatcherPlaceholderCompletion
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}

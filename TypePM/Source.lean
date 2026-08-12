@@ -2881,18 +2881,19 @@ inductive DPatTys (signature : FrozenSig) :
 
 end
 
-/-! ## State-free runtime certificate
+/-! ## State-free typing invariant
 
-`RuntimeTyping` is the state-free certificate consumed by value typing and
-preservation.  Its indices describe the type information needed by the
+`TypingInvariant` is the state-free invariant consumed by value typing and
+preservation. Its indices describe the type information needed by the
 operational proof after inference state has been erased; it does not define
-source acceptance.  The only source-typing judgment is `DDTyping` in
+source acceptance.  The only source-typing judgment is `SourceTyping` in
 `TypePM.DemandTyping`.
 
-The DD layer records capability-origin information separately and audits the
-few suffix-sensitive facts at its published terminal substitution.  The
-fixed-terminal mutual state-erasure theorem projects every DD family into the
-semantic premises below.  Keeping this inductive family internal avoids
+The demand-directed layer records capability-origin information separately
+and audits the few suffix-sensitive facts at its published terminal
+substitution. The fixed-terminal mutual state-erasure theorem projects every
+demand-directed family into the semantic premises below. Keeping this
+inductive family internal avoids
 presenting it as a second source type system.
 -/
 
@@ -3121,55 +3122,55 @@ theorem SlotToSlotRawCert.postSlotEquality
 mutual
 
 /-- State-free expression certificate `Σ̂ ; Γ ⊢ᵣ e : τ`. -/
-inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Prop where
+inductive TypingInvariant (signature : FrozenSig) : Context → Expr → Ty → Prop where
   /-- T-VAR. -/
   | var {context name scheme target} :
       context.find? name = some scheme →
       scheme.ValueFlowInst target →
-      RuntimeTyping signature context (.var name) target
+      TypingInvariant signature context (.var name) target
   /-- T-LAM. -/
   | lam {context name body domain codomain} :
-      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain →
-      RuntimeTyping signature context (.lam name body) (.fn domain codomain)
+      TypingInvariant signature ((name, Scheme.mono domain) :: context) body codomain →
+      TypingInvariant signature context (.lam name body) (.fn domain codomain)
   /-- T-APP. -/
   | app {context function argument domain codomain} :
-      RuntimeTyping signature context function (.fn domain codomain) →
-      RuntimeTyping signature context argument domain →
-      RuntimeTyping signature context (.app function argument) codomain
+      TypingInvariant signature context function (.fn domain codomain) →
+      TypingInvariant signature context argument domain →
+      TypingInvariant signature context (.app function argument) codomain
   /-- T-LET; its input type is already under the prevailing substitution. -/
   | letE {context name value body valueTy bodyTy} :
-      RuntimeTyping signature context value valueTy →
-      RuntimeTyping signature
+      TypingInvariant signature context value valueTy →
+      TypingInvariant signature
         ((name, signature.generalize context valueTy) :: context) body bodyTy →
-      RuntimeTyping signature context (.letE name value body) bodyTy
+      TypingInvariant signature context (.letE name value body) bodyTy
   /-- T-FIX, restricted to singleton direct-self monomorphic recursion. -/
   | fixE {context self argument body domain codomain} :
       self ≠ argument →
       DirectSelf.Holds self body →
-      RuntimeTyping signature
+      TypingInvariant signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain →
-      RuntimeTyping signature context (.fix self argument body) (.fn domain codomain)
+      TypingInvariant signature context (.fix self argument body) (.fn domain codomain)
   /-- T-LIT. -/
   | lit {context value} :
-      RuntimeTyping signature context (.lit value) .int
+      TypingInvariant signature context (.lit value) .int
   /-- T-TUPLE. -/
   | tuple {context expressions targets} :
       ExprsTy signature context expressions targets →
-      RuntimeTyping signature context (.tuple expressions) (.prod targets)
+      TypingInvariant signature context (.tuple expressions) (.prod targets)
   /-- T-CON. -/
   | ctor {context name expressions targets result scheme} :
       signature.findDataCtor name = some scheme →
       scheme.Inst targets result →
       ExprsTy signature context expressions targets →
-      RuntimeTyping signature context (.ctor name expressions) result
+      TypingInvariant signature context (.ctor name expressions) result
   /-- T-PRIM. -/
   | prim {context op expressions targets result scheme} :
       signature.findPrimitive op = some scheme →
       scheme.Inst targets result →
       ExprsTy signature context expressions targets →
-      RuntimeTyping signature context (.prim op expressions) result
+      TypingInvariant signature context (.prim op expressions) result
   /--
   Declarative T-SOME: `something` inhabits `Matcher Any τ` for every target.
 
@@ -3178,17 +3179,17 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
   substitution closure explicit (`somethingScheme = ∀α. Matcher Any α`).
   -/
   | something {context target} :
-      RuntimeTyping signature context .something (.matcher .any target)
+      TypingInvariant signature context .something (.matcher .any target)
   /-- T-MATCHALL. -/
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :
-      RuntimeTyping signature context target targetTy →
+      TypingInvariant signature context target targetTy →
       ResolvedPatternTy signature prevailing context [] [] pattern
         patternCap targetTy bindings →
-      RuntimeTyping signature context matcher (.slot patternCap targetTy) →
-      RuntimeTyping signature (bindings.toContext ++ context) body result →
-      RuntimeTyping signature context (.matchAll target matcher pattern body)
+      TypingInvariant signature context matcher (.slot patternCap targetTy) →
+      TypingInvariant signature (bindings.toContext ++ context) body result →
+      TypingInvariant signature context (.matchAll target matcher pattern body)
         (Ty.listT result)
   /-- T-MATCHER, tied to the evidence of these exact source clauses. -/
   | matcher
@@ -3200,21 +3201,21 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
       PPBindNodup clauses →
       ArmBindNodup clauses →
       CoverageOK signature.toMatcherSig clauses capability →
-      RuntimeTyping signature context (.matcher clauses)
+      TypingInvariant signature context (.matcher clauses)
         (.matcher capability target)
   /--
   COERCE-MATCHER-TO-SLOT at the state-erased runtime boundary.  Both endpoints
   are already terminal: the targets coincide, and `CapabilityDemand` retains
   exactly the producer/consumer compatibility used by dynamic safety.
   Executable matching and unification evidence belongs to reconstruction, not
-  to this runtime certificate.
+  to this typing invariant.
   -/
   | coerceMatcherToSlot
       {context expression producerCap consumerCap target} :
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.matcher producerCap target) →
       CapabilityDemand producerCap consumerCap →
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.slot consumerCap target)
   /--
   COERCE-PRODUCT-MATCHER.
@@ -3224,16 +3225,16 @@ inductive RuntimeTyping (signature : FrozenSig) : Context → Expr → Ty → Pr
   insert the explicit coercion at the eventual matcher use site.
   -/
   | coerceProductMatcher {context expression} {duals : List Dual} :
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.prod (duals.map fun dual => .matcher dual.cap dual.target)) →
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.matcher (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
   /-- COERCE-SLOT-TUPLE. -/
   | coerceSlotTuple {context expression} {duals : List Dual} :
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.prod (duals.map fun dual => .slot dual.cap dual.target)) →
-      RuntimeTyping signature context expression
+      TypingInvariant signature context expression
         (.slot (.prod (duals.map Dual.cap))
           (.prod (duals.map Dual.target)))
 
@@ -3243,7 +3244,7 @@ inductive ExprsTy (signature : FrozenSig) :
   | nil {context} :
       ExprsTy signature context [] []
   | cons {context expression target expressions targets} :
-      RuntimeTyping signature context expression target →
+      TypingInvariant signature context expression target →
       ExprsTy signature context expressions targets →
       ExprsTy signature context (expression :: expressions) (target :: targets)
 
@@ -3265,7 +3266,7 @@ inductive PatternTy (signature : FrozenSig) :
         (.var capVar) (.var tyVar) bindings
   /-- PAT-VALUE. -/
   | pval {context parameters bindings expression target capVar} :
-      RuntimeTyping signature (bindings.toContext ++ context) expression target →
+      TypingInvariant signature (bindings.toContext ++ context) expression target →
       FreshCap signature context parameters bindings capVar →
       capVar ∉ target.fcv →
       PatternTy signature context parameters bindings (.pval expression)
@@ -3360,10 +3361,10 @@ inductive PatternResolution (signature : FrozenSig) :
       PatternResolution signature prevailing context parameters bindings
         .wild (.var capVar) (.var tyVar) bindings
   | pval {context parameters bindings expression target capVar} :
-      RuntimeTyping signature (bindings.toContext ++ context) expression target →
+      TypingInvariant signature (bindings.toContext ++ context) expression target →
       FreshCap signature context parameters bindings capVar →
       capVar ∉ target.fcv →
-      RuntimeTyping signature
+      TypingInvariant signature
         ((bindings.applySubst prevailing).toContext ++
           context.applySubst prevailing)
         expression (prevailing.apply target) →
@@ -3487,7 +3488,7 @@ inductive TerminalPatternResolution
       {actualContext : Context} :
       FreshCap signature rawContext rawParameters rawBindings capVar →
       capVar ∉ rawTarget.fcv →
-      RuntimeTyping signature
+      TypingInvariant signature
         ((rawBindings.applySubst prevailing).toContext ++
           actualContext)
         expression (prevailing.apply rawTarget) →
@@ -3603,7 +3604,7 @@ inductive ArmTy (signature : FrozenSig) :
     Context → Ty → MonoCtx → Ty → Arm → Prop where
   | mk {context target ppBindings result pattern body armBindings} :
       DPatTy signature pattern target armBindings →
-      RuntimeTyping signature
+      TypingInvariant signature
         (armBindings.toContext ++ ppBindings.toContext ++ context)
         body result →
       ArmTy signature context target ppBindings result (.mk pattern body)
@@ -3876,11 +3877,11 @@ theorem ClausesTy.resolve_id
 
 /-- Every runtime-certified function-shaped `fix` satisfies the public
 singleton direct-self boundary. -/
-theorem RuntimeTyping.fix_inversion
+theorem TypingInvariant.fix_inversion
     {signature : FrozenSig} {context : Context}
     {self argument : String} {body : Expr} {domain codomain : Ty}
     (typing :
-      RuntimeTyping signature context (.fix self argument body)
+      TypingInvariant signature context (.fix self argument body)
         (.fn domain codomain)) :
     self ≠ argument ∧ DirectSelf.Holds self body := by
   cases typing with
@@ -3889,12 +3890,12 @@ theorem RuntimeTyping.fix_inversion
 /-- The higher-order self-flow counterexample cannot enter declarative T-FIX. -/
 theorem higherOrderFix_untypable
     {signature : FrozenSig} {context : Context} {domain codomain : Ty} :
-    ¬ RuntimeTyping signature context
+    ¬ TypingInvariant signature context
       (.fix "f" "x" (.app (.lam "h" (.var "x")) (.var "f")))
       (.fn domain codomain) := by
   intro typing
   exact DirectSelf.self_as_argument_rejected "f" (.lam "h" (.var "x"))
-    (RuntimeTyping.fix_inversion typing).2
+    (TypingInvariant.fix_inversion typing).2
 
 /-! ## Matcher-literal inversion -/
 
@@ -3902,11 +3903,11 @@ theorem higherOrderFix_untypable
 Inverting T-MATCHER exposes evidence from the actual clause list together
 with every mandatory coverage and well-formedness premise.
 -/
-theorem RuntimeTyping.matcher_inversion
+theorem TypingInvariant.matcher_inversion
     {signature : FrozenSig} {context : Context}
     {clauses : List Clause} {capability : Cap} {target : Ty}
     (typing :
-      RuntimeTyping signature context (.matcher clauses) (.matcher capability target)) :
+      TypingInvariant signature context (.matcher clauses) (.matcher capability target)) :
     ∃ evidence,
       ResolvedClausesTy signature context clauses capability target evidence ∧
       Shape.inferShape signature.observability evidence = some capability ∧

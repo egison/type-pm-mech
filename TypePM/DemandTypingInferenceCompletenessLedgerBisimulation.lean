@@ -203,8 +203,8 @@ theorem id (ledger : CapabilityOriginLedger) :
 end AdmissiblePostBetween
 
 /-- Mutual policy transport along the same residuals that relate the two
-prevailing substitutions.  `forward` maps executable policy into DD policy;
-`reverse` maps DD policy back into executable policy. -/
+prevailing substitutions.  `forward` maps executable policy into demand-directed policy;
+`reverse` maps demand-directed policy back into executable policy. -/
 structure LedgerBisimulation
     (declarative executable : CapabilityOriginLedger)
     (forward reverse : Subst) : Prop where
@@ -217,8 +217,8 @@ theorem refl (ledger : CapabilityOriginLedger) :
     LedgerBisimulation ledger ledger Subst.id Subst.id :=
   ⟨AdmissiblePostBetween.id ledger, AdmissiblePostBetween.id ledger⟩
 
-/-- Entering the DD representative space through `forward` turns every
-DD-admissible delta into a policy-preserving executable-to-DD post. -/
+/-- Entering the demand-directed representative space through `forward` turns every
+demand-directed-admissible delta into a policy-preserving executable-to-demand-directed post. -/
 theorem enterAdmissible
     {declarative executable : CapabilityOriginLedger}
     {forward reverse delta : Subst}
@@ -229,7 +229,7 @@ theorem enterAdmissible
   (AdmissiblePostBetween.ofAdmissible deltaAdmissible).seq
     ledgers.forwardBetween
 
-/-- A DD-admissible solve transports to an executable-admissible competitor
+/-- A demand-directed-admissible solve transports to an executable-admissible competitor
 by entering through `forward` and returning through `reverse`.  The return
 map is necessary when the ledgers freeze different representatives. -/
 theorem transportAdmissible

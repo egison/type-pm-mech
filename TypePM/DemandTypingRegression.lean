@@ -8,7 +8,7 @@ import TypePM.RecursiveExamples
 /-!
 # Demand-directed judgment regressions
 
-Concrete inhabitants and refutations for the `DDSynth`/`DDCheck` judgments:
+Concrete inhabitants and refutations for the `DemandSynth`/`DemandCheck` judgments:
 a solve-free synthesis, an application whose domain alignment and argument
 check each perform one paired solve, a positive slot-demand coercion of a
 product of matchers at a slot-headed expectation, and the align-level
@@ -34,42 +34,42 @@ open CertifiedInferenceRegression (emptySignature concretePairProductType
 
 /-- Origin certificates are insensitive to the proof term used for the same
 raw demand-typing proposition. -/
-theorem DDSynthOrigin.transportRaw
+theorem DemandSynthOrigin.transportRaw
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw raw' : DDSynth signature q S context expression target q' S'}
+    {raw raw' : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger') :
-    DDSynthOrigin signature raw' ledger ledger' := by
+    (origin : DemandSynthOrigin signature raw ledger ledger') :
+    DemandSynthOrigin signature raw' ledger ledger' := by
   have proofEq : raw = raw' := Subsingleton.elim _ _
   cases proofEq
   exact origin
 
-theorem DDSynthOrigin.transportRawTo
+theorem DemandSynthOrigin.transportRawTo
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynth signature q S context expression target q' S'}
+    {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger')
-    (raw' : DDSynth signature q S context expression target q' S') :
-    DDSynthOrigin signature raw' ledger ledger' :=
-  DDSynthOrigin.transportRaw origin
+    (origin : DemandSynthOrigin signature raw ledger ledger')
+    (raw' : DemandSynth signature q S context expression target q' S') :
+    DemandSynthOrigin signature raw' ledger ledger' :=
+  DemandSynthOrigin.transportRaw origin
 
 /-- Package the source proof term existentially so constructor-built origin
 certificates elaborate independently of an opaque regression witness. -/
-theorem DDSynthOrigin.transportSome
+theorem DemandSynthOrigin.transportSome
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw' : DDSynth signature q S context expression target q' S'}
+    {raw' : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (source : ∃ raw : DDSynth signature q S context expression target q' S',
-      DDSynthOrigin signature raw ledger ledger') :
-    DDSynthOrigin signature raw' ledger ledger' := by
+    (source : ∃ raw : DemandSynth signature q S context expression target q' S',
+      DemandSynthOrigin signature raw ledger ledger') :
+    DemandSynthOrigin signature raw' ledger ledger' := by
   rcases source with ⟨raw, origin⟩
-  exact DDSynthOrigin.transportRaw origin
+  exact DemandSynthOrigin.transportRaw origin
 
 /-- Exact paired solves whose capability component is identity are admissible
 under every origin ledger. -/
@@ -118,34 +118,34 @@ def identityExpr : Expr := .lam "x" (.var "x")
 /-- The identity function synthesizes its λ domain as a fresh metavariable
 and consumes no solve. -/
 def identity_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id [] identityExpr
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] identityExpr
       (.fn (.var 0) (.var 0)) ⟨0, 1⟩ Subst.id := by
-  apply DDSynth.lam
+  apply DemandSynth.lam
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
       (S := Subst.id) (Γ := [("x", Scheme.mono (.var 0))]) (name := "x")
       (scheme := Scheme.mono (.var 0)) (by
         simp [Context.applySubst, Context.find?]))
 
 def identity_ddSynthOrigin :
-    DDSynthOrigin emptySignature identity_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature identity_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst Subst.id
       [("x", Scheme.mono (.var 0))]).find? "x" =
       some (Scheme.mono (.var 0)) := by
     simp [Context.applySubst, Context.find?]
-  have bodyOrigin : DDSynthOrigin emptySignature
-      (DDSynth.var (q := ⟨0, 1⟩) lookup) [] [] := by
+  have bodyOrigin : DemandSynthOrigin emptySignature
+      (DemandSynth.var (q := ⟨0, 1⟩) lookup) [] [] := by
     simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, Scheme.mono,
       Scheme.canonicalCapImages, CapabilityOriginLedger.setOrigins] using
-      (DDSynthOrigin.var (signature := emptySignature) (q := ⟨0, 1⟩)
+      (DemandSynthOrigin.var (signature := emptySignature) (q := ⟨0, 1⟩)
         (ledger := []) lookup)
-  let raw₀ := DDSynth.lam (signature := emptySignature) (q := ⟨0, 0⟩)
-    (DDSynth.var (q := ⟨0, 1⟩) lookup)
-  have origin₀ : DDSynthOrigin emptySignature raw₀ [] [] :=
-    DDSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
-  have raw₀' : DDSynth emptySignature ⟨0, 0⟩ Subst.id [] identityExpr
+  let raw₀ := DemandSynth.lam (signature := emptySignature) (q := ⟨0, 0⟩)
+    (DemandSynth.var (q := ⟨0, 1⟩) lookup)
+  have origin₀ : DemandSynthOrigin emptySignature raw₀ [] [] :=
+    DemandSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
+  have raw₀' : DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] identityExpr
       (.fn (.var 0) (.var 0)) ⟨0, 1⟩ Subst.id := by
     simpa only [raw₀, identityExpr,
       InferenceBase.instantiateScheme_mono_value,
@@ -156,22 +156,22 @@ def identity_ddSynthOrigin :
       InferenceBase.instantiateScheme_mono_supply] using origin₀⟩
 
 def identity_terminalAudit :
-    ∀ terminal, DDSynthTerminalAudit terminal emptySignature
+    ∀ terminal, DemandSynthTerminalAudit terminal emptySignature
       identity_ddSynthOrigin := by
   intro terminal
   let lookup : (Context.applySubst Subst.id
       [("x", Scheme.mono (.var 0))]).find? "x" =
       some (Scheme.mono (.var 0)) := by
     simp [Context.applySubst, Context.find?]
-  let bodyOrigin := DDSynthOrigin.var (signature := emptySignature)
+  let bodyOrigin := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 1⟩) (ledger := []) lookup
-  let bodyAudit : DDSynthTerminalAudit terminal emptySignature bodyOrigin :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  let origin₀ := DDSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
-  let audit₀ : DDSynthTerminalAudit terminal emptySignature origin₀ :=
-    DDSynthTerminalAudit.lam bodyAudit
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let bodyAudit : DemandSynthTerminalAudit terminal emptySignature bodyOrigin :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  let origin₀ := DemandSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
+  let audit₀ : DemandSynthTerminalAudit terminal emptySignature origin₀ :=
+    DemandSynthTerminalAudit.lam bodyAudit
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, bodyAudit, identityExpr,
@@ -180,8 +180,8 @@ def identity_terminalAudit :
     Scheme.mono] using source₀
 
 /-- The closed wrapper publishes the identity type unchanged. -/
-theorem identity_ddTyping :
-    DDTyping emptySignature [] identityExpr (.fn (.var 0) (.var 0)) :=
+theorem identity_sourceTyping :
+    SourceTyping emptySignature [] identityExpr (.fn (.var 0) (.var 0)) :=
   ⟨.fn (.var 0) (.var 0), ⟨0, 1⟩, Subst.id, identity_ddSynth, [],
     identity_ddSynthOrigin, identity_terminalAudit Subst.id,
     by simp [Subst.apply_id]⟩
@@ -208,14 +208,14 @@ def applicationTerminal : Subst :=
     applicationFunctionSubst
 
 theorem applicationArgument_ddCheck :
-    DDCheck emptySignature ⟨0, 3⟩ applicationFunctionSubst [] (.lit 1)
+    DemandCheck emptySignature ⟨0, 3⟩ applicationFunctionSubst [] (.lit 1)
       (.var 1) ⟨0, 3⟩ applicationTerminal := by
   exact .mk .lit (.ordinary rfl (.ordinary rfl
     (ExactPairedMGU.varRight .int 1 (by decide))))
 
 def applicationArgument_ddCheckOrigin :
-    DDCheckOrigin emptySignature applicationArgument_ddCheck [] [] := by
-  refine .mk (synthesized := DDSynth.lit (signature := emptySignature)
+    DemandCheckOrigin emptySignature applicationArgument_ddCheck [] [] := by
+  refine .mk (synthesized := DemandSynth.lit (signature := emptySignature)
     (q := ⟨0, 3⟩) (S := applicationFunctionSubst) (Γ := [])
     (value := 1)) .lit ?_
   exact .ordinary (S := applicationFunctionSubst) (raw := .int)
@@ -224,7 +224,7 @@ def applicationArgument_ddCheckOrigin :
         (ExactPairedMGU.varRight .int 1 (by decide))))
 
 theorem application_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id []
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id []
       (.app identityExpr (.lit 1)) (.var 2) ⟨0, 3⟩
       applicationTerminal := by
   exact .app identity_ddSynth
@@ -232,39 +232,39 @@ theorem application_ddSynth :
     applicationArgument_ddCheck
 
 def application_ddSynthOrigin :
-    DDSynthOrigin emptySignature application_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature application_ddSynth [] [] := by
   exact .app identity_ddSynthOrigin
     (.ordinary rfl (originSafePairedCapId [] applicationDelta_pairedMGU))
     applicationArgument_ddCheckOrigin
 
 def application_terminalAudit :
-    DDSynthTerminalAudit applicationTerminal emptySignature
+    DemandSynthTerminalAudit applicationTerminal emptySignature
       application_ddSynthOrigin := by
   let functionAudit := identity_terminalAudit applicationTerminal
-  let argumentSynthOrigin := DDSynthOrigin.lit (signature := emptySignature)
+  let argumentSynthOrigin := DemandSynthOrigin.lit (signature := emptySignature)
     (q := ⟨0, 3⟩) (S := applicationFunctionSubst) (context := [])
     (value := 1) (ledger := [])
-  let argumentSynthAudit : DDSynthTerminalAudit applicationTerminal
-      emptySignature argumentSynthOrigin := DDSynthTerminalAudit.lit
-  let argumentAligned : DDAlignWithLedger [] applicationFunctionSubst .int
+  let argumentSynthAudit : DemandSynthTerminalAudit applicationTerminal
+      emptySignature argumentSynthOrigin := DemandSynthTerminalAudit.lit
+  let argumentAligned : DemandAlignWithLedger [] applicationFunctionSubst .int
       (.var 1) applicationTerminal :=
     .ordinary rfl (.ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.varRight .int 1 (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     argumentSynthAudit
-  let functionAligned : DDAlignTypesWithLedger [] Subst.id
+  let functionAligned : DemandAlignTypesWithLedger [] Subst.id
       (.fn (.var 0) (.var 0)) (.fn (.var 1) (.var 2))
       applicationFunctionSubst :=
     .ordinary rfl (originSafePairedCapId [] applicationDelta_pairedMGU)
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         functionAudit argumentAudit))
 
 /-- `(λx. x) 1` closes at `Int` through one domain alignment and one
 demand-free ordinary argument alignment. -/
-theorem application_ddTyping :
-    DDTyping emptySignature [] (.app identityExpr (.lit 1)) .int := by
+theorem application_sourceTyping :
+    SourceTyping emptySignature [] (.app identityExpr (.lit 1)) .int := by
   exact ⟨.var 2, ⟨0, 3⟩, applicationTerminal, application_ddSynth, [],
     application_ddSynthOrigin, application_terminalAudit, rfl⟩
 
@@ -278,7 +278,7 @@ def somethingPairRaw : Ty :=
   .prod [.matcher .any (.var 0), .matcher .any (.var 1)]
 
 theorem somethingPair_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id [] somethingPair
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] somethingPair
       somethingPairRaw ⟨0, 2⟩ Subst.id := by
   exact .tuple (.cons .something (.cons .something .nil))
 
@@ -396,7 +396,7 @@ def somethingPairTerminal : Subst :=
 expectation through the product-matcher lift, and the lift resolves both
 `something` targets to `Int`. -/
 theorem somethingPair_checks_at_slot :
-    DDCheck emptySignature ⟨0, 0⟩ Subst.id [] somethingPair
+    DemandCheck emptySignature ⟨0, 0⟩ Subst.id [] somethingPair
         concretePairSlotType ⟨0, 2⟩ somethingPairTerminal ∧
       somethingPairTerminal.apply somethingPairRaw =
         concretePairProductType := by
@@ -411,7 +411,7 @@ the raw product of matchers against the matcher-headed pair expectation, at
 any output substitution.  Together with `somethingPair_checks_at_slot`, this
 pins the slot-demand boundary at the level of the judgment. -/
 theorem somethingPairRaw_no_matcher_expected_cut :
-    ∀ S', ¬ DDAlign Subst.id somethingPairRaw concretePairMatcherType S' := by
+    ∀ S', ¬ DemandAlign Subst.id somethingPairRaw concretePairMatcherType S' := by
   intro S' aligned
   have matcherView :
       Subst.id.apply concretePairMatcherType =
@@ -486,54 +486,54 @@ def dmLetTerminal : Subst :=
 quantified scheme at distinct fresh images (`?1` and `?4`), and the argument
 check resolves the inner domain by an ordinary demand-free alignment. -/
 def dmInnerFunction_ddSynth :
-    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
       (.var "id") (.fn (.var 1) (.var 1)) ⟨0, 2⟩ Subst.id := by
   simpa only [dmIdScheme_instance_value, dmIdScheme_instance_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
       (S := Subst.id) (Γ := [("id", dmIdScheme)]) (name := "id")
       (scheme := dmIdScheme) (by
         simp [Context.applySubst, Context.find?]))
 
 theorem dmInnerFunction_ddSynthOrigin :
-    DDSynthOrigin emptySignature dmInnerFunction_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature dmInnerFunction_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst Subst.id [("id", dmIdScheme)]).find? "id" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
   rw [← dmIdScheme_instance_value ⟨0, 1⟩,
     ← dmIdScheme_instance_supply ⟨0, 1⟩]
-  refine ⟨DDSynth.var (signature := emptySignature) lookup, ?_⟩
+  refine ⟨DemandSynth.var (signature := emptySignature) lookup, ?_⟩
   simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins] using
-    (DDSynthOrigin.var (ledger := []) lookup)
+    (DemandSynthOrigin.var (ledger := []) lookup)
 
 def dmInnerArgumentVar_ddSynth :
-    DDSynth emptySignature ⟨0, 4⟩ dmAlign1 [("id", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 4⟩ dmAlign1 [("id", dmIdScheme)]
       (.var "id") (.fn (.var 4) (.var 4)) ⟨0, 5⟩ dmAlign1 := by
   simpa only [dmIdScheme_instance_value, dmIdScheme_instance_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 4⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 4⟩)
       (S := dmAlign1) (Γ := [("id", dmIdScheme)])
       (name := "id") (scheme := dmIdScheme) (by
         simp [Context.applySubst, Context.find?]))
 
 theorem dmInnerArgumentVar_ddSynthOrigin :
-    DDSynthOrigin emptySignature dmInnerArgumentVar_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature dmInnerArgumentVar_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst dmAlign1 [("id", dmIdScheme)]).find? "id" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
   rw [← dmIdScheme_instance_value ⟨0, 4⟩,
     ← dmIdScheme_instance_supply ⟨0, 4⟩]
-  refine ⟨DDSynth.var (signature := emptySignature) lookup, ?_⟩
+  refine ⟨DemandSynth.var (signature := emptySignature) lookup, ?_⟩
   simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins] using
-    (DDSynthOrigin.var (ledger := []) lookup)
+    (DemandSynthOrigin.var (ledger := []) lookup)
 
 theorem dmInnerArgument_ddCheck :
-    DDCheck emptySignature ⟨0, 4⟩ dmAlign1 [("id", dmIdScheme)]
+    DemandCheck emptySignature ⟨0, 4⟩ dmAlign1 [("id", dmIdScheme)]
       (.var "id") (.var 2) ⟨0, 5⟩ dmInner := by
   exact .mk dmInnerArgumentVar_ddSynth
     (.ordinary rfl (.ordinary rfl
       (ExactPairedMGU.varRight (.fn (.var 4) (.var 4)) 2 (by decide))))
 
 theorem dmInnerArgument_ddCheckOrigin :
-    DDCheckOrigin emptySignature dmInnerArgument_ddCheck [] [] := by
+    DemandCheckOrigin emptySignature dmInnerArgument_ddCheck [] [] := by
   exact .mk dmInnerArgumentVar_ddSynthOrigin (.ordinary (S := dmAlign1)
     (raw := .fn (.var 4) (.var 4)) (expected := .var 2) rfl
       (.ordinary rfl (originSafePairedCapId []
@@ -541,9 +541,9 @@ theorem dmInnerArgument_ddCheckOrigin :
           (by decide)))))
 
 theorem dmInnerApp_ddSynth :
-    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
       (.app (.var "id") (.var "id")) (.var 3) ⟨0, 5⟩ dmInner := by
-  exact DDSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id) (S₂ := dmAlign1)
+  exact DemandSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id) (S₂ := dmAlign1)
     (functionTarget := .fn (.var 1) (.var 1))
     dmInnerFunction_ddSynth
     (.ordinary rfl
@@ -551,7 +551,7 @@ theorem dmInnerApp_ddSynth :
     dmInnerArgument_ddCheck
 
 theorem dmInnerApp_ddSynthOrigin :
-    DDSynthOrigin emptySignature dmInnerApp_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature dmInnerApp_ddSynth [] [] := by
   exact .app dmInnerFunction_ddSynthOrigin
     (.ordinary (S := Subst.id)
     (left := .fn (.var 1) (.var 1))
@@ -561,10 +561,10 @@ theorem dmInnerApp_ddSynthOrigin :
           (by decide)))) dmInnerArgument_ddCheckOrigin
 
 theorem dmOuterApp_ddSynth :
-    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 1⟩ Subst.id [("id", dmIdScheme)]
       (.app (.app (.var "id") (.var "id")) (.lit 1)) (.var 6)
       ⟨0, 7⟩ dmLetTerminal := by
-  exact DDSynth.app (q₁ := ⟨0, 5⟩) (S₁ := dmInner) (S₂ := dmAlign2)
+  exact DemandSynth.app (q₁ := ⟨0, 5⟩) (S₁ := dmInner) (S₂ := dmAlign2)
     (functionTarget := .var 3) dmInnerApp_ddSynth
     (.ordinary rfl
       (ExactPairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
@@ -572,14 +572,14 @@ theorem dmOuterApp_ddSynth :
       (ExactPairedMGU.varRight .int 5 (by decide)))))
 
 theorem dmOuterArgument_ddCheck :
-    DDCheck emptySignature ⟨0, 7⟩ dmAlign2 [("id", dmIdScheme)]
+    DemandCheck emptySignature ⟨0, 7⟩ dmAlign2 [("id", dmIdScheme)]
       (.lit 1) (.var 5) ⟨0, 7⟩ dmLetTerminal := by
   exact .mk .lit (.ordinary rfl (.ordinary rfl
     (ExactPairedMGU.varRight .int 5 (by decide))))
 
 theorem dmOuterArgument_ddCheckOrigin :
-    DDCheckOrigin emptySignature dmOuterArgument_ddCheck [] [] := by
-  refine .mk (synthesized := DDSynth.lit (signature := emptySignature)
+    DemandCheckOrigin emptySignature dmOuterArgument_ddCheck [] [] := by
+  refine .mk (synthesized := DemandSynth.lit (signature := emptySignature)
     (q := ⟨0, 7⟩) (S := dmAlign2) (Γ := [("id", dmIdScheme)])
     (value := 1)) .lit ?_
   exact .ordinary (S := dmAlign2) (raw := .int) (expected := .var 5) rfl
@@ -587,7 +587,7 @@ theorem dmOuterArgument_ddCheckOrigin :
       (ExactPairedMGU.varRight .int 5 (by decide))))
 
 theorem dmOuterApp_ddSynthOrigin :
-    DDSynthOrigin emptySignature dmOuterApp_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature dmOuterApp_ddSynth [] [] := by
   refine .app dmInnerApp_ddSynthOrigin
     (.ordinary (S := dmInner) (left := .var 3)
       (right := .fn (.var 5) (.var 6)) rfl (originSafePairedCapId []
@@ -595,87 +595,87 @@ theorem dmOuterApp_ddSynthOrigin :
     dmOuterArgument_ddCheckOrigin
 
 theorem dmLet_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id [] dmLetProgram (.var 6)
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] dmLetProgram (.var 6)
       ⟨0, 7⟩ dmLetTerminal :=
   .letE identity_ddSynth dmOuterApp_ddSynth
 
 theorem dmLet_ddSynthOrigin :
-    DDSynthOrigin emptySignature dmLet_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature dmLet_ddSynth [] [] := by
   exact .letE identity_ddSynthOrigin dmOuterApp_ddSynthOrigin
 
 def dmInnerFunction_terminalAudit :
-    DDSynthTerminalAudit dmLetTerminal emptySignature
+    DemandSynthTerminalAudit dmLetTerminal emptySignature
       dmInnerFunction_ddSynthOrigin := by
   let lookup : (Context.applySubst Subst.id [("id", dmIdScheme)]).find? "id" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
+  let origin₀ := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 1⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit dmLetTerminal emptySignature origin₀ :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit dmLetTerminal emptySignature origin₀ :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [dmIdScheme_instance_value, dmIdScheme_instance_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
     CapabilityOriginLedger.setOrigins] using source₀
 
 def dmInnerArgumentVar_terminalAudit :
-    DDSynthTerminalAudit dmLetTerminal emptySignature
+    DemandSynthTerminalAudit dmLetTerminal emptySignature
       dmInnerArgumentVar_ddSynthOrigin := by
   let lookup : (Context.applySubst dmAlign1 [("id", dmIdScheme)]).find? "id" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
+  let origin₀ := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 4⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit dmLetTerminal emptySignature origin₀ :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit dmLetTerminal emptySignature origin₀ :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [dmIdScheme_instance_value, dmIdScheme_instance_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
     CapabilityOriginLedger.setOrigins] using source₀
 
 def dmInnerApp_terminalAudit :
-    DDSynthTerminalAudit dmLetTerminal emptySignature
+    DemandSynthTerminalAudit dmLetTerminal emptySignature
       dmInnerApp_ddSynthOrigin := by
-  let argumentAligned : DDAlignWithLedger [] dmAlign1
+  let argumentAligned : DemandAlignWithLedger [] dmAlign1
       (.fn (.var 4) (.var 4)) (.var 2) dmInner :=
     .ordinary rfl (.ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.varRight (.fn (.var 4) (.var 4)) 2 (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     dmInnerArgumentVar_terminalAudit
-  let functionAligned : DDAlignTypesWithLedger [] Subst.id
+  let functionAligned : DemandAlignTypesWithLedger [] Subst.id
       (.fn (.var 1) (.var 1)) (.fn (.var 2) (.var 3)) dmAlign1 :=
     .ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         dmInnerFunction_terminalAudit argumentAudit))
 
 def dmOuterApp_terminalAudit :
-    DDSynthTerminalAudit dmLetTerminal emptySignature
+    DemandSynthTerminalAudit dmLetTerminal emptySignature
       dmOuterApp_ddSynthOrigin := by
-  let argumentSynthOrigin := DDSynthOrigin.lit (signature := emptySignature)
+  let argumentSynthOrigin := DemandSynthOrigin.lit (signature := emptySignature)
     (q := ⟨0, 7⟩) (S := dmAlign2) (context := [("id", dmIdScheme)])
     (value := 1) (ledger := [])
-  let argumentSynthAudit : DDSynthTerminalAudit dmLetTerminal emptySignature
-      argumentSynthOrigin := DDSynthTerminalAudit.lit
-  let argumentAligned : DDAlignWithLedger [] dmAlign2 .int (.var 5)
+  let argumentSynthAudit : DemandSynthTerminalAudit dmLetTerminal emptySignature
+      argumentSynthOrigin := DemandSynthTerminalAudit.lit
+  let argumentAligned : DemandAlignWithLedger [] dmAlign2 .int (.var 5)
       dmLetTerminal := .ordinary rfl (.ordinary rfl
         (originSafePairedCapId []
           (ExactPairedMGU.varRight .int 5 (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     argumentSynthAudit
-  let functionAligned : DDAlignTypesWithLedger [] dmInner (.var 3)
+  let functionAligned : DemandAlignTypesWithLedger [] dmInner (.var 3)
       (.fn (.var 5) (.var 6)) dmAlign2 :=
     .ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.fnDiagonal 4 5 6 (by decide) (by decide) (by decide)))
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         dmInnerApp_terminalAudit argumentAudit))
 
 def dmLet_terminalAudit :
-    DDSynthTerminalAudit dmLetTerminal emptySignature dmLet_ddSynthOrigin := by
+    DemandSynthTerminalAudit dmLetTerminal emptySignature dmLet_ddSynthOrigin := by
   let stable :
       (emptySignature.generalize
         (Context.applySubst Subst.id ([] : Context))
@@ -686,17 +686,17 @@ def dmLet_terminalAudit :
     native_decide
   let facts : DDTerminalAudit.LetFacts dmLetTerminal emptySignature []
       (.fn (.var 0) (.var 0)) Subst.id := ⟨by simpa using stable⟩
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.letE
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.letE
         (identity_terminalAudit dmLetTerminal) dmOuterApp_terminalAudit facts))
 
 /-- The polymorphic-`let` witness closes at `Int` through the demand-directed
 judgment: the `let` rule generalizes the value type in the substituted
 context, and each use of `id` instantiates the quantified scheme at a fresh
 supply-indexed image. -/
-theorem dmLet_ddTyping :
-    DDTyping emptySignature [] dmLetProgram .int := by
+theorem dmLet_sourceTyping :
+    SourceTyping emptySignature [] dmLetProgram .int := by
   exact ⟨.var 6, ⟨0, 7⟩, dmLetTerminal, dmLet_ddSynth, [],
     dmLet_ddSynthOrigin, dmLet_terminalAudit, rfl⟩
 
@@ -711,7 +711,7 @@ shape pinned by
 matcher in the first component and an unlifted product of two bare
 matchers in the second, at pairwise-distinct targets.  Both argument
 alignments are ordinary demand-free solves against a variable expectation
-— no branch of `DDAlign` invents a slot head for either producer. -/
+— no branch of `DemandAlign` invents a slot head for either producer. -/
 
 /-- Prevailing substitution after the first-use function alignment
 `fn ?1 ?1 ≐ fn ?2 ?3`. -/
@@ -740,34 +740,34 @@ def nestedCapLetTerminal : Subst :=
 /-- The first use: a fresh instance `fn ?2 ?3` whose domain receives the
 bare matcher producer by an ordinary demand-free alignment. -/
 def nestedCapLetFirstFunction_ddSynth :
-    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
       (.var "f") (.fn (.var 1) (.var 1)) ⟨0, 2⟩ Subst.id := by
   simpa only [dmIdScheme_instance_value, dmIdScheme_instance_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
       (S := Subst.id) (Γ := [("f", dmIdScheme)]) (name := "f")
       (scheme := dmIdScheme) (by
         simp [Context.applySubst, Context.find?]))
 
 theorem nestedCapLetFirstFunction_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetFirstFunction_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature nestedCapLetFirstFunction_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst Subst.id [("f", dmIdScheme)]).find? "f" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
   rw [← dmIdScheme_instance_value ⟨0, 1⟩,
     ← dmIdScheme_instance_supply ⟨0, 1⟩]
-  refine ⟨DDSynth.var (signature := emptySignature) lookup, ?_⟩
+  refine ⟨DemandSynth.var (signature := emptySignature) lookup, ?_⟩
   simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins] using
-    (DDSynthOrigin.var (ledger := []) lookup)
+    (DemandSynthOrigin.var (ledger := []) lookup)
 
 theorem nestedCapLetFirstArgument_ddCheck :
-    DDCheck emptySignature ⟨0, 4⟩ nestedCapLetAlign1 [("f", dmIdScheme)]
+    DemandCheck emptySignature ⟨0, 4⟩ nestedCapLetAlign1 [("f", dmIdScheme)]
       .something (.var 2) ⟨0, 5⟩ nestedCapLetCheck1 := by
   exact .mk .something (.ordinary rfl (.ordinary rfl
     (ExactPairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide))))
 
 theorem nestedCapLetFirstArgument_ddCheckOrigin :
-    DDCheckOrigin emptySignature nestedCapLetFirstArgument_ddCheck [] [] := by
-  refine .mk (synthesized := DDSynth.something (signature := emptySignature)
+    DemandCheckOrigin emptySignature nestedCapLetFirstArgument_ddCheck [] [] := by
+  refine .mk (synthesized := DemandSynth.something (signature := emptySignature)
     (q := ⟨0, 4⟩) (S := nestedCapLetAlign1) (Γ := [("f", dmIdScheme)]))
     .something ?_
   exact .ordinary (S := nestedCapLetAlign1)
@@ -776,9 +776,9 @@ theorem nestedCapLetFirstArgument_ddCheckOrigin :
       (ExactPairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide))))
 
 theorem nestedCapLetFirstApp_ddSynth :
-    DDSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 1⟩ Subst.id [("f", dmIdScheme)]
       (.app (.var "f") .something) (.var 3) ⟨0, 5⟩ nestedCapLetCheck1 := by
-  exact DDSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id)
+  exact DemandSynth.app (q₁ := ⟨0, 2⟩) (S₁ := Subst.id)
     (S₂ := nestedCapLetAlign1)
     (functionTarget := .fn (.var 1) (.var 1))
     nestedCapLetFirstFunction_ddSynth
@@ -787,7 +787,7 @@ theorem nestedCapLetFirstApp_ddSynth :
     nestedCapLetFirstArgument_ddCheck
 
 theorem nestedCapLetFirstApp_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetFirstApp_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature nestedCapLetFirstApp_ddSynth [] [] := by
   exact .app nestedCapLetFirstFunction_ddSynthOrigin
     (.ordinary (S := Subst.id) (left := .fn (.var 1) (.var 1))
       (right := .fn (.var 2) (.var 3)) rfl
@@ -799,39 +799,39 @@ theorem nestedCapLetFirstApp_ddSynthOrigin :
 the raw product of matcher producers unlifted — a variable expectation is
 no slot demand. -/
 def nestedCapLetSecondFunction_ddSynth :
-    DDSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
       (.var "f") (.fn (.var 5) (.var 5)) ⟨0, 6⟩ nestedCapLetCheck1 := by
   simpa only [dmIdScheme_instance_value, dmIdScheme_instance_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 5⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 5⟩)
       (S := nestedCapLetCheck1) (Γ := [("f", dmIdScheme)])
       (name := "f") (scheme := dmIdScheme) (by
         simp [Context.applySubst, Context.find?]))
 
 theorem nestedCapLetSecondFunction_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetSecondFunction_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature nestedCapLetSecondFunction_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst nestedCapLetCheck1
       [("f", dmIdScheme)]).find? "f" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
   rw [← dmIdScheme_instance_value ⟨0, 5⟩,
     ← dmIdScheme_instance_supply ⟨0, 5⟩]
-  refine ⟨DDSynth.var (signature := emptySignature) lookup, ?_⟩
+  refine ⟨DemandSynth.var (signature := emptySignature) lookup, ?_⟩
   simpa [DDLedger.markSchemeInstance, CapabilityOriginLedger.setOrigins] using
-    (DDSynthOrigin.var (ledger := []) lookup)
+    (DemandSynthOrigin.var (ledger := []) lookup)
 
 theorem nestedCapLetSecondTuple_ddSynth :
-    DDSynth emptySignature ⟨0, 8⟩ nestedCapLetAlign2 [("f", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 8⟩ nestedCapLetAlign2 [("f", dmIdScheme)]
       (.tuple [.something, .something])
       (.prod [.matcher .any (.var 8), .matcher .any (.var 9)])
       ⟨0, 10⟩ nestedCapLetAlign2 :=
   .tuple (.cons .something (.cons .something .nil))
 
 theorem nestedCapLetSecondTuple_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetSecondTuple_ddSynth [] [] :=
+    DemandSynthOrigin emptySignature nestedCapLetSecondTuple_ddSynth [] [] :=
   .tuple (.cons .something (.cons .something .nil))
 
 theorem nestedCapLetSecondArgument_ddCheck :
-    DDCheck emptySignature ⟨0, 8⟩ nestedCapLetAlign2 [("f", dmIdScheme)]
+    DemandCheck emptySignature ⟨0, 8⟩ nestedCapLetAlign2 [("f", dmIdScheme)]
       (.tuple [.something, .something]) (.var 6) ⟨0, 10⟩
       nestedCapLetTerminal := by
   exact .mk nestedCapLetSecondTuple_ddSynth
@@ -841,7 +841,7 @@ theorem nestedCapLetSecondArgument_ddCheck :
         (by decide))))
 
 theorem nestedCapLetSecondArgument_ddCheckOrigin :
-    DDCheckOrigin emptySignature nestedCapLetSecondArgument_ddCheck [] [] := by
+    DemandCheckOrigin emptySignature nestedCapLetSecondArgument_ddCheck [] [] := by
   exact .mk nestedCapLetSecondTuple_ddSynthOrigin
     (.ordinary (S := nestedCapLetAlign2)
       (raw := .prod [.matcher .any (.var 8), .matcher .any (.var 9)])
@@ -852,10 +852,10 @@ theorem nestedCapLetSecondArgument_ddCheckOrigin :
           (by decide)))))
 
 theorem nestedCapLetSecondApp_ddSynth :
-    DDSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
+    DemandSynth emptySignature ⟨0, 5⟩ nestedCapLetCheck1 [("f", dmIdScheme)]
       (.app (.var "f") (.tuple [.something, .something])) (.var 7) ⟨0, 10⟩
       nestedCapLetTerminal := by
-  exact DDSynth.app (q₁ := ⟨0, 6⟩) (S₁ := nestedCapLetCheck1)
+  exact DemandSynth.app (q₁ := ⟨0, 6⟩) (S₁ := nestedCapLetCheck1)
     (S₂ := nestedCapLetAlign2)
     (functionTarget := .fn (.var 5) (.var 5))
     nestedCapLetSecondFunction_ddSynth
@@ -864,7 +864,7 @@ theorem nestedCapLetSecondApp_ddSynth :
     nestedCapLetSecondArgument_ddCheck
 
 theorem nestedCapLetSecondApp_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetSecondApp_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature nestedCapLetSecondApp_ddSynth [] [] := by
   exact .app nestedCapLetSecondFunction_ddSynthOrigin
     (.ordinary (S := nestedCapLetCheck1)
       (left := .fn (.var 5) (.var 5))
@@ -874,34 +874,34 @@ theorem nestedCapLetSecondApp_ddSynthOrigin :
           (by decide)))) nestedCapLetSecondArgument_ddCheckOrigin
 
 def nestedCapLetValue_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id [] (.lam "m" (.var "m"))
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] (.lam "m" (.var "m"))
       (.fn (.var 0) (.var 0)) ⟨0, 1⟩ Subst.id := by
-  apply DDSynth.lam
+  apply DemandSynth.lam
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨0, 1⟩)
       (S := Subst.id) (Γ := [("m", Scheme.mono (.var 0))]) (name := "m")
       (scheme := Scheme.mono (.var 0)) (by
         simp [Context.applySubst, Context.find?]))
 
 theorem nestedCapLetValue_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetValue_ddSynth [] [] := by
-  apply DDSynthOrigin.transportSome
+    DemandSynthOrigin emptySignature nestedCapLetValue_ddSynth [] [] := by
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst Subst.id
       [("m", Scheme.mono (.var 0))]).find? "m" =
       some (Scheme.mono (.var 0)) := by
     simp [Context.applySubst, Context.find?]
-  have bodyOrigin : DDSynthOrigin emptySignature
-      (DDSynth.var (q := ⟨0, 1⟩) lookup) [] [] := by
+  have bodyOrigin : DemandSynthOrigin emptySignature
+      (DemandSynth.var (q := ⟨0, 1⟩) lookup) [] [] := by
     simpa [DDLedger.markSchemeInstance, Inference.freshCapImages, Scheme.mono,
       Scheme.canonicalCapImages, CapabilityOriginLedger.setOrigins] using
-      (DDSynthOrigin.var (signature := emptySignature) (q := ⟨0, 1⟩)
+      (DemandSynthOrigin.var (signature := emptySignature) (q := ⟨0, 1⟩)
         (ledger := []) lookup)
-  let raw₀ := DDSynth.lam (signature := emptySignature) (q := ⟨0, 0⟩)
-    (DDSynth.var (q := ⟨0, 1⟩) lookup)
-  have origin₀ : DDSynthOrigin emptySignature raw₀ [] [] :=
-    DDSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
-  have raw₀' : DDSynth emptySignature ⟨0, 0⟩ Subst.id []
+  let raw₀ := DemandSynth.lam (signature := emptySignature) (q := ⟨0, 0⟩)
+    (DemandSynth.var (q := ⟨0, 1⟩) lookup)
+  have origin₀ : DemandSynthOrigin emptySignature raw₀ [] [] :=
+    DemandSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
+  have raw₀' : DemandSynth emptySignature ⟨0, 0⟩ Subst.id []
       (.lam "m" (.var "m")) (.fn (.var 0) (.var 0)) ⟨0, 1⟩
       Subst.id := by
     simpa only [raw₀, InferenceBase.instantiateScheme_mono_value,
@@ -911,7 +911,7 @@ theorem nestedCapLetValue_ddSynthOrigin :
       InferenceBase.instantiateScheme_mono_supply] using origin₀⟩
 
 theorem nestedCapLetProgram_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id []
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id []
       AcceptanceGapRegression.nestedCapLetProgram (.prod [.var 3, .var 7])
       ⟨0, 10⟩ nestedCapLetTerminal :=
   .letE nestedCapLetValue_ddSynth
@@ -919,129 +919,129 @@ theorem nestedCapLetProgram_ddSynth :
       (.cons nestedCapLetSecondApp_ddSynth .nil)))
 
 theorem nestedCapLetProgram_ddSynthOrigin :
-    DDSynthOrigin emptySignature nestedCapLetProgram_ddSynth [] [] := by
+    DemandSynthOrigin emptySignature nestedCapLetProgram_ddSynth [] [] := by
   exact .letE nestedCapLetValue_ddSynthOrigin
     (.tuple (.cons nestedCapLetFirstApp_ddSynthOrigin
       (.cons nestedCapLetSecondApp_ddSynthOrigin .nil)))
 
 def nestedCapLetFirstFunction_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetFirstFunction_ddSynthOrigin := by
   let lookup : (Context.applySubst Subst.id [("f", dmIdScheme)]).find? "f" =
       some dmIdScheme := by simp [Context.applySubst, Context.find?]
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
+  let origin₀ := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 1⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      origin₀ := DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      origin₀ := DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [dmIdScheme_instance_value, dmIdScheme_instance_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
     CapabilityOriginLedger.setOrigins] using source₀
 
 def nestedCapLetFirstApp_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetFirstApp_ddSynthOrigin := by
-  let argumentSynthOrigin := DDSynthOrigin.something
+  let argumentSynthOrigin := DemandSynthOrigin.something
     (signature := emptySignature) (q := ⟨0, 4⟩)
     (S := nestedCapLetAlign1) (context := [("f", dmIdScheme)]) (ledger := [])
-  let argumentSynthAudit : DDSynthTerminalAudit nestedCapLetTerminal
-      emptySignature argumentSynthOrigin := DDSynthTerminalAudit.something
-  let argumentAligned : DDAlignWithLedger [] nestedCapLetAlign1
+  let argumentSynthAudit : DemandSynthTerminalAudit nestedCapLetTerminal
+      emptySignature argumentSynthOrigin := DemandSynthTerminalAudit.something
+  let argumentAligned : DemandAlignWithLedger [] nestedCapLetAlign1
       (.matcher .any (.var 4)) (.var 2) nestedCapLetCheck1 :=
     .ordinary rfl (.ordinary rfl (originSafePairedCapId []
       (ExactPairedMGU.varRight (.matcher .any (.var 4)) 2 (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     argumentSynthAudit
-  let functionAligned : DDAlignTypesWithLedger [] Subst.id
+  let functionAligned : DemandAlignTypesWithLedger [] Subst.id
       (.fn (.var 1) (.var 1)) (.fn (.var 2) (.var 3))
       nestedCapLetAlign1 := .ordinary rfl (originSafePairedCapId []
         (ExactPairedMGU.fnDiagonal 1 2 3 (by decide) (by decide) (by decide)))
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         nestedCapLetFirstFunction_terminalAudit argumentAudit))
 
 def nestedCapLetSecondFunction_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetSecondFunction_ddSynthOrigin := by
   let lookup : (Context.applySubst nestedCapLetCheck1
       [("f", dmIdScheme)]).find? "f" = some dmIdScheme := by
     simp [Context.applySubst, Context.find?]
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
+  let origin₀ := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 5⟩) (ledger := []) lookup
-  let audit₀ : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      origin₀ := DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      origin₀ := DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [dmIdScheme_instance_value, dmIdScheme_instance_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
     CapabilityOriginLedger.setOrigins] using source₀
 
 def nestedCapLetSecondTuple_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetSecondTuple_ddSynthOrigin := by
-  let firstOrigin := DDSynthOrigin.something (signature := emptySignature)
+  let firstOrigin := DemandSynthOrigin.something (signature := emptySignature)
     (q := ⟨0, 8⟩) (S := nestedCapLetAlign2)
     (context := [("f", dmIdScheme)]) (ledger := [])
-  let firstAudit : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      firstOrigin := DDSynthTerminalAudit.something
-  let secondOrigin := DDSynthOrigin.something (signature := emptySignature)
+  let firstAudit : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      firstOrigin := DemandSynthTerminalAudit.something
+  let secondOrigin := DemandSynthOrigin.something (signature := emptySignature)
     (q := ⟨0, 9⟩) (S := nestedCapLetAlign2)
     (context := [("f", dmIdScheme)]) (ledger := [])
-  let secondAudit : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      secondOrigin := DDSynthTerminalAudit.something
-  let nilOrigin := DDSynthsOrigin.nil (signature := emptySignature)
+  let secondAudit : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      secondOrigin := DemandSynthTerminalAudit.something
+  let nilOrigin := DemandSynthsOrigin.nil (signature := emptySignature)
     (q := ⟨0, 10⟩) (S := nestedCapLetAlign2)
     (context := [("f", dmIdScheme)]) (ledger := [])
-  let nilAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      nilOrigin := DDSynthsTerminalAudit.nil
-  let tailOrigin := DDSynthsOrigin.cons secondOrigin nilOrigin
-  let tailAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      tailOrigin := DDSynthsTerminalAudit.cons secondAudit nilAudit
-  let childrenOrigin := DDSynthsOrigin.cons firstOrigin tailOrigin
-  let childrenAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      childrenOrigin := DDSynthsTerminalAudit.cons firstAudit tailAudit
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.tuple childrenAudit))
+  let nilAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      nilOrigin := DemandSynthsTerminalAudit.nil
+  let tailOrigin := DemandSynthsOrigin.cons secondOrigin nilOrigin
+  let tailAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      tailOrigin := DemandSynthsTerminalAudit.cons secondAudit nilAudit
+  let childrenOrigin := DemandSynthsOrigin.cons firstOrigin tailOrigin
+  let childrenAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      childrenOrigin := DemandSynthsTerminalAudit.cons firstAudit tailAudit
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.tuple childrenAudit))
 
 def nestedCapLetSecondApp_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetSecondApp_ddSynthOrigin := by
-  let argumentAligned : DDAlignWithLedger [] nestedCapLetAlign2
+  let argumentAligned : DemandAlignWithLedger [] nestedCapLetAlign2
       (.prod [.matcher .any (.var 8), .matcher .any (.var 9)]) (.var 6)
       nestedCapLetTerminal := .ordinary rfl (.ordinary rfl
         (originSafePairedCapId [] (ExactPairedMGU.varRight
           (.prod [.matcher .any (.var 8), .matcher .any (.var 9)]) 6
           (by decide))))
-  let argumentAudit := DDCheckTerminalAudit.mk (aligned := argumentAligned)
+  let argumentAudit := DemandCheckTerminalAudit.mk (aligned := argumentAligned)
     nestedCapLetSecondTuple_terminalAudit
-  let functionAligned : DDAlignTypesWithLedger [] nestedCapLetCheck1
+  let functionAligned : DemandAlignTypesWithLedger [] nestedCapLetCheck1
       (.fn (.var 5) (.var 5)) (.fn (.var 6) (.var 7))
       nestedCapLetAlign2 := .ordinary rfl (originSafePairedCapId []
         (ExactPairedMGU.fnDiagonal 5 6 7 (by decide) (by decide) (by decide)))
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.app (aligned := functionAligned)
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.app (aligned := functionAligned)
         nestedCapLetSecondFunction_terminalAudit argumentAudit))
 
 def nestedCapLetValue_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetValue_ddSynthOrigin := by
   let lookup : (Context.applySubst Subst.id
       [("m", Scheme.mono (.var 0))]).find? "m" =
       some (Scheme.mono (.var 0)) := by
     simp [Context.applySubst, Context.find?]
-  let bodyOrigin := DDSynthOrigin.var (signature := emptySignature)
+  let bodyOrigin := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨0, 1⟩) (ledger := []) lookup
-  let bodyAudit : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      bodyOrigin := DDSynthTerminalAudit.var (lookup := lookup)
-  let origin₀ := DDSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
-  let audit₀ : DDSynthTerminalAudit nestedCapLetTerminal emptySignature
-      origin₀ := DDSynthTerminalAudit.lam bodyAudit
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let bodyAudit : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      bodyOrigin := DemandSynthTerminalAudit.var (lookup := lookup)
+  let origin₀ := DemandSynthOrigin.lam (q := ⟨0, 0⟩) bodyOrigin
+  let audit₀ : DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
+      origin₀ := DemandSynthTerminalAudit.lam bodyAudit
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, bodyAudit, DDLedger.markSchemeInstance,
@@ -1049,25 +1049,25 @@ def nestedCapLetValue_terminalAudit :
     Scheme.FreshOpening.capImages, Scheme.mono] using source₀
 
 def nestedCapLetProgram_terminalAudit :
-    DDSynthTerminalAudit nestedCapLetTerminal emptySignature
+    DemandSynthTerminalAudit nestedCapLetTerminal emptySignature
       nestedCapLetProgram_ddSynthOrigin := by
-  let nilOrigin := DDSynthsOrigin.nil (signature := emptySignature)
+  let nilOrigin := DemandSynthsOrigin.nil (signature := emptySignature)
     (q := ⟨0, 10⟩) (S := nestedCapLetTerminal)
     (context := [("f", dmIdScheme)])
     (ledger := [])
-  let nilAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      nilOrigin := DDSynthsTerminalAudit.nil
-  let tailOrigin := DDSynthsOrigin.cons
+  let nilAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      nilOrigin := DemandSynthsTerminalAudit.nil
+  let tailOrigin := DemandSynthsOrigin.cons
     nestedCapLetSecondApp_ddSynthOrigin nilOrigin
-  let tailAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      tailOrigin := DDSynthsTerminalAudit.cons
+  let tailAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      tailOrigin := DemandSynthsTerminalAudit.cons
         nestedCapLetSecondApp_terminalAudit nilAudit
-  let childrenOrigin := DDSynthsOrigin.cons
+  let childrenOrigin := DemandSynthsOrigin.cons
     nestedCapLetFirstApp_ddSynthOrigin tailOrigin
-  let childrenAudit : DDSynthsTerminalAudit nestedCapLetTerminal emptySignature
-      childrenOrigin := DDSynthsTerminalAudit.cons
+  let childrenAudit : DemandSynthsTerminalAudit nestedCapLetTerminal emptySignature
+      childrenOrigin := DemandSynthsTerminalAudit.cons
         nestedCapLetFirstApp_terminalAudit tailAudit
-  let bodyAudit := DDSynthTerminalAudit.tuple childrenAudit
+  let bodyAudit := DemandSynthTerminalAudit.tuple childrenAudit
   let stable :
       (emptySignature.generalize
         (Context.applySubst Subst.id ([] : Context))
@@ -1079,15 +1079,15 @@ def nestedCapLetProgram_terminalAudit :
     native_decide
   let facts : DDTerminalAudit.LetFacts nestedCapLetTerminal emptySignature []
       (.fn (.var 0) (.var 0)) Subst.id := ⟨by simpa using stable⟩
-  exact DDSynthTerminalAudit.transportBuilt
-    (DDSynthTerminalAudit.BuiltAudit.of
-      (DDSynthTerminalAudit.letE
+  exact DemandSynthTerminalAudit.transportBuilt
+    (DemandSynthTerminalAudit.BuiltAudit.of
+      (DemandSynthTerminalAudit.letE
         nestedCapLetValue_terminalAudit bodyAudit facts))
 
 /-- The `let`-polymorphic pairing of the two producers closes in the
 demand-directed judgment at exactly the executable raw result shape. -/
-theorem nestedCapLetProgram_ddTyping :
-    DDTyping emptySignature [] AcceptanceGapRegression.nestedCapLetProgram
+theorem nestedCapLetProgram_sourceTyping :
+    SourceTyping emptySignature [] AcceptanceGapRegression.nestedCapLetProgram
       (.prod [.matcher .any (.var 4),
         .prod [.matcher .any (.var 8), .matcher .any (.var 9)]]) := by
   exact ⟨.prod [.var 3, .var 7], ⟨0, 10⟩, nestedCapLetTerminal,
@@ -1107,12 +1107,12 @@ chain is delta-independent.  The first function alignment can map the
 fresh domain only to a variable (`varConstraint_target_image_var`), so the
 first argument check is an ordinary alignment that pins the shared domain
 to a matcher head; the second use then meets a matcher-headed — not
-slot-headed — expectation, where every coercion branch of `DDAlign` is
+slot-headed — expectation, where every coercion branch of `DemandAlign` is
 unavailable and ordinary alignment fails on the `prod`/`matcher`
 constructor clash. -/
 
-theorem nestedCapProgram_no_ddTyping (target : Ty) :
-    ¬ DDTyping emptySignature []
+theorem nestedCapProgram_no_sourceTyping (target : Ty) :
+    ¬ SourceTyping emptySignature []
       AcceptanceGapRegression.nestedCapProgram target := by
   rintro ⟨raw, q', S', synth, -⟩
   cases synth with
@@ -1143,7 +1143,7 @@ theorem nestedCapProgram_no_ddTyping (target : Ty) :
     Scheme.applyMeta_mono, InferenceBase.instantiateScheme_mono_supply]
       at firstAlign
   simp only [Subst.apply_id] at firstAlign
-  change DDAlignTypes Subst.id (Ty.var 0)
+  change DemandAlignTypes Subst.id (Ty.var 0)
     (.fn (.var 1) (.var 2)) _ at firstAlign
   cases firstAlign with
   | matcherPair hleft _ _ _ => nomatch hleft
@@ -1255,10 +1255,10 @@ matcher producers, whose only available alignment against the
 variable-headed domain expectation is ordinary, pinning the shared domain
 to a *product* head; the second use then feeds the bare `something` — a
 matcher-headed raw — into that product-headed expectation, where every
-coercion branch of `DDAlign` is unavailable and ordinary alignment fails
+coercion branch of `DemandAlign` is unavailable and ordinary alignment fails
 on the `matcher`/`prod` constructor clash. -/
-theorem nestedCapSwappedProgram_no_ddTyping (target : Ty) :
-    ¬ DDTyping emptySignature []
+theorem nestedCapSwappedProgram_no_sourceTyping (target : Ty) :
+    ¬ SourceTyping emptySignature []
       AcceptanceGapRegression.nestedCapSwappedProgram target := by
   rintro ⟨raw, q', S', synth, -⟩
   cases synth with
@@ -1289,7 +1289,7 @@ theorem nestedCapSwappedProgram_no_ddTyping (target : Ty) :
     Scheme.applyMeta_mono, InferenceBase.instantiateScheme_mono_supply]
       at firstAlign
   simp only [Subst.apply_id] at firstAlign
-  change DDAlignTypes Subst.id (Ty.var 0)
+  change DemandAlignTypes Subst.id (Ty.var 0)
     (.fn (.var 1) (.var 2)) _ at firstAlign
   cases firstAlign with
   | matcherPair hleft _ _ _ => nomatch hleft
@@ -1409,7 +1409,7 @@ supported and ranged within the constraint — yet applying it twice undoes
 it.  Such a delta breaks prevailing-substitution absorption
 (`Subst.seq_absorbs_of_idempotent` needs idempotency): a mid-derivation
 view of an already-threaded type disagrees with the terminal view, so
-context types would not transport to the terminal `RuntimeTyping` statement
+context types would not transport to the terminal `TypingInvariant` statement
 of the state-erasure map.  The solved-form clause is the exactness
 condition that rejects exactly this residue. -/
 
@@ -1662,9 +1662,9 @@ def orPattern_ddPatternOrigin :
 
 /-- Raw synthesis of the or-pattern program at the initial supply. -/
 theorem orProgram_ddSynth :
-    DDSynth signature ⟨0, 1⟩ Subst.id []
+    DemandSynth signature ⟨0, 1⟩ Subst.id []
       AcceptanceGapRegression.orProgram (Ty.listT .int) ⟨2, 4⟩ orTerminal := by
-  refine DDSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 4⟩)
+  refine DemandSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 4⟩)
     (S₄ := orTerminal) .lit (orPattern_ddPattern signature) ?_ ?_ ?_
   · exact .ordinary rfl (ExactPairedMGU.varLeft 2 .int (by decide))
   · exact .mk .something (.matcherToSlot rfl rfl
@@ -1673,21 +1673,21 @@ theorem orProgram_ddSynth :
   · simpa only [InferenceBase.instantiateScheme_mono_value,
       InferenceBase.instantiateScheme_mono_supply, MonoCtx.toContext,
       List.map, List.append_nil] using
-      (DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
+      (DemandSynth.var (signature := signature) (q := ⟨2, 4⟩)
         (S := orTerminal) (Γ := [("x", Scheme.mono (.var 1))])
         (name := "x") (scheme := Scheme.mono .int) (by native_decide))
 
 theorem orMatcher_ddCheck :
-    DDCheck signature ⟨2, 3⟩ orTargetAlign [] .something
+    DemandCheck signature ⟨2, 3⟩ orTargetAlign [] .something
       (.slot (.var ⟨0⟩) .int) ⟨2, 4⟩ orTerminal := by
   exact .mk .something (.matcherToSlot rfl rfl
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
       ExactTargetMGU.varLeft 3 .int (by decide)⟩)
 
 def orMatcher_ddCheckOrigin :
-    DDCheckOrigin signature (orMatcher_ddCheck signature) orPatternLedger₂
+    DemandCheckOrigin signature (orMatcher_ddCheck signature) orPatternLedger₂
       orPatternLedger₂ := by
-  refine .mk (synthesized := DDSynth.something (signature := signature)
+  refine .mk (synthesized := DemandSynth.something (signature := signature)
     (q := ⟨2, 3⟩) (S := orTargetAlign) (Γ := [])) .something ?_
   exact .matcherToSlot rfl rfl ⟨
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
@@ -1699,38 +1699,38 @@ def orMatcher_ddCheckOrigin :
           simp [orPatternLedger₂, DDLedger.markFreshCap])⟩⟩
 
 def orBody_ddSynth :
-    DDSynth signature ⟨2, 4⟩ orTerminal
+    DemandSynth signature ⟨2, 4⟩ orTerminal
       [("x", Scheme.mono (.var 1))] (.var "x") .int ⟨2, 4⟩
       orTerminal := by
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
+    (DemandSynth.var (signature := signature) (q := ⟨2, 4⟩)
       (S := orTerminal) (Γ := [("x", Scheme.mono (.var 1))])
       (name := "x") (scheme := Scheme.mono .int) (by native_decide))
 
 def orBody_ddSynthOrigin :
-    DDSynthOrigin signature (orBody_ddSynth signature) orPatternLedger₂
+    DemandSynthOrigin signature (orBody_ddSynth signature) orPatternLedger₂
       orPatternLedger₂ := by
-  apply DDSynthOrigin.transportSome
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst orTerminal
       [("x", Scheme.mono (.var 1))]).find?
       "x" = some (Scheme.mono .int) := by native_decide
-  let raw₀ := DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
+  let raw₀ := DemandSynth.var (signature := signature) (q := ⟨2, 4⟩)
     lookup
-  have origin₀ : DDSynthOrigin signature raw₀ orPatternLedger₂
+  have origin₀ : DemandSynthOrigin signature raw₀ orPatternLedger₂
       orPatternLedger₂ := by
     simpa [raw₀, DDLedger.markSchemeInstance,
       CapabilityOriginLedger.setOrigins, Scheme.canonicalCapImages,
       Scheme.FreshOpening.capImages, Scheme.mono] using
-      (DDSynthOrigin.var (signature := signature) (q := ⟨2, 4⟩)
+      (DemandSynthOrigin.var (signature := signature) (q := ⟨2, 4⟩)
         (ledger := orPatternLedger₂) lookup)
-  have source₀ : ∃ raw, DDSynthOrigin signature raw orPatternLedger₂
+  have source₀ : ∃ raw, DemandSynthOrigin signature raw orPatternLedger₂
       orPatternLedger₂ := ⟨raw₀, origin₀⟩
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using source₀
 
 def orProgram_ddSynthOrigin :
-    DDSynthOrigin signature (orProgram_ddSynth signature) []
+    DemandSynthOrigin signature (orProgram_ddSynth signature) []
       orPatternLedger₂ := by
   refine .matchAll .lit (orPattern_ddPatternOrigin signature)
     (.ordinary rfl (originSafePairedCapId orPatternLedger₂
@@ -1738,17 +1738,17 @@ def orProgram_ddSynthOrigin :
     (orMatcher_ddCheckOrigin signature) (orBody_ddSynthOrigin signature)
 
 def orBody_terminalAudit :
-    DDSynthTerminalAudit orTerminal signature
+    DemandSynthTerminalAudit orTerminal signature
       (orBody_ddSynthOrigin signature) := by
   let lookup : (Context.applySubst orTerminal
       [("x", Scheme.mono (.var 1))]).find? "x" =
       some (Scheme.mono .int) := by native_decide
-  let origin₀ := DDSynthOrigin.var (signature := signature)
+  let origin₀ := DemandSynthOrigin.var (signature := signature)
     (q := ⟨2, 4⟩) (ledger := orPatternLedger₂) lookup
-  let audit₀ : DDSynthTerminalAudit orTerminal signature origin₀ :=
-    DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit orTerminal signature origin₀ :=
+    DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
@@ -1768,7 +1768,7 @@ def orRight_terminalAudit :
 def orPattern_terminalAudit :
     DDPatternTerminalAudit orTerminal signature
       (orPattern_ddPatternOrigin signature) := by
-  let dualsAligned : DDAlignDualWithLedger orPatternLedger₂ Subst.id
+  let dualsAligned : DemandAlignDualWithLedger orPatternLedger₂ Subst.id
       ⟨.var ⟨0⟩, .var 1⟩ ⟨.var ⟨1⟩, .var 2⟩ orDualAlign :=
     .mk
       ⟨ExactCapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide),
@@ -1778,7 +1778,7 @@ def orPattern_terminalAudit :
               DDLedger.markFreshCap])⟩
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
         (ExactPairedMGU.varLeft 1 (.var 2) (by decide))))
-  let bindingsAligned : DDAlignBindingsWithLedger orPatternLedger₂ orDualAlign
+  let bindingsAligned : DemandAlignBindingsWithLedger orPatternLedger₂ orDualAlign
       [("x", .var 1)] [("x", .var 2)] orBindingsAlign :=
     .cons rfl
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
@@ -1788,9 +1788,9 @@ def orPattern_terminalAudit :
     (orRight_terminalAudit signature)
 
 def orMatcher_terminalAudit :
-    DDCheckTerminalAudit orTerminal signature
+    DemandCheckTerminalAudit orTerminal signature
       (orMatcher_ddCheckOrigin signature) := by
-  let aligned : DDAlignWithLedger orPatternLedger₂ orTargetAlign
+  let aligned : DemandAlignWithLedger orPatternLedger₂ orTargetAlign
       (.matcher .any (.var 3)) (.slot (.var ⟨0⟩) .int) orTerminal :=
     .matcherToSlot rfl rfl ⟨
       ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
@@ -1800,13 +1800,13 @@ def orMatcher_terminalAudit :
         exact PairedUnification.admissible_single_structuralFlexible
           orPatternLedger₂ ⟨1⟩ .any (by
             simp [orPatternLedger₂, DDLedger.markFreshCap])⟩⟩
-  exact DDCheckTerminalAudit.mk (aligned := aligned)
-    DDSynthTerminalAudit.something
+  exact DemandCheckTerminalAudit.mk (aligned := aligned)
+    DemandSynthTerminalAudit.something
 
 def orProgram_terminalAudit :
-    DDSynthTerminalAudit orTerminal signature
+    DemandSynthTerminalAudit orTerminal signature
       (orProgram_ddSynthOrigin signature) := by
-  let targetAligned : DDAlignTypesWithLedger orPatternLedger₂ orBindingsAlign
+  let targetAligned : DemandAlignTypesWithLedger orPatternLedger₂ orBindingsAlign
       (.var 1) .int orTargetAlign :=
     .ordinary rfl (originSafePairedCapId orPatternLedger₂
       (ExactPairedMGU.varLeft 2 .int (by decide)))
@@ -1816,12 +1816,12 @@ def orProgram_terminalAudit :
 
 /-- The or-pattern program closes at `List Int` in the demand-directed
 judgment, mirroring its executable acceptance. -/
-theorem orProgram_ddTyping :
+theorem orProgram_sourceTyping :
     Inference.initialSupply signature [] = ⟨0, 1⟩ →
-    DDTyping signature [] AcceptanceGapRegression.orProgram
+    SourceTyping signature [] AcceptanceGapRegression.orProgram
       (Ty.listT .int) := by
   intro initial
-  unfold DDTyping
+  unfold SourceTyping
   rw [initial]
   exact ⟨Ty.listT .int, ⟨2, 4⟩, orTerminal,
     orProgram_ddSynth signature, orPatternLedger₂,
@@ -1951,16 +1951,16 @@ theorem delegating_bodyMGU_exact :
 
 /-- The next-matcher check: `something` delivers the hole slot one-way. -/
 theorem delegatingNextHead_ddCheck :
-    DDCheck emptySignature ⟨1, 1⟩ Subst.id [] .something
+    DemandCheck emptySignature ⟨1, 1⟩ Subst.id [] .something
       (.slot (.var ⟨0⟩) (.var 0)) ⟨1, 2⟩ delegatingCheck1 := by
   exact .mk .something (.matcherToSlot rfl rfl
     ⟨[(⟨0⟩, Cap.any)], rfl, rfl,
       ExactTargetMGU.varLeft 1 (.var 0) (by decide)⟩)
 
 def delegatingNextHead_ddCheckOrigin :
-    DDCheckOrigin emptySignature delegatingNextHead_ddCheck delegatingLedger₀
+    DemandCheckOrigin emptySignature delegatingNextHead_ddCheck delegatingLedger₀
       delegatingLedger₀ := by
-  refine .mk (synthesized := DDSynth.something (signature := emptySignature)
+  refine .mk (synthesized := DemandSynth.something (signature := emptySignature)
     (q := ⟨1, 1⟩) (S := Subst.id) (Γ := [])) .something ?_
   exact .matcherToSlot rfl rfl ⟨
     ⟨[(⟨0⟩, Cap.any)], rfl, rfl,
@@ -1972,12 +1972,12 @@ def delegatingNextHead_ddCheckOrigin :
           simp [delegatingLedger₀, DDLedger.markFreshCap])⟩⟩
 
 theorem delegatingNext_ddChecks :
-    DDChecks emptySignature ⟨1, 1⟩ Subst.id [] [.something]
+    DemandChecks emptySignature ⟨1, 1⟩ Subst.id [] [.something]
       [.slot (.var ⟨0⟩) (.var 0)] ⟨1, 2⟩ delegatingCheck1 := by
   exact .cons delegatingNextHead_ddCheck .nil
 
 def delegatingNext_ddChecksOrigin :
-    DDChecksOrigin emptySignature delegatingNext_ddChecks delegatingLedger₀
+    DemandChecksOrigin emptySignature delegatingNext_ddChecks delegatingLedger₀
       delegatingLedger₀ := by
   exact .cons delegatingNextHead_ddCheckOrigin .nil
 
@@ -1998,7 +1998,7 @@ def delegatingInnerPattern_ddPatternOrigin :
       (by simp [MonoCtx.names])
 
 theorem delegatingInnerMatcher_ddCheck :
-    DDCheck emptySignature ⟨2, 3⟩ delegatingInner1
+    DemandCheck emptySignature ⟨2, 3⟩ delegatingInner1
       [("v", Scheme.mono (.var 0))] .something
       (.slot (.var ⟨1⟩) .int) ⟨2, 4⟩ delegatingInner2 := by
   exact .mk .something (.matcherToSlot rfl rfl
@@ -2006,9 +2006,9 @@ theorem delegatingInnerMatcher_ddCheck :
       ExactTargetMGU.varLeft 3 .int (by decide)⟩)
 
 def delegatingInnerMatcher_ddCheckOrigin :
-    DDCheckOrigin emptySignature delegatingInnerMatcher_ddCheck
+    DemandCheckOrigin emptySignature delegatingInnerMatcher_ddCheck
       delegatingLedger₁ delegatingLedger₁ := by
-  refine .mk (synthesized := DDSynth.something (signature := emptySignature)
+  refine .mk (synthesized := DemandSynth.something (signature := emptySignature)
     (q := ⟨2, 3⟩) (S := delegatingInner1)
     (Γ := [("v", Scheme.mono (.var 0))])) .something ?_
   exact .matcherToSlot rfl rfl ⟨
@@ -2021,49 +2021,49 @@ def delegatingInnerMatcher_ddCheckOrigin :
           simp [delegatingLedger₁, DDLedger.markFreshCap])⟩⟩
 
 def delegatingInnerBodyVar_ddSynth :
-    DDSynth emptySignature ⟨2, 4⟩ delegatingInner2
+    DemandSynth emptySignature ⟨2, 4⟩ delegatingInner2
       [("y", Scheme.mono (.var 2)), ("v", Scheme.mono (.var 0))]
       (.var "y") .int ⟨2, 4⟩ delegatingInner2 := by
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
+    (DemandSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
       (S := delegatingInner2)
       (Γ := [("y", Scheme.mono (.var 2)), ("v", Scheme.mono (.var 0))])
       (name := "y") (scheme := Scheme.mono .int) (by native_decide))
 
 def delegatingInnerBodyVar_ddSynthOrigin :
-    DDSynthOrigin emptySignature delegatingInnerBodyVar_ddSynth
+    DemandSynthOrigin emptySignature delegatingInnerBodyVar_ddSynth
       delegatingLedger₁ delegatingLedger₁ := by
-  apply DDSynthOrigin.transportSome
+  apply DemandSynthOrigin.transportSome
   let lookup : (Context.applySubst delegatingInner2
       [("y", Scheme.mono (.var 2)),
         ("v", Scheme.mono (.var 0))]).find? "y" =
       some (Scheme.mono .int) := by native_decide
-  let raw₀ := DDSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
+  let raw₀ := DemandSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
     lookup
-  have origin₀ : DDSynthOrigin emptySignature raw₀ delegatingLedger₁
+  have origin₀ : DemandSynthOrigin emptySignature raw₀ delegatingLedger₁
       delegatingLedger₁ := by
     simpa [raw₀, DDLedger.markSchemeInstance,
       CapabilityOriginLedger.setOrigins, Scheme.canonicalCapImages,
       Scheme.FreshOpening.capImages, Scheme.mono] using
-      (DDSynthOrigin.var (signature := emptySignature) (q := ⟨2, 4⟩)
+      (DemandSynthOrigin.var (signature := emptySignature) (q := ⟨2, 4⟩)
         (ledger := delegatingLedger₁) lookup)
-  have source₀ : ∃ raw, DDSynthOrigin emptySignature raw delegatingLedger₁
+  have source₀ : ∃ raw, DemandSynthOrigin emptySignature raw delegatingLedger₁
       delegatingLedger₁ := ⟨raw₀, origin₀⟩
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using source₀
 
 theorem delegatingBody_ddSynth :
-    DDSynth emptySignature ⟨1, 2⟩ delegatingCheck1
+    DemandSynth emptySignature ⟨1, 2⟩ delegatingCheck1
       [("v", Scheme.mono (.var 0))] delegatingBody (Ty.listT .int)
       ⟨2, 4⟩ delegatingInner2 := by
-  exact DDSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
+  exact DemandSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
     (S₄ := delegatingInner2) .lit delegatingInnerPattern_ddPattern
     (.ordinary rfl (ExactPairedMGU.varLeft 2 .int (by decide)))
     delegatingInnerMatcher_ddCheck delegatingInnerBodyVar_ddSynth
 
 def delegatingBody_ddSynthOrigin :
-    DDSynthOrigin emptySignature delegatingBody_ddSynth delegatingLedger₀
+    DemandSynthOrigin emptySignature delegatingBody_ddSynth delegatingLedger₀
       delegatingLedger₁ := by
   exact .matchAll .lit delegatingInnerPattern_ddPatternOrigin
     (.ordinary rfl (originSafePairedCapId delegatingLedger₁
@@ -2073,12 +2073,12 @@ def delegatingBody_ddSynthOrigin :
 /-- The delegating arm body: the inner `matchAll` synthesizes `List Int` and
 aligns with the decomposition-result type `List ?0`. -/
 theorem delegatingBody_ddCheck :
-    DDCheck emptySignature ⟨1, 2⟩ delegatingCheck1
+    DemandCheck emptySignature ⟨1, 2⟩ delegatingCheck1
       [("v", Scheme.mono (.var 0))] delegatingBody (Ty.listT (.var 0))
       ⟨2, 4⟩ delegatingTerminal := by
   refine .mk (raw := Ty.listT .int) (q₁ := ⟨2, 4⟩)
     (S₁ := delegatingInner2) ?_ ?_
-  · refine DDSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
+  · refine DemandSynth.matchAll (S₃ := delegatingInner1) (q₃ := ⟨2, 4⟩)
       (S₄ := delegatingInner2) .lit
       (.pvar (by simp [MonoCtx.names])) ?_ ?_ ?_
     · exact .ordinary rfl (ExactPairedMGU.varLeft 2 .int (by decide))
@@ -2088,7 +2088,7 @@ theorem delegatingBody_ddCheck :
     · simpa only [InferenceBase.instantiateScheme_mono_value,
         InferenceBase.instantiateScheme_mono_supply, MonoCtx.toContext,
         List.map, List.append, List.nil_append, List.cons_append] using
-        (DDSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
+        (DemandSynth.var (signature := emptySignature) (q := ⟨2, 4⟩)
           (S := delegatingInner2)
           (Γ := [("y", Scheme.mono (.var 2)),
             ("v", Scheme.mono (.var 0))])
@@ -2096,7 +2096,7 @@ theorem delegatingBody_ddCheck :
   · exact .ordinary rfl (.ordinary rfl delegating_bodyMGU_exact)
 
 def delegatingBody_ddCheckOrigin :
-    DDCheckOrigin emptySignature delegatingBody_ddCheck delegatingLedger₀
+    DemandCheckOrigin emptySignature delegatingBody_ddCheck delegatingLedger₀
       delegatingLedger₁ := by
   exact .mk delegatingBody_ddSynthOrigin
     (.ordinary (S := delegatingInner2) (raw := Ty.listT .int)
@@ -2142,34 +2142,34 @@ def delegatingClauses_ddClausesOrigin :
   .cons delegatingClause_ddClauseOrigin .nil
 
 theorem delegatingMatcher_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id [] delegatingMatcher
+    DemandSynth emptySignature ⟨0, 0⟩ Subst.id [] delegatingMatcher
       (.matcher .any (.var 0)) ⟨2, 4⟩ delegatingTerminal := by
-  exact DDSynth.matcher (evidence := [.unseen]) (capability := .any)
+  exact DemandSynth.matcher (evidence := [.unseen]) (capability := .any)
     delegatingClauses_ddClauses rfl rfl rfl rfl rfl rfl rfl
 
 def delegatingMatcher_ddSynthOrigin :
-    DDSynthOrigin emptySignature delegatingMatcher_ddSynth []
+    DemandSynthOrigin emptySignature delegatingMatcher_ddSynth []
       delegatingLedger₁ := by
   simpa [delegatingMatcher, DDLedger.freezeMatcherProducer,
     DDLedger.matcherProducerLeaves, Inference.matcherProducerLedgerLeaves,
     Cap.fcv, CapabilityOriginLedger.setOrigins] using
-    (DDSynthOrigin.matcher (signature := emptySignature)
+    (DemandSynthOrigin.matcher (signature := emptySignature)
       (evidence := [.unseen]) (capability := .any)
       delegatingClauses_ddClausesOrigin rfl rfl rfl rfl rfl rfl rfl)
 
 def delegatingInnerBodyVar_terminalAudit :
-    DDSynthTerminalAudit delegatingTerminal emptySignature
+    DemandSynthTerminalAudit delegatingTerminal emptySignature
       delegatingInnerBodyVar_ddSynthOrigin := by
   let lookup : (Context.applySubst delegatingInner2
       [("y", Scheme.mono (.var 2)),
         ("v", Scheme.mono (.var 0))]).find? "y" =
       some (Scheme.mono .int) := by native_decide
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
+  let origin₀ := DemandSynthOrigin.var (signature := emptySignature)
     (q := ⟨2, 4⟩) (ledger := delegatingLedger₁) lookup
-  let audit₀ : DDSynthTerminalAudit delegatingTerminal emptySignature
-      origin₀ := DDSynthTerminalAudit.var (lookup := lookup)
-  apply DDSynthTerminalAudit.transportBuilt
-  let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
+  let audit₀ : DemandSynthTerminalAudit delegatingTerminal emptySignature
+      origin₀ := DemandSynthTerminalAudit.var (lookup := lookup)
+  apply DemandSynthTerminalAudit.transportBuilt
+  let source₀ := DemandSynthTerminalAudit.BuiltAudit.of audit₀
   rw [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] at source₀
   simpa [audit₀, DDLedger.markSchemeInstance,
@@ -2177,9 +2177,9 @@ def delegatingInnerBodyVar_terminalAudit :
     Scheme.FreshOpening.capImages, Scheme.mono] using source₀
 
 def delegatingNextHead_terminalAudit :
-    DDCheckTerminalAudit delegatingTerminal emptySignature
+    DemandCheckTerminalAudit delegatingTerminal emptySignature
       delegatingNextHead_ddCheckOrigin := by
-  let aligned : DDAlignWithLedger delegatingLedger₀ Subst.id
+  let aligned : DemandAlignWithLedger delegatingLedger₀ Subst.id
       (.matcher .any (.var 1)) (.slot (.var ⟨0⟩) (.var 0))
       delegatingCheck1 :=
     .matcherToSlot rfl rfl ⟨
@@ -2190,11 +2190,11 @@ def delegatingNextHead_terminalAudit :
         exact PairedUnification.admissible_single_structuralFlexible
           delegatingLedger₀ ⟨0⟩ .any (by
             simp [delegatingLedger₀, DDLedger.markFreshCap])⟩⟩
-  exact DDCheckTerminalAudit.mk (aligned := aligned)
-    DDSynthTerminalAudit.something
+  exact DemandCheckTerminalAudit.mk (aligned := aligned)
+    DemandSynthTerminalAudit.something
 
 def delegatingNext_terminalAudit :
-    DDChecksTerminalAudit delegatingTerminal emptySignature
+    DemandChecksTerminalAudit delegatingTerminal emptySignature
       delegatingNext_ddChecksOrigin :=
   .cons delegatingNextHead_terminalAudit .nil
 
@@ -2204,9 +2204,9 @@ def delegatingInnerPattern_terminalAudit :
   .pvar (freshName := by simp [MonoCtx.names])
 
 def delegatingInnerMatcher_terminalAudit :
-    DDCheckTerminalAudit delegatingTerminal emptySignature
+    DemandCheckTerminalAudit delegatingTerminal emptySignature
       delegatingInnerMatcher_ddCheckOrigin := by
-  let aligned : DDAlignWithLedger delegatingLedger₁ delegatingInner1
+  let aligned : DemandAlignWithLedger delegatingLedger₁ delegatingInner1
       (.matcher .any (.var 3)) (.slot (.var ⟨1⟩) .int)
       delegatingInner2 :=
     .matcherToSlot rfl rfl ⟨
@@ -2217,13 +2217,13 @@ def delegatingInnerMatcher_terminalAudit :
         exact PairedUnification.admissible_single_structuralFlexible
           delegatingLedger₁ ⟨1⟩ .any (by
             simp [delegatingLedger₁, DDLedger.markFreshCap])⟩⟩
-  exact DDCheckTerminalAudit.mk (aligned := aligned)
-    DDSynthTerminalAudit.something
+  exact DemandCheckTerminalAudit.mk (aligned := aligned)
+    DemandSynthTerminalAudit.something
 
 def delegatingBodySynth_terminalAudit :
-    DDSynthTerminalAudit delegatingTerminal emptySignature
+    DemandSynthTerminalAudit delegatingTerminal emptySignature
       delegatingBody_ddSynthOrigin := by
-  let targetAligned : DDAlignTypesWithLedger delegatingLedger₁
+  let targetAligned : DemandAlignTypesWithLedger delegatingLedger₁
       delegatingCheck1 (.var 2) .int delegatingInner1 :=
     .ordinary rfl (originSafePairedCapId delegatingLedger₁
       (ExactPairedMGU.varLeft 2 .int (by decide)))
@@ -2232,13 +2232,13 @@ def delegatingBodySynth_terminalAudit :
     delegatingInnerBodyVar_terminalAudit
 
 def delegatingBodyCheck_terminalAudit :
-    DDCheckTerminalAudit delegatingTerminal emptySignature
+    DemandCheckTerminalAudit delegatingTerminal emptySignature
       delegatingBody_ddCheckOrigin := by
-  let aligned : DDAlignWithLedger delegatingLedger₁ delegatingInner2
+  let aligned : DemandAlignWithLedger delegatingLedger₁ delegatingInner2
       (Ty.listT .int) (Ty.listT (.var 0)) delegatingTerminal :=
     .ordinary rfl (.ordinary rfl
       (originSafePairedCapId delegatingLedger₁ delegating_bodyMGU_exact))
-  exact DDCheckTerminalAudit.mk (aligned := aligned)
+  exact DemandCheckTerminalAudit.mk (aligned := aligned)
     delegatingBodySynth_terminalAudit
 
 def delegatingArms_terminalAudit :
@@ -2272,9 +2272,9 @@ theorem delegatingMatcher_terminalFacts :
   exact ⟨[.unseen], rfl, rfl, rfl, rfl, rfl⟩
 
 def delegatingMatcher_terminalAudit :
-    DDSynthTerminalAudit delegatingTerminal emptySignature
+    DemandSynthTerminalAudit delegatingTerminal emptySignature
       delegatingMatcher_ddSynthOrigin := by
-  exact DDSynthTerminalAudit.matcher (q := ⟨0, 0⟩)
+  exact DemandSynthTerminalAudit.matcher (q := ⟨0, 0⟩)
     (evidence := [.unseen]) (capability := .any)
     (collected := rfl) (inferred := rfl) (clauseCaps := rfl)
     (catchAll := rfl) (binders := rfl) (arms := rfl) (coverage := rfl)
@@ -2283,8 +2283,8 @@ def delegatingMatcher_terminalAudit :
 /-- The delegating matcher literal closes at `Matcher Any Int` through the
 demand-directed judgment, its finalization discharged by the same executable
 coverage checks the executable traversal consumes. -/
-theorem delegatingMatcher_ddTyping :
-    DDTyping emptySignature [] delegatingMatcher (.matcher .any .int) := by
+theorem delegatingMatcher_sourceTyping :
+    SourceTyping emptySignature [] delegatingMatcher (.matcher .any .int) := by
   exact ⟨.matcher .any (.var 0), ⟨2, 4⟩, delegatingTerminal,
     delegatingMatcher_ddSynth, delegatingLedger₁,
     delegatingMatcher_ddSynthOrigin, delegatingMatcher_terminalAudit, rfl⟩
@@ -2329,7 +2329,7 @@ theorem dmLet_published_boundedBy :
     ∃ q', SupplyExtends
         (Inference.initialSupply emptySignature []) q' ∧
       Ty.BoundedBy q' Ty.int :=
-  DDTyping.published_boundedBy dmLet_ddTyping emptySignature_schemesClosed
+  SourceTyping.published_boundedBy dmLet_sourceTyping emptySignature_schemesClosed
 
 end DemandTypingRegression
 end TypePM

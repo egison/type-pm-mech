@@ -567,9 +567,9 @@ theorem inference_resolved_context :
   native_decide
 
 theorem program_typed :
-    RuntimeTyping signature programContext program inferenceResult.resolvedTarget := by
+    TypingInvariant signature programContext program inferenceResult.resolvedTarget := by
   rw [← inference_resolved_context]
-  exact Inference.infer_success_runtimeTyping inference_success
+  exact Inference.infer_success_typingInvariant inference_success
 
 theorem unit_value_flow_instance :
     unitScheme.ValueFlowInst [] unitResult := by

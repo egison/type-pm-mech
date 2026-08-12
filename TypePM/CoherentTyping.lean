@@ -7,7 +7,7 @@ import TypePM.DamasMilner
 
 The reconstruction certificate `Reconstruction.ExprDeriv` is itself the
 mutual coherent certificate: its value-pattern, arm, and clause premises
-recurse into the certificate rather than a `RuntimeTyping` oracle, its pattern
+recurse into the certificate rather than a `TypingInvariant` oracle, its pattern
 layer keeps one threaded raw provenance, and its product-lift constructors
 carry raw-source provenance indices.  The inference reconstruction motive
 fills those indices faithfully — the recorded raw source is the type whose
@@ -17,15 +17,15 @@ always-available identity witness.
 Following the `CoreTyping` precedent, this module names that certificate
 `Coherent.CoherentExpr` by definitional abbreviation instead of maintaining a
 mirrored copy.  On top of the aliases it proves the internal projections:
-coherent reconstruction yields `RuntimeTyping`, successful public inference
+coherent reconstruction yields `TypingInvariant`, successful public inference
 yields coherent reconstruction, and every Damas–Milner typing embeds directly
 into the coherent certificate.  The standalone pattern-local boundaries and their
 projections remain in `TypePM.CoherentSurface`
 (`PatternResolutionDeriv.toThreadedSurface` and onward).
 
 This module does not define source typability.  That role belongs exclusively
-to `DDTyping`; coherence and `RuntimeTyping` occur only downstream of a
-successful reconstruction or a future DD state-erasure theorem.
+to `SourceTyping`; coherence and `TypingInvariant` occur only downstream of a
+successful reconstruction or a future demand-directed state-erasure theorem.
 -/
 
 namespace TypePM
@@ -67,14 +67,14 @@ abbrev CoherentClauses := Inference.Reconstruction.ClausesDeriv
 abbrev CoherentResolvedClauses :=
   Inference.Reconstruction.ResolvedClausesDeriv
 
-/-! ## Runtime-certificate projection and inference corollaries -/
+/-! ## Typing-invariant projection and inference corollaries -/
 
-/-- Coherent reconstruction yields the state-free runtime certificate. -/
-theorem CoherentExpr.toRuntimeTyping
+/-- Coherent reconstruction yields the state-free typing invariant. -/
+theorem CoherentExpr.toTypingInvariant
     {signature context expression target}
     (derivation : CoherentExpr signature context expression target) :
-    RuntimeTyping signature context expression target :=
-  ExprDeriv.toRuntimeTyping derivation
+    TypingInvariant signature context expression target :=
+  ExprDeriv.toTypingInvariant derivation
 
 /-- Successful public inference lands in the coherent judgment. -/
 theorem infer_success_coherent

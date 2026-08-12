@@ -28,7 +28,7 @@ def letPairProgram : Expr :=
 theorem pair_synthesizes_product {signature : FrozenSig} :
     SynthHead signature [] pairProgram
       (.prod [.matcher .any .int, .matcher .any .int]) :=
-  .tuple (.cons RuntimeTyping.something (.cons RuntimeTyping.something .nil))
+  .tuple (.cons TypingInvariant.something (.cons TypingInvariant.something .nil))
 
 theorem pair_product_matcher_plan {signature : FrozenSig} :
     CoercionPlan signature [] pairProgram
@@ -38,11 +38,11 @@ theorem pair_product_matcher_plan {signature : FrozenSig} :
     (duals := [⟨.any, .int⟩, ⟨.any, .int⟩])
 
 theorem pair_product_matcher_replays {signature : FrozenSig} :
-    RuntimeTyping signature [] pairProgram
+    TypingInvariant signature [] pairProgram
       (.matcher (.prod [.any, .any]) (.prod [.int, .int])) :=
-  pair_product_matcher_plan.toRuntimeTyping pair_synthesizes_product.toRuntimeTyping
+  pair_product_matcher_plan.toTypingInvariant pair_synthesizes_product.toTypingInvariant
 
-theorem pair_runtime_factor_exists {signature : FrozenSig} :
+theorem pair_typingInvariant_factor_exists {signature : FrozenSig} :
     ∃ source,
       SynthHead signature [] pairProgram source ∧
       CoercionPlan signature [] pairProgram source
@@ -53,7 +53,7 @@ theorem pair_runtime_factor_exists {signature : FrozenSig} :
 after the ordinary product has crossed a `let` boundary.  The former
 tuple-literal-only rule could not express this elaboration. -/
 theorem let_bound_pair_checks_as_product_matcher {signature : FrozenSig} :
-    RuntimeTyping signature [] letPairProgram pairMatcherType := by
+    TypingInvariant signature [] letPairProgram pairMatcherType := by
   have pairScheme :
       signature.generalize [] pairProductType = Scheme.mono pairProductType := by
     have capClosed : pairProductType.fcv = [] := by rfl
@@ -71,17 +71,17 @@ theorem let_bound_pair_checks_as_product_matcher {signature : FrozenSig} :
     simp [Scheme.close, Scheme.mono, pairProductType, PolyTy.abstract,
       PolyTy.lift, PolyCap.abstract, PolyCap.lift]
   have variableTyping :
-      RuntimeTyping signature
+      TypingInvariant signature
         [("pairMatcher", signature.generalize [] pairProductType)]
         (.var "pairMatcher") pairProductType := by
-    apply RuntimeTyping.var
+    apply TypingInvariant.var
       (scheme := signature.generalize [] pairProductType)
     · simp [Context.find?, pairScheme]
     · rw [pairScheme]
       exact Scheme.mono_valueFlowInst pairProductType
   simpa [letPairProgram, pairProductType, pairMatcherType] using
-    RuntimeTyping.letE (pair_prod_typing (signature := signature))
-      (RuntimeTyping.coerceProductMatcher
+    TypingInvariant.letE (pair_prod_typing (signature := signature))
+      (TypingInvariant.coerceProductMatcher
         (duals := [⟨.any, .int⟩, ⟨.any, .int⟩]) variableTyping)
 
 end ElaborationRegression

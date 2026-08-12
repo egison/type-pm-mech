@@ -16,7 +16,7 @@ three layers:
 * chronological replay of one prevailing paired substitution, and
 * a complete traversal of the mutually recursive source syntax.
 
-The state-free `RuntimeTyping`/`ClauseTy` reconstruction is connected only after a
+The state-free `TypingInvariant`/`ClauseTy` reconstruction is connected only after a
 successful trace.  In particular, no inference result or bridge-condition
 record contains the desired final typing judgment as a field.
 

@@ -4,7 +4,7 @@ import TypePM.DemandTyping
 # Solved-form preservation for demand-directed typing
 
 The demand-directed judgments thread one prevailing substitution.  This file
-shows that every local solve, and hence every complete DD derivation, preserves
+shows that every local solve, and hence every complete demand-directed derivation, preserves
 the solved-form (`Subst.Idempotent`) invariant.
 -/
 
@@ -318,9 +318,9 @@ theorem OneWayDelta.seq_idempotent_of_fixed
 /-! ## Alignment families -/
 
 /-- Ordinary type alignment preserves solved form. -/
-theorem DDAlignTypes.idempotent
+theorem DemandAlignTypes.idempotent
     {S : Subst} {left right : Ty} {S' : Subst}
-    (aligned : DDAlignTypes S left right S') (idem : S.Idempotent) :
+    (aligned : DemandAlignTypes S left right S') (idem : S.Idempotent) :
     S'.Idempotent := by
   cases aligned with
   | matcherPair hleft hright capExact targetExact =>
@@ -396,9 +396,9 @@ theorem DDAlignTypes.idempotent
       exact exact.seq_idempotent idem
 
 /-- The complete checking-cut alignment preserves solved form. -/
-theorem DDAlign.idempotent
+theorem DemandAlign.idempotent
     {S : Subst} {raw expected : Ty} {S' : Subst}
-    (aligned : DDAlign S raw expected S') (idem : S.Idempotent) :
+    (aligned : DemandAlign S raw expected S') (idem : S.Idempotent) :
     S'.Idempotent := by
   cases aligned with
   | productMatcherLift hduals hslot oneWay =>
@@ -514,54 +514,54 @@ theorem DDAlign.idempotent
         sourceCapFixed requestedCapFixed sourceTargetFixed
         requestedTargetFixed
   | ordinary _ types =>
-      exact DemandTypingIdempotence.DDAlignTypes.idempotent types idem
+      exact DemandTypingIdempotence.DemandAlignTypes.idempotent types idem
 
 /-- Dual alignment preserves solved form. -/
-theorem DDAlignDual.idempotent
+theorem DemandAlignDual.idempotent
     {S : Subst} {left right : Dual} {S' : Subst}
-    (aligned : DDAlignDual S left right S') (idem : S.Idempotent) :
+    (aligned : DemandAlignDual S left right S') (idem : S.Idempotent) :
     S'.Idempotent := by
   cases aligned with
   | mk capExact targetAlign =>
       have capIdem := exactCap_seq_idempotent_of_fixed idem capExact
         (Subst.Idempotent.cap_apply_fixed idem left.cap)
         (Subst.Idempotent.cap_apply_fixed idem right.cap)
-      exact DemandTypingIdempotence.DDAlignTypes.idempotent targetAlign capIdem
+      exact DemandTypingIdempotence.DemandAlignTypes.idempotent targetAlign capIdem
 
 /-- Dual-list alignment preserves solved form. -/
-theorem DDAlignDualList.idempotent
+theorem DemandAlignDualList.idempotent
     {S : Subst} {left right : List Dual} {S' : Subst}
-    (aligned : DDAlignDualList S left right S') (idem : S.Idempotent) :
+    (aligned : DemandAlignDualList S left right S') (idem : S.Idempotent) :
     S'.Idempotent := by
   induction aligned with
   | nil => exact idem
   | cons head tail ih =>
-      exact ih (DemandTypingIdempotence.DDAlignDual.idempotent head idem)
+      exact ih (DemandTypingIdempotence.DemandAlignDual.idempotent head idem)
 
 /-- Constructor-field target alignment preserves solved form. -/
-theorem DDAlignTargetList.idempotent
+theorem DemandAlignTargetList.idempotent
     {S : Subst} {duals : List Dual} {targets : List Ty} {S' : Subst}
-    (aligned : DDAlignTargetList S duals targets S')
+    (aligned : DemandAlignTargetList S duals targets S')
     (idem : S.Idempotent) : S'.Idempotent := by
   induction aligned with
   | nil => exact idem
   | cons head tail ih =>
-      exact ih (DemandTypingIdempotence.DDAlignTypes.idempotent head idem)
+      exact ih (DemandTypingIdempotence.DemandAlignTypes.idempotent head idem)
 
 /-- Or-alternative binding alignment preserves solved form. -/
-theorem DDAlignBindings.idempotent
+theorem DemandAlignBindings.idempotent
     {S : Subst} {left right : MonoCtx} {S' : Subst}
-    (aligned : DDAlignBindings S left right S') (idem : S.Idempotent) :
+    (aligned : DemandAlignBindings S left right S') (idem : S.Idempotent) :
     S'.Idempotent := by
   induction aligned with
   | nil => exact idem
   | cons _ head tail ih =>
-      exact ih (DemandTypingIdempotence.DDAlignTypes.idempotent head idem)
+      exact ih (DemandTypingIdempotence.DemandAlignTypes.idempotent head idem)
 
 /-- Pattern-constructor capability alignment preserves solved form. -/
-theorem DDAlignCtorCaps.idempotent
+theorem DemandAlignCtorCaps.idempotent
     {S : Subst} {children : List Cap} {demands : List (Option Cap)}
-    {S' : Subst} (aligned : DDAlignCtorCaps S children demands S')
+    {S' : Subst} (aligned : DemandAlignCtorCaps S children demands S')
     (idem : S.Idempotent) : S'.Idempotent := by
   induction aligned with
   | nil => exact idem
@@ -584,9 +584,9 @@ theorem DDPatternCtorCap.idempotent
   cases typing with
   | project _ _ => exact idem
   | fallback _ _ _ aligned _ _ =>
-      exact DemandTypingIdempotence.DDAlignCtorCaps.idempotent aligned idem
+      exact DemandTypingIdempotence.DemandAlignCtorCaps.idempotent aligned idem
 
-/-! ## Raw DD families -/
+/-! ## Raw demand-directed families -/
 
 mutual
 
@@ -601,10 +601,10 @@ theorem DDDPat.idempotent
   | wild => exact idem
   | ctor _ aligned children =>
       exact DDDPats.idempotent children
-        (DemandTypingIdempotence.DDAlignTypes.idempotent aligned idem)
+        (DemandTypingIdempotence.DemandAlignTypes.idempotent aligned idem)
   | tuple aligned children =>
       exact DDDPats.idempotent children
-        (DemandTypingIdempotence.DDAlignTypes.idempotent aligned idem)
+        (DemandTypingIdempotence.DemandAlignTypes.idempotent aligned idem)
 
 /-- Data-pattern list checking preserves solved form. -/
 theorem DDDPats.idempotent
@@ -635,10 +635,10 @@ theorem DDPPat.idempotent
   | pval => exact idem
   | ctor _ aligned children =>
       exact DDPPats.idempotent children
-        (DemandTypingIdempotence.DDAlignTypes.idempotent aligned idem)
+        (DemandTypingIdempotence.DemandAlignTypes.idempotent aligned idem)
   | tuple aligned children =>
       exact DDPPats.idempotent children
-        (DemandTypingIdempotence.DDAlignTypes.idempotent aligned idem)
+        (DemandTypingIdempotence.DemandAlignTypes.idempotent aligned idem)
 
 /-- Primitive-pattern list checking preserves solved form. -/
 theorem DDPPats.idempotent
@@ -657,75 +657,75 @@ end
 mutual
 
 /-- Expression synthesis preserves solved form. -/
-theorem DDSynth.idempotent
+theorem DemandSynth.idempotent
     {signature : FrozenSig} {q q' : InferenceBase.FreshSupply}
     {S S' : Subst} {context : Context} {expression : Expr} {target : Ty}
-    (typing : DDSynth signature q S context expression target q' S')
+    (typing : DemandSynth signature q S context expression target q' S')
     (idem : S.Idempotent) : S'.Idempotent :=
   match typing with
   | .var _ => idem
-  | .lam body => DDSynth.idempotent body idem
+  | .lam body => DemandSynth.idempotent body idem
   | .fix _ _ _ body aligned =>
-      DemandTypingIdempotence.DDAlignTypes.idempotent aligned
-        (DDSynth.idempotent body idem)
+      DemandTypingIdempotence.DemandAlignTypes.idempotent aligned
+        (DemandSynth.idempotent body idem)
   | .app function aligned argument => by
-      have afterFunction := DDSynth.idempotent function idem
+      have afterFunction := DemandSynth.idempotent function idem
       have afterAlign :=
-        DemandTypingIdempotence.DDAlignTypes.idempotent aligned afterFunction
-      exact DDCheck.idempotent argument afterAlign
+        DemandTypingIdempotence.DemandAlignTypes.idempotent aligned afterFunction
+      exact DemandCheck.idempotent argument afterAlign
   | .lit => idem
-  | .tuple children => DDSynths.idempotent children idem
-  | .ctor _ children => DDChecks.idempotent children idem
-  | .prim _ children => DDChecks.idempotent children idem
+  | .tuple children => DemandSynths.idempotent children idem
+  | .ctor _ children => DemandChecks.idempotent children idem
+  | .prim _ children => DemandChecks.idempotent children idem
   | .letE value body =>
-      DDSynth.idempotent body (DDSynth.idempotent value idem)
+      DemandSynth.idempotent body (DemandSynth.idempotent value idem)
   | .something => idem
   | .matcher clauses _ _ _ _ _ _ _ => DDClauses.idempotent clauses idem
   | .matchAll target pattern aligned matcher body => by
-      have afterTarget := DDSynth.idempotent target idem
+      have afterTarget := DemandSynth.idempotent target idem
       have afterPattern := DDPattern.idempotent pattern afterTarget
       have afterAlign :=
-        DemandTypingIdempotence.DDAlignTypes.idempotent aligned afterPattern
-      have afterMatcher := DDCheck.idempotent matcher afterAlign
-      exact DDSynth.idempotent body afterMatcher
+        DemandTypingIdempotence.DemandAlignTypes.idempotent aligned afterPattern
+      have afterMatcher := DemandCheck.idempotent matcher afterAlign
+      exact DemandSynth.idempotent body afterMatcher
   | .fixMatcher _ _ _ body aligned =>
-      DemandTypingIdempotence.DDAlignTypes.idempotent aligned
-        (DDSynth.idempotent body idem)
+      DemandTypingIdempotence.DemandAlignTypes.idempotent aligned
+        (DemandSynth.idempotent body idem)
 
 /-- Expression-list synthesis preserves solved form. -/
-theorem DDSynths.idempotent
+theorem DemandSynths.idempotent
     {signature : FrozenSig} {q q' : InferenceBase.FreshSupply}
     {S S' : Subst} {context : Context} {expressions : List Expr}
     {targets : List Ty}
-    (typing : DDSynths signature q S context expressions targets q' S')
+    (typing : DemandSynths signature q S context expressions targets q' S')
     (idem : S.Idempotent) : S'.Idempotent :=
   match typing with
   | .nil => idem
   | .cons head tail =>
-      DDSynths.idempotent tail (DDSynth.idempotent head idem)
+      DemandSynths.idempotent tail (DemandSynth.idempotent head idem)
 
 /-- Expression checking preserves solved form. -/
-theorem DDCheck.idempotent
+theorem DemandCheck.idempotent
     {signature : FrozenSig} {q q' : InferenceBase.FreshSupply}
     {S S' : Subst} {context : Context} {expression : Expr} {expected : Ty}
-    (typing : DDCheck signature q S context expression expected q' S')
+    (typing : DemandCheck signature q S context expression expected q' S')
     (idem : S.Idempotent) : S'.Idempotent :=
   match typing with
   | .mk synth aligned =>
-      DemandTypingIdempotence.DDAlign.idempotent aligned
-        (DDSynth.idempotent synth idem)
+      DemandTypingIdempotence.DemandAlign.idempotent aligned
+        (DemandSynth.idempotent synth idem)
 
 /-- Expression-list checking preserves solved form. -/
-theorem DDChecks.idempotent
+theorem DemandChecks.idempotent
     {signature : FrozenSig} {q q' : InferenceBase.FreshSupply}
     {S S' : Subst} {context : Context} {expressions : List Expr}
     {expecteds : List Ty}
-    (typing : DDChecks signature q S context expressions expecteds q' S')
+    (typing : DemandChecks signature q S context expressions expecteds q' S')
     (idem : S.Idempotent) : S'.Idempotent :=
   match typing with
   | .nil => idem
   | .cons head tail =>
-      DDChecks.idempotent tail (DDCheck.idempotent head idem)
+      DemandChecks.idempotent tail (DemandCheck.idempotent head idem)
 
 /-- User-pattern synthesis preserves solved form. -/
 theorem DDPattern.idempotent
@@ -738,29 +738,29 @@ theorem DDPattern.idempotent
   match typing with
   | .pvar _ => idem
   | .wild => idem
-  | .pval expression => DDSynth.idempotent expression idem
+  | .pval expression => DemandSynth.idempotent expression idem
   | .embed _ => idem
   | .ptuple patterns => DDPatterns.idempotent patterns idem
   | .pctor _ patterns targets capability _ => by
       have afterPatterns := DDPatterns.idempotent patterns idem
       have afterTargets :=
-        DemandTypingIdempotence.DDAlignTargetList.idempotent targets
+        DemandTypingIdempotence.DemandAlignTargetList.idempotent targets
           afterPatterns
       exact DemandTypingIdempotence.DDPatternCtorCap.idempotent capability
         afterTargets
   | .pand left right aligned => by
       have afterLeft := DDPattern.idempotent left idem
       have afterRight := DDPattern.idempotent right afterLeft
-      exact DemandTypingIdempotence.DDAlignDual.idempotent aligned afterRight
+      exact DemandTypingIdempotence.DemandAlignDual.idempotent aligned afterRight
   | .por left right aligned bindings => by
       have afterLeft := DDPattern.idempotent left idem
       have afterRight := DDPattern.idempotent right afterLeft
       have afterDual :=
-        DemandTypingIdempotence.DDAlignDual.idempotent aligned afterRight
-      exact DemandTypingIdempotence.DDAlignBindings.idempotent bindings
+        DemandTypingIdempotence.DemandAlignDual.idempotent aligned afterRight
+      exact DemandTypingIdempotence.DemandAlignBindings.idempotent bindings
         afterDual
   | .papp _ patterns aligned =>
-      DemandTypingIdempotence.DDAlignDualList.idempotent aligned
+      DemandTypingIdempotence.DemandAlignDualList.idempotent aligned
         (DDPatterns.idempotent patterns idem)
 
 /-- User-pattern-list synthesis preserves solved form. -/
@@ -789,7 +789,7 @@ theorem DDArms.idempotent
   | .nil => idem
   | .cons pattern _ body tail => by
       have afterPattern := DDDPat.idempotent pattern idem
-      have afterBody := DDCheck.idempotent body afterPattern
+      have afterBody := DemandCheck.idempotent body afterPattern
       exact DDArms.idempotent tail afterBody
 
 /-- Matcher-clause checking preserves solved form. -/
@@ -802,7 +802,7 @@ theorem DDClause.idempotent
   match typing with
   | .mk pattern _ next arms => by
       have afterPattern := DDPPat.idempotent pattern idem
-      have afterNext := DDChecks.idempotent next afterPattern
+      have afterNext := DemandChecks.idempotent next afterPattern
       exact DDArms.idempotent arms afterNext
 
 /-- Matcher-clause-list checking preserves solved form. -/

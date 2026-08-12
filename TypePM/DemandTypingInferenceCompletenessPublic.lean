@@ -5,13 +5,13 @@ import TypePM.DemandTypingInferenceCompletenessGlobalRoot
 # Public acceptance-completeness facade
 
 The structural completeness dispatcher reconstructs one executable run from
-the DD derivation.  Pattern-constructor audit events deliberately retain the
-DD operands together with their bisimilar executable operands, so the only
+the demand-directed derivation.  Pattern-constructor audit events deliberately retain the
+demand-directed operands together with their bisimilar executable operands, so the only
 root certificate accepted here is `PairedRootCertifiedSynthesis`.
 
 This module owns the proof-erasure boundary from a nonempty internal root
-certificate to Boolean acceptance and the final `DDTyping.infer_isSome`
-theorem.  The global recursion constructs the certificate from the audited DD
+certificate to Boolean acceptance and the final `SourceTyping.infer_isSome`
+theorem.  The global recursion constructs the certificate from the audited demand-directed
 derivation; `FrozenSigWF` discharges exactly the closed-scheme and canonical
 arm-checker conditions needed by its root projection.
 -/
@@ -36,13 +36,13 @@ theorem infer_isSome_of_rootCertified
     (infer signature context expression).isSome = true :=
   infer_isSome_of_nonempty_pairedRoot signatureWF root
 
-/-- Public acceptance completeness.  The caller supplies only the audited DD
+/-- Public acceptance completeness.  The caller supplies only the audited demand-directed
 typing derivation and the same frozen-signature well-formedness boundary used
 by dynamic safety. -/
-theorem DDTyping.infer_isSome
+theorem SourceTyping.infer_isSome
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
-    (typed : DDTyping signature context expression target)
+    (typed : SourceTyping signature context expression target)
     (signatureWF : FrozenSigWF signature) :
     (infer signature context expression).isSome = true := by
   obtain ⟨rawTarget, finalSupply, terminal, derived, ledger, origin, audit,

@@ -6,7 +6,7 @@ import TypePM.InferenceAdmissibleTrace
 
 The public raw-inference filter inspects the complete replay, rather than one
 local solver delta.  These lemmas compose the local origin policy through the
-chronological replay without assuming that the DD and executable MGUs choose
+chronological replay without assuming that the demand-directed and executable MGUs choose
 the same representatives.
 -/
 

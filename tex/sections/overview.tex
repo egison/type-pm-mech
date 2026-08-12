@@ -3,7 +3,7 @@
 \subsection{公開判断と三つの状態}
 
 本稿は，Egison core の source program が型付け可能であることを定める．公開する source
-typing は $\mathsf{DDTyping}$ 一つだけであり，その内部を型の合成（synthesis）と検査
+typing は $\mathsf{SourceTyping}$ 一つだけであり，その内部を型の合成（synthesis）と検査
 （checking）に分ける．signature $\Sighat$ は全判断で固定し，次のように省略する．
 \[
 \begin{array}{rcl}
@@ -24,7 +24,7 @@ $q';S';\Omega'$ を次の子へ渡す．
 closed wrapper は canonical initial supply $q_0$，恒等置換，空 ledger から開始し，最後にだけ
 raw result を解決する．
 \[
-\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
+\mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau)
 \Longleftrightarrow
 \exists\tau_{\mathrm{raw}},q',S',\Omega',\mathcal O.\;
 q_0;\mathsf{id};\varnothing;\Gamma\vdash
@@ -37,37 +37,37 @@ Lean では raw derivation と，それに構造を一致させた intrinsic Ori
 上の記法は三者を一つに合わせた公開判断を表す．追加factsを持つnodeは$\mathtt{let}$，matcher，
 pattern constructorの三種である．
 
-動的安全性の証明では，これら三つの推論状態を消去した内部 certificate
-$\mathsf{RuntimeTyping}$ を使う．これは source acceptance を定める第二の型システムではなく，
+動的安全性の証明では，これら三つの推論状態を消去した内部 invariant
+$\mathsf{TypingInvariant}$ を使う．これは source acceptance を定める第二の型システムではなく，
 runtime value typing と preservation の帰納法を状態履歴から切り離すための補助判断である．
 source acceptanceと動的安全性に必要な構成要素の依存方向は
 \[
 \mathsf{FrozenSigWF}(\Sighat)
 \Longrightarrow
 \bigl(\mathsf{infer\ success}
-\Longleftrightarrow\exists\tau.\,\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)\bigr),
+\Longleftrightarrow\exists\tau.\,\mathsf{SourceTyping}(\Sighat,\Gamma,e,\tau)\bigr),
 \qquad
 \mathsf{FrozenSigWF}(\Sighat)
 \Longrightarrow\Sighat.\mathsf{SchemesClosed}
 \]
 \[
 \begin{aligned}
-\mathsf{DDTyping}
+\mathsf{SourceTyping}
   +\Sighat.\mathsf{SchemesClosed}
 &\xRightarrow{\mathsf{state\ erasure}}
-  \mathsf{RuntimeTyping},\\
+  \mathsf{TypingInvariant},\\
 \mathsf{FrozenSigWF}(\Sighat)
 &\Longrightarrow\mathsf{CoreSafety},\\
-\mathsf{RuntimeTyping}+\mathsf{CoreSafety}
-&\Longrightarrow\mathsf{SafeResult}_{DD}.
+\mathsf{TypingInvariant}+\mathsf{CoreSafety}
+&\Longrightarrow\mathsf{SafeResult}_{\mathsf{Source}}.
 \end{aligned}
 \]
-左向きはDD derivationとterminal auditからtraversalとvalidator coverageを再構成し，右向きは
-成功したtraversalとvalidatorからDD derivationを再構成する．空contextへの特殊化を
+左向きは$\mathsf{SourceTyping}$ derivationとterminal auditからtraversalとvalidator coverageを再構成し，右向きは
+成功したtraversalとvalidatorから$\mathsf{SourceTyping}$ derivationを再構成する．空contextへの特殊化を
 annotation-freenessと呼ぶ．
 state erasureはclosed signature・空contextに特殊化したOrigin derivation，終端 substitution に固定した
 相互消去，terminal auditの合成である．$\mathsf{FrozenSigWF}$はclosednessと動的整合性を一つに束ね，
-$\mathsf{DDTyping.safe}$がstate erasureで得た内部certificateと独立な$\mathsf{CoreSafety}$ packageを
+$\mathsf{SourceTyping.safe}$がstate erasureで得た内部invariantと独立な$\mathsf{CoreSafety}$ packageを
 source-facingな結果として束ねる．
 
 \subsection{Origin ledger が表すもの}
@@ -85,7 +85,7 @@ expression scheme と pattern-function dual scheme の capability binder は，i
 $\mathsf{renameOnly}$ である．constructor／primitive instance と fresh consumer は
 $\mathsf{structuralFlexible}$ として生成する．constructor export は公開 payload に残る像の
 structural leaf だけを選択的に freeze する．matcher finalization は，最終 capability に現れる
-全 DD-owned explicit ledger key の structural leaf を freeze するため，matcher 開始前に生成された
+全 demand-owned explicit ledger key の structural leaf を freeze するため，matcher 開始前に生成された
 \texttt{fixMatcher} placeholder の owned leaf も対象になる．ordinary equality と one-way solve は，
 いずれもその cut の ledger に対して admissible でなければならない．
 

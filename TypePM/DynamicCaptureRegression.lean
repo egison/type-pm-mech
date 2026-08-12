@@ -144,8 +144,8 @@ theorem inference_result_type :
   native_decide
 
 theorem program_typed :
-    RuntimeTyping signature [] program (Ty.listT .int) := by
-  have typing := Inference.infer_success_runtimeTyping inference_success
+    TypingInvariant signature [] program (Ty.listT .int) := by
+  have typing := Inference.infer_success_typingInvariant inference_success
   rw [inference_result_type] at typing
   simpa [Inference.ResolvedContext, Context.applySubst] using typing
 

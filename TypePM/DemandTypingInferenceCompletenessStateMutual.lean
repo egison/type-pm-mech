@@ -21,7 +21,7 @@ open Inference
 open DemandTypingInferenceCompletenessState
 open DemandTypingInferenceCompletenessLedgerBisimulation
 
-/-- The DD and executable prevailing substitutions mutually factor through
+/-- The demand-directed and executable prevailing substitutions mutually factor through
 one another.  The forward residual remains origin-admissible because it is
 the direction subsequently used as an executable solver competitor. -/
 def MutualStateCorrespondence (ledger : CapabilityOriginLedger)
@@ -44,12 +44,12 @@ structure StateBisimulation (ledger : CapabilityOriginLedger)
   reverseEquation :
     executable.prevailing = Subst.seq reverse declarative
   /-- Forward and reverse residuals transport the actual executable origin
-  policy and the DD origin policy in opposite directions. -/
+  policy and the demand-directed origin policy in opposite directions. -/
   ledgerBisimulation : LedgerBisimulation ledger
     executable.capabilityOrigins forward reverse
   executableIdempotent : executable.prevailing.Idempotent
 
-/-- One DD raw target and one executable raw target correspond under the
+/-- One demand-directed raw target and one executable raw target correspond under the
 fixed residuals of a state bisimulation. -/
 structure TyBisimulation
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -75,7 +75,7 @@ inductive TyListBisimulation
       TyListBisimulation state (declarativeTarget :: declarativeTargets)
         (executableTarget :: executableTargets)
 
-/-- A chronological DD/executable transition together with transport of every
+/-- A chronological demand-directed/executable transition together with transport of every
 type pair already related at its input. -/
 structure BisimulationExtension
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -230,7 +230,7 @@ def StateBisimulation.recordEventExtension
     intro _ _ forward reverse
     exact ⟨forward, reverse⟩
 
-/-- General paired cut where the DD and executable operands may have
+/-- General paired cut where the demand-directed and executable operands may have
 different raw metavariable names but share the current state residuals. -/
 noncomputable def StateBisimulation.pairedCut_recordSolve
     {ledger : CapabilityOriginLedger} {declarative delta : Subst}
@@ -417,7 +417,7 @@ theorem MutualStateCorrespondence.recordEvent
     by simpa using reverseEquation⟩
 
 /-- The executable paired result, transported through the incoming reverse
-residual, is a solution of the DD-side constraint. -/
+residual, is a solution of the demand-directed-side constraint. -/
 theorem pairedReverseCompetitorSound
     {declarative : Subst}
     {state : InferState} {left right : Ty} {reverseResidual : Subst}
@@ -438,7 +438,7 @@ theorem pairedReverseCompetitorSound
   rw [← leftTransport, ← rightTransport]
   exact result.sound
 
-/-- An ordinary paired DD cut and the corresponding executable solver cut
+/-- An ordinary paired demand-directed cut and the corresponding executable solver cut
 preserve mutual factorization. -/
 theorem MutualStateCorrespondence.pairedCut_recordSolve
     {ledger : CapabilityOriginLedger} {declarative delta : Subst}
@@ -563,7 +563,7 @@ theorem MutualStateCorrespondence.apply_equations
   · rw [forwardEquation, Subst.seq_apply]
   · rw [reverseEquation, Subst.seq_apply]
 
-/-- Product-matcher recognition agrees at corresponding DD and executable
+/-- Product-matcher recognition agrees at corresponding demand-directed and executable
 cuts. -/
 theorem MutualStateCorrespondence.productMatcherView_iff
     {ledger : CapabilityOriginLedger} {declarative : Subst}

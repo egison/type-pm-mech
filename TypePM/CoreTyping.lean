@@ -13,7 +13,7 @@ observable elaboration data.  This module gives that existing object its
 role in the reconstruction architecture.  Successful inference
 constructs core evidence, every such certificate factors into a recursively
 reconstructed non-coercion head plus an explicit outer coercion plan, and
-erasing either view recovers `RuntimeTyping`.  Outer plans are logically
+erasing either view recovers `TypingInvariant`.  Outer plans are logically
 normalizable through `Nonempty NormalPlan`; this does not yet make the inferred
 plan observable data.
 
@@ -21,7 +21,7 @@ Pattern reconstruction inside this certificate keeps one raw expression and
 parameter context across the entire pattern tree and threads raw bindings
 left-to-right.  Value-pattern expressions, matcher arms, and clauses retain
 their recursive reconstruction evidence, so the certificate does not fall
-back to a `RuntimeTyping` oracle at those boundaries.
+back to a `TypingInvariant` oracle at those boundaries.
 
 This is still a `Prop`-valued elaboration certificate, not an executable core
 AST.  It is not another source-typing judgment.
@@ -166,20 +166,20 @@ theorem CoreCheck.toCoreTyping
   | intro synthesis plan =>
       exact plan.toCoreTyping synthesis.toCoreTyping
 
-/-- Erase explicit elaboration evidence back to `RuntimeTyping`. -/
+/-- Erase explicit elaboration evidence back to `TypingInvariant`. -/
 theorem CoreTyping.erase
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : CoreTyping signature context expression target) :
-    RuntimeTyping signature context expression target :=
-  typing.toRuntimeTyping
+    TypingInvariant signature context expression target :=
+  typing.toTypingInvariant
 
-/-- Erase a checked core-head factorization directly to `RuntimeTyping`. -/
+/-- Erase a checked core-head factorization directly to `TypingInvariant`. -/
 theorem CoreCheck.erase
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CoreCheck signature context expression target) :
-    RuntimeTyping signature context expression target :=
+    TypingInvariant signature context expression target :=
   checking.toCoreTyping.erase
 
 /-- Forget recursive reconstruction premises while retaining the same
@@ -350,11 +350,11 @@ theorem infer_success_normal_core_factor
   (infer_success_core success).factorNormalHead
 
 /-- Surface soundness factors through the explicit core evidence. -/
-theorem infer_success_runtimeTyping_via_core
+theorem infer_success_typingInvariant_via_core
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {result : Inference.ExprResult}
     (success : Inference.infer signature context expression = some result) :
-    RuntimeTyping signature
+    TypingInvariant signature
       (Inference.ResolvedContext result.state.prevailing context)
       expression result.resolvedTarget :=
   (infer_success_core success).erase

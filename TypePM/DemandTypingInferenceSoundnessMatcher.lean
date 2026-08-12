@@ -28,7 +28,7 @@ theorem inferMatcherFuel_ddSynthRun
           (freshOrigin .matcherClause path "matcher-target")).2 clausesResult)
     (success : inferMatcherFuel (fuel + 1) signature context selfEnv path
       clauses initial = some result) :
-    DDSynthRun signature context (.matcher clauses) initial result := by
+    DemandSynthRun signature context (.matcher clauses) initial result := by
   simp only [inferMatcherFuel] at success
   have freshTarget :
       (initial.freshTy
@@ -83,9 +83,9 @@ theorem inferMatcherFuel_ddSynthRun
                       clausesResult.state.prevailing
                       clausesResult.rawHoleLists) = true := by
                   simpa [terminalHoleCaps, finalHoleLists] using clauseCaps
-                let rawDerived := DDSynth.matcher clausesRaw collected
+                let rawDerived := DemandSynth.matcher clausesRaw collected
                   inferredEq clauseCaps' catchAll binders arms coverage
-                let rawOrigin := DDSynthOrigin.matcher clausesOrigin collected
+                let rawOrigin := DemandSynthOrigin.matcher clausesOrigin collected
                   inferredEq clauseCaps' catchAll binders arms coverage
                 refine ⟨.matcher capability (.var initial.supply.nextTy),
                   ?_, rfl, ?_⟩
@@ -103,11 +103,11 @@ theorem inferExprFuel_matcher_ddSynthRun
     (matcherSound : ∀ matcherResult : ExprResult,
       inferMatcherFuel fuel signature context selfEnv path clauses
         (visit initial .exprMatcher path) = some matcherResult →
-      DDSynthRun signature context (.matcher clauses)
+      DemandSynthRun signature context (.matcher clauses)
         (visit initial .exprMatcher path) matcherResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.matcher clauses) initial = some result) :
-    DDSynthRun signature context (.matcher clauses) initial result := by
+    DemandSynthRun signature context (.matcher clauses) initial result := by
   cases matcherEq : inferMatcherFuel fuel signature context selfEnv path clauses
       (visit initial .exprMatcher path) with
   | none => simp [inferExprFuel, matcherEq] at success
@@ -118,10 +118,10 @@ theorem inferExprFuel_matcher_ddSynthRun
       subst result
       rcases matcherSound matcherResult matcherEq with
         ⟨rawTarget, derived, targetEq, origin⟩
-      change DDSynth signature initial.supply initial.prevailing context
+      change DemandSynth signature initial.supply initial.prevailing context
         (.matcher clauses) rawTarget matcherResult.state.supply
           matcherResult.state.prevailing at derived
-      change DDSynthOrigin signature derived initial.capabilityOrigins
+      change DemandSynthOrigin signature derived initial.capabilityOrigins
         matcherResult.state.capabilityOrigins at origin
       exact ⟨rawTarget, derived, by simpa [finishExpr] using targetEq,
         by simpa [finishExpr] using origin⟩
@@ -136,7 +136,7 @@ theorem inferExprFuel_matchAll_ddSynthRun
     (targetSound : ∀ targetResult : ExprResult,
       inferExprFuel fuel signature context selfEnv (0 :: path) target
         (visit initial .exprMatchAll path) = some targetResult →
-      DDSynthRun signature context target (visit initial .exprMatchAll path)
+      DemandSynthRun signature context target (visit initial .exprMatchAll path)
         targetResult)
     (patternSound : ∀ (targetResult : ExprResult)
       (patternResult : PatternResult),
@@ -149,7 +149,7 @@ theorem inferExprFuel_matchAll_ddSynthRun
       checkExprFuel fuel signature context selfEnv (1 :: path) matcher
         (.slot patternResult.dual.cap targetResult.target) aligned =
           some matcherFinal →
-      DDCheckRun signature context matcher
+      DemandCheckRun signature context matcher
         (.slot patternResult.dual.cap targetResult.target) aligned matcherFinal)
     (bodySound : ∀ (patternResult : PatternResult) (matcherFinal : InferState)
       (bodyResult : ExprResult),
@@ -157,12 +157,12 @@ theorem inferExprFuel_matchAll_ddSynthRun
         (patternResult.bindings.toContext ++ context)
         (selfEnv.eraseMany pattern.patVars) (3 :: path) body matcherFinal =
           some bodyResult →
-      DDSynthRun signature
+      DemandSynthRun signature
         (patternResult.bindings.toContext ++ context) body matcherFinal
         bodyResult)
     (success : inferExprFuel (fuel + 1) signature context selfEnv path
       (.matchAll target matcher pattern body) initial = some result) :
-    DDSynthRun signature context (.matchAll target matcher pattern body)
+    DemandSynthRun signature context (.matchAll target matcher pattern body)
       initial result := by
   cases targetEq : inferExprFuel fuel signature context selfEnv (0 :: path)
       target (visit initial .exprMatchAll path) with
@@ -207,26 +207,26 @@ theorem inferExprFuel_matchAll_ddSynthRun
                         ⟨alignedSupply, alignedLedger, targetAligned⟩
                       have matcherRun := matcherSound targetResult patternResult
                         aligned matcherFinal matcherEq
-                      unfold DDCheckRun at matcherRun
+                      unfold DemandCheckRun at matcherRun
                       rw [alignedSupply, alignedLedger] at matcherRun
                       rcases matcherRun with ⟨matcherRaw, matcherOrigin⟩
                       rcases bodySound patternResult matcherFinal bodyResult
                           bodyEq with
                         ⟨bodyTarget, bodyRaw, bodyTargetEq, bodyOrigin⟩
                       subst targetTarget
-                      change DDSynth signature initial.supply
+                      change DemandSynth signature initial.supply
                         initial.prevailing context target targetResult.target
                         targetResult.state.supply
                         targetResult.state.prevailing at targetRaw
-                      change DDSynthOrigin signature targetRaw
+                      change DemandSynthOrigin signature targetRaw
                         initial.capabilityOrigins
                         targetResult.state.capabilityOrigins at targetOrigin
                       refine ⟨Ty.listT bodyTarget,
-                        DDSynth.matchAll targetRaw patternRaw targetAligned.erase
+                        DemandSynth.matchAll targetRaw patternRaw targetAligned.erase
                           matcherRaw bodyRaw, ?_, ?_⟩
                       · simp [finishExpr, bodyTargetEq]
                       · simpa [finishExpr] using
-                          DDSynthOrigin.matchAll targetOrigin patternOrigin
+                          DemandSynthOrigin.matchAll targetOrigin patternOrigin
                             targetAligned matcherOrigin bodyOrigin
 
 end Inference

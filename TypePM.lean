@@ -105,23 +105,23 @@ import TypePM.PublicTheorems
 /-!
 # Egison core with two-index matcher types
 
-This is the public import surface of the current formalization.  `DDTyping` is
-the only source-language typing judgment.  `RuntimeTyping` is an internal,
-state-free certificate used after inference state has been erased; it supports
+This is the public import surface of the current formalization.  `SourceTyping` is
+the only source-language typing judgment. `TypingInvariant` is an internal,
+state-free invariant used after inference state has been erased; it supports
 value typing and the dynamic metatheory but does not define source acceptance.
 `DemandTypingErasure` is the facade for scoped state factorization,
 idempotence preservation, the terminal-audit tree, full fixed-terminal
 erasure, and the closed-program bridge to that internal judgment.
 `DemandTypingInferenceSoundnessPublic` exposes the converse-facing soundness
-boundary from successful executable inference to `DDTyping`.  `Soundness`
-exposes `DDTyping.safe`, which obtains signature closedness from the single
+boundary from successful executable inference to `SourceTyping`.  `Soundness`
+exposes `SourceTyping.safe`, which obtains signature closedness from the single
 public `FrozenSigWF` condition and packages state erasure with the concrete
 dynamic safety interface.  `DemandTypingInferenceCompletenessPublic` exposes
-the premise-free acceptance-completeness boundary from `DDTyping` back to
+the premise-free acceptance-completeness boundary from `SourceTyping` back to
 successful executable inference.  `DemandTypingInferenceEquivalence` composes
-the two directions into decidable DD typability, closed-program
+the two directions into decidable source typability, closed-program
 annotation-freeness, and soundness of the type reported by `inferType`.
-`DemandTypingTargetUniqueness` strengthens this result: every two audited DD
-targets for the same source have one common representative under local
+`DemandTypingTargetUniqueness` strengthens this result: every two audited
+`SourceTyping` targets for the same source have one common representative under local
 two-sort variable renamings of all residual metavariables.
 -/

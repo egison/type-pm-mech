@@ -7,7 +7,7 @@ import TypePM.DemandTypingInferenceCompletenessValidatorEquivariance
 # Paired terminal-audit coverage for completeness
 
 The ordinary validator proof is local to the executable trace.  A sensitive
-pattern-constructor event is different: its audit fact stores DD operands,
+pattern-constructor event is different: its audit fact stores demand-directed operands,
 whereas the executable event stores the paired raw operands reconstructed by
 the inference run.  This module delays that comparison while carrying the
 same `BisimulationExtension` as raw completeness.  At the root terminal cut,
@@ -30,7 +30,7 @@ open DemandTypingInferenceCompletenessMatcherTraversal
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessValidatorEquivariance
 
-/-- A sensitive event justified either exactly, as before, or by paired DD
+/-- A sensitive event justified either exactly, as before, or by paired demand-directed
 and executable constructor operands under the current traversal relation. -/
 inductive PairedTerminalAuditEventWitness
     (terminal : Subst) (signature : FrozenSig)
@@ -246,7 +246,7 @@ theorem PairedTerminalAuditEventWitness.matcherCondition
       exact ⟨solveBound, localTargetEq, localHolesEq, evidence, collected,
         inferred, caps, catchAll, binders, arms, coverage⟩
 
-/-- At the root cut, a paired let witness transfers DD stability through the
+/-- At the root cut, a paired let witness transfers demand-directed stability through the
 tracked context, target, and locally generalized scheme representatives. -/
 theorem PairedTerminalAuditEventWitness.letCondition
     {terminal : Subst} {signature : FrozenSig}
@@ -373,7 +373,7 @@ theorem PairedValidatorRunExtension.refl
     (ValidatorRunExtension.refl terminal signature state)
 
 /-- Record a constructor-compatibility event whose trace operands are the
-executable representatives of the DD operands.  The event itself does not
+executable representatives of the demand-directed operands.  The event itself does not
 change the state relation, so the paired witness is established exactly at
 the post-recording cut and can subsequently be transported by `trans`. -/
 theorem PairedValidatorRunExtension.recordPatternCtor
@@ -428,7 +428,7 @@ theorem PairedValidatorRunExtension.recordPatternCtor
         facts
 
 /-- Record a let-generalization event whose raw context, target, and scheme
-are executable representatives of the corresponding DD operands. -/
+are executable representatives of the corresponding demand-directed operands. -/
 theorem PairedValidatorRunExtension.recordLetGeneralization
     {terminal : Subst} {signature : FrozenSig}
     {valueSubst : Subst} {ledger : CapabilityOriginLedger} {state : InferState}
@@ -493,7 +493,7 @@ theorem PairedValidatorRunExtension.recordLetGeneralization
           (transition.transportScheme localSchemes.forward
             localSchemes.reverse).2⟩
 
-/-- Record the two-event matcher-finalization suffix with DD and executable
+/-- Record the two-event matcher-finalization suffix with demand-directed and executable
 raw operands kept explicitly paired. -/
 theorem PairedValidatorRunExtension.recordMatcherFinalization
     {terminal : Subst} {signature : FrozenSig}

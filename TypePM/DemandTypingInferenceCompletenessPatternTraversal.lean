@@ -10,7 +10,7 @@ import TypePM.DemandTypingInferenceCompletenessProtectedPreservation
 
 Pattern traversal returns more data than expression synthesis: a dual, a
 monomorphic binding context, and, for primitive patterns, a list of holes.
-This module packages those outputs under the same DD/executable state
+This module packages those outputs under the same demand-directed/executable state
 bisimulation used by raw expression completeness.  It also supplies the
 solver-independent constructors used by the mutual traversal proof.
 -/
@@ -422,7 +422,7 @@ theorem DualListBisimulation.exportPayloadRelated
 /-- Export leaves selected from two related payloads correspond through the
 forward residual.  This is the heterogeneous-payload form needed when a
 recursive pattern traversal returns executable bindings that are merely
-bisimilar to the DD bindings. -/
+bisimilar to the demand-directed bindings. -/
 theorem StateBisimulation.forwardExportLeavesOfRelated
     {ledger : CapabilityOriginLedger} {declarative : Subst}
     {state : InferState}
@@ -594,7 +594,7 @@ theorem StateBisimulation.reverseExportLeavesOfRelated
   exact ⟨List.mem_flatMap.mpr ⟨binder, binderMem, imageInBinder⟩,
     decide_eq_true imageInPayload⟩
 
-/-- Selective freezing with distinct but related DD and executable payloads. -/
+/-- Selective freezing with distinct but related demand-directed and executable payloads. -/
 def TraversalStateCorrespondence.freezeCapabilityExportRelated
     {q : InferenceBase.FreshSupply} {declarative : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -716,7 +716,7 @@ def FreshTargetsCompletion.extension
     exact run.transition.transportScheme forward reverse
 
 /-- Executable tuple-field allocation is literally the pure supply-indexed
-DD allocation, including left-to-right order. -/
+demand-directed allocation, including left-to-right order. -/
 def freshTargets_complete
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -1094,7 +1094,7 @@ noncomputable def dpatCtor_complete
     {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
     (before : TraversalStateCorrespondence q S ledger state)
     (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q scheme) S
       (InferenceBase.instantiateCtorScheme q scheme).value.2
       expectedTarget S₁)
@@ -1199,7 +1199,7 @@ noncomputable def dpatTuple_complete
     {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
     (before : TraversalStateCorrespondence q S ledger state)
     (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expectedTarget S₁)
     {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
     (children :
@@ -1301,7 +1301,7 @@ noncomputable def ppatCtor_complete
       executableExpectedTarget)
     (expectedBounded : expectedTarget.BoundedBy q)
     (executableExpectedBounded : executableExpectedTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q entry.scheme) S
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.2
       expectedTarget S₁)
@@ -1425,7 +1425,7 @@ noncomputable def ppatTuple_complete
       executableExpectedTarget)
     (expectedBounded : expectedTarget.BoundedBy q)
     (executableExpectedBounded : executableExpectedTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expectedTarget S₁)
     {q' : InferenceBase.FreshSupply} {holes : List Dual}
     {bindings : MonoCtx}
@@ -2080,7 +2080,7 @@ noncomputable def patternAnd_complete
     (declarativeRightBounded : Dual.BoundedBy q₂ rightDual)
     (executableLeftBounded : Dual.BoundedBy q₂ leftRun.result.dual)
     (executableRightBounded : Dual.BoundedBy q₂ rightRun.result.dual)
-    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    (aligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
     PatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.pand left right) state)
@@ -2157,9 +2157,9 @@ noncomputable def patternOr_complete
       MonoCtx.BoundedBy q₂ leftRun.result.bindings)
     (executableRightBindingsBounded :
       MonoCtx.BoundedBy q₂ rightRun.result.bindings)
-    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual
+    (dualsAligned : DemandAlignDualWithLedger ledger₂ S₂ leftDual rightDual
       S₃)
-    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+    (bindingsAligned : DemandAlignBindingsWithLedger ledger₂ S₃
       leftBindings rightBindings S') :
     PatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature context parameters
@@ -2253,7 +2253,7 @@ noncomputable def patternCtor_complete
       Dual.BoundedBy q₁ dual)
     (executableTargetsBounded : ∀ target ∈
       (instantiateCtorInState state entry.scheme).1.1, target.BoundedBy q₁)
-    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+    (targetsAligned : DemandAlignTargetListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
     (capRun :
       let targetAlignment := ddAlignTargetListWithLedger_complete
@@ -2447,7 +2447,7 @@ noncomputable def patternApp_complete
         (executableParameters.applySubst state.prevailing)
         (executableBindings.applySubst state.prevailing) state scheme).1.1,
       Dual.BoundedBy q₁ dual)
-    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+    (aligned : DemandAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
     PatternRunCompletion before
       (inferPatternFuel (fuel + 1) signature executableContext

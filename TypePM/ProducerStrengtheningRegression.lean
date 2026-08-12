@@ -66,11 +66,11 @@ theorem concreteProducer_result_type :
 
 /-- Public success reconstructs the corresponding semantic safety typing. -/
 theorem concreteProducer_typed :
-    RuntimeTyping protectionSignature
+    TypingInvariant protectionSignature
       (Inference.ResolvedContext concreteProducerResult.state.prevailing
         concreteContext)
       consumerExpression concreteProducerResult.resolvedTarget :=
-  Inference.infer_success_runtimeTyping concreteProducer_public_succeeds
+  Inference.infer_success_typingInvariant concreteProducer_public_succeeds
 
 /-! ## Safe producer renaming
 

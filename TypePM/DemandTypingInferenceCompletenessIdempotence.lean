@@ -4,7 +4,7 @@ import TypePM.DemandTypingInferenceSoundness
 /-!
 # Executable prevailing solved-form preservation
 
-The DD rules already preserve `Subst.Idempotent`.  Completeness also needs the
+The demand-directed rules already preserve `Subst.Idempotent`.  Completeness also needs the
 executable replay state in solved form.  This module isolates the corresponding
 state invariant and the three local solver cuts.  Recording chronology alone
 is deliberately not enough: each theorem consumes the exact certificate from
@@ -192,7 +192,7 @@ theorem PrevailingIdempotent.recordTargetEq
   exact exactResolved.seq_idempotent idem
 
 /-- One successful producer-to-slot step preserves executable solved form.
-Using the public DD idempotence theorem avoids duplicating the two-phase
+Using the public demand-directed idempotence theorem avoids duplicating the two-phase
 capability-match/target-unification argument. -/
 theorem PrevailingIdempotent.recordProducerToSlot
     {state : InferState} (idem : PrevailingIdempotent state)
@@ -210,28 +210,28 @@ theorem PrevailingIdempotent.recordProducerToSlot
     PrevailingIdempotent (state.recordSolve step) := by
   have oneWay :=
     (solveResolvedWithLedger_originSafeOneWayDelta success).exact
-  have aligned : DDAlign state.prevailing raw expected
+  have aligned : DemandAlign state.prevailing raw expected
       (Subst.seq step.delta state.prevailing) :=
-    DDAlign.matcherToSlot rawView expectedView oneWay
+    DemandAlign.matcherToSlot rawView expectedView oneWay
   rw [PrevailingIdempotent, InferState.prevailing_recordSolve]
-  exact DemandTypingIdempotence.DDAlign.idempotent aligned idem
+  exact DemandTypingIdempotence.DemandAlign.idempotent aligned idem
 
 /-- Any reconstructed executable alignment run transports the invariant in
 one step; branch-specific solver details have already been packaged by the
 soundness-side run certificate. -/
 theorem PrevailingIdempotent.of_ddAlignRun
     {initial final : InferState} (idem : PrevailingIdempotent initial)
-    {raw expected : Ty} (run : DDAlignRun raw expected initial final) :
+    {raw expected : Ty} (run : DemandAlignRun raw expected initial final) :
     PrevailingIdempotent final := by
   rcases run with ⟨_, _, aligned⟩
-  exact DemandTypingIdempotence.DDAlign.idempotent aligned.erase idem
+  exact DemandTypingIdempotence.DemandAlign.idempotent aligned.erase idem
 
 theorem PrevailingIdempotent.of_ddAlignTypesRun
     {initial final : InferState} (idem : PrevailingIdempotent initial)
-    {left right : Ty} (run : DDAlignTypesRun left right initial final) :
+    {left right : Ty} (run : DemandAlignTypesRun left right initial final) :
     PrevailingIdempotent final := by
   rcases run with ⟨_, _, aligned⟩
-  exact DemandTypingIdempotence.DDAlignTypes.idempotent aligned.erase idem
+  exact DemandTypingIdempotence.DemandAlignTypes.idempotent aligned.erase idem
 
 end DemandTypingInferenceCompletenessIdempotence
 end TypePM

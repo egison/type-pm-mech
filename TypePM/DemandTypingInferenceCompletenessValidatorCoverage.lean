@@ -11,7 +11,7 @@ steps merely advance the prefix, while an event emitter proves one local
 clause for every later terminal cut.
 
 The three audit-sensitive events remain separate.  Their witnesses contain
-facts from `DDSynthTerminalAudit`, so they must be accumulated by the
+facts from `DemandSynthTerminalAudit`, so they must be accumulated by the
 origin-and-audit recursion through `TerminalAuditEventCoverage`; executable
 success alone supplies only the ordinary coverage defined here.
 -/

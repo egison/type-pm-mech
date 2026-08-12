@@ -11,7 +11,7 @@ executable traversal: primitive-hole freshness, user-pattern leaf freshness,
 canonical fresh instances, and expected-slot alignments.
 
 The central `TraversalValidatorConditions` record is deliberately independent
-of a `DDTyping` derivation.  Its `recordEvent` constructor is the boundary used
+of a `SourceTyping` derivation.  Its `recordEvent` constructor is the boundary used
 by the completeness recursion: recursive calls retain the facts for their
 prefix, and the code that emits one event supplies only that event's local
 condition.  Solver-sensitive facts are stated at the current terminal state;
@@ -23,7 +23,7 @@ namespace Inference
 namespace Reconstruction
 
 /-- The four terminal checks whose witnesses come from ordinary traversal,
-rather than from the three proof-relevant terminal audits in `DDTyping`. -/
+rather than from the three proof-relevant terminal audits in `SourceTyping`. -/
 structure TraversalValidatorConditions
     (signature : FrozenSig) (state : InferState) : Prop where
   primitiveHoles : TracePrimitiveHoleConditions signature state.trace
@@ -1094,13 +1094,13 @@ theorem alignedEqual_canonicalSlotEventCondition
   rw [← rawReplay, ← expectedReplay]
   exact terminalEqual
 
-/-- A DD alignment whose input views are both slots has equal output
-endpoints.  Other DD constructors are excluded by their resolved-head
+/-- A demand-directed alignment whose input views are both slots has equal output
+endpoints.  Other demand-directed constructors are excluded by their resolved-head
 premises. -/
-theorem DDAlignWithLedger.output_equal_of_slotViews
+theorem DemandAlignWithLedger.output_equal_of_slotViews
     {ledger : CapabilityOriginLedger} {S S' : Subst} {raw expected : Ty}
     {sourceCap requestedCap : Cap} {sourceTarget requestedTarget : Ty}
-    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (aligned : DemandAlignWithLedger ledger S raw expected S')
     (rawView : S.apply raw = .slot sourceCap sourceTarget)
     (expectedView : S.apply expected = .slot requestedCap requestedTarget) :
     S'.apply raw = S'.apply expected := by
@@ -1123,11 +1123,11 @@ theorem DDAlignWithLedger.output_equal_of_slotViews
       simp [demandClass, rawView, expectedView, productMatcherDuals?,
         productSlotDuals?] at demand
 
-/-- The ordinary DD alignment constructor exposes its output equality without
-passing through runtime erasure. -/
-theorem DDAlignWithLedger.output_equal_of_ordinary
+/-- The ordinary demand-directed alignment constructor exposes its output equality without
+passing through typing-invariant erasure. -/
+theorem DemandAlignWithLedger.output_equal_of_ordinary
     {ledger : CapabilityOriginLedger} {S S' : Subst} {raw expected : Ty}
-    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (aligned : DemandAlignWithLedger ledger S raw expected S')
     (ordinary : demandClass (S.apply raw) (S.apply expected) = .ordinary) :
     S'.apply raw = S'.apply expected := by
   cases aligned with
@@ -1248,7 +1248,7 @@ theorem alignAtSlot_canonicalSlotEventCondition
     rcases alignAtSlot_slotToSlot_ddAlignRun rawView expectedView original with
       ⟨_supplyEq, _ledgerEq, alignedDD⟩
     exact alignedEqual_canonicalSlotEventCondition alignmentHistory
-      (DDAlignWithLedger.output_equal_of_slotViews alignedDD rawView
+      (DemandAlignWithLedger.output_equal_of_slotViews alignedDD rawView
         expectedView) history
   · rcases alignTypes_ddAlignTypesRun success with
       ⟨_supplyEq, _ledgerEq, alignedDD⟩

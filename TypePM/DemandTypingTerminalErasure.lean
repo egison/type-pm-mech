@@ -1,5 +1,5 @@
 import TypePM.DemandTypingTerminalAudit
-import TypePM.DemandTypingRuntimeErasureUserPatterns
+import TypePM.DemandTypingInvariantErasureUserPatterns
 
 /-! # Consuming terminal audits during state erasure -/
 
@@ -12,7 +12,7 @@ and capability selected by the terminal audit.  In particular, this theorem
 does not require the matcher's local raw capability to remain unchanged by a
 later rename-only suffix.
 -/
-theorem MatcherFacts.runtimeTyping_matcher
+theorem MatcherFacts.typingInvariant_matcher
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {clauses : List TypePM.Clause}
     {rawHoleLists : List (List Dual)} {q' : InferenceBase.FreshSupply}
@@ -35,7 +35,7 @@ theorem MatcherFacts.runtimeTyping_matcher
       ClausesTy signature terminal (context.applySubst terminal) clauses
         (capability.apply terminal.cap) (terminal.apply (.var q.nextTy))
         terminalEvidence) :
-    RuntimeTyping signature (context.applySubst terminal) (.matcher clauses)
+    TypingInvariant signature (context.applySubst terminal) (.matcher clauses)
       (terminal.apply (.matcher capability (.var q.nextTy))) := by
   rcases audit.valid with
     ⟨terminalEvidence, collectedAtTerminal, inferredAtTerminal,
@@ -45,7 +45,7 @@ theorem MatcherFacts.runtimeTyping_matcher
     (Inference.collectClauseEvidence_sound collectedAtTerminal)
   have binderWitness := Inference.matcherBindersCheck_sound binders
   simpa only [Subst.apply_matcher] using
-    RuntimeTyping.matcher
+    TypingInvariant.matcher
       (ResolvedClausesTy.ofShared clausesTyping)
       inferredAtTerminal
       (Inference.catchAllLastCheck_sound catchAll)

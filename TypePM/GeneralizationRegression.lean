@@ -65,8 +65,8 @@ theorem sourceCtorInstance : collisionCtorScheme.Inst [] sourceTy := by
     simp [sourceCtorTarget, outside]
 
 theorem sourceTyping :
-    RuntimeTyping collisionSignature [] (.ctor "C" []) sourceTy := by
-  exact RuntimeTyping.ctor (by rfl) sourceCtorInstance ExprsTy.nil
+    TypingInvariant collisionSignature [] (.ctor "C" []) sourceTy := by
+  exact TypingInvariant.ctor (by rfl) sourceCtorInstance ExprsTy.nil
 
 def generalized : Scheme :=
   { capArity := 1
@@ -121,8 +121,8 @@ theorem requestedCtorInstance :
 /-- Let-generalization transports the original derivation to the requested
 ordered binder-local instance through the public source endpoint. -/
 theorem collision_generalization_succeeds :
-    RuntimeTyping collisionSignature [] (.ctor "C" []) requestedTy := by
-  exact RuntimeTyping.ctor (by rfl) requestedCtorInstance ExprsTy.nil
+    TypingInvariant collisionSignature [] (.ctor "C" []) requestedTy := by
+  exact TypingInvariant.ctor (by rfl) requestedCtorInstance ExprsTy.nil
 
 /-! ## Pattern-function capability defaulting -/
 

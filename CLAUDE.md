@@ -42,14 +42,14 @@ commit／push はその都度の明示指示がある場合に限るという規
 
 - 現行 calculus は `TypePM/` の二 sort・二 index 版だけである．旧一添字 calculus，
   抽象 `RuntimeSpec`／`CoreSpecWF`，それらに相対的な旧安全性証明を復活させない．
-- source program の型付け可能性を定義する公開 judgment は `DDTyping` だけとする．
-  `RuntimeTyping` は inference state を消去した後に value typing／preservation が消費する
-  内部 certificate であり，source acceptance を定義する規則として説明・使用しない．
-  `RuntimeTyping` の旧名や互換 alias，これを第二の source type system とする説明を追加しない．
+- source program の型付け可能性を定義する公開 judgment は `SourceTyping` だけとする．
+  `TypingInvariant` は inference state を消去した後に value typing／preservation が消費する
+  内部 invariant であり，source acceptance を定義する規則として説明・使用しない．
+  `TypingInvariant` の旧名や互換 alias，これを第二の source type system とする説明を追加しない．
 - source matcher literal は actual clause evidence，`ShapeCap`，`CatchAllLast`，
   data-arm exhaustiveness，binder 線形性，`CoverageOK` をすべて要求する．coverage を
   欠く literal を追加 mode で受理する経路を作らない．
-- value-flow scheme の runtime-certificate instance（context lookup と pattern-function lookup）では
+- value-flow scheme の typing-invariant instance（context lookup と pattern-function lookup）では
   capability binder を capability variable へだけ写し，producer capability を consumer
   demand に合わせて構造化する経路を追加しない（variable-only 条件）．constructor／
   primitive signature の `Inst` は通常の binder-supported structural instance であり
@@ -64,7 +64,7 @@ commit／push はその都度の明示指示がある場合に限るという規
   が `MatcherSlot` であること**とする．checking は式を先に synthesize し，その cut で
   prevailing 適用後の expected head を観測して branch を決定する．非恒等 coercion の
   終点は常に slot（`matcherToSlot`／`productMatcher; matcherToSlot`／`slotTuple` の
-  三形）であり，Matcher 終点の coercion を demand 経路（selector・`DDTyping`）に
+  三形）であり，Matcher 終点の coercion を demand 経路（selector・`SourceTyping`）に
   追加しない．matcher-expected 位置は raw `Matcher` の通常単一化だけを許す．
 - 「通常単一化の失敗」を coercion の負前提にしない．failed attempt の rollback，fuel
   切れ，guard 拒否を coercion の根拠に持ち込まない．branch 選択は visible な head から
@@ -72,45 +72,45 @@ commit／push はその都度の明示指示がある場合に限るという規
 - 各 solve は syntax，signature，fresh state と現在の constraint だけから決まり，
   coercion を成立させるために λ domain や未解決 metavariable の構造を推測する
   no-guess 違反を許さない．λ domain は fresh metavariable とし，任意の `MatcherSlot`
-  domain を先に選べる state-free λ certificate で `DDTyping` を代用しない．
+  domain を先に選べる state-free λ certificate で `SourceTyping` を代用しない．
 - **raw visibility**（cut 時点で selector に必要な head が raw source に見えるか）と
   **capability freeze**（producer image に許される substitution／export）は demand とは
   別軸であり，受理完全性の内部不変量として別々に扱う．capability-origin ledger は coercion
   demand に別証人を要求する仕組みではない．
-- `nestedCapProgram`（と swapped 版）の DD 拒否は意図された挙動であり変えない．
-  これらが `RuntimeTyping` certificate を持つことは，certificate から source acceptance を
+- `nestedCapProgram`（と swapped 版）の demand-directed 拒否は意図された挙動であり変えない．
+  これらが `TypingInvariant` proof を持つことは，invariant から source acceptance を
   逆向きに推論できないことを示すだけである．
 
 ### inference と validator
 
 - 公開 entry point `infer` は停止する raw 走査 `inferRaw` と有限な fail-closed terminal
   validator の合成である．公開 `infer` が成功したとき，成功等式だけから
-  `infer_success_ddTyping` が唯一のsource typingである `DDTyping` を与える状態を維持する．
-  `infer_success_runtimeTyping` は動的メタ理論向けの独立した内部経路として維持する．
+  `infer_success_sourceTyping` が唯一のsource typingである `SourceTyping` を与える状態を維持する．
+  `infer_success_typingInvariant` は動的メタ理論向けの独立した内部経路として維持する．
 - `InferenceInputWF` を soundness の前提に戻さない．`WBridgeWF` は validator が内部で
   構成する証明書であり，呼び出し側の追加前提に戻さない．terminal validator 単体が任意の
-  raw runを受理するという無条件completenessは主張しない．`DDTyping.infer_isSome`はterminal
-  auditを持つDD derivationからvalidatorの全event条件を再構成する相対的な受理完全性である．
-- `RuntimeTyping` certificate の substitution-only principality は
-  `no_principal_type` により否定されるが，これは `DDTyping` の principality 主張ではない．
-  `DDTyping` の principal-type theorem は独立に定式化してから議論する．
-- `DDTyping` は pattern 層 family を含む全構文層に対して定義済みである．
+  raw runを受理するという無条件completenessは主張しない．`SourceTyping.infer_isSome`はterminal
+  auditを持つ`SourceTyping` derivationからvalidatorの全event条件を再構成する相対的な受理完全性である．
+- `TypingInvariant` proof の substitution-only principality は
+  `no_principal_type` により否定されるが，これは `SourceTyping` の principality 主張ではない．
+  `SourceTyping` の principal-type theorem は独立に定式化してから議論する．
+- `SourceTyping` は pattern 層 family を含む全構文層に対して定義済みである．
   capability freeze は intrinsic Origin certificate，終端での非安定な事実は terminal audit
-  として derivation 側に統合され，closed programの `DDTyping` から `RuntimeTyping`
-  への state erasure は証明済みである．`RuntimeTyping` の存在を premise に
-  埋め込む循環的な `DDTyping` 定義に戻さない．`DDTyping.infer_isSome`は
-  `DDTyping signature context e τ`と`FrozenSigWF signature`だけから公開`infer`の受理を導く．
-  `DDAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
+  として derivation 側に統合され，closed programの `SourceTyping` から `TypingInvariant`
+  への state erasure は証明済みである．`TypingInvariant` の存在を premise に
+  埋め込む循環的な `SourceTyping` 定義に戻さない．`SourceTyping.infer_isSome`は
+  `SourceTyping signature context e τ`と`FrozenSigWF signature`だけから公開`infer`の受理を導く．
+  `DemandAlign` の分岐は cut-resolved view 上の `demandClass` で決定し，raw view による
   分岐を判断側へ持ち込まない（raw visibility は executable inference との対応境界である）．
   pattern 層の fresh 割当は supply-indexed 純関数 twin で写し，実行走査と割当順序の
-  一致を崩す規則変更をしない．matcher literal の finalization 検査群を DD 側だけ
+  一致を崩す規則変更をしない．matcher literal の finalization 検査群を demand-directed 側だけ
   弱めない．受理完全性を変更するときもsolver success，`WBridgeWF`，history，
   `RawSourceVisible`，`FreezeCompatible`をcaller premiseへ露出しない．
 
 ### 動的安全性
 
-- 内部の動的安全性は concrete `RuntimeTyping`／`ValueTy`／matching-state judgments 上で
-  証明する．公開する最終形は `DDTyping` から state erasure を経てこの定理へ接続する．
+- 内部の動的安全性は concrete `TypingInvariant`／`ValueTy`／matching-state judgments 上で
+  証明する．公開する最終形は `SourceTyping` から state erasure を経てこの定理へ接続する．
   抽象 spec に相対化しない．
 - `FrozenSigWF` は `signature.SchemesClosed` をfieldとして保持し，`frozenSigWFCheck` は全tableの
   scheme closednessも検査する．source-facingな公開安全性定理に`SchemesClosed`を別premiseとして

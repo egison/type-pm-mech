@@ -23,20 +23,20 @@ open DemandTypingInferenceCompletenessPairedRoot
 open DemandTypingInferenceCompletenessRootBuilder
 open DemandTypingInferenceCompletenessSignatureBounds
 
-/-- Specialize a global paired synthesis motive to a DD derivation beginning
+/-- Specialize a global paired synthesis motive to a demand-directed derivation beginning
 at the canonical supply, identity substitution, empty ledger, empty self
 environment, and root syntax path. -/
 theorem pairedRoot_of_global
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {rawTarget : Ty} {finalSupply : InferenceBase.FreshSupply}
     {terminal : Subst}
-    {derived : DDSynth signature (initialSupply signature context) Subst.id
+    {derived : DemandSynth signature (initialSupply signature context) Subst.id
       context expression rawTarget finalSupply terminal}
     {ledger : CapabilityOriginLedger}
-    {origin : DDSynthOrigin signature derived [] ledger}
+    {origin : DemandSynthOrigin signature derived [] ledger}
     (complete : PairedAuditedSynthCompletenessAt terminal signature
       (inferenceFuel expression))
-    (audit : DDSynthTerminalAudit terminal signature origin) :
+    (audit : DemandSynthTerminalAudit terminal signature origin) :
     Nonempty (PairedRootCertifiedSynthesis signature context expression) := by
   let before := initialTraversalState signature context
   have contexts : ContextBisimulation before.prevailing context context :=

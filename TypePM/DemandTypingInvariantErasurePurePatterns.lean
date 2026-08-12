@@ -2,7 +2,7 @@ import TypePM.DemandTypingErasureFactorization
 import TypePM.SourceSubstitution
 
 /-!
-# Later-cut runtime erasure for pure pattern families
+# Later-cut typing-invariant erasure for pure pattern families
 
 The four families in this module contain no expression leaves.  Their
 strengthened erasure conclusions therefore quantify only an admissible
@@ -78,7 +78,7 @@ private theorem closedPatternCtorInstance
 namespace DDDPatOrigin
 
 /-- Data-pattern erasure stable under every later admissible suffix. -/
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {expected : Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -94,33 +94,33 @@ def RuntimeErasureUnder
 
 /-- The later-cut invariant specializes to the derivation's own terminal
 cut via reflexive factorization. -/
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {expected : Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDDPat signature q S pattern expected bindings q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     {origin : DDDPatOrigin signature raw ledger ledger'}
-    (under : RuntimeErasureUnder origin) :
+    (under : TypingInvariantErasureUnder origin) :
     DPatTy signature pattern (S'.apply expected)
       (bindings.applySubst S') := by
   rcases DDErasure.StateFactorization.refl q' S' ledger' with
     ⟨post, equation, admissible⟩
   exact under equation admissible
 
-theorem runtimeErasureUnder_var
+theorem typingInvariantErasureUnder_var
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (name : String) (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDDPatOrigin.var (signature := signature) (q := q) (S := S)
         (name := name) (expectedTarget := expected) (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   exact DPatTy.var
 
-theorem runtimeErasureUnder_wild
+theorem typingInvariantErasureUnder_wild
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDDPatOrigin.wild (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -131,7 +131,7 @@ end DDDPatOrigin
 namespace DDDPatsOrigin
 
 /-- Data-pattern-list erasure stable under every later admissible suffix. -/
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {targets : List Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -145,24 +145,24 @@ def RuntimeErasureUnder
     DPatTys signature patterns (targets.map finalSubst.apply)
       (bindings.applySubst finalSubst)
 
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {targets : List Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDDPats signature q S patterns targets bindings q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     {origin : DDDPatsOrigin signature raw ledger ledger'}
-    (under : RuntimeErasureUnder origin) :
+    (under : TypingInvariantErasureUnder origin) :
     DPatTys signature patterns (targets.map S'.apply)
       (bindings.applySubst S') := by
   rcases DDErasure.StateFactorization.refl q' S' ledger' with
     ⟨post, equation, admissible⟩
   exact under equation admissible
 
-theorem runtimeErasureUnder_nil
+theorem typingInvariantErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDDPatsOrigin.nil (signature := signature) (q := q) (S := S)
         (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -176,14 +176,14 @@ set_option maxHeartbeats 300000 in
 /-- Recursive constructor closure.  The child factorization supplies both
 the terminal alignment equality and the pre-freeze suffix required by the
 strengthened child invariant. -/
-theorem runtimeErasureUnder_ctor_of_children
+theorem typingInvariantErasureUnder_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {name : String} {patterns : List DPat} {expected : Ty}
     {scheme : CtorScheme} {S₁ : Subst} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger}
     (lookup : signature.findDataCtor name = some scheme)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q scheme) S
       (InferenceBase.instantiateCtorScheme q scheme).value.2 expected S₁)
     {children : DDDPats signature
@@ -191,12 +191,12 @@ theorem runtimeErasureUnder_ctor_of_children
       (InferenceBase.instantiateCtorScheme q scheme).value.1 bindings q' S'}
     (childrenOrigin : DDDPatsOrigin signature children
       (DDLedger.markCtorInstance ledger q scheme) ledger₂)
-    (childrenUnder : DDDPatsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDDPatsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (childrenFactorization : DDErasure.StateFactorization
       (InferenceBase.instantiateCtorScheme q scheme).supply S₁
       (DDLedger.markCtorInstance ledger q scheme) q' S' ledger₂)
     (closed : signature.SchemesClosed) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDDPatOrigin.ctor lookup aligned childrenOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have childAdmissible : DDErasure.AdmissiblePostBetween q' final ledger₂
@@ -229,21 +229,21 @@ theorem runtimeErasureUnder_ctor_of_children
   exact DPatTy.ctor lookup childrenAtFinal
     (closedDataCtorInstance closed lookup q finalSubst)
 
-theorem runtimeErasureUnder_tuple_of_children
+theorem typingInvariantErasureUnder_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {expected : Ty} {S₁ : Subst}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expected S₁)
     {children : DDDPats signature
       (freshTargetsSupply patterns.length q).2 S₁ patterns
       (freshTargetsSupply patterns.length q).1 bindings q' S'}
     (childrenOrigin : DDDPatsOrigin signature children ledger ledger')
-    (childrenUnder : DDDPatsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDDPatsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (childrenFactorization : DDErasure.StateFactorization
       (freshTargetsSupply patterns.length q).2 S₁ ledger q' S' ledger') :
-    RuntimeErasureUnder (DDDPatOrigin.tuple aligned childrenOrigin) := by
+    TypingInvariantErasureUnder (DDDPatOrigin.tuple aligned childrenOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have childrenAtFinal := childrenUnder terminalEquation admissible
   have laterFactor : DDErasure.StateFactorization q' S' ledger' final
@@ -259,7 +259,7 @@ end DDDPatOrigin
 
 namespace DDDPatsOrigin
 
-theorem runtimeErasureUnder_cons
+theorem typingInvariantErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {patterns : List DPat} {target : Ty}
     {targets : List Ty} {bindings restBindings : MonoCtx}
@@ -272,11 +272,11 @@ theorem runtimeErasureUnder_cons
     (tailOrigin : DDDPatsOrigin signature tail ledger₁ ledger')
     (disjoint : ∀ name, name ∈ bindings.names →
       name ∉ restBindings.names)
-    (headUnder : DDDPatOrigin.RuntimeErasureUnder headOrigin)
-    (tailUnder : RuntimeErasureUnder tailOrigin)
+    (headUnder : DDDPatOrigin.TypingInvariantErasureUnder headOrigin)
+    (tailUnder : TypingInvariantErasureUnder tailOrigin)
     (tailFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q' S' ledger') :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDDPatsOrigin.cons headOrigin tailOrigin disjoint) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   rcases tailFactorization with ⟨tailPost, tailEquation, tailAdmissible⟩
@@ -302,7 +302,7 @@ end DDDPatsOrigin
 namespace DDPPatOrigin
 
 /-- Primitive-pattern erasure stable under every later admissible suffix. -/
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {expected : Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -318,43 +318,43 @@ def RuntimeErasureUnder
       (holes.map (Dual.applySubst finalSubst))
       (bindings.applySubst finalSubst)
 
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {expected : Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPPat signature q S pattern expected holes bindings q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     {origin : DDPPatOrigin signature raw ledger ledger'}
-    (under : RuntimeErasureUnder origin) :
+    (under : TypingInvariantErasureUnder origin) :
     TerminalPPatResolution signature S' pattern (S'.apply expected)
       (holes.map (Dual.applySubst S')) (bindings.applySubst S') := by
   rcases DDErasure.StateFactorization.refl q' S' ledger' with
     ⟨post, equation, admissible⟩
   exact under equation admissible
 
-theorem runtimeErasureUnder_hole
+theorem typingInvariantErasureUnder_hole
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {expected : Ty} {ledger : CapabilityOriginLedger}
     (fresh : signature.FreshCapFor ⟨q.nextCap⟩ expected) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatOrigin.hole (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   exact TerminalPPatResolution.hole fresh
 
-theorem runtimeErasureUnder_wild
+theorem typingInvariantErasureUnder_wild
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatOrigin.wild (signature := signature) (q := q) (S := S)
         (expectedTarget := expected) (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   exact TerminalPPatResolution.wild
 
-theorem runtimeErasureUnder_pval
+theorem typingInvariantErasureUnder_pval
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (name : String) (expected : Ty) (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatOrigin.pval (signature := signature) (q := q) (S := S)
         (name := name) (expectedTarget := expected) (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -365,7 +365,7 @@ end DDPPatOrigin
 namespace DDPPatsOrigin
 
 /-- Primitive-pattern-list erasure stable under later admissible suffixes. -/
-def RuntimeErasureUnder
+def TypingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {targets : List Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -381,24 +381,24 @@ def RuntimeErasureUnder
       (holes.map (Dual.applySubst finalSubst))
       (bindings.applySubst finalSubst)
 
-theorem runtimeErasure_of_under
+theorem typingInvariantErasure_of_under
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {targets : List Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {raw : DDPPats signature q S patterns targets holes bindings q' S'}
     {ledger ledger' : CapabilityOriginLedger}
     {origin : DDPPatsOrigin signature raw ledger ledger'}
-    (under : RuntimeErasureUnder origin) :
+    (under : TypingInvariantErasureUnder origin) :
     TerminalPPatResolutions signature S' patterns (targets.map S'.apply)
       (holes.map (Dual.applySubst S')) (bindings.applySubst S') := by
   rcases DDErasure.StateFactorization.refl q' S' ledger' with
     ⟨post, equation, admissible⟩
   exact under equation admissible
 
-theorem runtimeErasureUnder_nil
+theorem typingInvariantErasureUnder_nil
     (signature : FrozenSig) (q : InferenceBase.FreshSupply) (S : Subst)
     (ledger : CapabilityOriginLedger) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatsOrigin.nil (signature := signature) (q := q) (S := S)
         (ledger := ledger)) := by
   intro final finalSubst post finalLedger terminalEquation admissible
@@ -408,7 +408,7 @@ end DDPPatsOrigin
 
 namespace DDPPatOrigin
 
-theorem runtimeErasureUnder_ctor_of_children
+theorem typingInvariantErasureUnder_ctor_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {name : String} {patterns : List PPat} {expected : Ty}
     {entry : PatternCtorScheme signature.observability} {S₁ : Subst}
@@ -416,7 +416,7 @@ theorem runtimeErasureUnder_ctor_of_children
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger}
     (lookup : signature.findPatternCtor name = some entry)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q entry.scheme) S
       (InferenceBase.instantiateCtorScheme q entry.scheme).value.2 expected S₁)
     {children : DDPPats signature
@@ -425,12 +425,12 @@ theorem runtimeErasureUnder_ctor_of_children
       q' S'}
     (childrenOrigin : DDPPatsOrigin signature children
       (DDLedger.markCtorInstance ledger q entry.scheme) ledger₂)
-    (childrenUnder : DDPPatsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDPPatsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (childrenFactorization : DDErasure.StateFactorization
       (InferenceBase.instantiateCtorScheme q entry.scheme).supply S₁
       (DDLedger.markCtorInstance ledger q entry.scheme) q' S' ledger₂)
     (closed : signature.SchemesClosed) :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatOrigin.ctor lookup aligned childrenOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have childAdmissible : DDErasure.AdmissiblePostBetween q' final ledger₂
@@ -466,22 +466,22 @@ theorem runtimeErasureUnder_ctor_of_children
   exact TerminalPPatResolution.ctor lookup childrenAtFinal
     (closedPatternCtorInstance closed lookup q finalSubst)
 
-theorem runtimeErasureUnder_tuple_of_children
+theorem typingInvariantErasureUnder_tuple_of_children
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {expected : Ty} {S₁ : Subst}
     {holes : List Dual} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger' : CapabilityOriginLedger}
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expected S₁)
     {children : DDPPats signature
       (freshTargetsSupply patterns.length q).2 S₁ patterns
       (freshTargetsSupply patterns.length q).1 holes bindings q' S'}
     (childrenOrigin : DDPPatsOrigin signature children ledger ledger')
-    (childrenUnder : DDPPatsOrigin.RuntimeErasureUnder childrenOrigin)
+    (childrenUnder : DDPPatsOrigin.TypingInvariantErasureUnder childrenOrigin)
     (childrenFactorization : DDErasure.StateFactorization
       (freshTargetsSupply patterns.length q).2 S₁ ledger q' S' ledger') :
-    RuntimeErasureUnder (DDPPatOrigin.tuple aligned childrenOrigin) := by
+    TypingInvariantErasureUnder (DDPPatOrigin.tuple aligned childrenOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   have childrenAtFinal := childrenUnder terminalEquation admissible
   have laterFactor : DDErasure.StateFactorization q' S' ledger' final
@@ -499,7 +499,7 @@ end DDPPatOrigin
 
 namespace DDPPatsOrigin
 
-theorem runtimeErasureUnder_cons
+theorem typingInvariantErasureUnder_cons
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {patterns : List PPat} {target : Ty}
     {targets : List Ty} {holes restHoles : List Dual}
@@ -514,11 +514,11 @@ theorem runtimeErasureUnder_cons
     (tailOrigin : DDPPatsOrigin signature tail ledger₁ ledger')
     (disjoint : ∀ name, name ∈ bindings.names →
       name ∉ restBindings.names)
-    (headUnder : DDPPatOrigin.RuntimeErasureUnder headOrigin)
-    (tailUnder : RuntimeErasureUnder tailOrigin)
+    (headUnder : DDPPatOrigin.TypingInvariantErasureUnder headOrigin)
+    (tailUnder : TypingInvariantErasureUnder tailOrigin)
     (tailFactorization : DDErasure.StateFactorization q₁ S₁ ledger₁
       q' S' ledger') :
-    RuntimeErasureUnder
+    TypingInvariantErasureUnder
       (DDPPatsOrigin.cons headOrigin tailOrigin disjoint) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   rcases tailFactorization with ⟨tailPost, tailEquation, tailAdmissible⟩
@@ -546,7 +546,7 @@ end DDPPatsOrigin
 
 mutual
 
-theorem DDDPatOrigin.runtimeErasureUnder
+theorem DDDPatOrigin.typingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : DPat} {expected : Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -555,10 +555,10 @@ theorem DDDPatOrigin.runtimeErasureUnder
     (origin : DDDPatOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (expectedBounded : expected.BoundedBy q) :
-    DDDPatOrigin.RuntimeErasureUnder origin :=
+    DDDPatOrigin.TypingInvariantErasureUnder origin :=
   match origin with
-  | .var => DDDPatOrigin.runtimeErasureUnder_var _ _ _ _ _ _
-  | .wild => DDDPatOrigin.runtimeErasureUnder_wild _ _ _ _ _
+  | .var => DDDPatOrigin.typingInvariantErasureUnder_var _ _ _ _ _ _
+  | .wild => DDDPatOrigin.typingInvariantErasureUnder_wild _ _ _ _ _
   | @DDDPatOrigin.ctor _ q S name _ expected scheme S₁ _ _ _ ledger _
       lookup aligned _ childrenOrigin => by
       have instB := instantiateCtorScheme_boundedBy (q := q)
@@ -566,9 +566,9 @@ theorem DDDPatOrigin.runtimeErasureUnder
       have ext := SupplyExtends.instantiateCtorScheme q scheme
       have S₁b := aligned.erase.boundedBy (Sb.mono ext) instB.2
         (expectedBounded.mono ext)
-      exact DDDPatOrigin.runtimeErasureUnder_ctor_of_children lookup aligned
+      exact DDDPatOrigin.typingInvariantErasureUnder_ctor_of_children lookup aligned
         childrenOrigin
-        (DDDPatsOrigin.runtimeErasureUnder childrenOrigin closed S₁b instB.1)
+        (DDDPatsOrigin.typingInvariantErasureUnder childrenOrigin closed S₁b instB.1)
         (DDDPatsOrigin.factorize childrenOrigin closed S₁b instB.1) closed
   | @DDDPatOrigin.tuple _ q S patterns expected S₁ _ _ _ ledger _ aligned _
       childrenOrigin => by
@@ -577,12 +577,12 @@ theorem DDDPatOrigin.runtimeErasureUnder
       have productB := Ty.BoundedBy.prodOfForall targetsB
       have S₁b := aligned.erase.boundedBy (Sb.mono ext) productB
         (expectedBounded.mono ext)
-      exact DDDPatOrigin.runtimeErasureUnder_tuple_of_children aligned
+      exact DDDPatOrigin.typingInvariantErasureUnder_tuple_of_children aligned
         childrenOrigin
-        (DDDPatsOrigin.runtimeErasureUnder childrenOrigin closed S₁b targetsB)
+        (DDDPatsOrigin.typingInvariantErasureUnder childrenOrigin closed S₁b targetsB)
         (DDDPatsOrigin.factorize childrenOrigin closed S₁b targetsB)
 
-theorem DDDPatsOrigin.runtimeErasureUnder
+theorem DDDPatsOrigin.typingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List DPat} {targets : List Ty} {bindings : MonoCtx}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -591,9 +591,9 @@ theorem DDDPatsOrigin.runtimeErasureUnder
     (origin : DDDPatsOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (targetsBounded : ∀ target ∈ targets, target.BoundedBy q) :
-    DDDPatsOrigin.RuntimeErasureUnder origin :=
+    DDDPatsOrigin.TypingInvariantErasureUnder origin :=
   match origin with
-  | .nil => DDDPatsOrigin.runtimeErasureUnder_nil _ _ _ _
+  | .nil => DDDPatsOrigin.typingInvariantErasureUnder_nil _ _ _ _
   | @DDDPatsOrigin.cons _ _ _ _ _ target tailTargets _ _ qNext _ _ _ _ _ _ _ _
       headOrigin tailOrigin disjoint => by
       have headB : target.BoundedBy q := targetsBounded target (by simp)
@@ -603,16 +603,16 @@ theorem DDDPatsOrigin.runtimeErasureUnder
         intro item mem
         exact (targetsBounded item (by simp [mem])).mono
           headOrigin.erase.supplyExtends
-      exact DDDPatsOrigin.runtimeErasureUnder_cons headOrigin tailOrigin disjoint
-        (DDDPatOrigin.runtimeErasureUnder headOrigin closed Sb headB)
-        (DDDPatsOrigin.runtimeErasureUnder tailOrigin closed S₁b tailB)
+      exact DDDPatsOrigin.typingInvariantErasureUnder_cons headOrigin tailOrigin disjoint
+        (DDDPatOrigin.typingInvariantErasureUnder headOrigin closed Sb headB)
+        (DDDPatsOrigin.typingInvariantErasureUnder tailOrigin closed S₁b tailB)
         (DDDPatsOrigin.factorize tailOrigin closed S₁b tailB)
 
 end
 
 mutual
 
-theorem DDPPatOrigin.runtimeErasureUnder
+theorem DDPPatOrigin.typingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {pattern : PPat} {expected : Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -621,12 +621,12 @@ theorem DDPPatOrigin.runtimeErasureUnder
     (origin : DDPPatOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (expectedBounded : expected.BoundedBy q) :
-    DDPPatOrigin.RuntimeErasureUnder origin :=
+    DDPPatOrigin.TypingInvariantErasureUnder origin :=
   match origin with
-  | .hole => DDPPatOrigin.runtimeErasureUnder_hole
+  | .hole => DDPPatOrigin.typingInvariantErasureUnder_hole
       (closed.freshCapForNext expectedBounded)
-  | .wild => DDPPatOrigin.runtimeErasureUnder_wild _ _ _ _ _
-  | .pval => DDPPatOrigin.runtimeErasureUnder_pval _ _ _ _ _ _
+  | .wild => DDPPatOrigin.typingInvariantErasureUnder_wild _ _ _ _ _
+  | .pval => DDPPatOrigin.typingInvariantErasureUnder_pval _ _ _ _ _ _
   | @DDPPatOrigin.ctor _ q S name _ expected entry S₁ _ _ _ _ ledger _
       lookup aligned _ childrenOrigin => by
       have instB := instantiateCtorScheme_boundedBy (q := q)
@@ -634,9 +634,9 @@ theorem DDPPatOrigin.runtimeErasureUnder
       have ext := SupplyExtends.instantiateCtorScheme q entry.scheme
       have S₁b := aligned.erase.boundedBy (Sb.mono ext) instB.2
         (expectedBounded.mono ext)
-      exact DDPPatOrigin.runtimeErasureUnder_ctor_of_children lookup aligned
+      exact DDPPatOrigin.typingInvariantErasureUnder_ctor_of_children lookup aligned
         childrenOrigin
-        (DDPPatsOrigin.runtimeErasureUnder childrenOrigin closed S₁b instB.1)
+        (DDPPatsOrigin.typingInvariantErasureUnder childrenOrigin closed S₁b instB.1)
         (DDPPatsOrigin.factorize childrenOrigin closed S₁b instB.1) closed
   | @DDPPatOrigin.tuple _ q S patterns expected _ _ _ _ _ ledger _
       aligned _ childrenOrigin => by
@@ -645,12 +645,12 @@ theorem DDPPatOrigin.runtimeErasureUnder
       have productB := Ty.BoundedBy.prodOfForall targetsB
       have S₁b := aligned.erase.boundedBy (Sb.mono ext) productB
         (expectedBounded.mono ext)
-      exact DDPPatOrigin.runtimeErasureUnder_tuple_of_children aligned
+      exact DDPPatOrigin.typingInvariantErasureUnder_tuple_of_children aligned
         childrenOrigin
-        (DDPPatsOrigin.runtimeErasureUnder childrenOrigin closed S₁b targetsB)
+        (DDPPatsOrigin.typingInvariantErasureUnder childrenOrigin closed S₁b targetsB)
         (DDPPatsOrigin.factorize childrenOrigin closed S₁b targetsB)
 
-theorem DDPPatsOrigin.runtimeErasureUnder
+theorem DDPPatsOrigin.typingInvariantErasureUnder
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {patterns : List PPat} {targets : List Ty} {holes : List Dual}
     {bindings : MonoCtx} {q' : InferenceBase.FreshSupply} {S' : Subst}
@@ -659,9 +659,9 @@ theorem DDPPatsOrigin.runtimeErasureUnder
     (origin : DDPPatsOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (targetsBounded : ∀ target ∈ targets, target.BoundedBy q) :
-    DDPPatsOrigin.RuntimeErasureUnder origin :=
+    DDPPatsOrigin.TypingInvariantErasureUnder origin :=
   match origin with
-  | .nil => DDPPatsOrigin.runtimeErasureUnder_nil _ _ _ _
+  | .nil => DDPPatsOrigin.typingInvariantErasureUnder_nil _ _ _ _
   | @DDPPatsOrigin.cons _ _ _ _ _ target tailTargets _ _ _ _ qNext _ _ _ _ _ _ _ _
       headOrigin tailOrigin disjoint => by
       have headB : target.BoundedBy q := targetsBounded target (by simp)
@@ -670,9 +670,9 @@ theorem DDPPatsOrigin.runtimeErasureUnder
         intro item mem
         exact (targetsBounded item (by simp [mem])).mono
           headOrigin.erase.supplyExtends
-      exact DDPPatsOrigin.runtimeErasureUnder_cons headOrigin tailOrigin disjoint
-        (DDPPatOrigin.runtimeErasureUnder headOrigin closed Sb headB)
-        (DDPPatsOrigin.runtimeErasureUnder tailOrigin closed S₁b tailB)
+      exact DDPPatsOrigin.typingInvariantErasureUnder_cons headOrigin tailOrigin disjoint
+        (DDPPatOrigin.typingInvariantErasureUnder headOrigin closed Sb headB)
+        (DDPPatsOrigin.typingInvariantErasureUnder tailOrigin closed S₁b tailB)
         (DDPPatsOrigin.factorize tailOrigin closed S₁b tailB)
 
 end

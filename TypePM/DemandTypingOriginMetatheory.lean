@@ -214,45 +214,45 @@ end
 
 mutual
 
-theorem DDSynthOrigin.ledgerEvolution
+theorem DemandSynthOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynth signature q S context expression target q' S'}
+    {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger')
+    (origin : DemandSynthOrigin signature raw ledger ledger')
     (below : LedgerBelow q ledger) : Evolution q q' ledger ledger' :=
   match origin with
-  | @DDSynthOrigin.var _ q _ _ _ scheme ledger lookup =>
+  | @DemandSynthOrigin.var _ q _ _ _ scheme ledger lookup =>
       ⟨LedgerBelow.markSchemeInstance scheme below,
         RefinesBelow.markSchemeInstance q ledger scheme⟩
   | .lam bodyOrigin =>
       have extension := SupplyExtends.bumpTy q 1
       have preEvolution := Evolution.refl below extension
       preEvolution.trans extension
-        (DDSynthOrigin.ledgerEvolution bodyOrigin (below.mono extension))
+        (DemandSynthOrigin.ledgerEvolution bodyOrigin (below.mono extension))
   | .fix distinct direct nonMatcher bodyOrigin aligned =>
       have extension := SupplyExtends.bumpTy q 2
       have preEvolution := Evolution.refl below extension
       preEvolution.trans extension
-        (DDSynthOrigin.ledgerEvolution bodyOrigin (below.mono extension))
+        (DemandSynthOrigin.ledgerEvolution bodyOrigin (below.mono extension))
   | .app functionOrigin aligned argumentOrigin =>
       have functionEvolution :=
-        DDSynthOrigin.ledgerEvolution functionOrigin below
+        DemandSynthOrigin.ledgerEvolution functionOrigin below
       have bump := SupplyExtends.bumpTy _ 2
       have bridge := Evolution.refl functionEvolution.1 bump
       have preEvolution := functionEvolution.trans
         functionOrigin.erase.supplyExtends bridge
       preEvolution.trans
         (functionOrigin.erase.supplyExtends.trans bump)
-        (DDCheckOrigin.ledgerEvolution argumentOrigin bridge.1)
+        (DemandCheckOrigin.ledgerEvolution argumentOrigin bridge.1)
   | .lit => Evolution.refl below (SupplyExtends.refl _)
   | .tuple childrenOrigin =>
-      DDSynthsOrigin.ledgerEvolution childrenOrigin below
+      DemandSynthsOrigin.ledgerEvolution childrenOrigin below
   | .ctor lookup childrenOrigin =>
       have instantiated := LedgerBelow.markCtorInstance _ below
       have childrenEvolution :=
-        DDChecksOrigin.ledgerEvolution childrenOrigin instantiated
+        DemandChecksOrigin.ledgerEvolution childrenOrigin instantiated
       have extension := SupplyExtends.instantiateCtorScheme q _
       ⟨LedgerBelow.freezeExport _ _ _ childrenEvolution.1,
         (RefinesBelow.markCtorInstance q ledger _).trans
@@ -262,7 +262,7 @@ theorem DDSynthOrigin.ledgerEvolution
   | .prim lookup childrenOrigin =>
       have instantiated := LedgerBelow.markCtorInstance _ below
       have childrenEvolution :=
-        DDChecksOrigin.ledgerEvolution childrenOrigin instantiated
+        DemandChecksOrigin.ledgerEvolution childrenOrigin instantiated
       have extension := SupplyExtends.instantiateCtorScheme q _
       ⟨LedgerBelow.freezeExport _ _ _ childrenEvolution.1,
         (RefinesBelow.markCtorInstance q ledger _).trans
@@ -270,9 +270,9 @@ theorem DDSynthOrigin.ledgerEvolution
             ((RefinesBelow.freezeExport q' _ _ _ _).restrict
               childrenOrigin.erase.supplyExtends)).restrict extension)⟩
   | .letE valueOrigin bodyOrigin =>
-      have valueEvolution := DDSynthOrigin.ledgerEvolution valueOrigin below
+      have valueEvolution := DemandSynthOrigin.ledgerEvolution valueOrigin below
       valueEvolution.trans valueOrigin.erase.supplyExtends
-        (DDSynthOrigin.ledgerEvolution bodyOrigin valueEvolution.1)
+        (DemandSynthOrigin.ledgerEvolution bodyOrigin valueEvolution.1)
   | .something => Evolution.refl below (SupplyExtends.bumpTy q 1)
   | .matcher clausesOrigin collected inferred clauseCaps catchAll binders arms
       coverage =>
@@ -286,12 +286,12 @@ theorem DDSynthOrigin.ledgerEvolution
           (RefinesBelow.freezeMatcherProducer q _ _)⟩
   | .matchAll targetOrigin patternOrigin targetAligned matcherOrigin
       bodyOrigin =>
-      have targetEvolution := DDSynthOrigin.ledgerEvolution targetOrigin below
+      have targetEvolution := DemandSynthOrigin.ledgerEvolution targetOrigin below
       have patternEvolution := DDPatternOrigin.ledgerEvolution patternOrigin
         targetEvolution.1
       have throughPattern := targetEvolution.trans
         targetOrigin.erase.supplyExtends patternEvolution
-      have matcherEvolution := DDCheckOrigin.ledgerEvolution matcherOrigin
+      have matcherEvolution := DemandCheckOrigin.ledgerEvolution matcherOrigin
         patternEvolution.1
       have throughMatcher := throughPattern.trans
         (targetOrigin.erase.supplyExtends.trans
@@ -300,55 +300,55 @@ theorem DDSynthOrigin.ledgerEvolution
         ((targetOrigin.erase.supplyExtends.trans
           patternOrigin.erase.supplyExtends).trans
             matcherOrigin.erase.supplyExtends)
-        (DDSynthOrigin.ledgerEvolution bodyOrigin matcherEvolution.1)
+        (DemandSynthOrigin.ledgerEvolution bodyOrigin matcherEvolution.1)
   | .fixMatcher distinct direct placeholder bodyOrigin aligned =>
       have extension := SupplyExtends.fixMatcherPlaceholder placeholder
       have preEvolution : Evolution q _ ledger _ :=
         ⟨LedgerBelow.markCapRange below extension.1,
           RefinesBelow.markCapRange q _ ledger⟩
       preEvolution.trans extension
-        (DDSynthOrigin.ledgerEvolution bodyOrigin preEvolution.1)
+        (DemandSynthOrigin.ledgerEvolution bodyOrigin preEvolution.1)
 
-theorem DDSynthsOrigin.ledgerEvolution
+theorem DemandSynthsOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expressions : List Expr} {targets : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynths signature q S context expressions targets q' S'}
+    {raw : DemandSynths signature q S context expressions targets q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthsOrigin signature raw ledger ledger')
+    (origin : DemandSynthsOrigin signature raw ledger ledger')
     (below : LedgerBelow q ledger) : Evolution q q' ledger ledger' :=
   match origin with
   | .nil => Evolution.refl below (SupplyExtends.refl _)
   | .cons headOrigin tailOrigin =>
-      have headEvolution := DDSynthOrigin.ledgerEvolution headOrigin below
+      have headEvolution := DemandSynthOrigin.ledgerEvolution headOrigin below
       headEvolution.trans headOrigin.erase.supplyExtends
-        (DDSynthsOrigin.ledgerEvolution tailOrigin headEvolution.1)
+        (DemandSynthsOrigin.ledgerEvolution tailOrigin headEvolution.1)
 
-theorem DDCheckOrigin.ledgerEvolution
+theorem DemandCheckOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDCheck signature q S context expression expected q' S'}
+    {raw : DemandCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDCheckOrigin signature raw ledger ledger')
+    (origin : DemandCheckOrigin signature raw ledger ledger')
     (below : LedgerBelow q ledger) : Evolution q q' ledger ledger' :=
   match origin with
-  | .mk synthOrigin _ => DDSynthOrigin.ledgerEvolution synthOrigin below
+  | .mk synthOrigin _ => DemandSynthOrigin.ledgerEvolution synthOrigin below
 
-theorem DDChecksOrigin.ledgerEvolution
+theorem DemandChecksOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expressions : List Expr} {expecteds : List Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDChecks signature q S context expressions expecteds q' S'}
+    {raw : DemandChecks signature q S context expressions expecteds q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDChecksOrigin signature raw ledger ledger')
+    (origin : DemandChecksOrigin signature raw ledger ledger')
     (below : LedgerBelow q ledger) : Evolution q q' ledger ledger' :=
   match origin with
   | .nil => Evolution.refl below (SupplyExtends.refl _)
   | .cons headOrigin tailOrigin =>
-      have headEvolution := DDCheckOrigin.ledgerEvolution headOrigin below
+      have headEvolution := DemandCheckOrigin.ledgerEvolution headOrigin below
       headEvolution.trans headOrigin.erase.supplyExtends
-        (DDChecksOrigin.ledgerEvolution tailOrigin headEvolution.1)
+        (DemandChecksOrigin.ledgerEvolution tailOrigin headEvolution.1)
 
 theorem DDPatternOrigin.ledgerEvolution
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
@@ -370,7 +370,7 @@ theorem DDPatternOrigin.ledgerEvolution
         RefinesBelow.markFreshCap q ledger⟩
   | .pval expressionOrigin =>
       have expressionEvolution :=
-        DDSynthOrigin.ledgerEvolution expressionOrigin below
+        DemandSynthOrigin.ledgerEvolution expressionOrigin below
       have post : Evolution _ _ _ _ :=
         ⟨LedgerBelow.markFreshCap expressionEvolution.1,
           RefinesBelow.markFreshCap _ _⟩
@@ -440,7 +440,7 @@ theorem DDArmsOrigin.ledgerEvolution
   | .nil => Evolution.refl below (SupplyExtends.refl _)
   | .cons patternOrigin disjoint bodyOrigin tailOrigin =>
       have patternEvolution := DDDPatOrigin.ledgerEvolution patternOrigin below
-      have bodyEvolution := DDCheckOrigin.ledgerEvolution bodyOrigin
+      have bodyEvolution := DemandCheckOrigin.ledgerEvolution bodyOrigin
         patternEvolution.1
       have throughBody := patternEvolution.trans
         patternOrigin.erase.supplyExtends bodyEvolution
@@ -459,7 +459,7 @@ theorem DDClauseOrigin.ledgerEvolution
   match origin with
   | .mk ppOrigin _ nextOrigin armsOrigin =>
       have ppEvolution := DDPPatOrigin.ledgerEvolution ppOrigin below
-      have nextEvolution := DDChecksOrigin.ledgerEvolution nextOrigin
+      have nextEvolution := DemandChecksOrigin.ledgerEvolution nextOrigin
         ppEvolution.1
       have throughNext := ppEvolution.trans ppOrigin.erase.supplyExtends
         nextEvolution
@@ -487,7 +487,7 @@ end
 
 /-! ## Cut-local boundedness
 
-The global `DDSynth.boundedBy` theorem publishes the terminal bound of a
+The global `DemandSynth.boundedBy` theorem publishes the terminal bound of a
 derivation.  In inversion proofs one often needs the earlier application cut:
 after synthesizing the function and aligning it with the freshly allocated
 function skeleton, but before synthesizing the argument.  The following
@@ -497,45 +497,45 @@ consequence directly. -/
 /-- Origin-certified synthesis preserves substitution boundedness.  This is
 the raw boundedness theorem exposed without requiring clients to erase the
 certificate by hand. -/
-theorem DDSynthOrigin.outputBounded
+theorem DemandSynthOrigin.outputBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {target : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDSynth signature q S context expression target q' S'}
+    {raw : DemandSynth signature q S context expression target q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDSynthOrigin signature raw ledger ledger')
+    (origin : DemandSynthOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context) :
     S'.BoundedBy q' ∧ target.BoundedBy q' :=
   origin.erase.boundedBy closed substBounded contextBounded
 
 /-- Origin-certified checking preserves boundedness at its output cut. -/
-theorem DDCheckOrigin.outputBounded
+theorem DemandCheckOrigin.outputBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {expression : Expr} {expected : Ty}
     {q' : InferenceBase.FreshSupply} {S' : Subst}
-    {raw : DDCheck signature q S context expression expected q' S'}
+    {raw : DemandCheck signature q S context expression expected q' S'}
     {ledger ledger' : CapabilityOriginLedger}
-    (origin : DDCheckOrigin signature raw ledger ledger')
+    (origin : DemandCheckOrigin signature raw ledger ledger')
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context)
     (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q' :=
   origin.erase.boundedBy closed substBounded contextBounded expectedBounded
 
 /-- Ledger-aware equality alignment preserves a supplied cut bound. -/
-theorem DDAlignTypesWithLedger.outputBounded
+theorem DemandAlignTypesWithLedger.outputBounded
     {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
     {S : Subst} {left right : Ty} {S' : Subst}
-    (aligned : DDAlignTypesWithLedger ledger S left right S')
+    (aligned : DemandAlignTypesWithLedger ledger S left right S')
     (substBounded : S.BoundedBy q) (leftBounded : left.BoundedBy q)
     (rightBounded : right.BoundedBy q) : S'.BoundedBy q :=
   aligned.erase.boundedBy substBounded leftBounded rightBounded
 
 /-- Ledger-aware checking alignment preserves a supplied cut bound. -/
-theorem DDAlignWithLedger.outputBounded
+theorem DemandAlignWithLedger.outputBounded
     {ledger : CapabilityOriginLedger} {q : InferenceBase.FreshSupply}
     {S : Subst} {raw expected : Ty} {S' : Subst}
-    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (aligned : DemandAlignWithLedger ledger S raw expected S')
     (substBounded : S.BoundedBy q) (rawBounded : raw.BoundedBy q)
     (expectedBounded : expected.BoundedBy q) : S'.BoundedBy q :=
   aligned.erase.boundedBy substBounded rawBounded expectedBounded
@@ -564,14 +564,14 @@ Unlike a terminal boundedness theorem, this result retains `q₁` and `S₂`
 in its type, so dependent inversion clients do not need to normalize a large
 whole-program supply expression merely to show that the next capability is
 fresh. -/
-theorem DDSynthOrigin.appCutsBounded
+theorem DemandSynthOrigin.appCutsBounded
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {function : Expr} {functionTarget : Ty}
     {q₁ : InferenceBase.FreshSupply} {S₁ S₂ : Subst}
     {ledger ledger₁ : CapabilityOriginLedger}
-    {functionRaw : DDSynth signature q S context function functionTarget q₁ S₁}
-    (functionOrigin : DDSynthOrigin signature functionRaw ledger ledger₁)
-    (aligned : DDAlignTypesWithLedger ledger₁ S₁ functionTarget
+    {functionRaw : DemandSynth signature q S context function functionTarget q₁ S₁}
+    (functionOrigin : DemandSynthOrigin signature functionRaw ledger ledger₁)
+    (aligned : DemandAlignTypesWithLedger ledger₁ S₁ functionTarget
       (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂)
     (closed : signature.SchemesClosed) (substBounded : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context) :

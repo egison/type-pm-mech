@@ -6,7 +6,7 @@ import TypePM.DemandTypingInferenceCompletenessValidatorBisimulation
 # Certified matcher finalization
 
 This module transfers the declarative matcher-finalization checks across the
-current DD/executable bisimulation.  It then records the executable
+current demand-directed/executable bisimulation.  It then records the executable
 finalization event in the paired validator chronology.
 -/
 

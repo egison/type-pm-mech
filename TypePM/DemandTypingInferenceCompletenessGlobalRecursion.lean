@@ -19,7 +19,7 @@ open DemandTypingInferenceCompletenessGlobalCertified
 open DemandTypingInferenceCompletenessMatcherGlobal
 open DemandTypingInferenceCompletenessPatternCtorCapComplete
 
-/-- Terminal-audited DD synthesis is complete for the executable traversal at
+/-- Terminal-audited demand-directed synthesis is complete for the executable traversal at
 every fuel satisfying the weighted syntax budget. -/
 theorem pairedAuditedSynthCompleteness
     {terminal : Subst} {signature : FrozenSig}

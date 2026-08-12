@@ -1,7 +1,7 @@
-import TypePM.DemandTypingRuntimeErasureUserPatterns
+import TypePM.DemandTypingInvariantErasureUserPatterns
 
 /-!
-# Combined runtime erasure for `matchAll`
+# Combined typing-invariant erasure for `matchAll`
 
 This module is deliberately downstream of both expression and user-pattern
 erasure, avoiding an import cycle between their mutually referenced
@@ -9,12 +9,12 @@ judgments.
 -/
 
 namespace TypePM
-namespace DDSynthOrigin
+namespace DemandSynthOrigin
 
 /-- `matchAll` transports each child through exactly the chronological
-suffix following that child, then applies the state-free runtime constructor
+suffix following that child, then applies the state-free `TypingInvariant` constructor
 at the common final cut. -/
-theorem runtimeErasureUnder_matchAll
+theorem typingInvariantErasureUnder_matchAll
     {signature : FrozenSig} {q : InferenceBase.FreshSupply} {S : Subst}
     {context : Context} {target matcher : Expr} {pattern : Pattern}
     {body : Expr} {targetTarget : Ty}
@@ -23,27 +23,27 @@ theorem runtimeErasureUnder_matchAll
     {S2 S3 : Subst} {q3 : InferenceBase.FreshSupply} {S4 : Subst}
     {bodyTarget : Ty} {q' : InferenceBase.FreshSupply} {S' : Subst}
     {ledger ledger1 ledger2 ledger3 ledger' : CapabilityOriginLedger}
-    {targetRaw : DDSynth signature q S context target targetTarget q1 S1}
-    (targetOrigin : DDSynthOrigin signature targetRaw ledger ledger1)
+    {targetRaw : DemandSynth signature q S context target targetTarget q1 S1}
+    (targetOrigin : DemandSynthOrigin signature targetRaw ledger ledger1)
     {patternRaw : DDPattern signature q1 S1 context [] [] pattern dual
       bindings q2 S2}
     (patternOrigin : DDPatternOrigin signature patternRaw ledger1 ledger2)
-    (targetAligned : DDAlignTypesWithLedger ledger2 S2 dual.target
+    (targetAligned : DemandAlignTypesWithLedger ledger2 S2 dual.target
       targetTarget S3)
-    {matcherRaw : DDCheck signature q2 S3 context matcher
+    {matcherRaw : DemandCheck signature q2 S3 context matcher
       (.slot dual.cap targetTarget) q3 S4}
-    (matcherOrigin : DDCheckOrigin signature matcherRaw ledger2 ledger3)
-    {bodyRaw : DDSynth signature q3 S4
+    (matcherOrigin : DemandCheckOrigin signature matcherRaw ledger2 ledger3)
+    {bodyRaw : DemandSynth signature q3 S4
       (bindings.toContext ++ context) body bodyTarget q' S'}
-    (bodyOrigin : DDSynthOrigin signature bodyRaw ledger3 ledger')
-    (targetUnder : RuntimeErasureUnder targetOrigin)
-    (patternUnder : DDPatternOrigin.RuntimeErasureUnder patternOrigin)
-    (matcherUnder : DDCheckOrigin.RuntimeErasureUnder matcherOrigin)
-    (bodyUnder : RuntimeErasureUnder bodyOrigin)
+    (bodyOrigin : DemandSynthOrigin signature bodyRaw ledger3 ledger')
+    (targetUnder : TypingInvariantErasureUnder targetOrigin)
+    (patternUnder : DDPatternOrigin.TypingInvariantErasureUnder patternOrigin)
+    (matcherUnder : DemandCheckOrigin.TypingInvariantErasureUnder matcherOrigin)
+    (bodyUnder : TypingInvariantErasureUnder bodyOrigin)
     (closed : signature.SchemesClosed) (Sb : S.BoundedBy q)
     (contextBounded : Context.BoundedBy q context) :
-    RuntimeErasureUnder
-      (DDSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
+    TypingInvariantErasureUnder
+      (DemandSynthOrigin.matchAll targetOrigin patternOrigin targetAligned
         matcherOrigin bodyOrigin) := by
   intro final finalSubst post finalLedger terminalEquation admissible
   obtain ⟨S1b, targetB⟩ := targetOrigin.erase.boundedBy closed Sb
@@ -67,9 +67,9 @@ theorem runtimeErasureUnder_matchAll
     (fun entry membership => nomatch membership)
   have alignmentFactor := DDErasure.StateFactorization.ofAlignTypes
     targetAligned S2b dualB.2 (targetB.mono ext2)
-  have matcherFactor := DDCheckOrigin.factorize matcherOrigin closed S3b
+  have matcherFactor := DemandCheckOrigin.factorize matcherOrigin closed S3b
     (contextBounded.mono (ext1.trans ext2)) matcherExpectedB
-  have bodyFactor := DDSynthOrigin.factorize bodyOrigin closed S4b
+  have bodyFactor := DemandSynthOrigin.factorize bodyOrigin closed S4b
     (Context.BoundedBy.append ((bindingsB.mono ext3).toContext)
       (contextBounded.mono ((ext1.trans ext2).trans ext3)))
   have afterAlignmentFactor := matcherFactor.trans bodyFactor
@@ -109,20 +109,20 @@ theorem runtimeErasureUnder_matchAll
     exact congrArg post.apply
       (congrArg afterAlignmentPost.apply targetAligned.output_equal)
   rw [finalTargetEquality] at patternAtFinal
-  have matcherAtFinal' : RuntimeTyping signature
+  have matcherAtFinal' : TypingInvariant signature
       (context.applySubst finalSubst) matcher
       (.slot (dual.cap.apply finalSubst.cap)
         (finalSubst.apply targetTarget)) := by
     simpa only [Subst.apply_slot] using matcherAtFinal
-  have bodyAtFinal' : RuntimeTyping signature
+  have bodyAtFinal' : TypingInvariant signature
       ((bindings.applySubst finalSubst).toContext ++
         context.applySubst finalSubst)
       body (finalSubst.apply bodyTarget) := by
     simpa only [Context.applySubst_append,
       MonoCtx.toContext_applySubst] using bodyAtFinal
   simpa only [Subst.apply_listT] using
-    RuntimeTyping.matchAll targetAtFinal (.ofTerminal patternAtFinal)
+    TypingInvariant.matchAll targetAtFinal (.ofTerminal patternAtFinal)
       matcherAtFinal' bodyAtFinal'
 
-end DDSynthOrigin
+end DemandSynthOrigin
 end TypePM

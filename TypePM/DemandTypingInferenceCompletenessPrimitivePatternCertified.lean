@@ -465,7 +465,7 @@ theorem inferPPatsFuel_cons_validation
 /-! ## Complete primitive-pattern chronology -/
 
 /- Validator coverage depends only on the successful executable traversal.
-The DD reconstruction may therefore choose a bisimilar executable target and
+The demand-directed reconstruction may therefore choose a bisimilar executable target and
 attach this chronology afterwards. -/
 mutual
 
@@ -715,7 +715,7 @@ def certifyBoundedDPatRun
       rawBindingsBounded := raw.rawBindingsBounded }
 
 /-! These executable-history theorems are deliberately independent of the
-raw DD origin.  A raw completion and the corresponding validation proof can
+raw demand-directed origin.  A raw completion and the corresponding validation proof can
 therefore be paired after the global recursion chooses its exact run. -/
 
 end DemandTypingInferenceCompletenessPrimitivePatternCertified

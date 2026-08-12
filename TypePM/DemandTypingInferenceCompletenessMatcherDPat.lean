@@ -5,7 +5,7 @@ import TypePM.DemandTypingInferenceCompletenessMain
 
 Matcher arms may reach their data pattern after earlier solver steps have
 changed the executable representation of the shared clause target.  This
-module generalizes the primitive data-pattern recursion so the DD target and
+module generalizes the primitive data-pattern recursion so the demand-directed target and
 the executable target need only be bisimilar.
 -/
 
@@ -132,7 +132,7 @@ noncomputable def dpatCtor_complete_related
       executableTarget)
     (declarativeBounded : declarativeTarget.BoundedBy q)
     (executableBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q scheme) S
       (InferenceBase.instantiateCtorScheme q scheme).value.2
       declarativeTarget S₁)
@@ -236,7 +236,7 @@ noncomputable def dpatTuple_complete_related
       executableTarget)
     (declarativeBounded : declarativeTarget.BoundedBy q)
     (executableBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) declarativeTarget S₁)
     {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
     (children :
@@ -368,7 +368,7 @@ noncomputable def dpatCtor_complete_related_bounded
       executableTarget)
     (declarativeBounded : declarativeTarget.BoundedBy q)
     (executableBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger
+    (aligned : DemandAlignTypesWithLedger
       (DDLedger.markCtorInstance ledger q scheme) S
       (InferenceBase.instantiateCtorScheme q scheme).value.2
       declarativeTarget S₁)
@@ -424,7 +424,7 @@ noncomputable def dpatTuple_complete_related_bounded
       executableTarget)
     (declarativeBounded : declarativeTarget.BoundedBy q)
     (executableBounded : executableTarget.BoundedBy q)
-    (aligned : DDAlignTypesWithLedger ledger S
+    (aligned : DemandAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) declarativeTarget S₁)
     {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
     (targetFinalBounded : executableTarget.BoundedBy q')
@@ -659,7 +659,7 @@ end
 
 /-- The generalized data-pattern reconstruction closes the callback consumed by
 matcher-arm completeness.  In particular, the executable target need only be
-bisimilar to the target recorded by the DD derivation. -/
+bisimilar to the target recorded by the demand-directed derivation. -/
 theorem matcherDPatCompletenessMotive
     {signature : FrozenSig} (closed : signature.SchemesClosed) :
     MatcherDPatCompletenessMotive signature := by

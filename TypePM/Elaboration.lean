@@ -3,17 +3,17 @@ import TypePM.Source
 /-!
 # Explicit coercion plans
 
-The internal `RuntimeTyping` certificate keeps only the terminal semantic
+The internal `TypingInvariant` proof keeps only the terminal semantic
 effect of coercion.  This module separately records the executable raw solver
 evidence used by reconstruction as an explicit outer coercion plan.
 
 `SynthHead` records one non-coercion certificate rule at
 the root, while `CoercionPlan` records the (possibly empty) outer coercion
-spine explicitly.  Erasing a plan yields `RuntimeTyping`; the converse is not
+spine explicitly.  Erasing a plan yields `TypingInvariant`; the converse is not
 claimed because semantic runtime evidence intentionally forgets solver
 provenance.
 
-The premises of `SynthHead` intentionally remain `RuntimeTyping` certificates here.
+The premises of `SynthHead` intentionally remain `TypingInvariant` proofs here.
 Thus this is the root factorization consumed by the recursive core
 factorization in `TypePM.CoreTyping` and the mutual coherent reconstruction in
 `TypePM.CoherentTyping`.
@@ -22,30 +22,30 @@ factorization in `TypePM.CoreTyping` and the mutual coherent reconstruction in
 namespace TypePM
 namespace Elaboration
 
-/-- A runtime certificate whose root rule synthesizes a type rather than
+/-- A typing invariant whose root rule synthesizes a type rather than
 applying an implicit matcher/slot coercion.  Recursive premises remain
-`RuntimeTyping`; later core reconstruction can refine them independently. -/
+`TypingInvariant`; later core reconstruction can refine them independently. -/
 inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop where
   | var {context name scheme target} :
       context.find? name = some scheme ->
       scheme.ValueFlowInst target ->
       SynthHead signature context (.var name) target
   | lam {context name body domain codomain} :
-      RuntimeTyping signature ((name, Scheme.mono domain) :: context) body codomain ->
+      TypingInvariant signature ((name, Scheme.mono domain) :: context) body codomain ->
       SynthHead signature context (.lam name body) (.fn domain codomain)
   | app {context function argument domain codomain} :
-      RuntimeTyping signature context function (.fn domain codomain) ->
-      RuntimeTyping signature context argument domain ->
+      TypingInvariant signature context function (.fn domain codomain) ->
+      TypingInvariant signature context argument domain ->
       SynthHead signature context (.app function argument) codomain
   | letE {context name value body valueTy bodyTy} :
-      RuntimeTyping signature context value valueTy ->
-      RuntimeTyping signature
+      TypingInvariant signature context value valueTy ->
+      TypingInvariant signature
         ((name, signature.generalize context valueTy) :: context) body bodyTy ->
       SynthHead signature context (.letE name value body) bodyTy
   | fixE {context self argument body domain codomain} :
       self ≠ argument ->
       DirectSelf.Holds self body ->
-      RuntimeTyping signature
+      TypingInvariant signature
         ((argument, Scheme.mono domain) ::
           (self, Scheme.mono (.fn domain codomain)) :: context)
         body codomain ->
@@ -71,11 +71,11 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
   | matchAll
       {prevailing context target matcher pattern body targetTy patternCap
        bindings result} :
-      RuntimeTyping signature context target targetTy ->
+      TypingInvariant signature context target targetTy ->
       ResolvedPatternTy signature prevailing context [] [] pattern
         patternCap targetTy bindings ->
-      RuntimeTyping signature context matcher (.slot patternCap targetTy) ->
-      RuntimeTyping signature (bindings.toContext ++ context) body result ->
+      TypingInvariant signature context matcher (.slot patternCap targetTy) ->
+      TypingInvariant signature (bindings.toContext ++ context) body result ->
       SynthHead signature context (.matchAll target matcher pattern body)
         (Ty.listT result)
   | matcher {context clauses target capability evidence} :
@@ -91,11 +91,11 @@ inductive SynthHead (signature : FrozenSig) : Context -> Expr -> Ty -> Prop wher
 
 /-- Forget the root synthesis boundary and recover the existing surface
 typing judgment. -/
-theorem SynthHead.toRuntimeTyping
+theorem SynthHead.toTypingInvariant
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (typing : SynthHead signature context expression target) :
-    RuntimeTyping signature context expression target := by
+    TypingInvariant signature context expression target := by
   cases typing with
   | var lookup instanceTyping => exact .var lookup instanceTyping
   | lam bodyTyping => exact .lam bodyTyping
@@ -169,12 +169,12 @@ def CheckHead (signature : FrozenSig) (context : Context)
     CoercionPlan signature context expression source target
 
 /-- Replay explicit coercion evidence on top of a pre-coercion typing. -/
-theorem CoercionPlan.toRuntimeTyping
+theorem CoercionPlan.toTypingInvariant
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {source target : Ty}
     (plan : CoercionPlan signature context expression source target)
-    (typing : RuntimeTyping signature context expression source) :
-    RuntimeTyping signature context expression target := by
+    (typing : TypingInvariant signature context expression source) :
+    TypingInvariant signature context expression target := by
   induction plan with
   | refl => exact typing
   | matcherToSlot raw =>
@@ -182,10 +182,10 @@ theorem CoercionPlan.toRuntimeTyping
       exact .coerceMatcherToSlot typing (raw.postCapabilityDemand _)
   | checkSlotToSlot raw =>
       rename_i sourceCap sourceTarget requestedCap requestedTarget C T postSubst
-      change RuntimeTyping signature context expression
+      change TypingInvariant signature context expression
         (postSubst.apply ((Subst.mk C T).apply
           (.slot requestedCap requestedTarget)))
-      change RuntimeTyping signature context expression
+      change TypingInvariant signature context expression
         (postSubst.apply ((Subst.mk C T).apply
           (.slot sourceCap sourceTarget))) at typing
       exact raw.postSlotEquality postSubst ▸ typing
@@ -195,21 +195,21 @@ theorem CoercionPlan.toRuntimeTyping
 
 
 /-- Checking evidence erases to the existing surface judgment. -/
-theorem CheckHead.toRuntimeTyping
+theorem CheckHead.toTypingInvariant
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty}
     (checking : CheckHead signature context expression target) :
-    RuntimeTyping signature context expression target := by
+    TypingInvariant signature context expression target := by
   rcases checking with ⟨source, synthesis, plan⟩
-  exact plan.toRuntimeTyping synthesis.toRuntimeTyping
+  exact plan.toTypingInvariant synthesis.toTypingInvariant
 
 /-- Explicit checking evidence soundly erases to the semantic runtime
 certificate. -/
 theorem checkHead_sound
     {signature : FrozenSig} {context : Context} {expression : Expr}
     {target : Ty} (checking : CheckHead signature context expression target) :
-    RuntimeTyping signature context expression target :=
-  checking.toRuntimeTyping
+    TypingInvariant signature context expression target :=
+  checking.toTypingInvariant
 
 end Elaboration
 end TypePM

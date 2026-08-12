@@ -7,7 +7,7 @@ import TypePM.DemandTypingInferenceCompletenessValidatorBisimulation
 
 This module closes the isolated capability subroutine used by user pattern
 constructors.  Projection success is transported through the finite
-DD/executable renaming; projection failure is invariant.  The fallback branch
+demand-directed/executable renaming; projection failure is invariant.  The fallback branch
 then replays the shared-result allocation and field-capability alignment before
 using the same projected-skeleton completion.
 -/
@@ -885,7 +885,7 @@ noncomputable def fallback_complete
       resultVariables.eraseDups
       (patternCtorAssignmentsSupply resultVariables.eraseDups q).1
       entry.projection.fieldTypes = some demands)
-    (aligned : DDAlignCtorCapsWithLedger
+    (aligned : DemandAlignCtorCapsWithLedger
       (DDLedger.markCapRange ledger q
         (patternCtorAssignmentsSupply resultVariables.eraseDups q).2)
       S declarativeChildren demands S₁)
@@ -1037,7 +1037,7 @@ noncomputable def fallback_complete
 
 /-! ## Public package -/
 
-/-- Constructor-capability inference is complete for every DD derivation and
+/-- Constructor-capability inference is complete for every demand-directed derivation and
 its intrinsic origin certificate. -/
 noncomputable def patternCtorCapCompletenessPackage
     (signature : FrozenSig) :

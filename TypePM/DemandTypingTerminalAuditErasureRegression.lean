@@ -2,17 +2,17 @@ import TypePM.DemandTypingErasure
 import TypePM.DemandTypingRegression
 
 /-!
-# Public DD state-erasure regression
+# Public demand-directed state-erasure regression
 
 The flagship polymorphic-let derivation crosses the public, closed-program
-`DDTyping` to `RuntimeTyping` bridge at its published `Int` type.
+`SourceTyping` to `TypingInvariant` bridge at its published `Int` type.
 -/
 
 namespace TypePM.DemandTypingRegression
 
-theorem dmLet_runtimeTyping :
-    RuntimeTyping CertifiedInferenceRegression.emptySignature [] dmLetProgram
+theorem dmLet_typingInvariant :
+    TypingInvariant CertifiedInferenceRegression.emptySignature [] dmLetProgram
       .int :=
-  dmLet_ddTyping.runtimeTyping emptySignature_schemesClosed
+  dmLet_sourceTyping.typingInvariant emptySignature_schemesClosed
 
 end TypePM.DemandTypingRegression
