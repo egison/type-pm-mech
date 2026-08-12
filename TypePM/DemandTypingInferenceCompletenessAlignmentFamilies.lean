@@ -41,7 +41,8 @@ private def StateRunCompletion.refl
     executable_ledger_below := relation.executable_ledger_below
     protected_origins := relation.protected_origins
     protected_below := relation.protected_below
-    allocated_recorded := relation.allocated_recorded }
+    allocated_recorded := relation.allocated_recorded
+    protected_safe := relation.protected_safe }
 
 private theorem MonoCtx.BoundedBy.head
     {q : InferenceBase.FreshSupply} {entry : String × Ty} {tail : MonoCtx}
@@ -88,7 +89,8 @@ private def StateRunCompletion.finishAlignDuals
       protected_origins := core.protected_origins.recordEvent event
       protected_below := core.protected_below.recordEvent_of_allocated event
       allocated_recorded := core.allocated_recorded.recordEvent event (by
-        simp [event, TraceEvent.allocatedCapVars]) }
+        simp [event, TraceEvent.allocatedCapVars])
+      protected_safe := core.protected_safe.recordEvent event }
   rcases Option.bind_eq_some_iff.mp core.success with
     ⟨middle, capSuccess, targetSuccess⟩
   rw [alignDuals.eq_1]

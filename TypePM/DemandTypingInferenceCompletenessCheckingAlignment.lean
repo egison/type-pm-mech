@@ -51,7 +51,8 @@ def StateRunCompletion.finishExpectedRaw
       executable_ledger_below := final.executable_ledger_below
       protected_origins := final.protected_origins
       protected_below := final.protected_below
-      allocated_recorded := final.allocated_recorded }
+      allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe }
   unfold alignExprResultAtExpected
   rw [planRaw]
   simp only
@@ -106,7 +107,8 @@ def StateRunCompletion.finishExpectedProductMatcher
       executable_ledger_below := final.executable_ledger_below
       protected_origins := final.protected_origins
       protected_below := final.protected_below
-      allocated_recorded := final.allocated_recorded }
+      allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe }
   unfold alignExprResultAtExpected
   rw [plan, requested]
   simp only
@@ -160,7 +162,8 @@ def StateRunCompletion.finishExpectedSlotTuple
       executable_ledger_below := final.executable_ledger_below
       protected_origins := final.protected_origins
       protected_below := final.protected_below
-      allocated_recorded := final.allocated_recorded }
+      allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe }
   unfold alignExprResultAtExpected
   rw [plan, requested]
   simp only
