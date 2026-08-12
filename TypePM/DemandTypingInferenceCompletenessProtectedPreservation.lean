@@ -170,5 +170,36 @@ theorem CurrentProtectedProducerSafe.instantiateDualInState
       rw [frozen]
       simp
 
+/-! ## Solver boundaries -/
+
+/-- One successful resolved constraint preserves the current protected
+producer invariant.  This is the local bridge used by the global traversal
+recursion at every alignment solve. -/
+theorem CurrentProtectedProducerSafe.runResolvedConstraint
+    {state result : InferState} (safe : CurrentProtectedProducerSafe state)
+    {origin : ConstraintOrigin} {constraint : Constraint}
+    (success : Inference.runResolvedConstraint state origin constraint =
+      some result) :
+    CurrentProtectedProducerSafe result := by
+  unfold Inference.runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin constraint with
+  | none => simp [stepEq] at success
+  | some step =>
+      have snapshot := solveResolvedWithLedger_ledgerSnapshot stepEq
+      have admissible := solveResolvedWithLedger_stepLedgerAdmissible stepEq
+      cases constraint with
+      | capEq _ _ | targetEq _ _ =>
+          simp [stepEq] at success
+          subst result
+          exact safe.recordSolve step snapshot admissible
+      | producerToSlot _ _ _ _ =>
+          by_cases checked : capSubstSafeVarsCheck state.capabilityOrigins
+              step.delta.cap state.protectedCaps = true
+          · simp [stepEq, checked] at success
+            subst result
+            exact safe.recordSolve step snapshot admissible
+          · simp [stepEq, checked] at success
+
 end DemandTypingInferenceCompletenessProtectedPreservation
 end TypePM
