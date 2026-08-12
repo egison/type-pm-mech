@@ -74,6 +74,21 @@ abbrev SynthCompletenessOracle (signature : FrozenSig) : Prop :=
       (inferExprFuel fuel signature context selfEnv path expression state)
       q' S' ledger' target)
 
+/-- Traversal-stable checking counterpart of `SynthCompletenessOracle`. -/
+abbrev CheckCompletenessOracle (signature : FrozenSig) : Prop :=
+  ∀ {fuel : Nat} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {expected : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDCheck signature q S context expression expected q' S'},
+    (before : TraversalStateCorrespondence q S ledger state) →
+    context.BoundedBy q → expected.BoundedBy q →
+    DDCheckOrigin signature raw ledger ledger' →
+    ExprAdequate fuel expression →
+    Nonempty (StateRunCompletion before
+      (checkExprFuel fuel signature context selfEnv path expression expected
+        state) q' S' ledger')
+
 def boundedSynthsNil_complete
     (fuel : Nat) (signature : FrozenSig) (context : Context)
     (selfEnv : SelfEnv) (parent : SyntaxPath) (index : Nat)
@@ -454,6 +469,49 @@ def checksOrigin_cons_complete
         (expression :: expressions) (expected :: expecteds) state)
       q' S' ledger' :=
   checkExprsFuel_cons_complete before head tail
+
+/-- Actual origin-tree dispatcher for checking lists.  The recursive head
+oracle is traversal-stable, and the tail is recursively reconstructed from
+the head's concrete completion state. -/
+theorem checksOrigin_complete_nonempty_from_check
+    {signature : FrozenSig} (checkComplete : CheckCompletenessOracle signature)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {expecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ expecteds, expected.BoundedBy q)
+    {raw : DDChecks signature q S context expressions expecteds q' S'}
+    (origin : DDChecksOrigin signature raw ledger ledger')
+    (adequate : ExprListAdequate fuel expressions) :
+    Nonempty (StateRunCompletion before
+      (checkExprsFuel fuel signature context selfEnv parent index expressions
+        expecteds state) q' S' ledger') := by
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases origin with
+  | nil => exact ⟨checksOrigin_nil_complete fuel before⟩
+  | @cons q S context expression expressions expected expecteds q₁ S₁ q' S'
+      ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin =>
+      have childAdequate := exprList_cons (fuel := fuel) adequate
+      have expectedBounded := expectedsBounded expected (by simp)
+      let headRun := Classical.choice
+        (checkComplete (selfEnv := selfEnv) (path := index :: parent)
+          before contextBounded expectedBounded headOrigin childAdequate.1)
+      have tailContextBounded : context.BoundedBy q₁ :=
+        contextBounded.mono headOrigin.erase.supplyExtends
+      have tailExpectedsBounded :
+          ∀ item ∈ expecteds, item.BoundedBy q₁ := by
+        intro item membership
+        exact (expectedsBounded item (by simp [membership])).mono
+          headOrigin.erase.supplyExtends
+      let tailRun := Classical.choice
+        (checksOrigin_complete_nonempty_from_check
+          (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+          checkComplete fuel headRun.completion tailContextBounded
+          tailExpectedsBounded tailOrigin childAdequate.2)
+      exact ⟨checksOrigin_cons_complete before headRun tailRun⟩
+termination_by fuel
 
 /-! ## Structural leaf certificates -/
 
