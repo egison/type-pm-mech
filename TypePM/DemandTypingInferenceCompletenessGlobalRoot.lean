@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessRootBuilder
 import TypePM.DemandTypingInferenceCompletenessContextBisimulation
+import TypePM.DemandTypingInferenceCompletenessSignatureBounds
 
 /-!
 # Initial specialization of global paired completeness
@@ -20,6 +21,7 @@ open DemandTypingInferenceCompletenessInitial
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessPairedRoot
 open DemandTypingInferenceCompletenessRootBuilder
+open DemandTypingInferenceCompletenessSignatureBounds
 
 /-- Specialize a global paired synthesis motive to a DD derivation beginning
 at the canonical supply, identity substitution, empty ledger, empty self
@@ -46,8 +48,11 @@ theorem pairedRoot_of_global
     change 8 * (exprTraversalFuel expression + 1) ≤
       8 * (exprTraversalFuel expression + 1)
     exact Nat.le_refl _
-  have certified := complete (selfEnv := []) (path := []) before contexts
-    contextBounded contextBounded audit adequate
+  have signatureBelow : SignatureVarsBelow
+      (initialSupply signature context) signature :=
+    DemandTypingInferenceCompletenessSignatureBounds.initial signature context
+  have certified := complete (selfEnv := []) (path := []) before
+    signatureBelow contexts contextBounded contextBounded audit adequate
   exact pairedRoot_nonempty_of_initial certified
 
 end DemandTypingInferenceCompletenessGlobalRoot
