@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessPatternDispatcher
 import TypePM.DemandTypingInferenceCompletenessValidationMain
+import TypePM.DemandTypingInferenceCompletenessSignatureBounds
 
 /-!
 # Validator-certified user-pattern completeness
@@ -25,6 +26,7 @@ open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessPatternMain
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessCertifiedRun
+open DemandTypingInferenceCompletenessSignatureBounds
 
 /-- A bounded raw pattern completion together with validator coverage for the
 same concrete executable run. -/
@@ -72,6 +74,7 @@ structure CertifiedPatternCompletenessBelow
         declarativeBindings pattern dual bindings' q' S'}
       {origin : DDPatternOrigin signature raw ledger ledger'},
       (before : TraversalStateCorrespondence q S ledger state) →
+      SignatureVarsBelow q signature →
       ContextBisimulation before.prevailing declarativeContext
         executableContext →
       PatternCtxBisimulation before.prevailing declarativeParameters
@@ -103,6 +106,7 @@ structure CertifiedPatternsCompletenessBelow
         declarativeBindings patterns duals bindings' q' S'}
       {origin : DDPatternsOrigin signature raw ledger ledger'},
       (before : TraversalStateCorrespondence q S ledger state) →
+      SignatureVarsBelow q signature →
       ContextBisimulation before.prevailing declarativeContext
         executableContext →
       PatternCtxBisimulation before.prevailing declarativeParameters
@@ -120,29 +124,19 @@ structure CertifiedPatternsCompletenessBelow
           state)
         q' S' ledger' duals bindings')
 
-def CertifiedPatternCompletenessBelow.raw
-    {terminal : Subst} {signature : FrozenSig} {bound : Nat}
-    (certified : CertifiedPatternCompletenessBelow terminal signature bound) :
-    PatternCompletenessBelow terminal signature bound := by
-  refine ⟨?_⟩
-  intro fuel below
-  intros
-  exact ⟨(Classical.choice (certified.complete below (by assumption)
-    (by assumption) (by assumption) (by assumption) (by assumption)
-    (by assumption) (by assumption) (by assumption) (by assumption)
-    (by assumption) (by assumption) (by assumption))).bounded⟩
+def CertifiedPatternCompletenessBelow.mono
+    {terminal : Subst} {signature : FrozenSig} {smaller larger : Nat}
+    (available : CertifiedPatternCompletenessBelow terminal signature larger)
+    (boundLe : smaller ≤ larger) :
+    CertifiedPatternCompletenessBelow terminal signature smaller :=
+  ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
 
-def CertifiedPatternsCompletenessBelow.raw
-    {terminal : Subst} {signature : FrozenSig} {bound : Nat}
-    (certified : CertifiedPatternsCompletenessBelow terminal signature bound) :
-    PatternsCompletenessBelow terminal signature bound := by
-  refine ⟨?_⟩
-  intro fuel below
-  intros
-  exact ⟨(Classical.choice (certified.complete below (by assumption)
-    (by assumption) (by assumption) (by assumption) (by assumption)
-    (by assumption) (by assumption) (by assumption) (by assumption)
-    (by assumption) (by assumption) (by assumption))).bounded⟩
+def CertifiedPatternsCompletenessBelow.mono
+    {terminal : Subst} {signature : FrozenSig} {smaller larger : Nat}
+    (available : CertifiedPatternsCompletenessBelow terminal signature larger)
+    (boundLe : smaller ≤ larger) :
+    CertifiedPatternsCompletenessBelow terminal signature smaller :=
+  ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
 
 /-! ## Constructor-independent chronology -/
 
