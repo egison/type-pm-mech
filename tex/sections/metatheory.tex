@@ -174,6 +174,38 @@ validator bridgeなどの実装向け条件はcaller premiseに残らない．�
 recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$の三例を，
 caller-supplied paired rootを持たない公開回帰として機械検査している．
 
+\subsection{受理同値とannotation-freeness}
+
+executable soundnessと受理完全性を合成すると，一般contextについて
+\[
+\mathsf{FrozenSigWF}(\Sighat)
+\Longrightarrow
+\left(
+\exists\tau.\,\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
+\Longleftrightarrow
+\mathsf{infer}(\Sighat,\Gamma,e)\ne\mathsf{none}
+\right)
+\]
+を得る．Leanでは$\mathtt{Inference.ddTypable\_iff\_infer\_isSome}$として機械化し，
+$\Gamma=\emptyset$への特殊化を$\mathtt{Inference.annotation\_freeness}$として公開する．
+sourceの$\mathsf{Expr}$にはtype-ascription constructorがないため，closed termが何らかのDD targetで
+型付け可能かを，型annotationを入力せず有限な公開推論で決定できる．対応する
+$\mathtt{ddTypableDecidable}$は$\mathsf{FrozenSigWF}$の証明の下で
+$\mathsf{Decidable}(\exists\tau.\,\mathsf{DDTyping})$を返す．
+
+型を返す入口についても
+\[
+\mathsf{inferType}(\Sighat,\Gamma,e)=\mathsf{some}\;\tau
+\Longrightarrow
+\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
+\]
+を証明済みである．完全性方向では，任意に与えたDD derivationのtargetと返値型の構文的一致ではなく，
+$\mathsf{inferType}$が返す何らかの型と，その返値自身のDD derivationを同時に得る．従ってこの結果は
+target一意性やprincipalityを含まない．それらを将来定式化するなら，initial supplyに既に存在する
+変数を固定する二sort metavariable renamingを法とする一意性を先に証明し，次に型のinstance
+preorderを定義してprincipalityを述べる必要がある．$\mathsf{RuntimeTyping}$全体のprincipality反例はこのDD結果には
+流用しない．
+
 \subsection{機械化の範囲}
 
 全 expression／pattern／arm／clause の raw DD family，それらに対応する intrinsic Origin family，
@@ -182,6 +214,8 @@ solved-form保存，terminal audit，terminal-fixedな相互runtime erasure，cl
 $\mathsf{DDTyping}\Rightarrow\mathsf{RuntimeTyping}$，公開 inferenceから$\mathsf{DDTyping}$および
 $\mathsf{RuntimeTyping}$へのreconstruction，$\mathsf{DDTyping.safe}$によるsource-facingな公開安全性，
 concrete dynamic safety，DD derivationから全実行traversal familyへの受理完全性，terminal auditから
-validator event coverageへの輸送，公開の$\mathtt{DDTyping.infer\_isSome}$はLean~4に機械化済みである．
+validator event coverageへの輸送，公開の$\mathtt{DDTyping.infer\_isSome}$，一般contextの受理同値，
+closed annotation-freeness，$\mathtt{inferType}$返値soundness，DD typabilityのdecidabilityは
+Lean~4に機械化済みである．
 public freeze回帰も閉じている．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

@@ -163,6 +163,13 @@ DDTyping.infer_isSome :
 caller premiseに残らない．`FrozenSigWF`はterminal factsを実行側の終端stateへ輸送する際の
 scheme closednessとcanonical arm checkerを含み，M4とM5で共有する公開signature境界である．
 
+以上の二方向を合成した受理同値も完成している．一般contextでは
+`Inference.ddTypable_iff_infer_isSome`，closed programでは
+`Inference.annotation_freeness`として，`FrozenSigWF`の下で「ある型でDD型付け可能」と
+公開推論器の成功が同値になる．`inferType_success_ddTyping`は`inferType`が実際に返した型の
+DD derivationを与え，`ddTypableDecidable`は同じ同値からDD typabilityの決定可能性を構成する．
+任意に与えたDD derivationのtargetと返値型の構文的一致やprincipalityは主張しない．
+
 `nestedCapProgram` と swapped 版は DD で型付かず，推論器も拒否する意図された負例である．
 一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は維持すべき正例で
 あり，public Origin certificate を伴う回帰で固定済みである．
@@ -180,7 +187,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 [x] 2. DD state erasure ─────────→ [x] 4. DD の公開安全性
 
 [x] 3. infer success → DDTyping ─┐
-                                 ├→ [ ] 6. 受理同値と注釈不要性
+                                 ├→ [x] 6. 受理同値と注釈不要性
 [x] 5. DDTyping → infer success ─┘
 ```
 
@@ -188,7 +195,7 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 
 ### 進捗サマリ
 
-全7 milestoneのうち，完了6，未着手1である．
+全7 milestoneを完了している．
 
 | milestone | 状態 | 完了した中心部分 | 残る中心部分 |
 |---|---|---|---|
@@ -198,11 +205,11 @@ roadmap は次の依存関係に従う．`RuntimeTyping` を source typing に�
 | 3. infer success → DDTyping | 完了 | 全 traversal family の exact-state 相互再構成，terminal audit，public中心定理と回帰 | なし |
 | 4. DDの公開安全性 | 完了 | `FrozenSigWF`へのclosedness統合，`DDTyping.safe`，closed inferenceからの公開安全性経路 | なし |
 | 5. DDTyping → infer success | 完了 | 全構文familyのaudited traversal完全性，validator event coverage，public `DDTyping.infer_isSome` | なし |
-| 6. 受理同値 | 未着手 | milestone 3と5の両方 | 受理同値と`inferType`の結果型との関係 |
+| 6. 受理同値 | 完了 | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，DD typabilityのdecidability | なし |
 
-現在の次段は milestone 6である．milestone 3の executable soundnessとmilestone 5の
-acceptance completenessを合成し，`FrozenSigWF`の下でsource typabilityと公開推論器の
-受理を同値として公開する．
+roadmapの中心定理はすべて公開APIまで接続済みである．今後principalityを扱う場合は，まず
+initial supplyに既に存在する変数を固定する二sort metavariable renamingを法としたDD target一意性を
+独立に定式化し，その後にinstance preorder上のprincipalityを議論する．
 
 `infer` 成功から `RuntimeTyping` を再構成する既存定理は，引き続き実行系の内部 certificate への
 独立した経路である．新しい source-facing 経路はまず `DDTyping` を直接再構成する．一般 context
@@ -395,21 +402,34 @@ terminal-audited `DDTyping` fragmentから生成したtraceに対する相対的
 recursive list matcher，multiset matcher，pattern constructorを含む`matchAll`の三例は，caller-supplied
 paired rootなしでこの公開定理へ到達する回帰として固定している．
 
-### [ ] 6. 受理同値と注釈不要性を公開する
+### [x] 6. 受理同値と注釈不要性を公開する
 
-milestone 3 と 5 を合成し，closed program について source typability と公開推論器の成功を
-対応付ける．
+milestone 3 と 5 を合成し，一般contextについてsource typabilityと公開推論器の成功を
+対応付ける．closed program版をannotation-freenessとして公開する．
 
 ```text
 FrozenSigWF signature →
-  ((∃ τ, DDTyping signature [] e τ) ↔
-    (infer signature [] e).isSome)
+  ((∃ τ, DDTyping signature context e τ) ↔
+    (infer signature context e).isSome = true)
 ```
 
-この同値を本 mechanization の annotation-freeness 定理とする．あわせて，`inferType` が返す型と
-DD derivation の型の関係を定式化し，DD fragment に対する decidability と，必要なら条件付き
-principality を独立に議論する．`RuntimeTyping` 全体の principality 反例を DDTyping の結果として
-流用しない．
+`Inference.annotation_freeness`は`context = []`に特殊化した公開名である．さらに
+`Inference.inferType_success_ddTyping`は
+
+```text
+inferType signature context e = some τ →
+  DDTyping signature context e τ
+```
+
+を与える．完全性側では，元のDD targetとの構文的一致を要求せず，`inferType`が返す何らかの型と
+その型自身のDD derivationを同時に得る．`Inference.ddTypableDecidable`は`FrozenSigWF`の証明を
+受け取り，有限な公開推論を使って`∃ τ, DDTyping ... τ`の`Decidable`を返す．
+
+ここで完成したのは受理と返値soundnessであり，DD targetの一意性やprincipalityではない．
+将来それらを扱う場合は，initial supplyに既に存在する変数を固定する二sort metavariable renamingを
+法とする一意性を先に証明し，次に型のinstance preorderを定義してprincipalityを述べる．
+`RuntimeTyping`全体の
+principality反例をDDTypingの結果として流用しない．
 
 ## 機械化済みの主な性質
 
@@ -423,6 +443,8 @@ principality を独立に議論する．`RuntimeTyping` 全体の principality �
   evidence をすべて要求する．
 - `infer signature context expression = some result` から
   `DDTyping signature context expression result.resolvedTarget` を導く．
+- `FrozenSigWF`の下で，ある型に対する`DDTyping`の存在と`infer`／`inferType`の成功が同値である．
+- `inferType`が返した型には`DDTyping`導出があり，DD typabilityは決定可能である．
 - closed signature上で `DDTyping signature [] e τ` から `RuntimeTyping signature [] e τ` を導く．
 - `FrozenSigWF` は全signature schemeのclosednessを含み，実行可能checkerがこの条件も検査する．
 - `DDTyping signature [] e τ` と `FrozenSigWF signature` から，同じ型の内部certificateと

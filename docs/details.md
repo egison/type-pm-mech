@@ -233,6 +233,36 @@ success，validator bridge，既知のinference successは公開premiseではな
 validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `DDTyping` fragmentから
 再構成したtraceに対する受理完全性である．
 
+soundnessと受理完全性は
+[`TypePM/DemandTypingInferenceEquivalence.lean`](../TypePM/DemandTypingInferenceEquivalence.lean)
+で合成する．中心定理`Inference.ddTypable_iff_infer_isSome`は一般contextに対して
+
+```text
+FrozenSigWF signature →
+  ((∃ target, DDTyping signature context expression target) ↔
+    (infer signature context expression).isSome = true)
+```
+
+を与える．`Inference.annotation_freeness`は空contextへの特殊化である．sourceの`Expr`には
+type-ascription constructorがないため，型を入力として要求せずclosed termのDD typabilityを
+判定できる，という意味でannotation-freenessと呼ぶ．`Inference.ddTypableDecidable`は
+`FrozenSigWF`の証明を受け，同じ実行可能なBoolean判定から
+`Decidable (∃ target, DDTyping ...)`を構成する．
+
+型を返すAPIについては，`Inference.inferType_success_ddTyping`が
+
+```text
+inferType signature context expression = some target →
+  DDTyping signature context expression target
+```
+
+を証明する．さらに`ddTypable_iff_inferType_some_ddTyping`は，DD typabilityがあれば
+`inferType`の具体的な返値とその返値自身のDD derivationを同時に得る．一方，入力した任意の
+DD derivationのtargetと返値型が構文的に等しいとは主張しない．完全性内部ではDD側と実行側の
+metavariable名を`StateBisimulation`で結んでおり，target一意性やprincipalityは別の定理を要する．
+将来の順序は，initial supplyに既に存在する変数を固定する二sort metavariable renamingを法とした
+一意性を先に定め，その後に型のinstance preorderを導入してprincipalityを述べる，である．
+
 ## 4. RuntimeTyping は内部 certificate である
 
 [`TypePM/Source.lean`](../TypePM/Source.lean) の `RuntimeTyping` は fresh supply，prevailing solver
@@ -405,6 +435,10 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
   open schemeの拒否．
 - `DemandTypingInferenceSoundnessRegression`: terminal `let` とrecursive matcherに対するpublic
   `infer_success_ddTyping`．
+- `DemandTypingInferenceCompletenessRegression`: list／multiset matcherと`matchAll`に対する
+  premise-free `DDTyping.infer_isSome`．
+- `DemandTypingInferenceEquivalenceRegression`: 一般／closed受理同値の両方向，`inferType`返値の
+  DD soundness，DD typabilityの`Decidable` API．
 - `DemandTypingSafetyRegression`: closed inferenceから`DDTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
@@ -441,6 +475,7 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun`／`PairedValidatorRun` | compositional event coverage，成功run，DD／実行operandを結ぶpaired chronology |
 | `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`PairedRoot` | terminal auditの実行stateへの輸送，paired rootから有限validatorへの直接射影 |
 | `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `DDTyping.infer_isSome`，premise-free recursive matcher回帰 |
+| `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |

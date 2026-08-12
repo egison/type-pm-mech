@@ -42,7 +42,10 @@ $\mathsf{RuntimeTyping}$ を使う．これは source acceptance を定める第
 runtime value typing と preservation の帰納法を状態履歴から切り離すための補助判断である．
 source acceptanceと動的安全性に必要な構成要素の依存方向は
 \[
-\mathsf{infer\ success}\Longrightarrow\mathsf{DDTyping},
+\mathsf{FrozenSigWF}(\Sighat)
+\Longrightarrow
+\bigl(\mathsf{infer\ success}
+\Longleftrightarrow\exists\tau.\,\mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)\bigr),
 \qquad
 \mathsf{FrozenSigWF}(\Sighat)
 \Longrightarrow\Sighat.\mathsf{SchemesClosed}
@@ -59,8 +62,9 @@ source acceptanceと動的安全性に必要な構成要素の依存方向は
 &\Longrightarrow\mathsf{SafeResult}_{DD}.
 \end{aligned}
 \]
-推論成功から$\mathsf{DDTyping}$への矢印は，成功したtraversalの相互DD再構成とterminal
-validatorとして機械化済みである．
+左向きはDD derivationとterminal auditからtraversalとvalidator coverageを再構成し，右向きは
+成功したtraversalとvalidatorからDD derivationを再構成する．空contextへの特殊化を
+annotation-freenessと呼ぶ．
 state erasureはclosed signature・空contextに特殊化したOrigin derivation，終端 substitution に固定した
 相互消去，terminal auditの合成である．$\mathsf{FrozenSigWF}$はclosednessと動的整合性を一つに束ね，
 $\mathsf{DDTyping.safe}$がstate erasureで得た内部certificateと独立な$\mathsf{CoreSafety}$ packageを
