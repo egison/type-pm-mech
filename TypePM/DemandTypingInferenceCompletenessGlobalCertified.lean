@@ -2,6 +2,7 @@ import TypePM.DemandTypingInferenceCompletenessMain
 import TypePM.DemandTypingInferenceCompletenessPairedValidatorRun
 import TypePM.DemandTypingInferenceCompletenessValidationMain
 import TypePM.DemandTypingInferenceCompletenessPairedChecking
+import TypePM.DemandTypingInferenceCompletenessFixMatcher
 
 /-! # Paired certified global expression traversal
 
@@ -24,6 +25,9 @@ open DemandTypingInferenceCompletenessValidationMain
 open DemandTypingInferenceCompletenessPairedChecking
 open DemandTypingInferenceCompletenessMatcherMain
 open DemandTypingInferenceCompletenessCheckingAlignment
+open DemandTypingInferenceCompletenessFixMatcher
+open DemandTypingInferenceCompletenessAlignmentTraversal
+open DemandTypingInferenceCompletenessMatcherExprTraversal
 
 /-- The common output of global certified synthesis. -/
 structure BoundedPairedCertifiedSynthRunCompletion
@@ -1220,6 +1224,161 @@ theorem auditedSynthFix_complete_paired
   refine ⟨⟨rawBounded, validation.ordinary.history, ?_⟩⟩
   exact validation
 
+
+/-- Matcher-bodied recursion uses the deterministic placeholder reconstruction
+before its paired recursive body. -/
+theorem auditedSynthFixMatcher_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {self argument : String} {clauses : List Clause}
+    {domain codomain bodyTarget : Ty}
+    {q q₀ q₁ : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature
+      (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (distinct : self ≠ argument)
+    (direct : DirectSelf.Holds self (.matcher clauses))
+    (placeholder : fixMatcherPlaceholderSupply signature clauses q =
+      some (domain, codomain, q₀))
+    {bodyRaw : DDSynth signature q₀ S
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono (.fn domain codomain)) :: declarativeContext)
+      (.matcher clauses) bodyTarget q₁ S₁}
+    {bodyOrigin : DDSynthOrigin signature bodyRaw
+      (DDLedger.markCapRange ledger q q₀) ledger₁}
+    (aligned : DDAlignTypesWithLedger ledger₁ S₁ bodyTarget codomain S')
+    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1)
+      (.fix self argument (.matcher clauses))) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+      before (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.fix self argument (.matcher clauses)) state)
+      q₁ S' ledger₁ (.fn domain codomain)) := by
+  have bodyAdequate : SynthBudgetAdequate fuel (.matcher clauses) := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  let visited := before.afterVisit .exprFix path
+  let placeholderRun := Classical.choice
+    (fixMatcherPlaceholder_complete (path := path) visited placeholder)
+  let placeholderTy := Ty.fn domain codomain
+  let placeholderEvent := TraceEvent.fixPlaceholder self argument placeholderTy
+    path
+  let directEvent := TraceEvent.directSelfAccepted self placeholderTy path
+  let placeholderExtension :=
+    placeholderRun.transition.after.recordEventExtension placeholderEvent
+  let directExtension := placeholderExtension.after.recordEventExtension
+    directEvent
+  let bodyBefore :=
+    (placeholderRun.completion.recordEvent placeholderEvent
+      (by simp [placeholderEvent, TraceEvent.allocatedCapVars])).recordEvent
+      directEvent (by simp [directEvent, TraceEvent.allocatedCapVars])
+  have baseContexts : ContextBisimulation placeholderRun.completion.prevailing
+      declarativeContext executableContext :=
+    (contexts.transport (before.visitExtension .exprFix path)).transport
+      placeholderRun.transition
+  have domainRelated : TyBisimulation bodyBefore.prevailing domain domain :=
+    directExtension.transportTy
+      (placeholderExtension.transportTy
+        (placeholderRun.completion.prevailing.sameTarget domain))
+  have placeholderRelated : TyBisimulation bodyBefore.prevailing
+      placeholderTy placeholderTy :=
+    directExtension.transportTy
+      (placeholderExtension.transportTy
+        (placeholderRun.completion.prevailing.sameTarget placeholderTy))
+  have bodyContexts : ContextBisimulation bodyBefore.prevailing
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono placeholderTy) :: declarativeContext)
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono placeholderTy) :: executableContext) :=
+    ContextBisimulation.consMono
+      (ContextBisimulation.consMono
+        ((baseContexts.transport placeholderExtension).transport directExtension)
+        self placeholderRelated)
+      argument domainRelated
+  obtain ⟨domainBounded, codomainBounded⟩ :=
+    fixMatcherPlaceholderSupply_boundedBy placeholder
+  have bodyContextBounded : Context.BoundedBy q₀
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono placeholderTy) :: declarativeContext) :=
+    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainBounded)
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono
+          (Ty.BoundedBy.fnOf domainBounded codomainBounded))
+        (contextBounded.mono
+          (SupplyExtends.fixMatcherPlaceholder placeholder)))
+  have bodyExecutableContextBounded : Context.BoundedBy q₀
+      ((argument, Scheme.mono domain) ::
+        (self, Scheme.mono placeholderTy) :: executableContext) :=
+    Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainBounded)
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono
+          (Ty.BoundedBy.fnOf domainBounded codomainBounded))
+        (executableContextBounded.mono
+          (SupplyExtends.fixMatcherPlaceholder placeholder)))
+  let bodyRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := (self, placeholderTy) :: selfEnv.eraseMany [self, argument])
+      (path := 0 :: path) bodyBefore bodyContexts bodyContextBounded
+      bodyExecutableContextBounded bodyAudit bodyAdequate)
+  have codomainRelated : TyBisimulation bodyRun.raw.run.completion.state.prevailing
+      codomain codomain := bodyRun.raw.run.completion.state.prevailing.sameTarget _
+  have bodyDeclarativeBounded : bodyTarget.BoundedBy q₁ :=
+    (bodyRaw.boundedBy closed bodyBefore.declarative_bounded
+      bodyContextBounded).2
+  let alignmentRun := ddAlignTypesWithLedger_complete
+    (origin := freshOrigin .recursiveBinder path "fix-result")
+    bodyRun.raw.run.completion.state bodyRun.raw.run.target codomainRelated
+    bodyDeclarativeBounded
+    (codomainBounded.mono bodyOrigin.erase.supplyExtends)
+    bodyRun.raw.rawTargetBounded
+    (codomainBounded.mono bodyOrigin.erase.supplyExtends) aligned
+  let rawRun := inferExprFuel_fixMatcher_complete before distinct direct
+    placeholderRun bodyRun.raw.run alignmentRun
+  let rawBounded : BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.fix self argument (.matcher clauses)) state)
+      q₁ S' ledger₁ (.fn domain codomain) := ⟨rawRun,
+    Ty.BoundedBy.fnOf
+      (domainBounded.mono bodyOrigin.erase.supplyExtends)
+      (codomainBounded.mono bodyOrigin.erase.supplyExtends)⟩
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprFix path)
+    (ValidatorRunExtension.visit terminal signature state .exprFix path)
+  let placeholderValidation := PairedValidatorRunExtension.ofExact
+    placeholderRun.transition
+    (ValidatorRunExtension.ofBuildFixPlaceholderMatcher
+      (terminal := terminal) (signature := signature) placeholderRun.success)
+  let placeholderEventValidation := PairedValidatorRunExtension.ofExact
+    placeholderExtension (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.fixPlaceholder
+        self argument placeholderTy path))
+  let directValidation := PairedValidatorRunExtension.ofExact directExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.directSelfAccepted
+        self placeholderTy path))
+  let alignmentValidation := PairedValidatorRunExtension.ofExact
+    alignmentRun.transition (ValidatorRunExtension.ofAlignTypes
+      (terminal := terminal) (signature := signature) alignmentRun.success)
+  let finishTransition := alignmentRun.transition.after.recordEventExtension
+    (.inferredExpr (.fix self argument (.matcher clauses)) placeholderTy path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _
+      (.fix self argument (.matcher clauses)) path placeholderTy)
+  let validation :=
+    visitValidation.trans placeholderValidation |>.trans
+      placeholderEventValidation |>.trans directValidation |>.trans
+      bodyRun.validation |>.trans alignmentValidation |>.trans finishValidation
+  refine ⟨⟨rawBounded, validation.ordinary.history, ?_⟩⟩
+  exact validation
 
 theorem auditedSynthPrim_complete_paired
     {terminal : Subst} {signature : FrozenSig}
