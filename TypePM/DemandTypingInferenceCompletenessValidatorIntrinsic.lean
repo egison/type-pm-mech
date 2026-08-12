@@ -21,6 +21,47 @@ namespace TypePM
 namespace Inference
 namespace Reconstruction
 
+/-- Pointwise form of the ordinary type-alignment trace fold. -/
+def TypeAlignmentEventCondition
+    (terminal : InferState) (event : TraceEvent) : Prop :=
+  match event with
+  | .typeAlignment start stop rawLeft rawRight localLeft localRight =>
+      start ≤ stop ∧ stop ≤ terminal.trace.solves.length ∧
+      localLeft = (replay (terminal.trace.solves.take start)).apply rawLeft ∧
+      localRight = (replay (terminal.trace.solves.take start)).apply rawRight ∧
+      terminal.prevailing.apply rawLeft = terminal.prevailing.apply rawRight
+  | _ => True
+
+/-- Pointwise form of the dual-alignment trace fold. -/
+def DualAlignmentEventCondition
+    (terminal : InferState) (event : TraceEvent) : Prop :=
+  match event with
+  | .dualAlignment start stop rawLeft rawRight localLeft localRight =>
+      start ≤ stop ∧ stop ≤ terminal.trace.solves.length ∧
+      localLeft = rawLeft.applySubst
+        (replay (terminal.trace.solves.take start)) ∧
+      localRight = rawRight.applySubst
+        (replay (terminal.trace.solves.take start)) ∧
+      rawLeft.applySubst terminal.prevailing =
+        rawRight.applySubst terminal.prevailing
+  | _ => True
+
+/-- Pointwise type-event coverage is definitionally the existing trace fold. -/
+theorem traceTypeAlignmentConditions_iff_eventCoverage
+    (state : InferState) :
+    TraceTypeAlignmentConditions state ↔
+      ∀ event, event ∈ state.trace.events →
+        TypeAlignmentEventCondition state event := by
+  rfl
+
+/-- Pointwise dual-event coverage is definitionally the existing trace fold. -/
+theorem traceDualAlignmentConditions_iff_eventCoverage
+    (state : InferState) :
+    TraceDualAlignmentConditions state ↔
+      ∀ event, event ∈ state.trace.events →
+        DualAlignmentEventCondition state event := by
+  rfl
+
 /-! ## Equality transport through a later executable suffix -/
 
 /-- Applying the solver suffix of a history extension preserves an equality
@@ -88,6 +129,20 @@ theorem alignTypes_terminal_condition
     rfl
   · exact HistoryPrefix.final_type_eq suffix alignedDD.output_equal
 
+/-- Direct emitter API: a successful ordinary alignment, followed by the
+overall traversal suffix, justifies its exact recorded event at the root
+terminal cut. -/
+theorem alignTypes_typeAlignmentEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (success : alignTypes state origin left right = some aligned)
+    (suffix : aligned.HistoryPrefix terminal) :
+    TypeAlignmentEventCondition terminal
+      (.typeAlignment state.trace.solves.length aligned.trace.solves.length
+        left right (state.prevailing.apply left)
+        (state.prevailing.apply right)) := by
+  exact alignTypes_terminal_condition success suffix
+
 /-! ## Dual-alignment events -/
 
 /-- Origin-safe dual alignment makes both components equal at its output
@@ -150,6 +205,19 @@ theorem alignDuals_terminal_condition
     rfl
   · exact HistoryPrefix.final_dual_eq suffix
       (ddAlignDual_output_equal_intrinsic alignedDD)
+
+/-- Direct emitter API for a successful dual alignment and its overall
+traversal suffix. -/
+theorem alignDuals_dualAlignmentEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {left right : Dual}
+    (success : alignDuals state origin left right = some aligned)
+    (suffix : aligned.HistoryPrefix terminal) :
+    DualAlignmentEventCondition terminal
+      (.dualAlignment state.trace.solves.length aligned.trace.solves.length
+        left right (left.applySubst state.prevailing)
+        (right.applySubst state.prevailing)) := by
+  exact alignDuals_terminal_condition success suffix
 
 /-! ## Fresh-allocation arithmetic -/
 
