@@ -1956,5 +1956,105 @@ theorem auditedSynthLam_complete_nonempty
     ((Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)).mono
       bodyOrigin.erase.supplyExtends)⟩
 
+/-- Audited expression lists are reconstructed left-to-right.  The head run
+provides the concrete executable state and prevailing substitution used by
+the tail, while the terminal audit splits along the same origin tree. -/
+theorem auditedSynths_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    {raw : DDSynths signature q S declarativeContext expressions targets q' S'}
+    {origin : DDSynthsOrigin signature raw ledger ledger'}
+    (audit : DDSynthsTerminalAudit terminal signature origin)
+    (adequate : SynthsBudgetAdequate fuel expressions) :
+    Nonempty (BoundedSynthsRunCompletion before
+      (inferExprsFuel fuel signature executableContext selfEnv parent index
+        expressions state) q' S' ledger' targets) := by
+  cases fuel with
+  | zero => simp [SynthsBudgetAdequate] at adequate
+  | succ inner =>
+      cases audit with
+      | nil => exact ⟨boundedSynthsNil_complete inner signature
+          executableContext selfEnv parent index before⟩
+      | cons headAudit tailAudit =>
+          rename_i expression target q₁ S₁ ledger₁ expressions targets
+            headRaw tailRaw headOrigin tailOrigin
+          have headAdequate : SynthBudgetAdequate inner expression := by
+            simp only [SynthsBudgetAdequate, SynthBudgetAdequate,
+              exprListTraversalFuel] at adequate ⊢
+            omega
+          have tailAdequate : SynthsBudgetAdequate inner expressions := by
+            simp only [SynthsBudgetAdequate, exprListTraversalFuel]
+              at adequate ⊢
+            omega
+          let headRun := Classical.choice
+            (synthBelow (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := index :: parent)
+              before contexts contextBounded headAudit headAdequate)
+          have tailContexts : ContextBisimulation
+              headRun.run.completion.state.prevailing declarativeContext
+              executableContext :=
+            contexts.transport headRun.run.transition
+          have tailContextBounded : declarativeContext.BoundedBy q₁ :=
+            contextBounded.mono headOrigin.erase.supplyExtends
+          have belowTail : AuditedSynthCompletenessBelow terminal signature
+              inner := synthBelow.mono (Nat.le_succ inner)
+          let tailRun := Classical.choice
+            (auditedSynths_complete_nonempty
+              (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+              inner belowTail headRun.run.completion.state tailContexts
+              tailContextBounded tailAudit tailAdequate)
+          exact ⟨boundedSynthsCons_complete before headRun tailRun
+            tailOrigin.erase.supplyExtends⟩
+termination_by fuel
+
+/-- Tuple synthesis delegates to the audited left-to-right expression-list
+dispatcher after the tuple visit event. -/
+theorem auditedSynthTuple_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    {childrenRaw : DDSynths signature q S declarativeContext expressions
+      targets q' S'}
+    {childrenOrigin : DDSynthsOrigin signature childrenRaw ledger ledger'}
+    (childrenAudit : DDSynthsTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.tuple expressions)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.tuple expressions) state) q' S' ledger' (.prod targets)) := by
+  have childrenAdequate : SynthsBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, SynthsBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let childrenBefore := before.afterVisit .exprTuple path
+  have childrenContexts : ContextBisimulation
+      childrenBefore.prevailing declarativeContext executableContext :=
+    contexts.transport (before.visitExtension .exprTuple path)
+  have childrenBelow : AuditedSynthCompletenessBelow terminal signature fuel :=
+    synthBelow.mono (Nat.le_succ fuel)
+  let childrenRun := Classical.choice
+    (auditedSynths_complete_nonempty
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      fuel childrenBelow childrenBefore childrenContexts contextBounded
+      childrenAudit childrenAdequate)
+  exact ⟨boundedSynthTuple_complete before childrenRun⟩
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
