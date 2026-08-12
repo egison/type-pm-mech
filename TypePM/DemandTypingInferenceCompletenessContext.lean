@@ -268,7 +268,7 @@ theorem canonicalInstantiation_tyBisimulation
 
 /-- The proof-carrying paired solver result is bounded whenever both resolved
 operands are bounded at the solve cut. -/
-theorem PairedUnification.PairedResult.boundedBy
+theorem pairedResult_boundedBy
     {ledger : CapabilityOriginLedger} {left right : Ty}
     (result : PairedUnification.PairedResult ledger left right)
     {supply : InferenceBase.FreshSupply}
@@ -279,7 +279,7 @@ theorem PairedUnification.PairedResult.boundedBy
 
 /-- Capability-only executable results have the analogous paired
 boundedness, with identity target action. -/
-theorem PairedUnification.OrientedCapResult.boundedByPair
+theorem orientedCapResult_boundedByPair
     {ledger : CapabilityOriginLedger} {left right : Cap}
     (result : PairedUnification.OrientedCapResult ledger left right)
     {supply : InferenceBase.FreshSupply}
@@ -290,7 +290,7 @@ theorem PairedUnification.OrientedCapResult.boundedByPair
 
 /-- A paired result over prevailing-resolved bounded operands is bounded at
 the same cut.  This is the form needed by traversal state transitions. -/
-theorem PairedUnification.PairedResult.boundedByResolved
+theorem pairedResult_boundedByResolved
     {ledger : CapabilityOriginLedger} {left right : Ty}
     (result : PairedUnification.PairedResult ledger left right)
     {supply : InferenceBase.FreshSupply} {prevailing : Subst}

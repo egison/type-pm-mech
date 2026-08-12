@@ -85,10 +85,13 @@ def stateBisimulationFreshTyExtension
         change declarative = Subst.seq before.forward state.prevailing
         exact before.forwardEquation
       forwardAdmissible := before.forwardAdmissible
+      declarativeIdempotent := before.declarativeIdempotent
       reverse := before.reverse
       reverseEquation := by
         change state.prevailing = Subst.seq before.reverse declarative
-        exact before.reverseEquation }
+        exact before.reverseEquation
+      reverseAdmissible := before.reverseAdmissible
+      executableIdempotent := before.executableIdempotent }
   transportTy := by
     intro declarativeTarget executableTarget related
     refine ⟨?_, ?_⟩
@@ -177,10 +180,10 @@ def TraversalStateCorrespondence.freshTyExtension
 
 /-- Exact-state initialization is the diagonal of the traversal relation. -/
 def TraversalStateCorrespondence.refl
-    (state : InferState) :
+    (state : InferState) (idempotent : state.prevailing.Idempotent) :
     TraversalStateCorrespondence state.supply state.prevailing
       state.capabilityOrigins state :=
-  ⟨rfl, rfl, StateBisimulation.refl _ _⟩
+  ⟨rfl, rfl, StateBisimulation.refl _ _ idempotent⟩
 
 /-- Output relation for one raw synthesized type.  The two raw types need not
 be syntactically equal (context instantiation may see differently oriented
