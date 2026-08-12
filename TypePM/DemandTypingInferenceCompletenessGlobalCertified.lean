@@ -1533,7 +1533,7 @@ def certifiedPatternSynthCompletenessBelow_of_paired
 
 /-- Global paired synthesis also supplies the paired matcher-check callback
 used by clause reconstruction. -/
-def pairedMatcherCheckCompletenessBelow_of_paired
+abbrev pairedMatcherCheckCompletenessBelow_of_paired
     {terminal : Subst} {signature : FrozenSig}
     (closed : signature.SchemesClosed) {bound : Nat}
     (complete : PairedAuditedSynthCompletenessBelow terminal signature bound) :
