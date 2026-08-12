@@ -276,6 +276,67 @@ theorem AllocatedCapsRecorded.freezeCapabilityExport
   exact (mem_keys_setOrigins _ _ _ _).2
     (Or.inr (recorded varId oldMembership))
 
+/-- Common preservation step for every quantified-binder batch: the state
+update records exactly the IDs appended by the allocation event. -/
+theorem AllocatedCapsRecorded.recordBatch
+    {initial middle : InferState} (recorded : AllocatedCapsRecorded initial)
+    (event : TraceEvent) (ids : List CapVar) (origin : CapabilityOrigin)
+    (sameTrace : middle.trace = initial.trace)
+    (ledgerUpdate : middle.capabilityOrigins =
+      initial.capabilityOrigins.setOrigins ids origin)
+    (eventIds : event.allocatedCapVars = ids) :
+    AllocatedCapsRecorded (middle.recordEvent event) := by
+  intro varId membership
+  simp only [InferState.recordEvent, InferTrace.allocatedCapVars,
+    List.flatMap_append, List.flatMap_singleton, List.mem_append] at membership
+  change varId ∈ middle.capabilityOrigins.map Prod.fst
+  rw [ledgerUpdate, mem_keys_setOrigins]
+  rcases membership with oldMembership | newMembership
+  · right
+    apply recorded varId
+    simpa only [InferTrace.allocatedCapVars, sameTrace] using oldMembership
+  · left
+    simpa only [eventIds] using newMembership
+
+theorem AllocatedCapsRecorded.instantiateSchemeInState
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (signature : FrozenSig) (rawContext normalizedContext : Context)
+    (name : String) (scheme : Scheme) :
+    AllocatedCapsRecorded
+      (instantiateSchemeInState signature rawContext normalizedContext name
+        state scheme).2 := by
+  unfold Inference.instantiateSchemeInState
+  apply recorded.recordBatch
+  · rfl
+  · rfl
+  · rfl
+
+theorem AllocatedCapsRecorded.instantiateCtorInState
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (scheme : CtorScheme) :
+    AllocatedCapsRecorded (instantiateCtorInState state scheme).2 := by
+  unfold Inference.instantiateCtorInState
+  apply recorded.recordBatch
+  · rfl
+  · rfl
+  · rfl
+
+theorem AllocatedCapsRecorded.instantiateDualInState
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (signature : FrozenSig)
+    (rawContext : Context) (rawParameters : PatternCtx)
+    (rawBindings : MonoCtx) (context : Context)
+    (parameters : PatternCtx) (bindings : MonoCtx)
+    (scheme : DualScheme) :
+    AllocatedCapsRecorded
+      (instantiateDualInState signature rawContext rawParameters rawBindings
+        context parameters bindings state scheme).2 := by
+  unfold Inference.instantiateDualInState
+  apply recorded.recordBatch
+  · rfl
+  · rfl
+  · rfl
+
 private theorem capabilityOrigin_eq_structural_of_beq
     (origin : CapabilityOrigin)
     (checked : (origin == .structuralFlexible) = true) :
