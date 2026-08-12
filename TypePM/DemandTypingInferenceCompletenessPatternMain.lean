@@ -83,6 +83,36 @@ abbrev PatternSynthCompletenessMotive
       (inferExprFuel fuel signature executableContext selfEnv path expression
         state) q' S' ledger' target // run.result.target.BoundedBy q' }
 
+/-- The expression-synthesis motive available strictly below one global fuel
+ceiling.  This is the interface used by the mutually recursive root proof:
+the value-pattern boundary consumes a genuinely smaller expression call. -/
+abbrev PatternSynthCompletenessBelow
+    (terminal : Subst) (signature : FrozenSig) (bound : Nat) : Prop :=
+  ∀ {fuel : Nat}, fuel < bound →
+    ∀ {declarativeContext executableContext : Context}
+      {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
+      {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+      {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+      {raw : DDSynth signature q S declarativeContext expression target q' S'}
+      {origin : DDSynthOrigin signature raw ledger ledger'},
+      (before : TraversalStateCorrespondence q S ledger state) →
+      ContextBisimulation before.prevailing declarativeContext
+        executableContext →
+      declarativeContext.BoundedBy q →
+      DDSynthTerminalAudit terminal signature origin →
+      PatternSynthBudgetAdequate fuel expression →
+      Nonempty { run : SynthRunCompletion before
+        (inferExprFuel fuel signature executableContext selfEnv path expression
+          state) q' S' ledger' target // run.result.target.BoundedBy q' }
+
+theorem PatternSynthCompletenessBelow.mono
+    {terminal : Subst} {signature : FrozenSig} {smaller larger : Nat}
+    (available : PatternSynthCompletenessBelow terminal signature larger)
+    (boundLe : smaller ≤ larger) :
+    PatternSynthCompletenessBelow terminal signature smaller := by
+  intro fuel below
+  exact available (Nat.lt_of_lt_of_le below boundLe)
+
 /-- Taking capabilities pointwise from corresponding duals preserves the
 same state relation. -/
 theorem DualListBisimulation.capabilities
@@ -285,14 +315,15 @@ def boundedPatternWildOrigin_complete
 
 noncomputable def patternPValOrigin_complete
     {terminal : Subst} {signature : FrozenSig}
-    (synthComplete : PatternSynthCompletenessMotive terminal signature)
+    (fuel : Nat)
+    (synthComplete : PatternSynthCompletenessBelow terminal signature (fuel + 1))
     {declarativeContext executableContext : Context}
     {declarativeParameters executableParameters : PatternCtx}
     {declarativeBindings executableBindings : MonoCtx}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q₁ : InferenceBase.FreshSupply} {S S₁ : Subst}
     {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (before : TraversalStateCorrespondence q S ledger state)
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
@@ -338,7 +369,8 @@ noncomputable def patternPValOrigin_complete
       (declarativeBindings.toContext ++ declarativeContext).BoundedBy q :=
     Context.BoundedBy.append bindingsBounded.toContext contextBounded
   let expressionPackage := Classical.choice
-    (synthComplete (selfEnv := selfEnv) (path := 0 :: path)
+    (synthComplete (Nat.lt_succ_self fuel) (selfEnv := selfEnv)
+      (path := 0 :: path)
       (before.visit .patternValue path) expressionContexts
       expressionContextBounded audit (by
         change 8 * (exprTraversalFuel expression + 1) ≤ fuel
@@ -353,14 +385,15 @@ noncomputable def patternPValOrigin_complete
 
 noncomputable def boundedPatternPValOrigin_complete
     {terminal : Subst} {signature : FrozenSig}
-    (synthComplete : PatternSynthCompletenessMotive terminal signature)
+    (fuel : Nat)
+    (synthComplete : PatternSynthCompletenessBelow terminal signature (fuel + 1))
     {declarativeContext executableContext : Context}
     {declarativeParameters executableParameters : PatternCtx}
     {declarativeBindings executableBindings : MonoCtx}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q₁ : InferenceBase.FreshSupply} {S S₁ : Subst}
     {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (before : TraversalStateCorrespondence q S ledger state)
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
@@ -401,7 +434,8 @@ noncomputable def boundedPatternPValOrigin_complete
       (declarativeBindings.toContext ++ declarativeContext).BoundedBy q :=
     Context.BoundedBy.append bindingsBounded.toContext contextBounded
   let expressionPackage := Classical.choice
-    (synthComplete (selfEnv := selfEnv) (path := 0 :: path)
+    (synthComplete (Nat.lt_succ_self fuel) (selfEnv := selfEnv)
+      (path := 0 :: path)
       (before.visit .patternValue path) expressionContexts
       expressionContextBounded audit (by
         change 8 * (exprTraversalFuel expression + 1) ≤ fuel
