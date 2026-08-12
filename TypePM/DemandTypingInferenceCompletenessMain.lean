@@ -1594,7 +1594,8 @@ theorem ppatOrigin_complete_nonempty
       have childAdequate := ppat_tuple (fuel := fuel) adequate
       have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
       refine ⟨ppatTuple_complete fuel signature path patterns before
-        target targetBounded aligned (children := ?_)⟩
+        target target (before.prevailing.sameTarget target) targetBounded
+        targetBounded aligned (children := ?_)⟩
       dsimp
       intro alignment
       have executableTargetsEq := (freshTargets_complete before

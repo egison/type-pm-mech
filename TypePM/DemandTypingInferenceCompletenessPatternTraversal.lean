@@ -1411,7 +1411,11 @@ noncomputable def ppatTuple_complete
     {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
     {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
     (before : TraversalStateCorrespondence q S ledger state)
-    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (expectedTarget executableExpectedTarget : Ty)
+    (expectedRelated : TyBisimulation before.prevailing expectedTarget
+      executableExpectedTarget)
+    (expectedBounded : expectedTarget.BoundedBy q)
+    (executableExpectedBounded : executableExpectedTarget.BoundedBy q)
     (aligned : DDAlignTypesWithLedger ledger S
       (.prod (freshTargetsSupply patterns.length q).1) expectedTarget S₁)
     {q' : InferenceBase.FreshSupply} {holes : List Dual}
@@ -1427,7 +1431,7 @@ noncomputable def ppatTuple_complete
             (.prod (freshTargets state
               (freshOrigin .primitivePattern path "pp-tuple-field")
               patterns.length).1)
-            expectedTarget)
+            executableExpectedTarget)
           (freshTargetsSupply patterns.length q).2 S₁ ledger,
         PPatsRunCompletion alignment.completion
           (inferPPatsFuel fuel signature path 0 patterns
@@ -1438,7 +1442,7 @@ noncomputable def ppatTuple_complete
           bindings) :
     PPatRunCompletion before
       (inferPPatFuel (fuel + 1) signature path (.tuple patterns)
-        expectedTarget state)
+        executableExpectedTarget state)
       q' S' ledger₂ expectedTarget holes bindings := by
   let fieldOrigin := freshOrigin .primitivePattern path "pp-tuple-field"
   let resultOrigin := freshOrigin .primitivePattern path "pp-tuple-result"
@@ -1461,13 +1465,15 @@ noncomputable def ppatTuple_complete
     exact declarativeProductBounded
   let alignment := ddAlignTypesWithLedger_complete
     (origin := resultOrigin) fresh.state executableProductRelated
-    (fresh.state.prevailing.sameTarget expectedTarget)
+    (fresh.extension.transportTy expectedRelated)
     declarativeProductBounded (expectedBounded.mono supplyExtension)
-    executableProductBounded (expectedBounded.mono supplyExtension) aligned
+    executableProductBounded
+    (executableExpectedBounded.mono supplyExtension) aligned
   let childrenRun := children alignment
   let executableHoles := childrenRun.result.holes
   let executableBindings := childrenRun.result.bindings
-  let event := TraceEvent.inferredPPat (.tuple patterns) expectedTarget
+  let event := TraceEvent.inferredPPat (.tuple patterns)
+    executableExpectedTarget
     executableHoles executableBindings path
   let visited := childrenRun.completion.visit .ppatTuple path
   let final := visited.recordEvent event (by
@@ -1479,7 +1485,8 @@ noncomputable def ppatTuple_complete
   let transition := ((fresh.extension.seq alignment.transition).seq
     childrenRun.transition).seq finishExtension
   refine
-    { result := ⟨expectedTarget, executableHoles, executableBindings,
+    { result := ⟨executableExpectedTarget, executableHoles,
+        executableBindings,
         (visit childrenRun.result.state .ppatTuple path).recordEvent event⟩
       success := ?_
       supply_eq := final.supply_eq
@@ -1494,7 +1501,10 @@ noncomputable def ppatTuple_complete
       protected_below := final.protected_below
       allocated_recorded := final.allocated_recorded
       protected_safe := final.protected_safe
-      target := transition.after.sameTarget expectedTarget
+      target := finishExtension.transportTy
+        (childrenRun.transition.transportTy
+          (alignment.transition.transportTy
+            (fresh.extension.transportTy expectedRelated)))
       holes :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
           finishExtension childrenRun.holes
