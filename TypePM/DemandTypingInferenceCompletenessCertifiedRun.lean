@@ -238,6 +238,31 @@ theorem ValidatorRunExtension.ofRunResolvedConstraint
   exfalso
   exact previous (by simpa [eventsEq] using membership)
 
+/-- The private core of type alignment consists only of one or two resolved
+solver steps; it emits no public alignment event of its own. -/
+theorem ValidatorRunExtension.ofAlignTypesCore
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin} {left right : Ty}
+    (success : alignTypesCore state origin left right = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold alignTypesCore at success
+  simp only at success
+  split at success
+  all_goals try
+    rcases Option.bind_eq_some_iff.mp success with
+      ⟨middle, firstSuccess, rest⟩
+  all_goals try
+    have first := ValidatorRunExtension.ofRunResolvedConstraint
+      (terminal := terminal) (signature := signature) firstSuccess
+  all_goals try
+    split at rest
+  all_goals try
+    exact first.trans (ValidatorRunExtension.ofRunResolvedConstraint
+      (terminal := terminal) (signature := signature) rest)
+  all_goals try contradiction
+  all_goals exact (ValidatorRunExtension.ofRunResolvedConstraint
+    (terminal := terminal) (signature := signature) success)
+
 theorem ValidatorRunExtension.protectMatcherCapability
     (terminal : Subst) (signature : FrozenSig) (state : InferState)
     (capability : Cap) :
@@ -385,6 +410,48 @@ theorem ValidatorRunExtension.finishAlignDuals
   · exact False.elim (previous old)
   · subst candidate
     simp [event, TerminalAuditSensitiveEvent]
+
+/-- Certify the solver core and then append the public type-alignment event. -/
+theorem ValidatorRunExtension.ofAlignTypes
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin} {left right : Ty}
+    (success : alignTypes state origin left right = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold alignTypes at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨aligned, coreSuccess, finished⟩
+  have resultEq : aligned.recordEvent (.typeAlignment
+      state.trace.solves.length aligned.trace.solves.length left right
+      (state.prevailing.apply left) (state.prevailing.apply right)) = result :=
+    Option.some.inj finished
+  subst result
+  exact ValidatorRunExtension.finishAlignTypes
+    (ValidatorRunExtension.ofAlignTypesCore
+      (terminal := terminal) (signature := signature) coreSuccess) success
+
+/-- Certify capability equality, target alignment, and the public dual event
+in their executable chronological order. -/
+theorem ValidatorRunExtension.ofAlignDuals
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {left right : Dual}
+    (success : alignDuals state origin left right = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold alignDuals at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨middle, capSuccess, rest⟩
+  rcases Option.bind_eq_some_iff.mp rest with
+    ⟨aligned, targetSuccess, finished⟩
+  have resultEq : aligned.recordEvent (.dualAlignment
+      state.trace.solves.length aligned.trace.solves.length left right
+      (left.applySubst state.prevailing)
+      (right.applySubst state.prevailing)) = result := Option.some.inj finished
+  subst result
+  exact ValidatorRunExtension.finishAlignDuals
+    ((ValidatorRunExtension.ofRunResolvedConstraint
+      (terminal := terminal) (signature := signature) capSuccess).trans
+      (ValidatorRunExtension.ofAlignTypes
+        (terminal := terminal) (signature := signature) targetSuccess)) success
 
 theorem ValidatorRunExtension.finishExpectedAlignment
     {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
