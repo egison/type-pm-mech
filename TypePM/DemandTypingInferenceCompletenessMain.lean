@@ -27,6 +27,54 @@ open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessCheckingAlignment
+open DemandTypingInferenceCompletenessMatcherTraversal
+
+/-! ## Global recursion packages -/
+
+/-- The executable checking cut consumes the raw synthesized type before
+normalization.  Its boundedness is therefore an independent invariant: it
+cannot be recovered from boundedness of the prevailing substitution after
+that substitution has erased a raw metavariable. -/
+structure BoundedSynthRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option ExprResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (target : Ty) : Type where
+  run : SynthRunCompletion before operation q' declarative ledger target
+  rawTargetBounded : run.result.target.BoundedBy q'
+
+/-- Compose the `DDCheckOrigin.mk` boundary once the recursive synthesis run
+has supplied its raw executable target and its syntactic bound.  Solver
+success and expected-coercion selection remain internal to the generic
+checking-alignment completeness theorem. -/
+theorem checkOrigin_complete_nonempty_of_synth
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {expression : Expr} {expected rawTarget : Ty}
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedBounded : expected.BoundedBy q)
+    {synthesized : DDSynth signature q S context expression rawTarget q₁ S₁}
+    (synth : BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature context selfEnv path expression state)
+      q₁ S₁ ledger₁ rawTarget)
+    (aligned : DDAlignWithLedger ledger₁ S₁ rawTarget expected S') :
+    Nonempty (StateRunCompletion before
+      (checkExprFuel (fuel + 1) signature context selfEnv path expression
+        expected state) q₁ S' ledger₁) := by
+  have declarativeRawBounded :=
+    (synthesized.boundedBy closed before.declarative_bounded contextBounded).2
+  have expectedAtCut := expectedBounded.mono synthesized.supplyExtends
+  let alignedRun := ddAlignWithLedger_complete (path := path)
+    synth.run.completion.state
+    synth.run.target (synth.run.completion.state.prevailing.sameTarget expected)
+    declarativeRawBounded expectedAtCut synth.rawTargetBounded expectedAtCut
+    aligned
+  exact ⟨checkExprFuel_complete before synth.run alignedRun⟩
 
 /-! ## Structural leaf certificates -/
 
