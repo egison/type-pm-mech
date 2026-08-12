@@ -151,9 +151,11 @@ traversal自身から，$\mathtt{let}$ generalization，matcher finalization，p
 compatibilityはterminal auditから得る．pattern constructorでは，DD導出が記録するdual／capabilityと
 実行trace中のoperandsを同一視せず，両者とそのbisimulationをpaired witnessとして保持する．rootで
 これらを$\mathsf{PairedRootCertifiedSynthesis}$に束ね，pattern-constructor条件はpaired witnessから
-直接，$\mathtt{let}$とmatcherの条件はexact branchから，type／dual alignmentと合成して有限の
-$\mathsf{wBridgeCheck}$の全条件を導く．Originとauditは$\mathsf{Prop}$，concrete runは
-$\mathsf{Type}$に属するため，main recursionはpaired root certificateの$\mathsf{Nonempty}$を返し，
+直接，$\mathtt{let}$とmatcherの条件も各局所cutのDD／実行operandを結ぶpaired witnessから，
+type／dual alignmentと合成して有限の$\mathsf{wBridgeCheck}$の全条件を導く．exact-state leafは
+このchronologyの対角な特別場合として埋め込む．Originとauditは$\mathsf{Prop}$，concrete runは
+$\mathsf{Type}$に属するため，fuelに対するstrong recursionは各cutのpaired runを
+$\mathsf{Nonempty}$で返す．canonical initial cutで$\mathsf{PairedRootCertifiedSynthesis}$へ束ね，
 公開facadeは受理命題の内部でだけその証明消去境界を開く．
 
 公開定理はM4と同じglobal signature条件の下で
@@ -169,6 +171,8 @@ $\mathsf{FrozenSigWF}$からはterminal factsのbisimulation輸送に必要なsc
 checkerを取り出す．$\mathsf{RawSourceVisible}$，$\mathsf{FreezeCompatible}$，solver success，
 validator bridgeなどの実装向け条件はcaller premiseに残らない．これはvalidator単体の無条件
 完全性ではなく，terminal-audited DD fragmentから生成したtraceに対する受理完全性である．
+recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$の三例を，
+caller-supplied paired rootを持たない公開回帰として機械検査している．
 
 \subsection{機械化の範囲}
 

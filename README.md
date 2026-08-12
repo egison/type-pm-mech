@@ -372,11 +372,12 @@ DDのexact solve witnessとexecutable solver resultはmutual factorizationで対
 coverage extensionを返す．pattern constructorではDD導出が記録するdual／capabilityと実行trace中の
 operandsを同一視せず，その間のbisimulationをpaired witnessとして保持する．rootでそれらを
 `PairedRootCertifiedSynthesis`に束ね，pattern-constructor compatibilityはpaired witnessから直接，
-`let` generalizationとmatcher finalizationはexact branchから，producer protection，type／dual
-alignmentと合わせて`wBridgeCheck`の全条件へ射影する．
-Originとauditは`Prop`，concrete runは`Type`に属するため，main recursionは
-`Nonempty PairedRootCertifiedSynthesis`を返し，公開facadeが受理命題の内部でだけその証明消去境界を
-開く．
+`let` generalizationとmatcher finalizationもそれぞれのDD／実行operandを結ぶpaired witnessから，
+producer protection，type／dual alignmentと合わせて`wBridgeCheck`の全条件へ射影する．
+exact-state leafはこのpaired chronologyの対角な特別場合として埋め込む．Originとauditは`Prop`，
+concrete runは`Type`に属するため，fuelに対するstrong recursionは各cutのpaired runを`Nonempty`で
+返す．canonical initial cutで`PairedRootCertifiedSynthesis`へ束ね，公開facadeが受理命題の内部でだけ
+その証明消去境界を開く．
 
 中心定理：
 
@@ -391,6 +392,8 @@ DDTyping.infer_isSome :
 `RawSourceVisible`，`FreezeCompatible`，solver success，caller-supplied bridge，既知のinference
 successは残さない．これはvalidator単体が任意のraw runを受理するという無条件完全性ではなく，
 terminal-audited `DDTyping` fragmentから生成したtraceに対する相対的な完全性である．
+recursive list matcher，multiset matcher，pattern constructorを含む`matchAll`の三例は，caller-supplied
+paired rootなしでこの公開定理へ到達する回帰として固定している．
 
 ### [ ] 6. 受理同値と注釈不要性を公開する
 
