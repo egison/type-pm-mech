@@ -1,6 +1,7 @@
 import TypePM.DemandTypingInferenceCompletenessTraversal
 import TypePM.DemandTypingInferenceCompletenessDataBisimulation
 import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
+import TypePM.DemandTypingInferenceCompletenessAlignmentFamilies
 
 /-!
 # Pattern traversal completeness packages
@@ -22,6 +23,7 @@ open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessAlignmentTraversal
+open DemandTypingInferenceCompletenessAlignmentFamilies
 
 /-! ## Compositional output relations -/
 
@@ -98,6 +100,18 @@ theorem namesDisjoint_of_bisimulation
     namesDisjoint left'.names right'.names = true := by
   rw [← leftRelated.names_eq, ← rightRelated.names_eq]
   exact (namesDisjoint_eq_true _ _).mpr disjoint
+
+theorem admissiblePostBetween_markDualInstance_of_bounded
+    {q : InferenceBase.FreshSupply}
+    {source destination : CapabilityOriginLedger} {post : Subst}
+    (between : AdmissiblePostBetween source destination post)
+    (bounded : post.BoundedBy q)
+    (sourceBelow : DDLedger.LedgerBelow q source) (scheme : DualScheme) :
+    AdmissiblePostBetween
+      (DDLedger.markDualInstance source q scheme)
+      (DDLedger.markDualInstance destination q scheme) post := by
+  exact admissiblePostBetween_setFreshRenameOnly_of_bounded between bounded
+    sourceBelow (freshCapImages_above q scheme.capBinders)
 
 theorem PatternCtxBisimulation.find?_complete
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -1905,6 +1919,171 @@ def patternTuple_complete
       bindings :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
           finishExtension children.bindings }
+
+/-! ## Composite user-pattern completions -/
+
+/-- Conjunction traverses both children and then aligns their duals. -/
+noncomputable def patternAnd_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
+    (left right : Pattern)
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (executableBindings : MonoCtx)
+    {leftDual rightDual : Dual} {leftBindings bindings' : MonoCtx}
+    (leftRun : PatternRunCompletion (before.visit .patternAnd path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternAnd path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : PatternRunCompletion leftRun.completion
+      (inferPatternFuel fuel signature context parameters
+        leftRun.result.bindings selfEnv (1 :: path) right leftRun.result.state)
+      q₂ S₂ ledger₂ rightDual bindings')
+    (declarativeLeftBounded : Dual.BoundedBy q₂ leftDual)
+    (declarativeRightBounded : Dual.BoundedBy q₂ rightDual)
+    (executableLeftBounded : Dual.BoundedBy q₂ leftRun.result.dual)
+    (executableRightBounded : Dual.BoundedBy q₂ rightRun.result.dual)
+    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pand left right) state)
+      q₂ S' ledger₂ leftDual bindings' := by
+  let leftAtRight :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+      rightRun.transition leftRun.dual
+  let alignment := ddAlignDualWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-and") rightRun.completion
+    leftAtRight rightRun.dual declarativeLeftBounded declarativeRightBounded
+    executableLeftBounded executableRightBounded aligned
+  let event := TraceEvent.inferredPattern (.pand left right)
+    leftRun.result.dual rightRun.result.bindings path
+  let final := alignment.completion.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let finishExtension := alignment.transition.after.recordEventExtension event
+  let transition := (before.visitExtension .patternAnd path).seq
+    ((leftRun.transition.seq rightRun.transition).seq
+      (alignment.transition.seq finishExtension))
+  refine
+    { result := ⟨leftRun.result.dual, rightRun.result.bindings,
+        alignment.result.recordEvent event⟩
+      success := by
+        simp [inferPatternFuel, leftRun.success, rightRun.success,
+          alignment.success, event]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+          (alignment.transition.seq finishExtension) leftAtRight
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          (alignment.transition.seq finishExtension) rightRun.bindings }
+
+/-- Disjunction aligns both the result dual and the two alternative binding
+contexts before returning the left representative. -/
+noncomputable def patternOr_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
+    (left right : Pattern)
+    {q q₁ q₂ : InferenceBase.FreshSupply}
+    {S S₁ S₂ S₃ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (executableBindings : MonoCtx)
+    {leftDual rightDual : Dual} {leftBindings rightBindings : MonoCtx}
+    (leftRun : PatternRunCompletion (before.visit .patternOr path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternOr path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : PatternRunCompletion leftRun.completion
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (1 :: path) right leftRun.result.state)
+      q₂ S₂ ledger₂ rightDual rightBindings)
+    (declarativeLeftDualBounded : Dual.BoundedBy q₂ leftDual)
+    (declarativeRightDualBounded : Dual.BoundedBy q₂ rightDual)
+    (executableLeftDualBounded : Dual.BoundedBy q₂ leftRun.result.dual)
+    (executableRightDualBounded : Dual.BoundedBy q₂ rightRun.result.dual)
+    (declarativeLeftBindingsBounded : MonoCtx.BoundedBy q₂ leftBindings)
+    (declarativeRightBindingsBounded : MonoCtx.BoundedBy q₂ rightBindings)
+    (executableLeftBindingsBounded :
+      MonoCtx.BoundedBy q₂ leftRun.result.bindings)
+    (executableRightBindingsBounded :
+      MonoCtx.BoundedBy q₂ rightRun.result.bindings)
+    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual
+      S₃)
+    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
+      leftBindings rightBindings S') :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.por left right) state)
+      q₂ S' ledger₂ leftDual leftBindings := by
+  let leftDualAtRight :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+      rightRun.transition leftRun.dual
+  let leftBindingsAtRight :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      rightRun.transition leftRun.bindings
+  let dualAlignment := ddAlignDualWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-or") rightRun.completion
+    leftDualAtRight rightRun.dual declarativeLeftDualBounded
+    declarativeRightDualBounded executableLeftDualBounded
+    executableRightDualBounded dualsAligned
+  let bindingAlignment := ddAlignBindingsWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-or-bindings")
+    dualAlignment.completion
+    (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      dualAlignment.transition leftBindingsAtRight)
+    (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      dualAlignment.transition rightRun.bindings)
+    declarativeLeftBindingsBounded declarativeRightBindingsBounded
+    executableLeftBindingsBounded executableRightBindingsBounded
+    bindingsAligned
+  let event := TraceEvent.inferredPattern (.por left right)
+    leftRun.result.dual leftRun.result.bindings path
+  let final := bindingAlignment.completion.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let finishExtension :=
+    bindingAlignment.transition.after.recordEventExtension event
+  let suffix := dualAlignment.transition.seq
+    (bindingAlignment.transition.seq finishExtension)
+  let transition := (before.visitExtension .patternOr path).seq
+    ((leftRun.transition.seq rightRun.transition).seq suffix)
+  refine
+    { result := ⟨leftRun.result.dual, leftRun.result.bindings,
+        bindingAlignment.result.recordEvent event⟩
+      success := by
+        simp [inferPatternFuel, leftRun.success, rightRun.success,
+          dualAlignment.success, bindingAlignment.success, event]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+          suffix leftDualAtRight
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          suffix leftBindingsAtRight }
 
 /-! ## Empty and cons list packaging -/
 
