@@ -448,8 +448,12 @@ def inferMatcherFuel_complete
     coverageEvent
   let coverageRelation := clausesRun.completion.recordEvent coverageEvent
     (by simp [coverageEvent, TraceEvent.allocatedCapVars])
+  /- `inferMatcherFuel` finalizes the freshly allocated matcher target
+  directly.  Clause traversal preserves that target propositionally; choosing
+  the fresh target here as well keeps the reconstructed trace definitionally
+  identical to the executable trace. -/
   let executableTarget := clausesRun.result.state.prevailing.apply
-    clausesRun.result.target
+    (.var q.nextTy)
   let executableHoleLists := terminalHoleCaps
     clausesRun.result.state.prevailing clausesRun.result.rawHoleLists
   let finalizationEvent := TraceEvent.matcherFinalization
@@ -545,9 +549,6 @@ def inferMatcherFuel_complete
   apply congrArg some
   change ExprResult.mk _ _ = ExprResult.mk _ _
   congr 1
-  simp [coverageEvent, finalizationEvent, executableTarget,
-    executableHoleLists, clausesTargetEq, terminalHoleCaps, List.map_map,
-    Function.comp_def]
 
 /-! ## Recursive matcher expressions -/
 
