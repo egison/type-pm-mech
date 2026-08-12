@@ -147,11 +147,13 @@ fresh allocation，context normalization，producer protection，fuel boundを�
 expression，checking，pattern，arm，clauseの全familyに対して再構成する．
 
 各局所runは成功等式とともにvalidator eventのcoverage extensionを返す．ordinary eventは
-traversal自身から，$mathtt{let}$ generalization，matcher finalization，pattern-constructor
-compatibilityはterminal auditから得る．rootでこれらを
-$\mathsf{RootCertifiedSynthesis}$に束ね，type／dual alignmentと合成して有限の
+traversal自身から，$\mathtt{let}$ generalization，matcher finalization，pattern-constructor
+compatibilityはterminal auditから得る．pattern constructorでは，DD導出が記録するdual／capabilityと
+実行trace中のoperandsを同一視せず，両者とそのbisimulationをpaired witnessとして保持する．rootで
+これらを$\mathsf{PairedRootCertifiedSynthesis}$に束ね，pattern-constructor条件はpaired witnessから
+直接，$\mathtt{let}$とmatcherの条件はexact branchから，type／dual alignmentと合成して有限の
 $\mathsf{wBridgeCheck}$の全条件を導く．Originとauditは$\mathsf{Prop}$，concrete runは
-$\mathsf{Type}$に属するため，main recursionはroot certificateの$\mathsf{Nonempty}$を返し，
+$\mathsf{Type}$に属するため，main recursionはpaired root certificateの$\mathsf{Nonempty}$を返し，
 公開facadeは受理命題の内部でだけその証明消去境界を開く．
 
 公開定理はM4と同じglobal signature条件の下で

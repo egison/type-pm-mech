@@ -369,10 +369,14 @@ DDのexact solve witnessとexecutable solver resultはmutual factorizationで対
 `StateBisimulation`，context normalization，supply boundednessをrecursive callの間で保存する．
 
 各constructorは成功runに加えてordinary validator eventと三種のterminal-sensitive eventの
-coverage extensionを返す．rootでそれらを`RootCertifiedSynthesis`に束ね，producer protection，
-terminal audit，type／dual alignmentを`wBridgeCheck`の全条件へ射影する．
+coverage extensionを返す．pattern constructorではDD導出が記録するdual／capabilityと実行trace中の
+operandsを同一視せず，その間のbisimulationをpaired witnessとして保持する．rootでそれらを
+`PairedRootCertifiedSynthesis`に束ね，pattern-constructor compatibilityはpaired witnessから直接，
+`let` generalizationとmatcher finalizationはexact branchから，producer protection，type／dual
+alignmentと合わせて`wBridgeCheck`の全条件へ射影する．
 Originとauditは`Prop`，concrete runは`Type`に属するため，main recursionは
-`Nonempty RootCertifiedSynthesis`を返し，公開facadeが受理命題の内部でだけその証明消去境界を開く．
+`Nonempty PairedRootCertifiedSynthesis`を返し，公開facadeが受理命題の内部でだけその証明消去境界を
+開く．
 
 中心定理：
 

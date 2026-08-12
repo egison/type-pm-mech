@@ -210,10 +210,14 @@ DD側と実行側のprevailing substitutionは同一である必要はなく，�
 
 各局所runは成功等式だけでなくvalidator eventのcoverage extensionを返す．ordinary eventは
 traversal自身から，`let` generalization，matcher finalization，pattern-constructor compatibilityは
-terminal auditから得る．rootの`RootCertifiedSynthesis`はこれらとtype／dual alignmentを束ね，
+terminal auditから得る．ただしpattern constructorのauditはDD側のdual／capabilityを記録する一方，
+実行traceはbisimilarだが名前の異なるoperandsを持ちうる．そこで`PairedValidatorRunExtension`は
+両operandsとそのbisimulationを保持し，exactなleaf／matcher／`let` eventはその特別な場合として
+埋め込む．rootの`PairedRootCertifiedSynthesis`はこのpaired chronologyとtype／dual alignmentを
+束ね，pattern-constructor条件をpaired witnessから直接，matcher／`let`条件をexact branchから
 `wBridgeCheck`の全有限条件へ射影する．Originとauditは`Prop`，concrete runは`Type`なので，
-main recursionの結果は`Nonempty RootCertifiedSynthesis`であり，公開facadeが受理命題の内部でのみ
-その証明消去境界を開く．
+main recursionの結果は`Nonempty PairedRootCertifiedSynthesis`であり，公開facadeが受理命題の内部で
+のみその証明消去境界を開く．
 
 ```text
 DDTyping.infer_isSome :
@@ -429,8 +433,9 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceSoundnessComplete`／`Certified`／`Public` | terminal-audited run，validator bridge，公開 `infer_success_ddTyping` |
 | `DemandTypingInferenceCompletenessStateMutual`／`ContextBisimulation`／`Traversal` | DD／実行stateの相互factorization，context正規化，成功run package |
 | `DemandTypingInferenceCompletenessPatternMain`／`MatcherMain`／`Main` | terminal-auditedな全構文familyのfuelled traversal完全性 |
-| `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun` | compositional event coverageと成功runの統合package |
-| `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`Public` | terminal auditの実行stateへの輸送，有限validator，公開 `DDTyping.infer_isSome` |
+| `DemandTypingInferenceCompletenessPatternCertified` | user-pattern相互再帰とpattern-constructorのpaired validation package |
+| `DemandTypingInferenceCompletenessValidatorCoverage`／`CertifiedRun`／`PairedValidatorRun` | compositional event coverage，成功run，DD／実行operandを結ぶpaired chronology |
+| `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`PairedRoot`／`Public` | terminal auditの実行stateへの輸送，paired rootから有限validatorへの直接射影，公開 `DDTyping.infer_isSome` |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |

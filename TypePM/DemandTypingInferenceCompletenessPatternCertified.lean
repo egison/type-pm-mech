@@ -7,12 +7,15 @@ import TypePM.DemandTypingInferenceCompletenessSignatureBounds
 # Validator-certified user-pattern completeness
 
 This module adds validator chronology to the bounded raw pattern dispatcher.
-The raw proof and its event-history proof remain separate fields: clients can
-project the existing bounded completion unchanged, while the root completeness
-recursion retains the exact intermediate states needed to compose validation.
+The raw proof and its event-history proof remain separate fields, but the
+recursive public package is deliberately paired: a `pctor` audit mentions the
+DD dual/capability operands while its executable trace may contain only
+bisimilar representatives.  Exact leaves embed into that paired chronology,
+and recursive patterns preserve the operand relation for direct projection by
+`PairedRootCertifiedSynthesis`.
 
 The constructor-sensitive `pctor` chronology is deliberately not hidden in a
-generic combinator.  Its freeze/compatibility cut is supplied by
+generic exact-state combinator.  Its freeze/compatibility cut is supplied by
 `DemandTypingInferenceCompletenessValidationMain.patternCtor` once the
 capability solver's certified completion is available.
 -/
