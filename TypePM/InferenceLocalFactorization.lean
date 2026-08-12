@@ -34,11 +34,13 @@ inductive SolveCertificate.LedgerAware
       SolveCertificate ledger constraint delta → Prop where
   | capEqOriented {left right result}
       (run : PairedUnification.solveCap
-        (Unification.capFuel left right) ledger left right = some result) :
+        (PairedUnification.mguOrientedCapCompleteFuel ledger left right)
+        ledger left right = some result) :
       LedgerAware (.capEqOriented run)
   | targetEqPaired {left right result}
       (run : PairedUnification.solvePairedTy
-        (Unification.tyFuel left right) ledger left right = some result) :
+        (PairedUnification.mguPairedTyCompleteFuel ledger left right)
+        ledger left right = some result) :
       LedgerAware (.targetEqPaired run)
   | producerToSlot
       {producerCap consumerCap : Cap}

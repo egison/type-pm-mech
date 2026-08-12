@@ -143,8 +143,9 @@ inductive SolveCertificate
       SolveCertificate ledger (.capEq left right)
         ⟨capabilitySubst, TySubst.id⟩
   | capEqOriented {left right result} :
-      PairedUnification.solveCap (Unification.capFuel left right) ledger
-        left right = some result ->
+      PairedUnification.solveCap
+        (PairedUnification.mguOrientedCapCompleteFuel ledger left right)
+        ledger left right = some result ->
       SolveCertificate ledger (.capEq left right)
         ⟨result.subst, TySubst.id⟩
   | targetEq {left right targetSubst} :
@@ -152,8 +153,9 @@ inductive SolveCertificate
       SolveCertificate ledger (.targetEq left right)
         ⟨CapSubst.id, targetSubst⟩
   | targetEqPaired {left right result} :
-      PairedUnification.solvePairedTy (Unification.tyFuel left right) ledger
-        left right = some result ->
+      PairedUnification.solvePairedTy
+        (PairedUnification.mguPairedTyCompleteFuel ledger left right)
+        ledger left right = some result ->
       SolveCertificate ledger (.targetEq left right) result.subst
   | producerToSlot
       {producerCap producerTarget consumerCap consumerTarget bindings
@@ -276,7 +278,8 @@ def solveCapEqWithLedger
     (solveCount : Nat) (origin : ConstraintOrigin)
     (left right : Cap) : Option SolveStep :=
   match hsolve : PairedUnification.solveCap
-      (Unification.capFuel left right) ledger left right with
+      (PairedUnification.mguOrientedCapCompleteFuel ledger left right)
+      ledger left right with
   | none => none
   | some result =>
       some {
@@ -297,7 +300,8 @@ def solveTargetEqWithLedger
     (solveCount : Nat) (origin : ConstraintOrigin)
     (left right : Ty) : Option SolveStep :=
   match hsolve : PairedUnification.solvePairedTy
-      (Unification.tyFuel left right) ledger left right with
+      (PairedUnification.mguPairedTyCompleteFuel ledger left right)
+      ledger left right with
   | none => none
   | some result =>
       some {

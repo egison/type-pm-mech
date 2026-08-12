@@ -33,10 +33,10 @@ specialized matcher and legacy protected-producer bridge; the
 nested-capability boundary example (`nestedCapProgram`) remains an intended
 rejection under the demand-directed coercion discipline.  Both substitution
 components carry finite-support certificates, and the kernels prove
-factorization relative to admissible competitors.  The capability wrapper is
-also complete for origin-admissible competitors at an input-directed complete
-fuel.  Solvability completeness for the paired target wrapper is not yet
-claimed; successful runs of either kernel are preserved by larger fuel.
+factorization relative to admissible competitors.  Both the capability and
+paired target wrappers are complete for origin-admissible competitors at
+input-directed complete fuel; successful runs of either kernel are preserved
+by larger fuel.
 -/
 
 namespace TypePM
@@ -1574,6 +1574,16 @@ private theorem annotated_targetWithin
   intro varId membership
   simpa [Unification.Ty.ftv_applyCapability] using membership
 
+private theorem annotated_targetCapWithin
+    {leftCap rightCap : Cap} {leftTarget rightTarget : Ty} :
+    ∀ varId, varId ∈ leftTarget.fcv ++ rightTarget.fcv →
+      varId ∈ (leftCap.fcv ++ leftTarget.fcv) ++
+        (rightCap.fcv ++ rightTarget.fcv) := by
+  intro varId membership
+  simp only [List.mem_append] at membership ⊢
+  exact membership.elim (fun h => Or.inl (Or.inr h))
+    (fun h => Or.inr (Or.inr h))
+
 private theorem annotated_zonkedCapWithin
     {ledger : CapabilityOriginLedger}
     {leftCap rightCap : Cap} {leftTarget rightTarget : Ty}
@@ -1840,7 +1850,13 @@ def solvePairedTy :
                 targetSupportVars := [varId]
                 targetSupport :=
                   Unification.TySubst.single_supportWithin varId right
-                targetSupportInput := by simp [Ty.ftv]
+                targetSupportInput := by
+                  intro candidate membership
+                  have hcandidate : candidate = varId := by
+                    simpa only [List.mem_singleton] using membership
+                  subst candidate
+                  exact List.mem_append.mpr
+                    (Or.inl (by simp only [Ty.ftv, List.mem_singleton]))
                 capRange := pairedCapRange_id _
                 targetRange := pairedTyRange_single varId right _ (by
                   intro image imageMem
@@ -1900,7 +1916,13 @@ def solvePairedTy :
                 targetSupportVars := [varId]
                 targetSupport :=
                   Unification.TySubst.single_supportWithin varId left
-                targetSupportInput := by simp [Ty.ftv]
+                targetSupportInput := by
+                  intro candidate membership
+                  have hcandidate : candidate = varId := by
+                    simpa only [List.mem_singleton] using membership
+                  subst candidate
+                  exact List.mem_append.mpr
+                    (Or.inr (by simp only [Ty.ftv, List.mem_singleton]))
                 capRange := pairedCapRange_id _
                 targetRange := pairedTyRange_single varId left _ (by
                   intro image imageMem
@@ -2033,8 +2055,10 @@ def solvePairedTy :
                       capSupportVars :=
                         domainResult.capSupportVars ++
                           codomainResult.capSupportVars
-                      capSupport :=
-                        comp_capSupport domainResult.capSupport
+                      capSupport := by
+                        show (Subst.seq codomainResult.subst
+                          domainResult.subst).cap.SupportWithin _
+                        exact comp_capSupport domainResult.capSupport
                           codomainResult.capSupport
                       capSupportInput :=
                         seq_supportInput
@@ -2046,8 +2070,10 @@ def solvePairedTy :
                       targetSupportVars :=
                         domainResult.targetSupportVars ++
                           codomainResult.targetSupportVars
-                      targetSupport :=
-                        seq_targetSupport domainResult.targetSupport
+                      targetSupport := by
+                        show (Subst.seq codomainResult.subst
+                          domainResult.subst).target.SupportWithin _
+                        exact seq_targetSupport domainResult.targetSupport
                           codomainResult.targetSupport
                       targetSupportInput :=
                         seq_supportInput
@@ -2160,8 +2186,10 @@ def solvePairedTy :
                         (Subst.mk capResult.subst TySubst.id)
                       capSupportVars :=
                         capResult.capSupportVars ++ targetResult.capSupportVars
-                      capSupport :=
-                        comp_capSupport capResult.capSupport
+                      capSupport := by
+                        show (Subst.seq targetResult.subst
+                          (Subst.mk capResult.subst TySubst.id)).cap.SupportWithin _
+                        exact comp_capSupport capResult.capSupport
                           targetResult.capSupport
                       capSupportInput := by
                         intro varId membership
@@ -2328,8 +2356,10 @@ def solvePairedTy :
                         (Subst.mk capResult.subst TySubst.id)
                       capSupportVars :=
                         capResult.capSupportVars ++ targetResult.capSupportVars
-                      capSupport :=
-                        comp_capSupport capResult.capSupport
+                      capSupport := by
+                        show (Subst.seq targetResult.subst
+                          (Subst.mk capResult.subst TySubst.id)).cap.SupportWithin _
+                        exact comp_capSupport capResult.capSupport
                           targetResult.capSupport
                       capSupportInput := by
                         intro varId membership
@@ -2534,8 +2564,10 @@ def solvePairedTyList :
                 subst := Subst.seq tailResult.subst headResult.subst
                 capSupportVars :=
                   headResult.capSupportVars ++ tailResult.capSupportVars
-                capSupport :=
-                  comp_capSupport headResult.capSupport tailResult.capSupport
+                capSupport := by
+                  show (Subst.seq tailResult.subst
+                    headResult.subst).cap.SupportWithin _
+                  exact comp_capSupport headResult.capSupport tailResult.capSupport
                 capSupportInput :=
                   seq_supportInput
                     (fun varId membership => list_headCapWithin varId
@@ -2545,8 +2577,10 @@ def solvePairedTyList :
                 targetSupportVars :=
                   headResult.targetSupportVars ++
                     tailResult.targetSupportVars
-                targetSupport :=
-                  seq_targetSupport headResult.targetSupport
+                targetSupport := by
+                  show (Subst.seq tailResult.subst
+                    headResult.subst).target.SupportWithin _
+                  exact seq_targetSupport headResult.targetSupport
                     tailResult.targetSupport
                 targetSupportInput :=
                   seq_supportInput
@@ -3632,6 +3666,223 @@ end
 
 /-! ## Complete input-directed fuel for the paired kernel -/
 
+/-- Elimination of one capability variable from both ranges of a paired
+substitution. -/
+private def PairedCapElim (S : Subst) (varId : CapVar) : Prop :=
+  CapElim S.cap varId ∧ ∀ candidate, varId ∉ (S.target candidate).fcv
+
+/-- Elimination of one target variable from the target range of a paired
+substitution. -/
+private def PairedTargetElim
+    (S : Subst) (varId : TypePM.TyVar) : Prop :=
+  ∀ candidate, varId ∉ (S.target candidate).ftv
+
+private theorem PairedTargetElim.not_mem_apply
+    {S : Subst} {varId : TypePM.TyVar}
+    (helim : PairedTargetElim S varId) (target : Ty) :
+    varId ∉ (S.apply target).ftv := by
+  intro membership
+  change varId ∈ ((target.applyCapability S.cap).applyTarget S.target).ftv at membership
+  rw [Unification.Ty.ftv_applyTarget] at membership
+  obtain ⟨candidate, _, imageMem⟩ := List.mem_flatMap.mp membership
+  exact helim candidate imageMem
+
+private theorem PairedTargetElim.not_mem_applyList
+    {S : Subst} {varId : TypePM.TyVar}
+    (helim : PairedTargetElim S varId) (targets : List Ty) :
+    varId ∉ Ty.ftvList (targets.map S.apply) := by
+  intro membership
+  induction targets with
+  | nil => simp [Ty.ftvList] at membership
+  | cons target targets induction =>
+      simp only [List.map_cons, Ty.ftvList, List.mem_append] at membership
+      exact membership.elim (helim.not_mem_apply target) induction
+
+private theorem PairedCapElim.not_mem_apply
+    {S : Subst} {varId : CapVar} (helim : PairedCapElim S varId)
+    (target : Ty) : varId ∉ (S.apply target).fcv := by
+  intro membership
+  change varId ∈ ((target.applyCapability S.cap).applyTarget S.target).fcv at membership
+  rcases Unification.Ty.mem_fcv_applyTarget _ _ _ membership with own | image
+  · rw [Unification.Ty.fcv_applyCapability] at own
+    obtain ⟨candidate, _, imageMem⟩ := List.mem_flatMap.mp own
+    exact helim.1 candidate imageMem
+  · obtain ⟨candidate, _, imageMem⟩ := image
+    exact helim.2 candidate imageMem
+
+private theorem PairedCapElim.not_mem_applyList
+    {S : Subst} {varId : CapVar} (helim : PairedCapElim S varId)
+    (targets : List Ty) : varId ∉ Ty.fcvList (targets.map S.apply) := by
+  intro membership
+  induction targets with
+  | nil => simp [Ty.fcvList] at membership
+  | cons target targets induction =>
+      simp only [List.map_cons, Ty.fcvList, List.mem_append] at membership
+      exact membership.elim (helim.not_mem_apply target) induction
+
+private theorem CapElim.not_mem_applyCapability
+    {C : CapSubst} {varId : CapVar} (helim : CapElim C varId)
+    (target : Ty) : varId ∉ (target.applyCapability C).fcv := by
+  intro membership
+  rw [Unification.Ty.fcv_applyCapability] at membership
+  obtain ⟨candidate, _, imageMem⟩ := List.mem_flatMap.mp membership
+  exact helim candidate imageMem
+
+private theorem Subst.Idempotent.pairedCapElim_of_not_fixed
+    {S : Subst} (idem : S.Idempotent) {varId : CapVar}
+    (notFixed : S.cap varId ≠ .var varId) :
+    PairedCapElim S varId := by
+  constructor
+  · intro candidate membership
+    apply notFixed
+    apply idem.image_cap_fixed (.matcher (.var candidate) .unit) varId
+    simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget, Ty.fcv,
+      Cap.apply]
+    exact List.mem_append.mpr (Or.inl membership)
+  · intro candidate membership
+    apply notFixed
+    apply idem.image_cap_fixed (.var candidate) varId
+    simpa [Subst.apply, Ty.applyCapability, Ty.applyTarget, Ty.fcv]
+      using membership
+
+private theorem Subst.Idempotent.pairedTargetElim_of_not_fixed
+    {S : Subst} (idem : S.Idempotent) {varId : TypePM.TyVar}
+    (notFixed : S.target varId ≠ .var varId) :
+    PairedTargetElim S varId := by
+  intro candidate membership
+  apply notFixed
+  apply idem.image_target_fixed (.var candidate) varId
+  simpa [Subst.apply, Ty.applyCapability, Ty.applyTarget, Ty.ftv]
+    using membership
+
+private theorem pairedResult_varCert
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    (result : PairedResult ledger left right) (hne : left ≠ right) :
+    (∃ varId, varId ∈ left.ftv ++ right.ftv ∧
+      PairedTargetElim result.subst varId) ∨
+    (∃ varId, varId ∈ left.fcv ++ right.fcv ∧
+      PairedCapElim result.subst varId) := by
+  classical
+  by_cases targetProgress : ∃ varId,
+      varId ∈ left.ftv ++ right.ftv ∧
+        result.subst.target varId ≠ .var varId
+  · rcases targetProgress with ⟨varId, membership, notFixed⟩
+    exact Or.inl ⟨varId, membership,
+      Subst.Idempotent.pairedTargetElim_of_not_fixed
+        result.idempotent notFixed⟩
+  · by_cases capProgress : ∃ varId,
+        varId ∈ left.fcv ++ right.fcv ∧
+          result.subst.cap varId ≠ .var varId
+    · rcases capProgress with ⟨varId, membership, notFixed⟩
+      exact Or.inr ⟨varId, membership,
+        Subst.Idempotent.pairedCapElim_of_not_fixed
+          result.idempotent notFixed⟩
+    · have targetsFixed : ∀ varId,
+          varId ∈ left.ftv ++ right.ftv →
+            result.subst.target varId = .var varId := by
+        intro varId membership
+        by_cases fixed : result.subst.target varId = .var varId
+        · exact fixed
+        · exact False.elim (targetProgress ⟨varId, membership, fixed⟩)
+      have capsFixed : ∀ varId,
+          varId ∈ left.fcv ++ right.fcv →
+            result.subst.cap varId = .var varId := by
+        intro varId membership
+        by_cases fixed : result.subst.cap varId = .var varId
+        · exact fixed
+        · exact False.elim (capProgress ⟨varId, membership, fixed⟩)
+      have leftFixed : result.subst.apply left = left :=
+        Subst.apply_eq_self_of_fixed
+          (fun varId membership => targetsFixed varId
+            (List.mem_append.mpr (Or.inl membership)))
+          (fun varId membership => capsFixed varId
+            (List.mem_append.mpr (Or.inl membership)))
+      have rightFixed : result.subst.apply right = right :=
+        Subst.apply_eq_self_of_fixed
+          (fun varId membership => targetsFixed varId
+            (List.mem_append.mpr (Or.inr membership)))
+          (fun varId membership => capsFixed varId
+            (List.mem_append.mpr (Or.inr membership)))
+      exact False.elim (hne (leftFixed.symm.trans
+        (result.sound.trans rightFixed)))
+
+private theorem pairedListResult_varCert
+    {ledger : CapabilityOriginLedger} {left right : List Ty}
+    (result : PairedListResult ledger left right) (hne : left ≠ right) :
+    (∃ varId, varId ∈ Ty.ftvList left ++ Ty.ftvList right ∧
+      PairedTargetElim result.subst varId) ∨
+    (∃ varId, varId ∈ Ty.fcvList left ++ Ty.fcvList right ∧
+      PairedCapElim result.subst varId) := by
+  classical
+  by_cases targetProgress : ∃ varId,
+      varId ∈ Ty.ftvList left ++ Ty.ftvList right ∧
+        result.subst.target varId ≠ .var varId
+  · rcases targetProgress with ⟨varId, membership, notFixed⟩
+    exact Or.inl ⟨varId, membership,
+      Subst.Idempotent.pairedTargetElim_of_not_fixed
+        result.idempotent notFixed⟩
+  · by_cases capProgress : ∃ varId,
+        varId ∈ Ty.fcvList left ++ Ty.fcvList right ∧
+          result.subst.cap varId ≠ .var varId
+    · rcases capProgress with ⟨varId, membership, notFixed⟩
+      exact Or.inr ⟨varId, membership,
+        Subst.Idempotent.pairedCapElim_of_not_fixed
+          result.idempotent notFixed⟩
+    · have targetsFixed : ∀ varId,
+          varId ∈ Ty.ftvList left ++ Ty.ftvList right →
+            result.subst.target varId = .var varId := by
+        intro varId membership
+        by_cases fixed : result.subst.target varId = .var varId
+        · exact fixed
+        · exact False.elim (targetProgress ⟨varId, membership, fixed⟩)
+      have capsFixed : ∀ varId,
+          varId ∈ Ty.fcvList left ++ Ty.fcvList right →
+            result.subst.cap varId = .var varId := by
+        intro varId membership
+        by_cases fixed : result.subst.cap varId = .var varId
+        · exact fixed
+        · exact False.elim (capProgress ⟨varId, membership, fixed⟩)
+      have mapFixed : ∀ (targets : List Ty),
+          (∀ varId, varId ∈ Ty.ftvList targets →
+            result.subst.target varId = .var varId) →
+          (∀ varId, varId ∈ Ty.fcvList targets →
+            result.subst.cap varId = .var varId) →
+          targets.map result.subst.apply = targets := by
+        intro targets targetFixed capFixed
+        induction targets with
+        | nil => rfl
+        | cons target targets induction =>
+            simp only [List.map_cons, List.cons.injEq]
+            constructor
+            · exact Subst.apply_eq_self_of_fixed
+                (fun varId membership => targetFixed varId (by
+                  simp only [Ty.ftvList, List.mem_append]
+                  exact Or.inl membership))
+                (fun varId membership => capFixed varId (by
+                  simp only [Ty.fcvList, List.mem_append]
+                  exact Or.inl membership))
+            · exact induction
+                (fun varId membership => targetFixed varId (by
+                  simp only [Ty.ftvList, List.mem_append]
+                  exact Or.inr membership))
+                (fun varId membership => capFixed varId (by
+                  simp only [Ty.fcvList, List.mem_append]
+                  exact Or.inr membership))
+      have leftFixed : left.map result.subst.apply = left :=
+        mapFixed left
+          (fun varId membership => targetsFixed varId
+            (List.mem_append.mpr (Or.inl membership)))
+          (fun varId membership => capsFixed varId
+            (List.mem_append.mpr (Or.inl membership)))
+      have rightFixed : right.map result.subst.apply = right :=
+        mapFixed right
+          (fun varId membership => targetsFixed varId
+            (List.mem_append.mpr (Or.inr membership)))
+          (fun varId membership => capsFixed varId
+            (List.mem_append.mpr (Or.inr membership)))
+      exact False.elim (hne (leftFixed.symm.trans
+        (result.sound.trans rightFixed)))
+
 mutual
 
 /-- Sufficient fuel calculated for one origin-aware paired target constraint,
@@ -3765,6 +4016,1011 @@ def mguPairedTyListCompleteFuel
       (Ty.fcvList left ++ Ty.fcvList right).length)
     ledger left right
 
+attribute [simp]
+  completePairedTyFuelAux.eq_1 completePairedTyFuelAux.eq_2
+  completePairedTyFuelAux.eq_3 completePairedTyFuelAux.eq_4
+  completePairedTyFuelAux.eq_5 completePairedTyFuelAux.eq_6
+  completePairedTyFuelAux.eq_7 completePairedTyFuelAux.eq_8
+  completePairedTyFuelAux.eq_9
+
+@[simp] private theorem completePairedTyFuelAux_self
+    (budget : Nat) (ledger : CapabilityOriginLedger) (target : Ty) :
+    completePairedTyFuelAux budget ledger target target = 1 := by
+  cases budget <;> cases target <;> simp
+
+@[simp] private theorem completePairedTyFuelAux_var_left
+    (budget : Nat) (ledger : CapabilityOriginLedger)
+    (varId : TypePM.TyVar) (right : Ty) :
+    completePairedTyFuelAux budget ledger (.var varId) right = 1 := by
+  simp
+
+@[simp] private theorem completePairedTyFuelAux_var_right
+    (budget : Nat) (ledger : CapabilityOriginLedger)
+    (left : Ty) (varId : TypePM.TyVar) :
+    completePairedTyFuelAux budget ledger left (.var varId) = 1 := by
+  cases left <;> simp
+
+@[simp] private theorem completePairedTyListFuelAux_nil
+    (budget : Nat) (ledger : CapabilityOriginLedger) :
+    completePairedTyListFuelAux budget ledger [] [] = 1 := by
+  exact completePairedTyListFuelAux.eq_3 budget ledger [] [] (by simp)
+
+private theorem completePairedTyListFuelAux_cons_eq
+    (budget : Nat) (ledger : CapabilityOriginLedger) (head : Ty)
+    (leftTail rightTail : List Ty) :
+    completePairedTyListFuelAux budget ledger
+        (head :: leftTail) (head :: rightTail) =
+      1 + completePairedTyListFuelAux budget ledger leftTail rightTail + 1 := by
+  cases budget with
+  | zero => simpa using
+      completePairedTyListFuelAux.eq_1 ledger head leftTail head rightTail
+  | succ remaining => simpa using
+      (completePairedTyListFuelAux.eq_2 ledger head leftTail head rightTail
+        remaining)
+
+private theorem completePairedTyListFuelAux_cons_ne
+    (remaining : Nat) (ledger : CapabilityOriginLedger)
+    (leftHead rightHead : Ty) (leftTail rightTail : List Ty)
+    (hne : leftHead ≠ rightHead)
+    (headResult : PairedResult ledger leftHead rightHead)
+    (hrun : solvePairedTy
+      (completePairedTyFuelAux (remaining + 1) ledger leftHead rightHead)
+      ledger leftHead rightHead = some headResult) :
+    completePairedTyListFuelAux (remaining + 1) ledger
+        (leftHead :: leftTail) (rightHead :: rightTail) =
+      completePairedTyFuelAux (remaining + 1) ledger leftHead rightHead +
+        completePairedTyListFuelAux remaining ledger
+          (leftTail.map headResult.subst.apply)
+          (rightTail.map headResult.subst.apply) + 1 := by
+  simpa [hne, hrun] using
+    completePairedTyListFuelAux.eq_2 ledger leftHead leftTail rightHead
+      rightTail remaining
+
+private theorem paired_not_unifiable_of_occurs
+    (varId : TypePM.TyVar) (target : Ty)
+    (hne : target ≠ .var varId) (hmem : varId ∈ target.ftv) (U : Subst) :
+    U.apply (.var varId) ≠ U.apply target := by
+  have hne' : target.applyCapability U.cap ≠ .var varId := by
+    intro equation
+    cases target <;> simp_all [Ty.applyCapability]
+  have hmem' : varId ∈ (target.applyCapability U.cap).ftv := by
+    simpa [Unification.Ty.ftv_applyCapability] using hmem
+  simpa [Subst.apply, Ty.applyCapability] using
+    Unification.Ty.not_unifiable_of_occurs varId
+      (target.applyCapability U.cap) hne' hmem' U.target
+
+private theorem completePairedTyFuelAux_fn_domain_eq
+    (budget : Nat) (ledger : CapabilityOriginLedger)
+    (domain leftCodomain rightCodomain : Ty)
+    (hne : Ty.fn domain leftCodomain ≠ Ty.fn domain rightCodomain) :
+    completePairedTyFuelAux budget ledger
+        (.fn domain leftCodomain) (.fn domain rightCodomain) =
+      1 + completePairedTyFuelAux budget ledger
+        leftCodomain rightCodomain + 1 := by
+  cases budget <;> simp [hne]
+
+private theorem completePairedTyFuelAux_fn_domain_ne
+    (remaining : Nat) (ledger : CapabilityOriginLedger)
+    (leftDomain leftCodomain rightDomain rightCodomain : Ty)
+    (hdomainNe : leftDomain ≠ rightDomain)
+    (domainResult : PairedResult ledger leftDomain rightDomain)
+    (hrun : solvePairedTy
+      (completePairedTyFuelAux (remaining + 1) ledger leftDomain rightDomain)
+      ledger leftDomain rightDomain = some domainResult) :
+    completePairedTyFuelAux (remaining + 1) ledger
+        (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain) =
+      completePairedTyFuelAux (remaining + 1) ledger
+          leftDomain rightDomain +
+        completePairedTyFuelAux remaining ledger
+          (domainResult.subst.apply leftCodomain)
+          (domainResult.subst.apply rightCodomain) + 1 := by
+  have houter : Ty.fn leftDomain leftCodomain ≠
+      Ty.fn rightDomain rightCodomain := by
+    intro equation
+    exact hdomainNe (Ty.fn.inj equation).1
+  simpa [houter, hdomainNe, hrun]
+
+private theorem completePairedTyFuelAux_matcher_cap_eq
+    (budget : Nat) (ledger : CapabilityOriginLedger)
+    (capability : Cap) (leftTarget rightTarget : Ty)
+    (hne : Ty.matcher capability leftTarget ≠
+      Ty.matcher capability rightTarget) :
+    completePairedTyFuelAux budget ledger
+        (.matcher capability leftTarget) (.matcher capability rightTarget) =
+      1 + completePairedTyFuelAux budget ledger leftTarget rightTarget + 1 := by
+  cases budget <;> simp [hne]
+
+private theorem completePairedTyFuelAux_slot_cap_eq
+    (budget : Nat) (ledger : CapabilityOriginLedger)
+    (capability : Cap) (leftTarget rightTarget : Ty)
+    (hne : Ty.slot capability leftTarget ≠
+      Ty.slot capability rightTarget) :
+    completePairedTyFuelAux budget ledger
+        (.slot capability leftTarget) (.slot capability rightTarget) =
+      1 + completePairedTyFuelAux budget ledger leftTarget rightTarget + 1 := by
+  cases budget <;> simp [hne]
+
+private theorem completePairedTyFuelAux_matcher_cap_ne
+    (remaining : Nat) (ledger : CapabilityOriginLedger)
+    (leftCap rightCap : Cap) (leftTarget rightTarget : Ty)
+    (hcapNe : leftCap ≠ rightCap)
+    (capResult : OrientedCapResult ledger leftCap rightCap)
+    (hrun : solveCap (mguOrientedCapCompleteFuel ledger leftCap rightCap)
+      ledger leftCap rightCap = some capResult) :
+    completePairedTyFuelAux (remaining + 1) ledger
+        (.matcher leftCap leftTarget) (.matcher rightCap rightTarget) =
+      mguOrientedCapCompleteFuel ledger leftCap rightCap +
+        completePairedTyFuelAux remaining ledger
+          (leftTarget.applyCapability capResult.subst)
+          (rightTarget.applyCapability capResult.subst) + 1 := by
+  have houter : Ty.matcher leftCap leftTarget ≠
+      Ty.matcher rightCap rightTarget := by
+    intro equation
+    exact hcapNe (Ty.matcher.inj equation).1
+  simpa [houter, hcapNe, hrun]
+
+private theorem completePairedTyFuelAux_slot_cap_ne
+    (remaining : Nat) (ledger : CapabilityOriginLedger)
+    (leftCap rightCap : Cap) (leftTarget rightTarget : Ty)
+    (hcapNe : leftCap ≠ rightCap)
+    (capResult : OrientedCapResult ledger leftCap rightCap)
+    (hrun : solveCap (mguOrientedCapCompleteFuel ledger leftCap rightCap)
+      ledger leftCap rightCap = some capResult) :
+    completePairedTyFuelAux (remaining + 1) ledger
+        (.slot leftCap leftTarget) (.slot rightCap rightTarget) =
+      mguOrientedCapCompleteFuel ledger leftCap rightCap +
+        completePairedTyFuelAux remaining ledger
+          (leftTarget.applyCapability capResult.subst)
+          (rightTarget.applyCapability capResult.subst) + 1 := by
+  have houter : Ty.slot leftCap leftTarget ≠
+      Ty.slot rightCap rightTarget := by
+    intro equation
+    exact hcapNe (Ty.slot.inj equation).1
+  simpa [houter, hcapNe, hrun]
+
+mutual
+
+/-- Every origin-admissibly unifiable paired constraint succeeds at the
+input-directed complete fuel. -/
+theorem solvePairedTy_completeFuel
+    (targetBudget : List TypePM.TyVar) (capBudget : List CapVar)
+    (ledger : CapabilityOriginLedger) (left right : Ty)
+    (targetCovered : ∀ v, v ∈ left.ftv ++ right.ftv → v ∈ targetBudget)
+    (capCovered : ∀ v, v ∈ left.fcv ++ right.fcv → v ∈ capBudget)
+    (U : Subst) (hadmissible : AdmissiblePost ledger U)
+    (hunify : U.apply left = U.apply right) :
+    ∃ result : PairedResult ledger left right,
+      solvePairedTy
+        (completePairedTyFuelAux
+          (targetBudget.length + capBudget.length) ledger left right)
+        ledger left right = some result := by
+  by_cases hequal : left = right
+  · subst right
+    exact ⟨_, by rw [completePairedTyFuelAux_self, solvePairedTy,
+      dif_pos rfl]⟩
+  · match left, right with
+    | .var varId, right =>
+        by_cases hoccurs : varId ∈ right.ftv
+        · exact absurd hunify
+            (paired_not_unifiable_of_occurs varId right
+              (Ne.symm hequal) hoccurs U)
+        · have hs : (solvePairedTy 1 ledger (.var varId) right).isSome =
+          true := by
+            simp only [solvePairedTy, dif_neg hequal, dif_neg hoccurs,
+              Option.isSome_some]
+          cases hrun : solvePairedTy 1 ledger (.var varId) right with
+          | none => simp [hrun] at hs
+          | some result =>
+              simpa using ⟨result, hrun⟩
+    | left, .var varId =>
+        by_cases hoccurs : varId ∈ left.ftv
+        · exact absurd hunify.symm
+            (paired_not_unifiable_of_occurs varId left hequal hoccurs U)
+        · cases left <;>
+            simp_all [solvePairedTy, Ty.ftv]
+    | .data leftName leftFields, .data rightName rightFields =>
+        rw [subst_apply_data, subst_apply_data] at hunify
+        simp only [Ty.data.injEq] at hunify
+        obtain ⟨hname, hfieldsU⟩ := hunify
+        obtain ⟨fieldResult, hfields⟩ :=
+          solvePairedTyList_completeFuel targetBudget capBudget ledger
+            leftFields rightFields (fun v hv => targetCovered v hv)
+            (fun v hv => capCovered v hv) U hadmissible hfieldsU
+        exact ⟨_, by
+          rw [completePairedTyFuelAux.eq_1, if_neg hequal, if_pos hname]
+          rw [solvePairedTy.eq_2, dif_neg hequal]
+          simp only []
+          rw [dif_pos hname, hfields]⟩
+    | .prod leftComponents, .prod rightComponents =>
+        rw [subst_apply_prod, subst_apply_prod] at hunify
+        simp only [Ty.prod.injEq] at hunify
+        obtain ⟨componentResult, hcomponents⟩ :=
+          solvePairedTyList_completeFuel targetBudget capBudget ledger
+            leftComponents rightComponents (fun v hv => targetCovered v hv)
+            (fun v hv => capCovered v hv) U hadmissible hunify
+        exact ⟨_, by
+          rw [completePairedTyFuelAux.eq_2, if_neg hequal]
+          rw [solvePairedTy.eq_2, dif_neg hequal]
+          simp only []
+          rw [hcomponents]⟩
+    | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
+        rw [subst_apply_fn, subst_apply_fn] at hunify
+        simp only [Ty.fn.injEq] at hunify
+        obtain ⟨hdomainU, hcodomainU⟩ := hunify
+        let total := targetBudget.length + capBudget.length
+        let fuelDomain := completePairedTyFuelAux total ledger
+          leftDomain rightDomain
+        obtain ⟨domainResult, hdomainRun⟩ :=
+          solvePairedTy_completeFuel targetBudget capBudget ledger
+            leftDomain rightDomain
+            (fun v hv => targetCovered v (fn_domainTargetWithin v hv))
+            (fun v hv => capCovered v (fn_domainCapWithin v hv))
+            U hadmissible hdomainU
+        change solvePairedTy fuelDomain ledger leftDomain rightDomain =
+          some domainResult at hdomainRun
+        have domainAbsorbs :=
+          domainResult.universal U hadmissible hdomainU
+        have hcodomainU' :
+            U.apply (domainResult.subst.apply leftCodomain) =
+              U.apply (domainResult.subst.apply rightCodomain) := by
+          rw [apply_of_absorbs domainAbsorbs,
+            apply_of_absorbs domainAbsorbs]
+          exact hcodomainU
+        by_cases hdomainEq : leftDomain = rightDomain
+        · subst rightDomain
+          have hfuelDomain : fuelDomain = 1 := by simp [fuelDomain, total]
+          have hid := solvePairedTy_eq_self hdomainRun
+          rw [hid, Subst.apply_id, Subst.apply_id] at hcodomainU'
+          let fuelCodomain := completePairedTyFuelAux total ledger
+            leftCodomain rightCodomain
+          obtain ⟨codomainResult, hcodomainRun⟩ :=
+            solvePairedTy_completeFuel targetBudget capBudget ledger
+              leftCodomain rightCodomain
+              (fun v hv => targetCovered v (by
+                simp only [Ty.ftv, List.mem_append] at hv ⊢
+                rcases hv with h | h
+                · exact Or.inl (Or.inr h)
+                · exact Or.inr (Or.inr h)))
+              (fun v hv => capCovered v (by
+                simp only [Ty.fcv, List.mem_append] at hv ⊢
+                rcases hv with h | h
+                · exact Or.inl (Or.inr h)
+                · exact Or.inr (Or.inr h)))
+              U hadmissible hcodomainU'
+          change solvePairedTy fuelCodomain ledger leftCodomain
+            rightCodomain = some codomainResult at hcodomainRun
+          obtain ⟨domainResult', hdomainRun', hdomainSubst'⟩ :=
+            solvePairedTy_mono_le
+              (Nat.le_add_right fuelDomain fuelCodomain) hdomainRun
+          have happlied : ∃ resultP : PairedResult ledger
+              (domainResult'.subst.apply leftCodomain)
+              (domainResult'.subst.apply rightCodomain),
+              solvePairedTy (fuelDomain + fuelCodomain) ledger
+                (domainResult'.subst.apply leftCodomain)
+                (domainResult'.subst.apply rightCodomain) = some resultP := by
+            rw [hdomainSubst', hid, Subst.apply_id, Subst.apply_id]
+            obtain ⟨codomainResult', hcodomainRun', _⟩ :=
+              solvePairedTy_mono_le
+                (Nat.le_add_left fuelCodomain fuelDomain) hcodomainRun
+            exact ⟨codomainResult', hcodomainRun'⟩
+          obtain ⟨resultP, hrunP⟩ := happlied
+          have houter : ∃ outerResult : PairedResult ledger
+              (.fn leftDomain leftCodomain) (.fn leftDomain rightCodomain),
+              solvePairedTy (fuelDomain + fuelCodomain + 1) ledger
+                (.fn leftDomain leftCodomain) (.fn leftDomain rightCodomain) =
+                  some outerResult := by
+            have hs : (solvePairedTy (fuelDomain + fuelCodomain + 1) ledger
+                (.fn leftDomain leftCodomain)
+                (.fn leftDomain rightCodomain)).isSome = true := by
+              simp only [solvePairedTy, dif_neg hequal, hdomainRun', hrunP,
+                Option.isSome_some]
+            cases hrunOuter : solvePairedTy
+                (fuelDomain + fuelCodomain + 1) ledger
+                (.fn leftDomain leftCodomain)
+                (.fn leftDomain rightCodomain) with
+            | none => simp [hrunOuter] at hs
+            | some outerResult => exact ⟨outerResult, rfl⟩
+          obtain ⟨outerResult, houterRun⟩ := houter
+          refine ⟨outerResult, ?_⟩
+          rw [completePairedTyFuelAux_fn_domain_eq total ledger leftDomain
+            leftCodomain rightCodomain hequal]
+          simpa [hfuelDomain, fuelCodomain, total] using houterRun
+        · rcases pairedResult_varCert domainResult hdomainEq with
+            ⟨v, hvmem, hvelim⟩ | ⟨v, hvmem, hvelim⟩
+          · have hvBudget : v ∈ targetBudget :=
+              targetCovered v (fn_domainTargetWithin v hvmem)
+            let remaining := (targetBudget.erase v).length + capBudget.length
+            have htotal : total = remaining + 1 := by
+              dsimp [total, remaining]
+              rw [List.length_erase_of_mem hvBudget]
+              have := List.length_pos_of_mem hvBudget
+              omega
+            let fuelCodomain := completePairedTyFuelAux remaining ledger
+              (domainResult.subst.apply leftCodomain)
+              (domainResult.subst.apply rightCodomain)
+            obtain ⟨codomainResult, hcodomainRun⟩ :=
+              solvePairedTy_completeFuel (targetBudget.erase v) capBudget
+                ledger (domainResult.subst.apply leftCodomain)
+                (domainResult.subst.apply rightCodomain)
+                (fun w hw => by
+                  have hwne : w ≠ v := by
+                    rintro rfl
+                    rcases List.mem_append.mp hw with hw | hw
+                    · exact hvelim.not_mem_apply leftCodomain hw
+                    · exact hvelim.not_mem_apply rightCodomain hw
+                  exact (List.mem_erase_of_ne hwne).mpr
+                    (targetCovered w
+                      (fn_codomainTargetWithin domainResult w hw)))
+                (fun w hw => capCovered w
+                  (fn_codomainCapWithin domainResult w hw))
+                U hadmissible hcodomainU'
+            change solvePairedTy fuelCodomain ledger
+              (domainResult.subst.apply leftCodomain)
+              (domainResult.subst.apply rightCodomain) =
+                some codomainResult at hcodomainRun
+            obtain ⟨domainResult', hdomainRun', hdomainSubst'⟩ :=
+              solvePairedTy_mono_le
+                (Nat.le_add_right fuelDomain fuelCodomain) hdomainRun
+            have happlied : ∃ resultP : PairedResult ledger
+                (domainResult'.subst.apply leftCodomain)
+                (domainResult'.subst.apply rightCodomain),
+                solvePairedTy (fuelDomain + fuelCodomain) ledger
+                  (domainResult'.subst.apply leftCodomain)
+                  (domainResult'.subst.apply rightCodomain) = some resultP := by
+              rw [hdomainSubst']
+              obtain ⟨codomainResult', hcodomainRun', _⟩ :=
+                solvePairedTy_mono_le
+                  (Nat.le_add_left fuelCodomain fuelDomain) hcodomainRun
+              exact ⟨codomainResult', hcodomainRun'⟩
+            obtain ⟨resultP, hrunP⟩ := happlied
+            have houter : ∃ outerResult : PairedResult ledger
+                (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain),
+                solvePairedTy (fuelDomain + fuelCodomain + 1) ledger
+                  (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain) = some outerResult := by
+              have hs : (solvePairedTy (fuelDomain + fuelCodomain + 1)
+                  ledger (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain)).isSome = true := by
+                simp only [solvePairedTy, dif_neg hequal, hdomainRun', hrunP,
+                  Option.isSome_some]
+              cases hrunOuter : solvePairedTy
+                  (fuelDomain + fuelCodomain + 1) ledger
+                  (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain) with
+              | none => simp [hrunOuter] at hs
+              | some outerResult => exact ⟨outerResult, rfl⟩
+            obtain ⟨outerResult, houterRun⟩ := houter
+            refine ⟨outerResult, ?_⟩
+            have hdomainRunRemaining : solvePairedTy
+                (completePairedTyFuelAux (remaining + 1) ledger
+                  leftDomain rightDomain) ledger leftDomain rightDomain =
+                  some domainResult := by
+              rw [← htotal]
+              exact hdomainRun
+            change solvePairedTy (completePairedTyFuelAux total ledger
+              (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain))
+              ledger (.fn leftDomain leftCodomain)
+                (.fn rightDomain rightCodomain) = some outerResult
+            rw [htotal, completePairedTyFuelAux_fn_domain_ne remaining ledger
+              leftDomain leftCodomain rightDomain rightCodomain hdomainEq
+              domainResult hdomainRunRemaining]
+            simpa [fuelDomain, fuelCodomain, total, htotal] using houterRun
+          · have hvBudget : v ∈ capBudget :=
+              capCovered v (fn_domainCapWithin v hvmem)
+            let remaining := targetBudget.length + (capBudget.erase v).length
+            have htotal : total = remaining + 1 := by
+              dsimp [total, remaining]
+              rw [List.length_erase_of_mem hvBudget]
+              have := List.length_pos_of_mem hvBudget
+              omega
+            let fuelCodomain := completePairedTyFuelAux remaining ledger
+              (domainResult.subst.apply leftCodomain)
+              (domainResult.subst.apply rightCodomain)
+            obtain ⟨codomainResult, hcodomainRun⟩ :=
+              solvePairedTy_completeFuel targetBudget (capBudget.erase v)
+                ledger (domainResult.subst.apply leftCodomain)
+                (domainResult.subst.apply rightCodomain)
+                (fun w hw => targetCovered w
+                  (fn_codomainTargetWithin domainResult w hw))
+                (fun w hw => by
+                  have hwne : w ≠ v := by
+                    rintro rfl
+                    rcases List.mem_append.mp hw with hw | hw
+                    · exact hvelim.not_mem_apply leftCodomain hw
+                    · exact hvelim.not_mem_apply rightCodomain hw
+                  exact (List.mem_erase_of_ne hwne).mpr
+                    (capCovered w (fn_codomainCapWithin domainResult w hw)))
+                U hadmissible hcodomainU'
+            change solvePairedTy fuelCodomain ledger
+              (domainResult.subst.apply leftCodomain)
+              (domainResult.subst.apply rightCodomain) =
+                some codomainResult at hcodomainRun
+            obtain ⟨domainResult', hdomainRun', hdomainSubst'⟩ :=
+              solvePairedTy_mono_le
+                (Nat.le_add_right fuelDomain fuelCodomain) hdomainRun
+            have happlied : ∃ resultP : PairedResult ledger
+                (domainResult'.subst.apply leftCodomain)
+                (domainResult'.subst.apply rightCodomain),
+                solvePairedTy (fuelDomain + fuelCodomain) ledger
+                  (domainResult'.subst.apply leftCodomain)
+                  (domainResult'.subst.apply rightCodomain) = some resultP := by
+              rw [hdomainSubst']
+              obtain ⟨codomainResult', hcodomainRun', _⟩ :=
+                solvePairedTy_mono_le
+                  (Nat.le_add_left fuelCodomain fuelDomain) hcodomainRun
+              exact ⟨codomainResult', hcodomainRun'⟩
+            obtain ⟨resultP, hrunP⟩ := happlied
+            have houter : ∃ outerResult : PairedResult ledger
+                (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain),
+                solvePairedTy (fuelDomain + fuelCodomain + 1) ledger
+                  (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain) = some outerResult := by
+              have hs : (solvePairedTy (fuelDomain + fuelCodomain + 1)
+                  ledger (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain)).isSome = true := by
+                simp only [solvePairedTy, dif_neg hequal, hdomainRun', hrunP,
+                  Option.isSome_some]
+              cases hrunOuter : solvePairedTy
+                  (fuelDomain + fuelCodomain + 1) ledger
+                  (.fn leftDomain leftCodomain)
+                  (.fn rightDomain rightCodomain) with
+              | none => simp [hrunOuter] at hs
+              | some outerResult => exact ⟨outerResult, rfl⟩
+            obtain ⟨outerResult, houterRun⟩ := houter
+            refine ⟨outerResult, ?_⟩
+            have hdomainRunRemaining : solvePairedTy
+                (completePairedTyFuelAux (remaining + 1) ledger
+                  leftDomain rightDomain) ledger leftDomain rightDomain =
+                  some domainResult := by
+              rw [← htotal]
+              exact hdomainRun
+            change solvePairedTy (completePairedTyFuelAux total ledger
+              (.fn leftDomain leftCodomain) (.fn rightDomain rightCodomain))
+              ledger (.fn leftDomain leftCodomain)
+                (.fn rightDomain rightCodomain) = some outerResult
+            rw [htotal, completePairedTyFuelAux_fn_domain_ne remaining ledger
+              leftDomain leftCodomain rightDomain rightCodomain hdomainEq
+              domainResult hdomainRunRemaining]
+            simpa [fuelDomain, fuelCodomain, total, htotal] using houterRun
+    | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
+        rw [subst_apply_matcher, subst_apply_matcher] at hunify
+        simp only [Ty.matcher.injEq] at hunify
+        exact solvePairedAnnotated_completeFuel true targetBudget capBudget ledger
+          leftCap leftTarget rightCap rightTarget hequal targetCovered
+          capCovered U hadmissible hunify
+    | .slot leftCap leftTarget, .slot rightCap rightTarget =>
+        rw [subst_apply_slot, subst_apply_slot] at hunify
+        simp only [Ty.slot.injEq] at hunify
+        exact solvePairedAnnotated_completeFuel false targetBudget capBudget ledger
+          leftCap leftTarget rightCap rightTarget hequal targetCovered
+          capCovered U hadmissible hunify
+    | .skolem _, .skolem _
+    | .skolem _, .unit | .skolem _, .int | .skolem _, .bool
+    | .skolem _, .data _ _ | .skolem _, .prod _ | .skolem _, .fn _ _
+    | .skolem _, .matcher _ _ | .skolem _, .slot _ _
+    | .unit, .skolem _ | .unit, .unit | .unit, .int | .unit, .bool
+    | .unit, .data _ _ | .unit, .prod _ | .unit, .fn _ _
+    | .unit, .matcher _ _ | .unit, .slot _ _
+    | .int, .skolem _ | .int, .unit | .int, .int | .int, .bool
+    | .int, .data _ _ | .int, .prod _ | .int, .fn _ _
+    | .int, .matcher _ _ | .int, .slot _ _
+    | .bool, .skolem _ | .bool, .unit | .bool, .int | .bool, .bool
+    | .bool, .data _ _ | .bool, .prod _ | .bool, .fn _ _
+    | .bool, .matcher _ _ | .bool, .slot _ _
+    | .data _ _, .skolem _ | .data _ _, .unit | .data _ _, .int
+    | .data _ _, .bool | .data _ _, .prod _ | .data _ _, .fn _ _
+    | .data _ _, .matcher _ _ | .data _ _, .slot _ _
+    | .prod _, .skolem _ | .prod _, .unit | .prod _, .int
+    | .prod _, .bool | .prod _, .data _ _ | .prod _, .fn _ _
+    | .prod _, .matcher _ _ | .prod _, .slot _ _
+    | .fn _ _, .skolem _ | .fn _ _, .unit | .fn _ _, .int
+    | .fn _ _, .bool | .fn _ _, .data _ _ | .fn _ _, .prod _
+    | .fn _ _, .matcher _ _ | .fn _ _, .slot _ _
+    | .matcher _ _, .skolem _ | .matcher _ _, .unit
+    | .matcher _ _, .int | .matcher _ _, .bool
+    | .matcher _ _, .data _ _ | .matcher _ _, .prod _
+    | .matcher _ _, .fn _ _ | .matcher _ _, .slot _ _
+    | .slot _ _, .skolem _ | .slot _ _, .unit | .slot _ _, .int
+    | .slot _ _, .bool | .slot _ _, .data _ _ | .slot _ _, .prod _
+    | .slot _ _, .fn _ _ | .slot _ _, .matcher _ _ =>
+        simp_all [Subst.apply, Ty.applyCapability, Ty.applyTarget]
+termination_by
+  (targetBudget.length + capBudget.length,
+    Unification.Ty.unificationWeight left +
+      Unification.Ty.unificationWeight right, 1)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; apply Prod.Lex.left
+       simp only [Unification.Ty.unificationWeight]
+       omega)
+    | (apply Prod.Lex.right; apply Prod.Lex.right; omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       have := List.length_pos_of_mem hvBudget
+       omega)
+
+/-- Internal common proof for matcher and slot constraints. -/
+theorem solvePairedAnnotated_completeFuel
+    (isMatcher : Bool)
+    (targetBudget : List TypePM.TyVar) (capBudget : List CapVar)
+    (ledger : CapabilityOriginLedger)
+    (leftCap : Cap) (leftTarget : Ty) (rightCap : Cap) (rightTarget : Ty)
+    (hequal : (if isMatcher then Ty.matcher leftCap leftTarget
+      else Ty.slot leftCap leftTarget) ≠
+      (if isMatcher then Ty.matcher rightCap rightTarget
+      else Ty.slot rightCap rightTarget))
+    (targetCovered : ∀ v, v ∈ leftTarget.ftv ++ rightTarget.ftv →
+      v ∈ targetBudget)
+    (capCovered : ∀ v,
+      v ∈ (leftCap.fcv ++ leftTarget.fcv) ++
+        (rightCap.fcv ++ rightTarget.fcv) → v ∈ capBudget)
+    (U : Subst) (hadmissible : AdmissiblePost ledger U)
+    (hunify : leftCap.apply U.cap = rightCap.apply U.cap ∧
+      U.apply leftTarget = U.apply rightTarget) :
+    ∃ result : PairedResult ledger
+        (if isMatcher then .matcher leftCap leftTarget else .slot leftCap leftTarget)
+        (if isMatcher then .matcher rightCap rightTarget else .slot rightCap rightTarget),
+      solvePairedTy
+        (completePairedTyFuelAux
+          (targetBudget.length + capBudget.length) ledger
+          (if isMatcher then .matcher leftCap leftTarget else .slot leftCap leftTarget)
+          (if isMatcher then .matcher rightCap rightTarget else .slot rightCap rightTarget))
+        ledger
+        (if isMatcher then .matcher leftCap leftTarget else .slot leftCap leftTarget)
+        (if isMatcher then .matcher rightCap rightTarget else .slot rightCap rightTarget) =
+          some result := by
+  cases isMatcher <;> simp only [Bool.false_eq_true, if_false, if_true] at *
+  all_goals
+    obtain ⟨hcapU, htargetU⟩ := hunify
+    let total := targetBudget.length + capBudget.length
+    let capFuel := mguOrientedCapCompleteFuel ledger leftCap rightCap
+    obtain ⟨capResult, hcapRun⟩ :=
+      solveCap_completeOrientedFuel (leftCap.fcv ++ rightCap.fcv) ledger
+        leftCap rightCap (fun _ membership => membership) U.cap
+        hadmissible.cap hcapU
+    change solveCap capFuel ledger leftCap rightCap = some capResult at hcapRun
+    have capAbsorbs := capResult.universal U.cap hadmissible.cap hcapU
+    have capPairAbsorbs := absorb_capOnly capAbsorbs
+    have htargetU' :
+        U.apply (leftTarget.applyCapability capResult.subst) =
+          U.apply (rightTarget.applyCapability capResult.subst) := by
+      calc
+        U.apply (leftTarget.applyCapability capResult.subst) =
+            U.apply ((Subst.mk capResult.subst TySubst.id).apply leftTarget) :=
+          congrArg U.apply (capOnly_apply capResult.subst leftTarget).symm
+        _ = U.apply leftTarget := apply_of_absorbs capPairAbsorbs leftTarget
+        _ = U.apply rightTarget := htargetU
+        _ = U.apply ((Subst.mk capResult.subst TySubst.id).apply rightTarget) :=
+          (apply_of_absorbs capPairAbsorbs rightTarget).symm
+        _ = U.apply (rightTarget.applyCapability capResult.subst) :=
+          congrArg U.apply (capOnly_apply capResult.subst rightTarget)
+    by_cases hcapEq : leftCap = rightCap
+    · subst rightCap
+      have hcapId := solveCap_eq_self hcapRun
+      have htargetOriginal : U.apply leftTarget = U.apply rightTarget :=
+        htargetU
+      let fuelTarget := completePairedTyFuelAux total ledger
+        leftTarget rightTarget
+      obtain ⟨targetResult, htargetRun⟩ :=
+        solvePairedTy_completeFuel targetBudget capBudget ledger
+          leftTarget rightTarget targetCovered
+          (fun v hv => capCovered v (annotated_targetCapWithin v hv))
+          U hadmissible htargetOriginal
+      change solvePairedTy fuelTarget ledger leftTarget rightTarget =
+        some targetResult at htargetRun
+      obtain ⟨capResult', hcapRun', hcapSubst'⟩ :=
+        solveCap_mono_le (Nat.le_add_right capFuel fuelTarget) hcapRun
+      have htargetApplied : ∃ targetResult' : PairedResult ledger
+          (leftTarget.applyCapability capResult'.subst)
+          (rightTarget.applyCapability capResult'.subst),
+          solvePairedTy (capFuel + fuelTarget) ledger
+            (leftTarget.applyCapability capResult'.subst)
+            (rightTarget.applyCapability capResult'.subst) =
+              some targetResult' := by
+        rw [hcapSubst', hcapId, Ty.applyCapability_id,
+          Ty.applyCapability_id]
+        obtain ⟨targetResult', htargetRun', _⟩ :=
+          solvePairedTy_mono_le
+            (Nat.le_add_left fuelTarget capFuel) htargetRun
+        exact ⟨targetResult', htargetRun'⟩
+      obtain ⟨targetResult', htargetRun'⟩ := htargetApplied
+      first
+      | have hs : (solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.slot leftCap leftTarget) (Ty.slot leftCap rightTarget)).isSome =
+            true := by
+          simp only [solvePairedTy, dif_neg hequal, hcapRun', htargetRun',
+            Option.isSome_some]
+        cases hrunOuter : solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.slot leftCap leftTarget) (Ty.slot leftCap rightTarget) with
+        | none => simp [hrunOuter] at hs
+        | some outerResult =>
+            refine ⟨outerResult, ?_⟩
+            rw [completePairedTyFuelAux_slot_cap_eq total ledger leftCap
+              leftTarget rightTarget hequal]
+            have hcapFuel : capFuel = 1 := by
+              simp [capFuel, mguOrientedCapCompleteFuel]
+            simpa [hcapFuel, fuelTarget, total] using hrunOuter
+      | have hm : (solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.matcher leftCap leftTarget)
+            (Ty.matcher leftCap rightTarget)).isSome = true := by
+          simp only [solvePairedTy, dif_neg hequal, hcapRun', htargetRun',
+            Option.isSome_some]
+        cases hrunOuter : solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.matcher leftCap leftTarget)
+            (Ty.matcher leftCap rightTarget) with
+        | none => simp [hrunOuter] at hm
+        | some outerResult =>
+            refine ⟨outerResult, ?_⟩
+            rw [completePairedTyFuelAux_matcher_cap_eq total ledger leftCap
+              leftTarget rightTarget hequal]
+            have hcapFuel : capFuel = 1 := by
+              simp [capFuel, mguOrientedCapCompleteFuel]
+            simpa [hcapFuel, fuelTarget, total] using hrunOuter
+    · obtain ⟨_, ⟨v, hvmem, hvelim⟩⟩ :=
+        orientedCapResult_varCert capResult hcapEq
+      have hvBudget : v ∈ capBudget := by
+        refine capCovered v ?_
+        simp only [List.mem_append] at hvmem ⊢
+        rcases hvmem with h | h
+        · exact Or.inl (Or.inl h)
+        · exact Or.inr (Or.inl h)
+      let remaining := targetBudget.length + (capBudget.erase v).length
+      have htotal : total = remaining + 1 := by
+        dsimp [total, remaining]
+        rw [List.length_erase_of_mem hvBudget]
+        have := List.length_pos_of_mem hvBudget
+        omega
+      let fuelTarget := completePairedTyFuelAux remaining ledger
+        (leftTarget.applyCapability capResult.subst)
+        (rightTarget.applyCapability capResult.subst)
+      obtain ⟨targetResult, htargetRun⟩ :=
+        solvePairedTy_completeFuel targetBudget (capBudget.erase v) ledger
+          (leftTarget.applyCapability capResult.subst)
+          (rightTarget.applyCapability capResult.subst)
+          (fun w hw => targetCovered w
+            (annotated_targetWithin capResult.subst w hw))
+          (fun w hw => by
+            have hwne : w ≠ v := by
+              rintro rfl
+              rcases List.mem_append.mp hw with hw | hw
+              · exact hvelim.not_mem_applyCapability leftTarget hw
+              · exact hvelim.not_mem_applyCapability rightTarget hw
+            exact (List.mem_erase_of_ne hwne).mpr
+              (capCovered w (annotated_zonkedCapWithin capResult w hw)))
+          U hadmissible htargetU'
+      change solvePairedTy fuelTarget ledger
+        (leftTarget.applyCapability capResult.subst)
+        (rightTarget.applyCapability capResult.subst) =
+          some targetResult at htargetRun
+      obtain ⟨capResult', hcapRun', hcapSubst'⟩ :=
+        solveCap_mono_le (Nat.le_add_right capFuel fuelTarget) hcapRun
+      have htargetApplied : ∃ targetResult' : PairedResult ledger
+          (leftTarget.applyCapability capResult'.subst)
+          (rightTarget.applyCapability capResult'.subst),
+          solvePairedTy (capFuel + fuelTarget) ledger
+            (leftTarget.applyCapability capResult'.subst)
+            (rightTarget.applyCapability capResult'.subst) =
+              some targetResult' := by
+        rw [hcapSubst']
+        obtain ⟨targetResult', htargetRun', _⟩ :=
+          solvePairedTy_mono_le
+            (Nat.le_add_left fuelTarget capFuel) htargetRun
+        exact ⟨targetResult', htargetRun'⟩
+      obtain ⟨targetResult', htargetRun'⟩ := htargetApplied
+      first
+      | have hs : (solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.slot leftCap leftTarget)
+            (Ty.slot rightCap rightTarget)).isSome = true := by
+          simp only [solvePairedTy, dif_neg hequal, hcapRun', htargetRun',
+            Option.isSome_some]
+        cases hrunOuter : solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.slot leftCap leftTarget) (Ty.slot rightCap rightTarget) with
+        | none => simp [hrunOuter] at hs
+        | some outerResult =>
+            refine ⟨outerResult, ?_⟩
+            change solvePairedTy (completePairedTyFuelAux total ledger
+              (.slot leftCap leftTarget) (.slot rightCap rightTarget)) ledger
+              (.slot leftCap leftTarget) (.slot rightCap rightTarget) =
+                some outerResult
+            rw [htotal, completePairedTyFuelAux_slot_cap_ne remaining ledger
+              leftCap rightCap leftTarget rightTarget hcapEq capResult hcapRun]
+            simpa [capFuel, fuelTarget] using hrunOuter
+
+      | have hm : (solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.matcher leftCap leftTarget)
+            (Ty.matcher rightCap rightTarget)).isSome = true := by
+          simp only [solvePairedTy, dif_neg hequal, hcapRun', htargetRun',
+            Option.isSome_some]
+        cases hrunOuter : solvePairedTy (capFuel + fuelTarget + 1) ledger
+            (Ty.matcher leftCap leftTarget)
+            (Ty.matcher rightCap rightTarget) with
+        | none => simp [hrunOuter] at hm
+        | some outerResult =>
+            refine ⟨outerResult, ?_⟩
+            change solvePairedTy (completePairedTyFuelAux total ledger
+              (.matcher leftCap leftTarget) (.matcher rightCap rightTarget))
+              ledger (.matcher leftCap leftTarget)
+                (.matcher rightCap rightTarget) = some outerResult
+            rw [htotal, completePairedTyFuelAux_matcher_cap_ne remaining ledger
+              leftCap rightCap leftTarget rightTarget hcapEq capResult hcapRun]
+            simpa [capFuel, fuelTarget] using hrunOuter
+
+termination_by
+  (targetBudget.length + capBudget.length,
+    Unification.Ty.unificationWeight
+        (if isMatcher then .matcher leftCap leftTarget
+          else .slot leftCap leftTarget) +
+      Unification.Ty.unificationWeight
+        (if isMatcher then .matcher rightCap rightTarget
+          else .slot rightCap rightTarget), 0)
+decreasing_by
+  all_goals simp_wf
+  all_goals cases isMatcher <;>
+    simp only [Bool.false_eq_true, if_false, if_true] at *
+  all_goals first
+    | (apply Prod.Lex.right; apply Prod.Lex.left
+       simp only [Unification.Ty.unificationWeight]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       have := List.length_pos_of_mem hvBudget
+       omega)
+
+/-- Every origin-admissibly unifiable paired list constraint succeeds at the
+input-directed complete fuel. -/
+theorem solvePairedTyList_completeFuel
+    (targetBudget : List TypePM.TyVar) (capBudget : List CapVar)
+    (ledger : CapabilityOriginLedger) (left right : List Ty)
+    (targetCovered : ∀ v, v ∈ Ty.ftvList left ++ Ty.ftvList right →
+      v ∈ targetBudget)
+    (capCovered : ∀ v, v ∈ Ty.fcvList left ++ Ty.fcvList right →
+      v ∈ capBudget)
+    (U : Subst) (hadmissible : AdmissiblePost ledger U)
+    (hunify : left.map U.apply = right.map U.apply) :
+    ∃ result : PairedListResult ledger left right,
+      solvePairedTyList
+        (completePairedTyListFuelAux
+          (targetBudget.length + capBudget.length) ledger left right)
+        ledger left right = some result := by
+  match left, right with
+  | [], [] => exact ⟨_, by
+      rw [completePairedTyListFuelAux_nil, solvePairedTyList]⟩
+  | [], _ :: _ => simp at hunify
+  | _ :: _, [] => simp at hunify
+  | leftHead :: leftTail, rightHead :: rightTail =>
+      simp only [List.map_cons, List.cons.injEq] at hunify
+      obtain ⟨hheadU, htailU⟩ := hunify
+      let total := targetBudget.length + capBudget.length
+      let fuelHead := completePairedTyFuelAux total ledger leftHead rightHead
+      obtain ⟨headResult, hheadRun⟩ :=
+        solvePairedTy_completeFuel targetBudget capBudget ledger
+          leftHead rightHead
+          (fun v hv => targetCovered v (list_headTargetWithin v hv))
+          (fun v hv => capCovered v (list_headCapWithin v hv))
+          U hadmissible hheadU
+      change solvePairedTy fuelHead ledger leftHead rightHead =
+        some headResult at hheadRun
+      have headAbsorbs := headResult.universal U hadmissible hheadU
+      have htailU' :
+          (leftTail.map headResult.subst.apply).map U.apply =
+            (rightTail.map headResult.subst.apply).map U.apply := by
+        rw [map_apply_of_absorbs headAbsorbs,
+          map_apply_of_absorbs headAbsorbs]
+        exact htailU
+      by_cases hheadEq : leftHead = rightHead
+      · subst rightHead
+        have hfuelHead : fuelHead = 1 := by simp [fuelHead, total]
+        have hid := solvePairedTy_eq_self hheadRun
+        let fuelTail := completePairedTyListFuelAux total ledger
+          leftTail rightTail
+        obtain ⟨tailResult, htailRun⟩ :=
+          solvePairedTyList_completeFuel targetBudget capBudget ledger
+            leftTail rightTail
+            (fun v hv => targetCovered v (by
+              simp only [Ty.ftvList, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inr h)
+              · exact Or.inr (Or.inr h)))
+            (fun v hv => capCovered v (by
+              simp only [Ty.fcvList, List.mem_append] at hv ⊢
+              rcases hv with h | h
+              · exact Or.inl (Or.inr h)
+              · exact Or.inr (Or.inr h)))
+            U hadmissible htailU
+        change solvePairedTyList fuelTail ledger leftTail rightTail =
+          some tailResult at htailRun
+        obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+          solvePairedTy_mono_le (Nat.le_add_right fuelHead fuelTail) hheadRun
+        have happlied : ∃ resultP : PairedListResult ledger
+            (leftTail.map headResult'.subst.apply)
+            (rightTail.map headResult'.subst.apply),
+            solvePairedTyList (fuelHead + fuelTail) ledger
+              (leftTail.map headResult'.subst.apply)
+              (rightTail.map headResult'.subst.apply) = some resultP := by
+          rw [hheadSubst', hid]
+          have hidApply : (Subst.id.apply : Ty → Ty) = id := by
+            funext target
+            exact Subst.apply_id target
+          rw [hidApply, List.map_id, List.map_id]
+          change ∃ resultP : PairedListResult ledger leftTail rightTail,
+            solvePairedTyList (fuelHead + fuelTail) ledger leftTail rightTail =
+              some resultP
+          obtain ⟨tailResult', htailRun', _⟩ :=
+            solvePairedTyList_mono_le
+              (Nat.le_add_left fuelTail fuelHead) htailRun
+          exact ⟨tailResult', htailRun'⟩
+        obtain ⟨resultP, hrunP⟩ := happlied
+        have houter : ∃ outerResult : PairedListResult ledger
+            (leftHead :: leftTail) (leftHead :: rightTail),
+            solvePairedTyList (fuelHead + fuelTail + 1) ledger
+              (leftHead :: leftTail) (leftHead :: rightTail) =
+                some outerResult := by
+          rw [solvePairedTyList, hheadRun']
+          simp only []
+          rw [hrunP]
+          exact ⟨_, rfl⟩
+        obtain ⟨outerResult, houterRun⟩ := houter
+        refine ⟨outerResult, ?_⟩
+        rw [completePairedTyListFuelAux_cons_eq]
+        simpa [hfuelHead, fuelTail, total] using houterRun
+      · rcases pairedResult_varCert headResult hheadEq with
+          ⟨v, hvmem, hvelim⟩ | ⟨v, hvmem, hvelim⟩
+        · have hvBudget : v ∈ targetBudget :=
+            targetCovered v (list_headTargetWithin v hvmem)
+          let remaining := (targetBudget.erase v).length + capBudget.length
+          have htotal : total = remaining + 1 := by
+            dsimp [total, remaining]
+            rw [List.length_erase_of_mem hvBudget]
+            have := List.length_pos_of_mem hvBudget
+            omega
+          let fuelTail := completePairedTyListFuelAux remaining ledger
+            (leftTail.map headResult.subst.apply)
+            (rightTail.map headResult.subst.apply)
+          obtain ⟨tailResult, htailRun⟩ :=
+            solvePairedTyList_completeFuel (targetBudget.erase v) capBudget
+              ledger (leftTail.map headResult.subst.apply)
+              (rightTail.map headResult.subst.apply)
+              (fun w hw => by
+                have hwne : w ≠ v := by
+                  rintro rfl
+                  rcases List.mem_append.mp hw with hw | hw
+                  · exact hvelim.not_mem_applyList leftTail hw
+                  · exact hvelim.not_mem_applyList rightTail hw
+                exact (List.mem_erase_of_ne hwne).mpr
+                  (targetCovered w (list_tailTargetWithin headResult w hw)))
+              (fun w hw => capCovered w
+                (list_tailCapWithin headResult w hw))
+              U hadmissible htailU'
+          change solvePairedTyList fuelTail ledger
+            (leftTail.map headResult.subst.apply)
+            (rightTail.map headResult.subst.apply) =
+              some tailResult at htailRun
+          obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+            solvePairedTy_mono_le
+              (Nat.le_add_right fuelHead fuelTail) hheadRun
+          have happlied : ∃ resultP : PairedListResult ledger
+              (leftTail.map headResult'.subst.apply)
+              (rightTail.map headResult'.subst.apply),
+              solvePairedTyList (fuelHead + fuelTail) ledger
+                (leftTail.map headResult'.subst.apply)
+                (rightTail.map headResult'.subst.apply) = some resultP := by
+            rw [hheadSubst']
+            obtain ⟨tailResult', htailRun', _⟩ :=
+              solvePairedTyList_mono_le
+                (Nat.le_add_left fuelTail fuelHead) htailRun
+            exact ⟨tailResult', htailRun'⟩
+          obtain ⟨resultP, hrunP⟩ := happlied
+          have houter : ∃ outerResult : PairedListResult ledger
+              (leftHead :: leftTail) (rightHead :: rightTail),
+              solvePairedTyList (fuelHead + fuelTail + 1) ledger
+                (leftHead :: leftTail) (rightHead :: rightTail) =
+                  some outerResult := by
+            rw [solvePairedTyList, hheadRun']
+            simp only []
+            rw [hrunP]
+            exact ⟨_, rfl⟩
+          obtain ⟨outerResult, houterRun⟩ := houter
+          refine ⟨outerResult, ?_⟩
+          have hheadRunRemaining : solvePairedTy
+              (completePairedTyFuelAux (remaining + 1) ledger
+                leftHead rightHead) ledger leftHead rightHead =
+                some headResult := by
+            rw [← htotal]
+            exact hheadRun
+          change solvePairedTyList (completePairedTyListFuelAux total ledger
+            (leftHead :: leftTail) (rightHead :: rightTail)) ledger
+            (leftHead :: leftTail) (rightHead :: rightTail) = some outerResult
+          rw [htotal, completePairedTyListFuelAux_cons_ne remaining ledger
+            leftHead rightHead leftTail rightTail hheadEq headResult
+            hheadRunRemaining]
+          simpa [fuelHead, fuelTail, total, htotal] using houterRun
+        · have hvBudget : v ∈ capBudget :=
+            capCovered v (list_headCapWithin v hvmem)
+          let remaining := targetBudget.length + (capBudget.erase v).length
+          have htotal : total = remaining + 1 := by
+            dsimp [total, remaining]
+            rw [List.length_erase_of_mem hvBudget]
+            have := List.length_pos_of_mem hvBudget
+            omega
+          let fuelTail := completePairedTyListFuelAux remaining ledger
+            (leftTail.map headResult.subst.apply)
+            (rightTail.map headResult.subst.apply)
+          obtain ⟨tailResult, htailRun⟩ :=
+            solvePairedTyList_completeFuel targetBudget (capBudget.erase v)
+              ledger (leftTail.map headResult.subst.apply)
+              (rightTail.map headResult.subst.apply)
+              (fun w hw => targetCovered w
+                (list_tailTargetWithin headResult w hw))
+              (fun w hw => by
+                have hwne : w ≠ v := by
+                  rintro rfl
+                  rcases List.mem_append.mp hw with hw | hw
+                  · exact hvelim.not_mem_applyList leftTail hw
+                  · exact hvelim.not_mem_applyList rightTail hw
+                exact (List.mem_erase_of_ne hwne).mpr
+                  (capCovered w (list_tailCapWithin headResult w hw)))
+              U hadmissible htailU'
+          change solvePairedTyList fuelTail ledger
+            (leftTail.map headResult.subst.apply)
+            (rightTail.map headResult.subst.apply) =
+              some tailResult at htailRun
+          obtain ⟨headResult', hheadRun', hheadSubst'⟩ :=
+            solvePairedTy_mono_le
+              (Nat.le_add_right fuelHead fuelTail) hheadRun
+          have happlied : ∃ resultP : PairedListResult ledger
+              (leftTail.map headResult'.subst.apply)
+              (rightTail.map headResult'.subst.apply),
+              solvePairedTyList (fuelHead + fuelTail) ledger
+                (leftTail.map headResult'.subst.apply)
+                (rightTail.map headResult'.subst.apply) = some resultP := by
+            rw [hheadSubst']
+            obtain ⟨tailResult', htailRun', _⟩ :=
+              solvePairedTyList_mono_le
+                (Nat.le_add_left fuelTail fuelHead) htailRun
+            exact ⟨tailResult', htailRun'⟩
+          obtain ⟨resultP, hrunP⟩ := happlied
+          have houter : ∃ outerResult : PairedListResult ledger
+              (leftHead :: leftTail) (rightHead :: rightTail),
+              solvePairedTyList (fuelHead + fuelTail + 1) ledger
+                (leftHead :: leftTail) (rightHead :: rightTail) =
+                  some outerResult := by
+            rw [solvePairedTyList, hheadRun']
+            simp only []
+            rw [hrunP]
+            exact ⟨_, rfl⟩
+          obtain ⟨outerResult, houterRun⟩ := houter
+          refine ⟨outerResult, ?_⟩
+          have hheadRunRemaining : solvePairedTy
+              (completePairedTyFuelAux (remaining + 1) ledger
+                leftHead rightHead) ledger leftHead rightHead =
+                some headResult := by
+            rw [← htotal]
+            exact hheadRun
+          change solvePairedTyList (completePairedTyListFuelAux total ledger
+            (leftHead :: leftTail) (rightHead :: rightTail)) ledger
+            (leftHead :: leftTail) (rightHead :: rightTail) = some outerResult
+          rw [htotal, completePairedTyListFuelAux_cons_ne remaining ledger
+            leftHead rightHead leftTail rightTail hheadEq headResult
+            hheadRunRemaining]
+          simpa [fuelHead, fuelTail, total, htotal] using houterRun
+termination_by
+  (targetBudget.length + capBudget.length,
+    Unification.Ty.unificationWeightList left +
+      Unification.Ty.unificationWeightList right, 1)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; apply Prod.Lex.left
+       simp only [Unification.Ty.unificationWeightList]
+       omega)
+    | (apply Prod.Lex.left
+       rw [List.length_erase_of_mem hvBudget]
+       have := List.length_pos_of_mem hvBudget
+       omega)
+
+end
+
 /-! ## Public wrappers -/
 
 /-- Complete-fuel wrapper of the origin-oriented capability solver. -/
@@ -3884,10 +5140,10 @@ theorem mguOrientedCap_support
       subst C
       simpa [hsolve] using result.capSupport
 
-/-- Structural-fuel wrapper of the paired solver. -/
+/-- Complete-fuel wrapper of the paired solver. -/
 def mguPairedTy
     (ledger : CapabilityOriginLedger) (left right : Ty) : Option Subst :=
-  (solvePairedTy (Unification.tyFuel left right) ledger left right).map
+  (solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left right).map
     PairedResult.subst
 
 /-- Any successful run within the public structural fuel bound is replayed by
@@ -3895,7 +5151,7 @@ the paired target wrapper with the same substitution. -/
 theorem mguPairedTy_of_fuel_le
     {fuel : Nat} {ledger : CapabilityOriginLedger} {left right : Ty}
     {result : PairedResult ledger left right}
-    (hle : fuel ≤ Unification.tyFuel left right)
+    (hle : fuel ≤ mguPairedTyCompleteFuel ledger left right)
     (hrun : solvePairedTy fuel ledger left right = some result) :
     mguPairedTy ledger left right = some result.subst := by
   obtain ⟨result', hrun', hsubst⟩ := solvePairedTy_mono_le hle hrun
@@ -3908,27 +5164,43 @@ return the identity substitution. -/
 @[simp] theorem mguPairedTy_self
     (ledger : CapabilityOriginLedger) (target : Ty) :
     mguPairedTy ledger target target = some Subst.id := by
-  have hle : 1 ≤ Unification.tyFuel target target := by
-    simp only [Unification.tyFuel]
-    omega
+  have hle : 1 ≤ mguPairedTyCompleteFuel ledger target target := by
+    simp [mguPairedTyCompleteFuel]
   cases hrun : solvePairedTy 1 ledger target target with
   | none => simp [solvePairedTy] at hrun
   | some result =>
       have hsubst := solvePairedTy_eq_self hrun
       simpa [hsubst] using mguPairedTy_of_fuel_le hle hrun
 
+/-- Every paired constraint solved by an origin-admissible competitor is
+accepted by the executable complete-fuel wrapper. -/
+theorem mguPairedTy_complete_of_admissible
+    {ledger : CapabilityOriginLedger} {left right : Ty} {U : Subst}
+    (competitorAdmissible : AdmissiblePost ledger U)
+    (competitorSound : U.apply left = U.apply right) :
+    ∃ S : Subst, mguPairedTy ledger left right = some S := by
+  obtain ⟨result, hrun⟩ :=
+    solvePairedTy_completeFuel (left.ftv ++ right.ftv)
+      (left.fcv ++ right.fcv) ledger left right
+      (fun _ membership => membership) (fun _ membership => membership)
+      U competitorAdmissible competitorSound
+  refine ⟨result.subst, ?_⟩
+  unfold mguPairedTy mguPairedTyCompleteFuel
+  rw [hrun]
+  rfl
+
 /-- Finite target-support ledger returned by the same paired-solver run. -/
 def mguPairedTySupport
     (ledger : CapabilityOriginLedger) (left right : Ty) :
     List TypePM.TyVar :=
-  match solvePairedTy (Unification.tyFuel left right) ledger left right with
+  match solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left right with
   | none => []
   | some result => result.targetSupportVars
 
 /-- Finite capability-support ledger returned by the same paired-solver run. -/
 def mguPairedTyCapSupport
     (ledger : CapabilityOriginLedger) (left right : Ty) : List CapVar :=
-  match solvePairedTy (Unification.tyFuel left right) ledger left right with
+  match solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left right with
   | none => []
   | some result => result.capSupportVars
 
@@ -3938,7 +5210,7 @@ theorem mguPairedTy_sound
     (hsuccess : mguPairedTy ledger left right = some S) :
     S.apply left = S.apply right := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -3955,7 +5227,7 @@ theorem mguPairedTy_globalUniversal
     (competitorSound : U.apply left = U.apply right) :
     ∃ R : Subst, U = Subst.seq R S := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -3971,7 +5243,7 @@ theorem mguPairedTy_admissible
     (hsuccess : mguPairedTy ledger left right = some S) :
     AdmissiblePost ledger S := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -3991,7 +5263,7 @@ theorem mguPairedTy_universal
     ∃ R : Subst,
       AdmissiblePost ledger R ∧ U = Subst.seq R S := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4009,7 +5281,7 @@ theorem mguPairedTy_support
     S.target.SupportWithin (mguPairedTySupport ledger left right) := by
   unfold mguPairedTy at hsuccess
   unfold mguPairedTySupport
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4026,7 +5298,7 @@ theorem mguPairedTy_capSupport
     S.cap.SupportWithin (mguPairedTyCapSupport ledger left right) := by
   unfold mguPairedTy at hsuccess
   unfold mguPairedTyCapSupport
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4044,7 +5316,7 @@ theorem mguPairedTy_capSupportInput
       varId ∈ left.fcv ++ right.fcv := by
   unfold mguPairedTy at hsuccess
   unfold mguPairedTyCapSupport
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4060,7 +5332,7 @@ theorem mguPairedTy_supportInput
       varId ∈ left.ftv ++ right.ftv := by
   unfold mguPairedTy at hsuccess
   unfold mguPairedTySupport
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4074,7 +5346,7 @@ theorem mguPairedTy_capRange
     (hsuccess : mguPairedTy ledger left right = some S) :
     Unification.CapRange S.cap (left.fcv ++ right.fcv) := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4089,7 +5361,7 @@ theorem mguPairedTy_targetRange
     (hsuccess : mguPairedTy ledger left right = some S) :
     Unification.TyRange S.target (left.ftv ++ right.ftv) := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4104,7 +5376,7 @@ theorem mguPairedTy_targetCapRange
     (hsuccess : mguPairedTy ledger left right = some S) :
     Unification.TyCapRange S.target (left.fcv ++ right.fcv) := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4117,7 +5389,7 @@ theorem mguPairedTy_idempotent
     {ledger : CapabilityOriginLedger} {left right : Ty} {S : Subst}
     (hsuccess : mguPairedTy ledger left right = some S) : S.Idempotent := by
   unfold mguPairedTy at hsuccess
-  cases hsolve : solvePairedTy (Unification.tyFuel left right) ledger left
+  cases hsolve : solvePairedTy (mguPairedTyCompleteFuel ledger left right) ledger left
       right with
   | none => simp [hsolve] at hsuccess
   | some result =>
@@ -4137,7 +5409,14 @@ flexible. -/
 theorem paired_solves_flexible_annotation :
     (mguPairedTy [(0, .structuralFlexible)]
       (.matcher (.var 0) .int) (.matcher .any .int)).isSome = true := by
-  rfl
+  obtain ⟨S, hS⟩ := mguPairedTy_complete_of_admissible
+    (ledger := [(0, .structuralFlexible)])
+    (left := .matcher (.var 0) .int) (right := .matcher .any .int)
+    (U := Subst.mk (Unification.CapSubst.single 0 .any) TySubst.id)
+    ⟨admissible_single_structuralFlexible _ 0 .any rfl⟩ (by
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Cap.apply, Unification.CapSubst.single])
+  simp [hS]
 
 /-- The symmetric solver still rejects the same constraint. -/
 theorem symmetric_still_rigid :
@@ -4149,31 +5428,78 @@ theorem symmetric_still_rigid :
 theorem paired_renames_frozen_annotation :
     (mguPairedTy [(0, .renameOnly), (5, .renameOnly)]
       (.matcher (.var 0) .int) (.matcher (.var 5) .int)).isSome = true := by
-  rfl
+  obtain ⟨S, hS⟩ := mguPairedTy_complete_of_admissible
+    (ledger := [(0, .renameOnly), (5, .renameOnly)])
+    (left := .matcher (.var 0) .int) (right := .matcher (.var 5) .int)
+    (U := Subst.mk (Unification.CapSubst.single 0 (.var 5)) TySubst.id)
+    ⟨admissible_single_rename _ 0 5 rfl (by
+      simp [CapabilityOriginLedger.originOf])⟩ (by
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Cap.apply, Unification.CapSubst.single])
+  simp [hS]
 
 /-- A rename-only annotation variable is never structured. -/
 theorem paired_rejects_frozen_structuring :
     mguPairedTy [(0, .renameOnly)]
       (.matcher (.var 0) .int) (.matcher .any .int) = none := by
-  rfl
+  cases hrun : mguPairedTy [(0, .renameOnly)]
+      (.matcher (.var 0) .int) (.matcher .any .int) with
+  | none => rfl
+  | some S =>
+      have hadmissible := mguPairedTy_admissible hrun
+      have hsound := mguPairedTy_sound hrun
+      have hpolicy := hadmissible.cap 0
+      simp [CapabilityOriginLedger.originOf] at hpolicy
+      rcases hpolicy with ⟨image, himage, _⟩
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply] at hsound
+      rw [himage] at hsound
+      cases hsound
 
 /-- Unlisted variables default to rigid and are never bound. -/
 theorem paired_rejects_rigid_default :
     mguPairedTy [] (.matcher (.var 0) .int) (.matcher .any .int) = none := by
-  rfl
+  cases hrun : mguPairedTy []
+      (.matcher (.var 0) .int) (.matcher .any .int) with
+  | none => rfl
+  | some S =>
+      have hadmissible := mguPairedTy_admissible hrun
+      have hsound := mguPairedTy_sound hrun
+      have hpolicy := hadmissible.cap 0
+      simp [CapabilityOriginLedger.originOf] at hpolicy
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget, Cap.apply] at hsound
+      rw [hpolicy] at hsound
+      cases hsound
 
 /-- Annotations are solved at any structural depth. -/
 theorem paired_solves_nested_annotation :
     (mguPairedTy [(0, .structuralFlexible)]
       (.fn (.matcher (.var 0) .int) .int)
       (.fn (.matcher (.con "List" [.any]) .int) .int)).isSome = true := by
-  rfl
+  obtain ⟨S, hS⟩ := mguPairedTy_complete_of_admissible
+    (ledger := [(0, .structuralFlexible)])
+    (left := .fn (.matcher (.var 0) .int) .int)
+    (right := .fn (.matcher (.con "List" [.any]) .int) .int)
+    (U := Subst.mk
+      (Unification.CapSubst.single 0 (.con "List" [.any])) TySubst.id)
+    ⟨admissible_single_structuralFlexible _ 0 (.con "List" [.any]) rfl⟩ (by
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Cap.apply, Cap.applyList, Unification.CapSubst.single])
+  simp [hS]
 
 /-- Capability and target metavariables are solved in the same pass. -/
 theorem paired_solves_both_sorts :
     (mguPairedTy [(0, .structuralFlexible)]
       (.matcher (.var 0) (.var 3)) (.matcher .any .int)).isSome = true := by
-  rfl
+  obtain ⟨S, hS⟩ := mguPairedTy_complete_of_admissible
+    (ledger := [(0, .structuralFlexible)])
+    (left := .matcher (.var 0) (.var 3))
+    (right := .matcher .any .int)
+    (U := Subst.mk (Unification.CapSubst.single 0 .any)
+      (Unification.TySubst.single 3 .int))
+    ⟨admissible_single_structuralFlexible _ 0 .any rfl⟩ (by
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Cap.apply, Unification.CapSubst.single, Unification.TySubst.single])
+  simp [hS]
 
 /-- Orientation binds the flexible side, never structuring the frozen
 variable: a rename-only variable against a flexible one is solved by
@@ -4181,7 +5507,14 @@ absorbing into the flexible variable. -/
 theorem paired_orients_toward_flexible :
     (mguPairedTy [(0, .renameOnly), (5, .structuralFlexible)]
       (.matcher (.var 0) .int) (.matcher (.var 5) .int)).isSome = true := by
-  rfl
+  obtain ⟨S, hS⟩ := mguPairedTy_complete_of_admissible
+    (ledger := [(0, .renameOnly), (5, .structuralFlexible)])
+    (left := .matcher (.var 0) .int) (right := .matcher (.var 5) .int)
+    (U := Subst.mk (Unification.CapSubst.single 5 (.var 0)) TySubst.id)
+    ⟨admissible_single_structuralFlexible _ 5 (.var 0) rfl⟩ (by
+      simp [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Cap.apply, Unification.CapSubst.single])
+  simp [hS]
 
 end PairedUnification
 end TypePM

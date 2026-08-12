@@ -757,7 +757,8 @@ theorem PairedUnification.mguPairedTy_originSafeExactPairedMGU
     OriginSafeExactPairedMGU ledger left right S := by
   unfold PairedUnification.mguPairedTy at success
   cases solved : PairedUnification.solvePairedTy
-      (Unification.tyFuel left right) ledger left right with
+      (PairedUnification.mguPairedTyCompleteFuel ledger left right)
+      ledger left right with
   | none => simp [solved] at success
   | some result =>
       have resultEq : result.subst = S := by

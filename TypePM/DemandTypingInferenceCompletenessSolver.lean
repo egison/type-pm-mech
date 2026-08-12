@@ -57,7 +57,8 @@ theorem mguPairedTy_correspondence
     PairedStateCorrespondence declarative executable := by
   unfold PairedUnification.mguPairedTy at success
   cases run : PairedUnification.solvePairedTy
-      (Unification.tyFuel left right) ledger left right with
+      (PairedUnification.mguPairedTyCompleteFuel ledger left right)
+      ledger left right with
   | none => simp [run] at success
   | some result =>
       have executableEq : result.subst = executable := by
