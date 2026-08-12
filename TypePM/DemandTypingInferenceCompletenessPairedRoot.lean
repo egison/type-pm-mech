@@ -78,8 +78,8 @@ theorem PairedValidatorRunExtension.applyEmpty
           PairedTerminalAuditEventCoverage.empty terminal signature supply
             before)
 
-/-- Matcher-finalization witnesses always inhabit the exact branch of paired
-coverage; the constructor-specific branch is impossible at this event index. -/
+/-- Matcher-finalization witnesses are projected either from an exact audit
+event or directly from paired DD/executable operands. -/
 theorem PairedTerminalAuditEventCoverage.finalizations
     {terminal : Subst} {signature : FrozenSig}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -90,11 +90,17 @@ theorem PairedTerminalAuditEventCoverage.finalizations
   intro event membership
   have covered := coverage event membership
   cases event with
-  | matcherFinalization _ _ _ _ _ _ _ _ =>
+  | matcherFinalization _ _ _ _ _ _ localEvidence _ =>
       cases covered with
       | exact witness =>
           exact TerminalAuditEventWitness.matcher_condition_bisimulation
             relation armBasic witness
+      | matcher solveBound localTargetEq localHolesEq target holes capability
+          catchAll binders facts =>
+          exact PairedTerminalAuditEventWitness.matcherCondition armBasic
+            (.matcher (localEvidence := localEvidence) solveBound localTargetEq
+              localHolesEq target
+              holes capability catchAll binders facts)
   | _ => trivial
 
 /-- Let-generalization witnesses likewise remain exact in paired coverage. -/
