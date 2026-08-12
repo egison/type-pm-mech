@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          build: true
+          build-args: "--wfail"
+          test: false
+          lint: false
+          use-mathlib-cache: false
+
+  formal-specification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LuaLaTeX and Japanese support
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes texlive-luatex texlive-lang-japanese texlive-latex-extra texlive-science
+      - name: Build formal specification
+        working-directory: tex
+        run: make
