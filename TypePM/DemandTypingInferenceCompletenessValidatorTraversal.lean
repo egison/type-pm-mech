@@ -1066,6 +1066,82 @@ theorem inferPatternFuel_wild_patternLeaves
 
 /-! ## Expected-alignment emitter -/
 
+/-- If an expected-type alignment has made its raw endpoints equal at the
+local output cut, the emitted resolved views satisfy the canonical equality
+branch after every later traversal suffix. -/
+theorem alignedEqual_canonicalSlotEventCondition
+    {state aligned terminal : InferState} {raw expected : Ty}
+    (alignmentHistory : state.HistoryPrefix aligned)
+    (equal : aligned.prevailing.apply raw = aligned.prevailing.apply expected)
+    (history : (aligned.recordEvent (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (state.prevailing.apply raw)
+      (state.prevailing.apply expected))).HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (state.prevailing.apply raw)
+      (state.prevailing.apply expected)) := by
+  have alignedToTerminal : aligned.HistoryPrefix terminal :=
+    (InferState.historyPrefix_recordEvent aligned _).trans history
+  have totalHistory := alignmentHistory.trans alignedToTerminal
+  have terminalEqual : terminal.prevailing.apply raw =
+      terminal.prevailing.apply expected :=
+    HistoryPrefix.final_type_eq alignedToTerminal equal
+  have rawReplay := history_terminal_apply_eq totalHistory raw
+  have expectedReplay := history_terminal_apply_eq totalHistory expected
+  apply canonicalSlotEventCondition_equal alignmentHistory.solve_length_le
+    alignedToTerminal.solve_length_le
+  rw [← rawReplay, ← expectedReplay]
+  exact terminalEqual
+
+/-- A DD alignment whose input views are both slots has equal output
+endpoints.  Other DD constructors are excluded by their resolved-head
+premises. -/
+theorem DDAlignWithLedger.output_equal_of_slotViews
+    {ledger : CapabilityOriginLedger} {S S' : Subst} {raw expected : Ty}
+    {sourceCap requestedCap : Cap} {sourceTarget requestedTarget : Ty}
+    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (rawView : S.apply raw = .slot sourceCap sourceTarget)
+    (expectedView : S.apply expected = .slot requestedCap requestedTarget) :
+    S'.apply raw = S'.apply expected := by
+  cases aligned with
+  | productMatcherLift matcherView _ _ =>
+      simp [rawView, productMatcherDuals?] at matcherView
+  | slotTupleLift _ slotView _ _ _ =>
+      simp [rawView, productSlotDuals?] at slotView
+  | matcherToSlot matcherView _ _ => simp [rawView] at matcherView
+  | slotToSlot actualRaw actualExpected capSafe targetSafe =>
+      simp only [Subst.seq_apply]
+      rw [actualRaw, actualExpected]
+      have capEquality := capSafe.exact.1.1
+      have targetEquality := targetSafe.exact.1.1
+      simp only [Subst.apply] at targetEquality
+      simp only [Subst.apply, Ty.applyCapability, Ty.applyTarget,
+        Ty.applyTarget_id]
+      rw [capEquality, targetEquality]
+  | ordinary demand _ =>
+      simp [demandClass, rawView, expectedView, productMatcherDuals?,
+        productSlotDuals?] at demand
+
+/-- The ordinary DD alignment constructor exposes its output equality without
+passing through runtime erasure. -/
+theorem DDAlignWithLedger.output_equal_of_ordinary
+    {ledger : CapabilityOriginLedger} {S S' : Subst} {raw expected : Ty}
+    (aligned : DDAlignWithLedger ledger S raw expected S')
+    (ordinary : demandClass (S.apply raw) (S.apply expected) = .ordinary) :
+    S'.apply raw = S'.apply expected := by
+  cases aligned with
+  | productMatcherLift rawView expectedView _ =>
+      simp [demandClass, rawView, expectedView] at ordinary
+  | slotTupleLift demand _ _ _ _ => simp [demand] at ordinary
+  | matcherToSlot rawView expectedView _ =>
+      simp [demandClass, rawView, expectedView, productMatcherDuals?,
+        productSlotDuals?] at ordinary
+  | slotToSlot rawView expectedView _ _ =>
+      simp [demandClass, rawView, expectedView, productMatcherDuals?,
+        productSlotDuals?] at ordinary
+  | ordinary _ aligned => exact aligned.output_equal
+
 /-- A successful resolved producer-to-slot solve, followed by any later
 solver suffix, supplies the exact canonical witness for the slot event emitted
 at that checking cut. -/
@@ -1141,6 +1217,43 @@ theorem runResolvedConstraint_producerToSlot_canonicalSlotEventCondition
         exact canonicalSlotEventCondition_matcherToSlot startStop stopBound
           localSlice terminalSlice constraintEq
       · contradiction
+
+/-- Direct canonical-slot emitter for the raw expected-type alignment.  Its
+three executable branches reduce respectively to one-way matcher coercion,
+slot equality, and ordinary type equality. -/
+theorem alignAtSlot_canonicalSlotEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {raw expected : Ty}
+    (success : alignAtSlot state origin raw expected = some aligned)
+    (history : (aligned.recordEvent (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (state.prevailing.apply raw)
+      (state.prevailing.apply expected))).HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (state.prevailing.apply raw)
+      (state.prevailing.apply expected)) := by
+  have original := success
+  have alignmentHistory := alignAtSlot_historyPrefix original
+  unfold alignAtSlot at success
+  simp only at success
+  split at success
+  · rename_i producerCap producerTarget consumerCap consumerTarget rawView
+      expectedView
+    rw [rawView, expectedView] at history ⊢
+    exact runResolvedConstraint_producerToSlot_canonicalSlotEventCondition
+      success history
+  · rename_i sourceCap sourceTarget requestedCap requestedTarget rawView
+      expectedView
+    rcases alignAtSlot_slotToSlot_ddAlignRun rawView expectedView original with
+      ⟨_supplyEq, _ledgerEq, alignedDD⟩
+    exact alignedEqual_canonicalSlotEventCondition alignmentHistory
+      (DDAlignWithLedger.output_equal_of_slotViews alignedDD rawView
+        expectedView) history
+  · rcases alignTypes_ddAlignTypesRun success with
+      ⟨_supplyEq, _ledgerEq, alignedDD⟩
+    exact alignedEqual_canonicalSlotEventCondition alignmentHistory
+      alignedDD.output_equal history
 
 end Reconstruction
 end Inference
