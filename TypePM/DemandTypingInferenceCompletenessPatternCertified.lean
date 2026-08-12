@@ -138,6 +138,56 @@ def CertifiedPatternsCompletenessBelow.mono
     CertifiedPatternsCompletenessBelow terminal signature smaller :=
   ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
 
+theorem Context.BoundedBy.capVarsBelow
+    {q : InferenceBase.FreshSupply} {context : Context}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.CapVarsBelow q context.fcv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  exact (bounded entry entryMem).caps varId varMem
+
+theorem Context.BoundedBy.tyVarsBelow
+    {q : InferenceBase.FreshSupply} {context : Context}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.TyVarsBelow q context.ftv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  exact (bounded entry entryMem).targets varId varMem
+
+theorem MonoCtx.BoundedBy.capVarsBelow
+    {q : InferenceBase.FreshSupply} {context : MonoCtx}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.CapVarsBelow q context.fcv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  exact (bounded entry entryMem).caps varId varMem
+
+theorem MonoCtx.BoundedBy.tyVarsBelow
+    {q : InferenceBase.FreshSupply} {context : MonoCtx}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.TyVarsBelow q context.ftv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  exact (bounded entry entryMem).targets varId varMem
+
+theorem PatternCtx.BoundedBy.capVarsBelow
+    {q : InferenceBase.FreshSupply} {context : PatternCtx}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.CapVarsBelow q context.fcv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  rcases List.mem_append.mp varMem with capMem | targetMem
+  · exact (bounded entry entryMem).1 varId capMem
+  · exact (bounded entry entryMem).2.caps varId targetMem
+
+theorem PatternCtx.BoundedBy.tyVarsBelow
+    {q : InferenceBase.FreshSupply} {context : PatternCtx}
+    (bounded : context.BoundedBy q) :
+    InferenceBase.TyVarsBelow q context.ftv := by
+  intro varId membership
+  obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
+  exact (bounded entry entryMem).2.targets varId varMem
+
 /-! ## Constructor-independent chronology -/
 
 /-- Every solve-free leaf (and the value-pattern suffix after its certified
