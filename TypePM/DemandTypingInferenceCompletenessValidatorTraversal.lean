@@ -148,6 +148,50 @@ structure TraversalValidatorEventCondition
   canonicalInstance : CanonicalInstanceEventWitness state event
   slot : CanonicalSlotEventWitness state event
 
+/-- Pointwise root-trace form of the four traversal validator folds.  This is
+the convenient elimination interface for a completed root run: classify one
+event membership by the syntax node that emitted it, rather than maintaining
+four parallel universal predicates. -/
+def TraversalValidatorEventCoverage
+    (signature : FrozenSig) (state : InferState) : Prop :=
+  ∀ event, event ∈ state.trace.events →
+    TraversalValidatorEventCondition signature state event
+
+/-- Pointwise root-event coverage packages directly into the four validator
+folds consumed by `wBridgeCheck_complete`. -/
+theorem TraversalValidatorConditions.ofEventCoverage
+    {signature : FrozenSig} {state : InferState}
+    (coverage : TraversalValidatorEventCoverage signature state) :
+    TraversalValidatorConditions signature state := by
+  constructor
+  · intro event membership
+    exact (coverage event membership).primitiveHole.holds
+  · intro event membership
+    exact (coverage event membership).patternLeaf.holds
+  · intro event membership
+    exact (coverage event membership).canonicalInstance.holds
+  · intro event membership
+    exact (coverage event membership).slot.holds
+
+/-- Conversely, the packaged folds justify every root trace event. -/
+theorem TraversalValidatorConditions.eventCoverage
+    {signature : FrozenSig} {state : InferState}
+    (conditions : TraversalValidatorConditions signature state) :
+    TraversalValidatorEventCoverage signature state := by
+  intro event membership
+  exact
+    { primitiveHole := ⟨conditions.primitiveHoles event membership⟩
+      patternLeaf := ⟨conditions.patternLeaves event membership⟩
+      canonicalInstance := ⟨conditions.instances event membership⟩
+      slot := ⟨conditions.slots event membership⟩ }
+
+theorem traversalValidatorEventCoverage_iff
+    (signature : FrozenSig) (state : InferState) :
+    TraversalValidatorEventCoverage signature state ↔
+      TraversalValidatorConditions signature state :=
+  ⟨TraversalValidatorConditions.ofEventCoverage,
+    TraversalValidatorConditions.eventCoverage⟩
+
 @[simp] theorem terminalCapCandidate_recordEvent
     (state : InferState) (event : TraceEvent)
     (supply : InferenceBase.FreshSupply) (binders : List CapVar) :

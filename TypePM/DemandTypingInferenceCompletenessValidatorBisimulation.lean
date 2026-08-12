@@ -324,5 +324,32 @@ theorem terminalAuditConditions_bisimulation
     TerminalAuditEventCoverage.generalizations_bisimulation relation
       signatureWF.schemesClosed coverage⟩
 
+/-- Root-run terminal package for the public validator.  Ordinary traversal
+events are supplied once in pointwise membership form, the three
+suffix-sensitive events come from the terminal audit tree, and the two
+alignment-equality folds are intrinsic traversal invariants.  No typing
+judgment or Boolean validator success is a premise. -/
+theorem wBridgeCheck_complete_of_rootCoverage
+    {terminal : Subst} {signature : FrozenSig} {result : ExprResult}
+    {ledger : CapabilityOriginLedger}
+    (relation : StateBisimulation ledger terminal result.state)
+    (signatureWF : FrozenSigWF signature)
+    (traversal : TraversalValidatorEventCoverage signature result.state)
+    (audit : TerminalAuditEventCoverage terminal signature result.state)
+    (types : TraceTypeAlignmentConditions result.state)
+    (duals : TraceDualAlignmentConditions result.state) :
+    wBridgeCheck signature result = true := by
+  let traversalConditions :=
+    TraversalValidatorConditions.ofEventCoverage traversal
+  obtain ⟨patternCtors, finalizations, generalizations⟩ :=
+    terminalAuditConditions_bisimulation relation signatureWF audit
+  exact wBridgeCheck_complete
+    traversalConditions.primitiveHoles
+    traversalConditions.patternLeaves
+    patternCtors
+    traversalConditions.instances
+    traversalConditions.slots
+    types duals finalizations generalizations
+
 end DemandTypingInferenceCompletenessValidatorBisimulation
 end TypePM
