@@ -483,5 +483,204 @@ noncomputable def boundedPatternEmbedOrigin_complete
     rw [← bindingsEq]
     exact executableBindingsBounded
 
+/-! ## Bounded list and tuple packaging -/
+
+def boundedPatternsNil_complete
+    {signature : FrozenSig} {context : Context} {parameters : PatternCtx}
+    {executableBindings : MonoCtx} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {index : Nat} {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableBindingsBounded : executableBindings.BoundedBy q) :
+    BoundedPatternsRunCompletion before
+      (inferPatternsFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path index [] state)
+      q S ledger [] declarativeBindings := by
+  let run := patternsNil_complete fuel signature context parameters selfEnv
+    path index before declarativeBindings executableBindings bindings
+  refine ⟨run, ?_, ?_⟩
+  · intro dual membership
+    have dualsEq : ([] : List Dual) = run.result.duals := by
+      simpa [inferPatternsFuel] using
+        congrArg (Option.map PatternsResult.duals) run.success
+    rw [← dualsEq] at membership
+    exact nomatch membership
+  · have bindingsEq : executableBindings = run.result.bindings := by
+      simpa [inferPatternsFuel] using
+        congrArg (Option.map PatternsResult.bindings) run.success
+    rw [← bindingsEq]
+    exact executableBindingsBounded
+
+def boundedPatternsCons_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {pattern : Pattern} {patterns : List Pattern}
+    {executableBindings : MonoCtx}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    {dual : Dual} {duals : List Dual} {bindings₁ bindings' : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (head : BoundedPatternRunCompletion before
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (index :: parent) pattern state)
+      q₁ S₁ ledger₁ dual bindings₁)
+    (tail : BoundedPatternsRunCompletion head.run.completion
+      (inferPatternsFuel fuel signature context parameters
+        head.run.result.bindings selfEnv parent (index + 1) patterns
+        head.run.result.state)
+      q' S' ledger' duals bindings')
+    (tailExtends : SupplyExtends q₁ q') :
+    BoundedPatternsRunCompletion before
+      (inferPatternsFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv parent index (pattern :: patterns) state)
+      q' S' ledger' (dual :: duals) bindings' := by
+  let run := patternsCons_complete fuel signature context parameters selfEnv
+    parent index pattern patterns before head.run tail.run
+  refine ⟨run, ?_, ?_⟩
+  · have dualsEq : head.run.result.dual :: tail.run.result.duals =
+        run.result.duals := by
+      have mapped := congrArg (Option.map PatternsResult.duals) run.success
+      simp only [inferPatternsFuel] at mapped
+      simp only [head.run.success, tail.run.success] at mapped
+      exact Option.some.inj mapped
+    rw [← dualsEq]
+    intro item membership
+    rcases List.mem_cons.mp membership with rfl | tailMembership
+    · exact head.rawDualBounded.mono tailExtends
+    · exact tail.rawDualsBounded item tailMembership
+  · have bindingsEq : tail.run.result.bindings = run.result.bindings := by
+      have mapped := congrArg (Option.map PatternsResult.bindings) run.success
+      simp only [inferPatternsFuel] at mapped
+      simp only [head.run.success, tail.run.success] at mapped
+      exact Option.some.inj mapped
+    rw [← bindingsEq]
+    exact tail.rawBindingsBounded
+
+def boundedPatternTuple_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {patterns : List Pattern}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {duals : List Dual} {bindings : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children : BoundedPatternsRunCompletion
+      (before.visit .patternTuple path)
+      (inferPatternsFuel fuel signature context parameters executableBindings
+        selfEnv path 0 patterns (visit state .patternTuple path))
+      q' S' ledger' duals bindings) :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.ptuple patterns) state)
+      q' S' ledger'
+      ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings := by
+  let run := patternTuple_complete fuel signature context parameters parameters
+    selfEnv path patterns before executableBindings children.run
+  refine ⟨run, ?_, ?_⟩
+  · have dualEq :
+        ⟨.prod (children.run.result.duals.map Dual.cap),
+          .prod (children.run.result.duals.map Dual.target)⟩ =
+            run.result.dual := by
+      have mapped := congrArg (Option.map PatternResult.dual) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [children.run.success] at mapped
+      exact Option.some.inj mapped
+    rw [← dualEq]
+    constructor
+    · apply Cap.BoundedBy.prodOfForall
+      intro capability membership
+      obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp membership
+      exact (children.rawDualsBounded dual dualMem).1
+    · apply Ty.BoundedBy.prodOfForall
+      intro target membership
+      obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp membership
+      exact (children.rawDualsBounded dual dualMem).2
+  · have bindingsEq : children.run.result.bindings = run.result.bindings := by
+      have mapped := congrArg (Option.map PatternResult.bindings) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [children.run.success] at mapped
+      exact Option.some.inj mapped
+    rw [← bindingsEq]
+    exact children.rawBindingsBounded
+
+noncomputable def boundedPatternAnd_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {left right : Pattern} {executableBindings : MonoCtx}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
+    {leftDual rightDual : Dual} {leftBindings bindings' : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (leftRun : BoundedPatternRunCompletion (before.visit .patternAnd path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternAnd path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : BoundedPatternRunCompletion leftRun.run.completion
+      (inferPatternFuel fuel signature context parameters
+        leftRun.run.result.bindings selfEnv (1 :: path) right
+        leftRun.run.result.state)
+      q₂ S₂ ledger₂ rightDual bindings')
+    (rightExtends : SupplyExtends q₁ q₂)
+    (declarativeLeftBounded : leftDual.BoundedBy q₂)
+    (declarativeRightBounded : rightDual.BoundedBy q₂)
+    (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pand left right) state)
+      q₂ S' ledger₂ leftDual bindings' := by
+  let run := patternAnd_complete fuel signature context parameters selfEnv path
+    left right before executableBindings leftRun.run rightRun.run
+    declarativeLeftBounded declarativeRightBounded
+    (leftRun.rawDualBounded.mono rightExtends) rightRun.rawDualBounded aligned
+  refine ⟨run, ?_, ?_⟩
+  · change leftRun.run.result.dual.BoundedBy q₂
+    exact leftRun.rawDualBounded.mono rightExtends
+  · change rightRun.run.result.bindings.BoundedBy q₂
+    exact rightRun.rawBindingsBounded
+
+noncomputable def boundedPatternOr_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {parameters : PatternCtx} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {left right : Pattern} {executableBindings : MonoCtx}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ S' : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
+    {leftDual rightDual : Dual} {leftBindings rightBindings : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (leftRun : BoundedPatternRunCompletion (before.visit .patternOr path)
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (0 :: path) left (visit state .patternOr path))
+      q₁ S₁ ledger₁ leftDual leftBindings)
+    (rightRun : BoundedPatternRunCompletion leftRun.run.completion
+      (inferPatternFuel fuel signature context parameters executableBindings
+        selfEnv (1 :: path) right leftRun.run.result.state)
+      q₂ S₂ ledger₂ rightDual rightBindings)
+    (rightExtends : SupplyExtends q₁ q₂)
+    (declarativeLeftDualBounded : leftDual.BoundedBy q₂)
+    (declarativeRightDualBounded : rightDual.BoundedBy q₂)
+    (declarativeLeftBindingsBounded : leftBindings.BoundedBy q₂)
+    (declarativeRightBindingsBounded : rightBindings.BoundedBy q₂)
+    (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
+    (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃ leftBindings
+      rightBindings S') :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.por left right) state)
+      q₂ S' ledger₂ leftDual leftBindings := by
+  let run := patternOr_complete fuel signature context parameters selfEnv path
+    left right before executableBindings leftRun.run rightRun.run
+    declarativeLeftDualBounded declarativeRightDualBounded
+    (leftRun.rawDualBounded.mono rightExtends) rightRun.rawDualBounded
+    declarativeLeftBindingsBounded declarativeRightBindingsBounded
+    (leftRun.rawBindingsBounded.mono rightExtends)
+    rightRun.rawBindingsBounded dualsAligned bindingsAligned
+  refine ⟨run, ?_, ?_⟩
+  · change leftRun.run.result.dual.BoundedBy q₂
+    exact leftRun.rawDualBounded.mono rightExtends
+  · change leftRun.run.result.bindings.BoundedBy q₂
+    exact leftRun.rawBindingsBounded.mono rightExtends
+
 end DemandTypingInferenceCompletenessPatternMain
 end TypePM
