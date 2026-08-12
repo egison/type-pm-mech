@@ -810,5 +810,98 @@ noncomputable def boundedPatternCtor_complete
   · change children.run.result.bindings.BoundedBy q₂
     exact children.rawBindingsBounded.mono childrenToCapExtends
 
+/-! ## Pattern-function applications -/
+
+noncomputable def boundedPatternApp_complete
+    {fuel : Nat} {signature : FrozenSig}
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String}
+    {patterns : List Pattern} {scheme : DualScheme}
+    (lookup : signature.findPatternFun name = some scheme)
+    (closed : signature.SchemesClosed)
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    {duals : List Dual} {bindings' : MonoCtx}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children :
+      let instantiation := instantiateDualInState_complete before signature
+        executableContext executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) scheme
+      BoundedPatternsRunCompletion
+        (instantiation.correspondence.visit .patternApp path)
+        (inferPatternsFuel fuel signature executableContext
+          executableParameters executableBindings selfEnv path 0 patterns
+          (visit (instantiateDualInState signature executableContext
+            executableParameters executableBindings
+            (executableContext.applySubst state.prevailing)
+            (executableParameters.applySubst state.prevailing)
+            (executableBindings.applySubst state.prevailing) state scheme).2
+            .patternApp path))
+        q₁ S₁ ledger₁ duals bindings')
+    (childrenExtends : SupplyExtends
+      (InferenceBase.instantiateDualScheme q scheme).supply q₁)
+    (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
+    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.papp name patterns) state)
+      q₁ S' ledger₁
+      (InferenceBase.instantiateDualScheme q scheme).value.2 bindings' := by
+  let instBounded := instantiateDualScheme_boundedBy (q := q)
+    ((closed.patternFuns lookup).boundedBy)
+  have declarativeExpectedBounded : ∀ dual ∈
+      (InferenceBase.instantiateDualScheme q scheme).value.1,
+      dual.BoundedBy q₁ := by
+    intro dual membership
+    exact (instBounded.1 dual membership).mono childrenExtends
+  have executableExpectedBounded : ∀ dual ∈
+      (instantiateDualInState signature executableContext
+        executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) state scheme).1.1,
+      dual.BoundedBy q₁ := by
+    intro dual membership
+    have argumentEq :
+        (instantiateDualInState signature executableContext
+          executableParameters executableBindings
+          (executableContext.applySubst state.prevailing)
+          (executableParameters.applySubst state.prevailing)
+          (executableBindings.applySubst state.prevailing) state scheme).1.1 =
+        (InferenceBase.instantiateDualScheme q scheme).value.1 := by
+      simp [Inference.instantiateDualInState, before.supply_eq]
+    rw [argumentEq] at membership
+    exact (instBounded.1 _ membership).mono childrenExtends
+  let run := patternApp_complete fuel signature declarativeContext
+    executableContext declarativeParameters executableParameters
+    declarativeBindings executableBindings selfEnv path name patterns lookup
+    before children.run declarativeDualsBounded children.rawDualsBounded
+    declarativeExpectedBounded executableExpectedBounded aligned
+  refine ⟨run, ?_, ?_⟩
+  · change
+      (instantiateDualInState signature executableContext
+        executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) state scheme).1.2.BoundedBy q₁
+    have targetEq :
+        (instantiateDualInState signature executableContext
+          executableParameters executableBindings
+          (executableContext.applySubst state.prevailing)
+          (executableParameters.applySubst state.prevailing)
+          (executableBindings.applySubst state.prevailing) state scheme).1.2 =
+        (InferenceBase.instantiateDualScheme q scheme).value.2 := by
+      simp [Inference.instantiateDualInState, before.supply_eq]
+    rw [targetEq]
+    exact instBounded.2.mono childrenExtends
+  · change children.run.result.bindings.BoundedBy q₁
+    exact children.rawBindingsBounded
+
 end DemandTypingInferenceCompletenessPatternMain
 end TypePM
