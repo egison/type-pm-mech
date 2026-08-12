@@ -228,6 +228,38 @@ inductive DualListsBisimulation
       DualListsBisimulation relation (declarativeHoles :: declarativeLists)
         (executableHoles :: executableLists)
 
+/-- Pointwise dual correspondence preserves the number of primitive holes.
+This is the bridge needed by `decomposeME`, whose arity argument is computed
+from the executable primitive-pattern result. -/
+theorem DualListBisimulation.length_eq
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeHoles executableHoles : List Dual}
+    (related : DualListBisimulation relation declarativeHoles executableHoles) :
+    declarativeHoles.length = executableHoles.length := by
+  induction related with
+  | nil => rfl
+  | cons _ _ induction => exact congrArg Nat.succ induction
+
+/-- A chronological state extension transports every clause's primitive-hole
+list through the same residual pair. -/
+theorem BisimulationExtension.transportDualLists
+    {ledger ledger' : CapabilityOriginLedger}
+    {declarative declarative' : Subst} {state state' : InferState}
+    {before : StateBisimulation ledger declarative state}
+    (extension : BisimulationExtension before ledger' declarative' state')
+    {declarativeLists executableLists : List (List Dual)}
+    (related : DualListsBisimulation before declarativeLists executableLists) :
+    DualListsBisimulation extension.after declarativeLists executableLists := by
+  induction related with
+  | nil => exact .nil
+  | cons head tail induction =>
+      exact .cons
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          extension head)
+        induction
+
 structure ClausesRunCompletion
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger₀ : CapabilityOriginLedger} {initial : InferState}
@@ -243,6 +275,132 @@ structure ClausesRunCompletion
   target : TyBisimulation transition.after target result.target
   holes : DualListsBisimulation transition.after holeLists
     result.rawHoleLists
+
+/-! ## Clause traversal composition -/
+
+/-- Compose primitive-pattern inference, next-matcher checking, and arm
+checking in the executable order of one clause.  All solver choices are
+contained in the three supplied completed subruns. -/
+def inferClauseFuel_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {primitivePattern : PPat}
+    {next : Expr} {arms : List Arm}
+    {declarativeTarget executableTarget : Ty}
+    {holes : List Dual} {bindings : MonoCtx}
+    {nextMatchers : List Expr}
+    {q q₁ q₂ q' : InferenceBase.FreshSupply}
+    {S S₁ S₂ S' : Subst}
+    {ledger ledger₁ ledger₂ ledger' : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (primitive : PPatRunCompletion (before.visit .clause path)
+      (inferPPatFuel fuel signature (0 :: path) primitivePattern
+        executableTarget (visit state .clause path))
+      q₁ S₁ ledger₁ declarativeTarget holes bindings)
+    (decomposed : decomposeME next holes.length = some nextMatchers)
+    (nextRun : StateRunCompletion primitive.completion
+      (checkExprsFuel fuel signature context selfEnv (1 :: path) 0
+        nextMatchers
+        (primitive.result.holes.map fun hole => .slot hole.cap hole.target)
+        primitive.result.state)
+      q₂ S₂ ledger₂)
+    (armsRun : StateRunCompletion nextRun.completion
+      (checkArmsFuel fuel signature context selfEnv primitive.result.bindings
+        (2 :: path) 0 arms executableTarget
+        (Ty.listT (prodTy (primitive.result.holes.map Dual.target)))
+        nextRun.result)
+      q' S' ledger') :
+    ClauseRunCompletion before
+      (inferClauseFuel (fuel + 1) signature context selfEnv path
+        (.mk primitivePattern next arms) executableTarget state)
+      q' S' ledger' declarativeTarget holes := by
+  have holeLength :=
+    DemandTypingInferenceCompletenessMatcherTraversal.DualListBisimulation.length_eq
+      primitive.holes
+  have executableDecomposed :
+      decomposeME next primitive.result.holes.length = some nextMatchers := by
+    rw [← holeLength]
+    exact decomposed
+  let visitTransition := before.visitExtension .clause path
+  let transition :=
+    ((visitTransition.seq primitive.transition).seq nextRun.transition).seq
+      armsRun.transition
+  refine
+    { result := ⟨executableTarget, primitive.result.holes, armsRun.result⟩
+      success := ?_
+      state := armsRun.completion
+      transition := transition
+      target := transition.transportTy targetRelated
+      holes :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          (nextRun.transition.seq armsRun.transition) primitive.holes }
+  simp only [inferClauseFuel]
+  rw (occs := .pos [1]) [primitive.success]
+  rw [executableDecomposed]
+  rw (occs := .pos [1]) [nextRun.success]
+  exact armsRun.success
+
+/-- Empty clause traversal preserves the shared matcher target. -/
+def inferClausesFuel_nil_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (selfEnv : SelfEnv) (parent : SyntaxPath) (index : Nat)
+    {declarativeTarget executableTarget : Ty}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget) :
+    ClausesRunCompletion before
+      (inferClausesFuel (fuel + 1) signature context selfEnv parent index []
+        executableTarget state)
+      q S ledger declarativeTarget [] := by
+  refine
+    { result := ⟨executableTarget, [], state⟩
+      success := by simp [inferClausesFuel]
+      state := before
+      transition := .refl before.prevailing
+      target := targetRelated
+      holes := .nil }
+
+/-- Compose the completed head clause with the completed suffix traversal. -/
+def inferClausesFuel_cons_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {clause : Clause} {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {holes : List Dual} {holeLists : List (List Dual)}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (head : ClauseRunCompletion before
+      (inferClauseFuel fuel signature context selfEnv (index :: parent)
+        clause executableTarget state)
+      q₁ S₁ ledger₁ declarativeTarget holes)
+    (tail : ClausesRunCompletion head.state
+      (inferClausesFuel fuel signature context selfEnv parent (index + 1)
+        clauses executableTarget head.result.state)
+      q' S' ledger' declarativeTarget holeLists) :
+    ClausesRunCompletion before
+      (inferClausesFuel (fuel + 1) signature context selfEnv parent index
+        (clause :: clauses) executableTarget state)
+      q' S' ledger' declarativeTarget (holes :: holeLists) := by
+  let transition := head.transition.seq tail.transition
+  refine
+    { result := ⟨executableTarget,
+        head.result.rawHoles :: tail.result.rawHoleLists, tail.result.state⟩
+      success := ?_
+      state := tail.state
+      transition := transition
+      target := tail.target
+      holes := .cons
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+          tail.transition head.holes)
+        tail.holes }
+  simp only [inferClausesFuel]
+  rw (occs := .pos [1]) [head.success]
+  exact tail.success
 
 end DemandTypingInferenceCompletenessMatcherTraversal
 end TypePM
