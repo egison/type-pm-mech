@@ -49,6 +49,436 @@ theorem ValidatorRunExtension.trans
   ⟨front.ordinary.trans back.ordinary,
     front.sensitive.trans back.sensitive⟩
 
+/-- Lift a validator-ordinary traversal when all of its newly added events
+avoid the three terminal-audit forms. -/
+theorem ValidatorRunExtension.ofOrdinary
+    {terminal : Subst} {signature : FrozenSig}
+    {initial final : InferState}
+    (ordinary : OrdinaryValidatorHistoryExtension signature initial final)
+    (notSensitive : ∀ event,
+      event ∈ final.trace.events → event ∉ initial.trace.events →
+        ¬ TerminalAuditSensitiveEvent event) :
+    ValidatorRunExtension terminal signature initial final :=
+  ⟨ordinary, ordinary.auditExtension notSensitive⟩
+
+/-- Append one ordinary event after a certified prefix. -/
+theorem ValidatorRunExtension.recordOrdinaryEvent
+    {terminal : Subst} {signature : FrozenSig}
+    {state : InferState} {event : TraceEvent}
+    (latest : ∀ future,
+      (state.recordEvent event).StateExtension future →
+      ProtectedProducerTrace future →
+      OrdinaryValidatorEventCondition signature future event)
+    (notSensitive : ¬ TerminalAuditSensitiveEvent event) :
+    ValidatorRunExtension terminal signature state
+      (state.recordEvent event) := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.recordEvent latest)
+  intro candidate membership previous
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    exact notSensitive
+
+/-- Append a whitelisted neutral event. -/
+theorem ValidatorRunExtension.recordNeutral
+    {terminal : Subst} {signature : FrozenSig}
+    {state : InferState} {event : TraceEvent}
+    (neutral : ValidatorNeutralEvent event) :
+    ValidatorRunExtension terminal signature state
+      (state.recordEvent event) := by
+  apply ValidatorRunExtension.recordOrdinaryEvent
+  · intro future extension safe
+    exact neutral.ordinaryCondition signature future
+  · cases neutral <;> simp [TerminalAuditSensitiveEvent]
+
+/-- Append one audit-sensitive event.  Such events are nevertheless trivial
+for all ordinary validator folds; their semantic content lives solely in the
+provided terminal-audit witness. -/
+theorem ValidatorRunExtension.recordSensitive
+    {terminal : Subst} {signature : FrozenSig}
+    {state : InferState} {event : TraceEvent}
+    (witness : TerminalAuditEventWitness terminal signature
+      (state.recordEvent event) event) :
+    ValidatorRunExtension terminal signature state
+      (state.recordEvent event) := by
+  refine ⟨?_, TerminalAuditHistoryExtension.recordSensitive witness⟩
+  apply OrdinaryValidatorHistoryExtension.recordEvent
+  intro future extension producerSafe
+  refine
+    { traversal := ?_
+      typeAlignment := by cases event <;> trivial
+      dualAlignment := by cases event <;> trivial }
+  exact
+    { primitiveHole := ⟨by cases event <;> trivial⟩
+      patternLeaf := ⟨by cases event <;> trivial⟩
+      canonicalInstance := ⟨by cases event <;> trivial⟩
+      slot := ⟨by cases event <;> trivial⟩ }
+
+/-- Add one ordinary suffix after an already certified prefix. -/
+theorem ValidatorRunExtension.finishOrdinary
+    {terminal : Subst} {signature : FrozenSig}
+    {first middle last : InferState}
+    (front : ValidatorRunExtension terminal signature first middle)
+    (suffix : OrdinaryValidatorHistoryExtension signature middle last)
+    (notSensitive : ∀ event,
+      event ∈ last.trace.events → event ∉ middle.trace.events →
+        ¬ TerminalAuditSensitiveEvent event) :
+    ValidatorRunExtension terminal signature first last :=
+  front.trans (ValidatorRunExtension.ofOrdinary suffix notSensitive)
+
+/-! ## Local state emitters -/
+
+theorem ValidatorRunExtension.visit
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (kind : NodeKind) (path : SyntaxPath) :
+    ValidatorRunExtension terminal signature state
+      (Inference.visit state kind path) := by
+  simpa [Inference.visit] using
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature) (state := state)
+      (ValidatorNeutralEvent.visit kind path))
+
+theorem ValidatorRunExtension.finishExpr
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (expression : Expr) (path : SyntaxPath) (target : Ty) :
+    ValidatorRunExtension terminal signature state
+      (Inference.finishExpr expression path target state).state := by
+  simpa [Inference.finishExpr] using
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature) (state := state)
+      (ValidatorNeutralEvent.inferredExpr expression target path))
+
+theorem ValidatorRunExtension.recordSource
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (source : ProducerSource) :
+    ValidatorRunExtension terminal signature state
+      (state.recordSource source) := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.recordSource signature state source)
+  intro event membership previous
+  exact False.elim (previous (by simpa [InferState.recordSource] using membership))
+
+theorem ValidatorRunExtension.recordSelfReference
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (binder : String) (placeholder : Ty) (path : SyntaxPath) :
+    ValidatorRunExtension terminal signature state
+      (Inference.recordSelfReference state binder placeholder path) := by
+  unfold Inference.recordSelfReference
+  exact (ValidatorRunExtension.recordNeutral
+    (terminal := terminal) (signature := signature) (state := state)
+    (ValidatorNeutralEvent.directSelfReference binder placeholder path)).trans
+      (ValidatorRunExtension.recordSource terminal signature _ _)
+
+theorem ValidatorRunExtension.freshTy
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (origin : ConstraintOrigin) :
+    ValidatorRunExtension terminal signature state (state.freshTy origin).2 := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.freshTy signature state origin)
+  intro event membership previous
+  simp only [InferState.freshTy, InferenceBase.freshTyMeta,
+    InferState.recordEvent, List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.freshCap
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (origin : ConstraintOrigin) :
+    ValidatorRunExtension terminal signature state (state.freshCap origin).2 := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.freshCap signature state origin)
+  intro event membership previous
+  simp only [InferState.freshCap, InferenceBase.freshCapMeta,
+    InferState.recordEvent, List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.protectMatcherCapability
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (capability : Cap) :
+    ValidatorRunExtension terminal signature state
+      (state.protectMatcherCapability capability) := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.protectMatcherCapability signature state
+      capability)
+  intro event membership previous
+  exact False.elim (previous (by simpa using membership))
+
+theorem ValidatorRunExtension.freezeCapabilityExport
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (images : List CapVar) (payload : Ty) :
+    ValidatorRunExtension terminal signature state
+      (state.freezeCapabilityExport images payload) := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.freezeCapabilityExport signature state
+      images payload)
+  intro event membership previous
+  simp only [InferState.freezeCapabilityExport, InferState.recordEvent,
+    List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.instantiateCtorInState
+    {terminal : Subst} {signature : FrozenSig}
+    (state : InferState) (scheme : CtorScheme) (closed : scheme.Closed) :
+    ValidatorRunExtension terminal signature state
+      (Inference.instantiateCtorInState state scheme).2 := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.instantiateCtorInState state scheme
+      closed)
+  intro event membership previous
+  simp only [Inference.instantiateCtorInState, InferState.recordEvent,
+    List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.instantiateSchemeInState
+    {terminal : Subst} {signature : FrozenSig}
+    {rawContext normalizedContext : Context} {name : String}
+    {state : InferState} {scheme : Scheme}
+    (terminalLookup : ∀ future,
+      (Inference.instantiateSchemeInState signature rawContext
+        normalizedContext name state scheme).2.StateExtension future →
+      (rawContext.applySubst future.prevailing).find? name =
+        some (scheme.applyMeta future.prevailing)) :
+    ValidatorRunExtension terminal signature state
+      (Inference.instantiateSchemeInState signature rawContext
+        normalizedContext name state scheme).2 := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.instantiateSchemeInState terminalLookup)
+  intro event membership previous
+  simp only [Inference.instantiateSchemeInState, InferState.recordEvent,
+    List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.instantiateDualInState
+    {terminal : Subst} {signature : FrozenSig}
+    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawBindings : MonoCtx} {context : Context} {parameters : PatternCtx}
+    {bindings : MonoCtx} {state : InferState} {scheme : DualScheme}
+    (closed : scheme.Closed) :
+    ValidatorRunExtension terminal signature state
+      (Inference.instantiateDualInState signature rawContext rawParameters
+        rawBindings context parameters bindings state scheme).2 := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.instantiateDualInState closed)
+  intro event membership previous
+  simp only [Inference.instantiateDualInState, InferState.recordEvent,
+    List.mem_append, List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst event
+    simp [TerminalAuditSensitiveEvent]
+
+/-! ## Alignment finishers -/
+
+theorem ValidatorRunExtension.finishAlignTypes
+    {terminal : Subst} {signature : FrozenSig}
+    {state aligned : InferState} {origin : ConstraintOrigin}
+    {left right : Ty}
+    (core : ValidatorRunExtension terminal signature state aligned)
+    (success : alignTypes state origin left right = some
+      (aligned.recordEvent (.typeAlignment state.trace.solves.length
+        aligned.trace.solves.length left right (state.prevailing.apply left)
+        (state.prevailing.apply right)))) :
+    ValidatorRunExtension terminal signature state
+      (aligned.recordEvent (.typeAlignment state.trace.solves.length
+        aligned.trace.solves.length left right (state.prevailing.apply left)
+        (state.prevailing.apply right))) := by
+  let event := TraceEvent.typeAlignment state.trace.solves.length
+    aligned.trace.solves.length left right (state.prevailing.apply left)
+    (state.prevailing.apply right)
+  apply core.finishOrdinary
+    (OrdinaryValidatorHistoryExtension.recordEvent (event := event) (by
+      intro future extension producerSafe
+      have condition := alignTypes_ordinaryValidatorEventCondition
+        (signature := signature) success extension.history
+      simpa [event, InferState.recordEvent] using condition))
+  intro candidate membership previous
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    simp [event, TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.finishAlignDuals
+    {terminal : Subst} {signature : FrozenSig}
+    {state aligned : InferState} {origin : ConstraintOrigin}
+    {left right : Dual}
+    (core : ValidatorRunExtension terminal signature state aligned)
+    (success : alignDuals state origin left right = some
+      (aligned.recordEvent (.dualAlignment state.trace.solves.length
+        aligned.trace.solves.length left right
+        (left.applySubst state.prevailing)
+        (right.applySubst state.prevailing)))) :
+    ValidatorRunExtension terminal signature state
+      (aligned.recordEvent (.dualAlignment state.trace.solves.length
+        aligned.trace.solves.length left right
+        (left.applySubst state.prevailing)
+        (right.applySubst state.prevailing))) := by
+  let event := TraceEvent.dualAlignment state.trace.solves.length
+    aligned.trace.solves.length left right (left.applySubst state.prevailing)
+    (right.applySubst state.prevailing)
+  apply core.finishOrdinary
+    (OrdinaryValidatorHistoryExtension.recordEvent (event := event) (by
+      intro future extension producerSafe
+      have condition := alignDuals_ordinaryValidatorEventCondition
+        (signature := signature) success extension.history
+      simpa [event, InferState.recordEvent] using condition))
+  intro candidate membership previous
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    simp [event, TerminalAuditSensitiveEvent]
+
+theorem ValidatorRunExtension.finishExpectedAlignment
+    {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
+    {expressionResult : ExprResult} {expected : Ty} {aligned : InferState}
+    (core : ValidatorRunExtension terminal signature expressionResult.state
+      aligned)
+    (success : alignExprResultAtExpected path expressionResult expected = some
+      (aligned.recordEvent (.slotAlignment
+        expressionResult.state.trace.solves.length aligned.trace.solves.length
+        (match expectedCoercionPlan expressionResult.state
+            expressionResult.target expected with
+          | .productMatcherLift duals => productMatcherTarget duals
+          | .slotTupleLift duals => slotTupleTarget duals
+          | .raw => expressionResult.state.prevailing.apply
+              expressionResult.target)
+        (expressionResult.state.prevailing.apply expected)))) :
+    ValidatorRunExtension terminal signature expressionResult.state
+      (aligned.recordEvent (.slotAlignment
+        expressionResult.state.trace.solves.length aligned.trace.solves.length
+        (match expectedCoercionPlan expressionResult.state
+            expressionResult.target expected with
+          | .productMatcherLift duals => productMatcherTarget duals
+          | .slotTupleLift duals => slotTupleTarget duals
+          | .raw => expressionResult.state.prevailing.apply
+              expressionResult.target)
+        (expressionResult.state.prevailing.apply expected))) := by
+  let inferred := match expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+    | .productMatcherLift duals => productMatcherTarget duals
+    | .slotTupleLift duals => slotTupleTarget duals
+    | .raw => expressionResult.state.prevailing.apply expressionResult.target
+  let requested := expressionResult.state.prevailing.apply expected
+  let event := TraceEvent.slotAlignment
+    expressionResult.state.trace.solves.length aligned.trace.solves.length
+    inferred requested
+  apply core.finishOrdinary
+    (OrdinaryValidatorHistoryExtension.recordEvent (event := event) (by
+      intro future extension producerSafe
+      have condition :=
+        alignExprResultAtExpected_ordinaryValidatorEventCondition
+          (signature := signature) success extension.history
+      change OrdinaryValidatorEventCondition signature future
+        (.slotAlignment expressionResult.state.trace.solves.length
+          aligned.trace.solves.length
+          (match expectedCoercionPlan expressionResult.state
+              expressionResult.target expected with
+            | .productMatcherLift duals => productMatcherTarget duals
+            | .slotTupleLift duals => slotTupleTarget duals
+            | .raw => expressionResult.state.prevailing.apply
+                expressionResult.target)
+          (expressionResult.state.prevailing.apply expected))
+      exact condition))
+  intro candidate membership previous
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    simp [event, TerminalAuditSensitiveEvent]
+
+/-! ## Terminal-audit-sensitive emitters -/
+
+theorem ValidatorRunExtension.recordPatternCtor
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {name : String} {entry : PatternCtorScheme signature.observability}
+    {duals : List Dual} {capability : Cap}
+    (lookup : signature.findPatternCtor name = some entry)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry duals capability) :
+    ValidatorRunExtension terminal signature state
+      (state.recordEvent (.patternCtorCompatibility state.trace.solves.length
+        name (duals.map Dual.cap) capability)) := by
+  apply ValidatorRunExtension.recordSensitive
+  exact .patternCtor (Nat.le_refl _) lookup facts
+
+theorem ValidatorRunExtension.recordLetGeneralization
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {name : String} {rawContext : Context} {rawTarget : Ty}
+    (facts : DDTerminalAudit.LetFacts terminal signature rawContext rawTarget
+      state.prevailing) :
+    ValidatorRunExtension terminal signature state
+      (state.recordEvent (.letGeneralization state.trace.solves.length name
+        rawContext rawTarget (rawContext.applySubst state.prevailing)
+        (state.prevailing.apply rawTarget)
+        (signature.generalize (rawContext.applySubst state.prevailing)
+          (state.prevailing.apply rawTarget)))) := by
+  apply ValidatorRunExtension.recordSensitive
+  exact .letE (Nat.le_refl _)
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing])
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing]) rfl
+    (by simpa only [InferState.recordEvent, List.take_length,
+      InferState.prevailing] using facts)
+
+theorem ValidatorRunExtension.recordLiteralMatcherFinalization
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {clauses : List Clause} {rawTarget : Ty}
+    {rawHoleLists : List (List Dual)} {evidence : List Shape.Evidence}
+    {capability : Cap}
+    (catchAll : catchAllLastCheck clauses = true)
+    (binders : matcherBindersCheck clauses = true)
+    (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+      rawHoleLists capability rawTarget) :
+    let covered := state.recordEvent (.literalCoverage clauses capability)
+    let finalized := covered.recordEvent (.matcherFinalization
+      covered.trace.solves.length clauses rawTarget rawHoleLists
+      (covered.prevailing.apply rawTarget)
+      (resolvedHoleCaps covered.prevailing rawHoleLists) evidence capability)
+    ValidatorRunExtension terminal signature state
+      (finalized.protectMatcherCapability capability) := by
+  let coverageEvent := TraceEvent.literalCoverage clauses capability
+  let covered := state.recordEvent coverageEvent
+  let finalizationEvent := TraceEvent.matcherFinalization
+    covered.trace.solves.length clauses rawTarget rawHoleLists
+    (covered.prevailing.apply rawTarget)
+    (resolvedHoleCaps covered.prevailing rawHoleLists) evidence capability
+  let finalized := covered.recordEvent finalizationEvent
+  have coverageRun : ValidatorRunExtension terminal signature state covered :=
+    ValidatorRunExtension.recordNeutral
+      (ValidatorNeutralEvent.literalCoverage clauses capability)
+  have finalizationRun : ValidatorRunExtension terminal signature covered
+      finalized := by
+    apply ValidatorRunExtension.recordSensitive
+    exact .matcher (Nat.le_refl _)
+      (by simp only [InferState.recordEvent, List.take_length,
+        InferState.prevailing])
+      (by simp only [InferState.recordEvent, List.take_length,
+        InferState.prevailing]) catchAll binders facts
+  exact (coverageRun.trans finalizationRun).trans
+    (ValidatorRunExtension.protectMatcherCapability terminal signature
+      finalized capability)
+
 /-- Apply an incremental run to already accumulated root-prefix coverage. -/
 theorem ValidatorRunExtension.applyCoverage
     {terminal : Subst} {signature : FrozenSig}
