@@ -309,5 +309,238 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
             (declarative.apply declarativeTarget)
         exact related.reverse⟩
 
+/-! ## Completed matcher finalization -/
+
+/-- DD finalization evidence paired with the corresponding executable checks.
+The executable half is kept as one proof-relevant package so the outer mutual
+recursion does not expose individual Boolean validator obligations. -/
+structure MatcherFinalizationCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option ClausesResult} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} {ledger' : CapabilityOriginLedger}
+    {target : Ty} {rawHoleLists : List (List Dual)}
+    (run : ClausesRunCompletion before operation q' S' ledger' target
+      rawHoleLists)
+    (signature : FrozenSig) (clauses : List Clause)
+    (declarativeCapability : Cap) : Type where
+  declarativeEvidence : List Shape.Evidence
+  declarativeCollected : collectClauseEvidence signature.toMatcherSig clauses
+    (terminalHoleCaps S' rawHoleLists) = some declarativeEvidence
+  declarativeInferred : Shape.inferShape signature.observability
+    declarativeEvidence = some declarativeCapability
+  declarativeClauseCaps : clauseCapsListCheck signature declarativeCapability
+    clauses (terminalHoleCaps S' rawHoleLists) = true
+  catchAll : catchAllLastCheck clauses = true
+  binders : matcherBindersCheck clauses = true
+  declarativeArms : armExhaustiveCheck signature clauses
+    (S'.apply target) = true
+  declarativeCoverage : coverageCheck signature.toMatcherSig clauses
+    declarativeCapability = true
+  executableEvidence : List Shape.Evidence
+  executableCapability : Cap
+  executableCollected : collectClauseEvidence signature.toMatcherSig clauses
+    (terminalHoleCaps run.result.state.prevailing
+      run.result.rawHoleLists) = some executableEvidence
+  executableInferred : Shape.inferShape signature.observability
+    executableEvidence = some executableCapability
+  executableClauseCaps : clauseCapsListCheck signature executableCapability
+    clauses (terminalHoleCaps run.result.state.prevailing
+      run.result.rawHoleLists) = true
+  executableArms : armExhaustiveCheck signature clauses
+    (run.result.state.prevailing.apply run.result.target) = true
+  executableCoverage : coverageCheck signature.toMatcherSig clauses
+    executableCapability = true
+  capability : CapBisimulation run.transition.after declarativeCapability
+    executableCapability
+  declarativeFixed : declarativeCapability.apply S'.cap =
+    declarativeCapability
+  executableFixed : executableCapability.apply
+    run.result.state.prevailing.cap = executableCapability
+  executableCapabilityBounded : executableCapability.BoundedBy q'
+
+/-- Capability and target correspondences combine under a matcher shell. -/
+def TyBisimulation.matcher
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeCapability executableCapability : Cap}
+    {declarativeTarget executableTarget : Ty}
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (target : TyBisimulation relation declarativeTarget executableTarget) :
+    TyBisimulation relation (.matcher declarativeCapability declarativeTarget)
+      (.matcher executableCapability executableTarget) := by
+  constructor
+  · have capEq := (Ty.matcher.inj capability.forward).1
+    have targetEq := (Ty.matcher.inj capability.forward).2
+    simp only [Subst.apply_matcher]
+    rw [capEq]
+    exact congrArg (Ty.matcher _) target.forward
+  · have capEq := (Ty.matcher.inj capability.reverse).1
+    simp only [Subst.apply_matcher]
+    rw [capEq]
+    exact congrArg (Ty.matcher _) target.reverse
+
+/-- Clause-list traversal preserves its caller-supplied raw target literally. -/
+theorem inferClausesFuel_result_target
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {clauses : List Clause} {target : Ty} {state : InferState}
+    {result : ClausesResult}
+    (success : inferClausesFuel fuel signature context selfEnv parent index
+      clauses target state = some result) :
+    result.target = target := by
+  induction fuel generalizing index clauses state result with
+  | zero => simp [inferClausesFuel] at success
+  | succ fuel ih =>
+      cases clauses with
+      | nil =>
+          simp [inferClausesFuel] at success
+          subst result
+          rfl
+      | cons clause clauses =>
+          simp only [inferClausesFuel] at success
+          cases headEq : inferClauseFuel fuel signature context selfEnv
+              (index :: parent) clause target state with
+          | none => simp [headEq] at success
+          | some head =>
+              cases tailEq : inferClausesFuel fuel signature context selfEnv
+                  parent (index + 1) clauses target head.state with
+              | none => simp [headEq, tailEq] at success
+              | some tail =>
+                  simp only [headEq, tailEq, Option.some.injEq] at success
+                  subst result
+                  rfl
+
+/-- Complete `inferMatcherFuel` from one reconstructed clause-list traversal
+and its paired finalization evidence. -/
+def inferMatcherFuel_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {clauses : List Clause}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (clausesRun : ClausesRunCompletion
+      (before.freshTy (freshOrigin .matcherClause path "matcher-target")).state
+      (inferClausesFuel fuel signature context selfEnv path 0 clauses
+        (.var q.nextTy)
+        (initial.freshTy
+          (freshOrigin .matcherClause path "matcher-target")).2)
+      q' S' ledger' (.var q.nextTy) rawHoleLists)
+    (finalization : MatcherFinalizationCompletion clausesRun signature clauses
+      declarativeCapability) :
+    SynthRunCompletion before
+      (inferMatcherFuel (fuel + 1) signature context selfEnv path clauses initial)
+      q' S' (DDLedger.freezeMatcherProducer ledger' declarativeCapability)
+      (.matcher declarativeCapability (.var q.nextTy)) := by
+  let targetOrigin := freshOrigin .matcherClause path "matcher-target"
+  let targetAllocation := before.freshTy targetOrigin
+  let coverageEvent := TraceEvent.literalCoverage clauses
+    finalization.executableCapability
+  let coverageExtension := clausesRun.transition.after.recordEventExtension
+    coverageEvent
+  let coverageRelation := clausesRun.completion.recordEvent coverageEvent
+    (by simp [coverageEvent, TraceEvent.allocatedCapVars])
+  let executableTarget := clausesRun.result.state.prevailing.apply
+    clausesRun.result.target
+  let executableHoleLists := terminalHoleCaps
+    clausesRun.result.state.prevailing clausesRun.result.rawHoleLists
+  let finalizationEvent := TraceEvent.matcherFinalization
+    (clausesRun.result.state.recordEvent coverageEvent).trace.solves.length
+    clauses (.var q.nextTy)
+    clausesRun.result.rawHoleLists executableTarget executableHoleLists
+    finalization.executableEvidence finalization.executableCapability
+  let finalizationExtension := coverageExtension.after.recordEventExtension
+    finalizationEvent
+  let finalizedRelation := coverageRelation.recordEvent finalizationEvent
+    (by simp [finalizationEvent, TraceEvent.allocatedCapVars])
+  let capabilityAtFinal :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+      finalizationExtension
+      (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+        coverageExtension finalization.capability)
+  have declarativeFixedAtFinal :
+      declarativeCapability.apply S'.cap = declarativeCapability :=
+    finalization.declarativeFixed
+  have executableFixedAtFinal :
+      finalization.executableCapability.apply
+        (clausesRun.result.state.recordEvent coverageEvent |>.recordEvent
+          finalizationEvent).prevailing.cap =
+        finalization.executableCapability := by
+    exact finalization.executableFixed
+  let protectedRelation :=
+    DemandTypingInferenceCompletenessMatcherExprTraversal.TraversalStateCorrespondence.protectMatcherCapabilityRelated
+      finalizedRelation capabilityAtFinal declarativeFixedAtFinal
+      executableFixedAtFinal
+  let protectExtension :=
+    DemandTypingInferenceCompletenessMatcherExprTraversal.TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
+      finalizedRelation capabilityAtFinal declarativeFixedAtFinal
+      executableFixedAtFinal
+  let rawTargetRelation := TyBisimulation.matcher finalization.capability
+    (clausesRun.transition.after.sameTarget (.var q.nextTy))
+  let afterCoverage := coverageExtension.transportTy rawTargetRelation
+  let afterFinalization := finalizationExtension.transportTy afterCoverage
+  let finalTarget := protectExtension.transportTy afterFinalization
+  let result : ExprResult :=
+    ⟨.matcher finalization.executableCapability (.var q.nextTy),
+      (clausesRun.result.state.recordEvent coverageEvent |>.recordEvent
+        finalizationEvent).protectMatcherCapability
+          finalization.executableCapability⟩
+  have clausesTargetEq : clausesRun.result.target = .var q.nextTy :=
+    inferClausesFuel_result_target clausesRun.success
+  have executableCollected : collectClauseEvidence signature.toMatcherSig clauses
+      (clausesRun.result.rawHoleLists.map fun holes =>
+        (holes.map
+          (Dual.applySubst clausesRun.result.state.prevailing)).map Dual.cap) =
+      some finalization.executableEvidence := by
+    simpa [terminalHoleCaps] using finalization.executableCollected
+  refine
+    { result := result
+      success := ?_
+      supply_eq := protectedRelation.supply_eq
+      transition := ((before.freshTyExtension targetOrigin).seq
+        clausesRun.transition |>.seq coverageExtension |>.seq
+        finalizationExtension).seq protectExtension
+      declarative_bounded := protectedRelation.declarative_bounded
+      executable_bounded := protectedRelation.executable_bounded
+      forward_bounded := protectedRelation.forward_bounded
+      reverse_bounded := protectedRelation.reverse_bounded
+      ledger_below := protectedRelation.ledger_below
+      executable_ledger_below := protectedRelation.executable_ledger_below
+      protected_origins := protectedRelation.protected_origins
+      protected_below := protectedRelation.protected_below
+      allocated_recorded := protectedRelation.allocated_recorded
+      target := finalTarget }
+  simp only [inferMatcherFuel]
+  rw [targetAllocation.target_eq, clausesRun.success]
+  simp only
+  rw [executableCollected]
+  simp only [finalization.executableInferred]
+  have executableArms : armExhaustiveCheck signature clauses
+      (clausesRun.result.state.prevailing.apply (.var q.nextTy)) = true := by
+    simpa only [clausesTargetEq] using finalization.executableArms
+  have checks :
+      (clauseCapsListCheck signature finalization.executableCapability clauses
+          (clausesRun.result.rawHoleLists.map fun holes =>
+            (holes.map (Dual.applySubst
+              clausesRun.result.state.prevailing)).map Dual.cap) &&
+        catchAllLastCheck clauses && matcherBindersCheck clauses &&
+        armExhaustiveCheck signature clauses
+          (clausesRun.result.state.prevailing.apply (.var q.nextTy)) &&
+        coverageCheck signature.toMatcherSig clauses
+          finalization.executableCapability) = true := by
+    simp only [Bool.and_eq_true]
+    refine ⟨⟨⟨⟨?_, finalization.catchAll⟩, finalization.binders⟩,
+      executableArms⟩, finalization.executableCoverage⟩
+    simpa [terminalHoleCaps] using finalization.executableClauseCaps
+  rw [if_pos checks]
+  apply congrArg some
+  change ExprResult.mk _ _ = ExprResult.mk _ _
+  congr 1
+  simp [coverageEvent, finalizationEvent, executableTarget,
+    executableHoleLists, clausesTargetEq, terminalHoleCaps, List.map_map,
+    Function.comp_def]
+
 end DemandTypingInferenceCompletenessMatcherExprTraversal
 end TypePM
