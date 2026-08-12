@@ -4,6 +4,7 @@ import TypePM.DemandTypingInferenceCompletenessValidationMain
 import TypePM.DemandTypingInferenceCompletenessPairedChecking
 import TypePM.DemandTypingInferenceCompletenessFixMatcher
 import TypePM.DemandTypingInferenceCompletenessPatternCertified
+import TypePM.DemandTypingInferenceCompletenessMatcherClauseCertified
 
 /-! # Paired certified global expression traversal
 
@@ -34,6 +35,7 @@ open DemandTypingInferenceCompletenessSignatureBounds
 open DemandTypingInferenceCompletenessPatternCertified
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessPatternMain
+open DemandTypingInferenceCompletenessMatcherClauseCertified
 
 /-- The common output of global certified synthesis. -/
 structure BoundedPairedCertifiedSynthRunCompletion
@@ -1528,6 +1530,23 @@ def certifiedPatternSynthCompletenessBelow_of_paired
       before signatureBelow contexts contextBounded executableContextBounded
       audit adequate)
   exact ⟨⟨run.raw.run, run.raw.rawTargetBounded, run.history, run.validation⟩⟩
+
+/-- Global paired synthesis also supplies the paired matcher-check callback
+used by clause reconstruction. -/
+def pairedMatcherCheckCompletenessBelow_of_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed) {bound : Nat}
+    (complete : PairedAuditedSynthCompletenessBelow terminal signature bound) :
+    PairedMatcherCheckCompletenessBelow terminal signature bound := by
+  intro fuel fuelLt declarativeContext executableContext selfEnv path expression
+    declarativeExpected executableExpected q q' S S' ledger ledger' state raw
+    origin before signatureBelow contexts expectedRelated contextBounded
+    executableContextBounded expectedBounded executableExpectedBounded audit
+    adequate
+  exact auditedCheck_complete_paired closed
+    (complete.mono (Nat.le_of_lt fuelLt)) before signatureBelow contexts
+    expectedRelated contextBounded executableContextBounded expectedBounded
+    executableExpectedBounded audit adequate
 
 /-- Reconstruct `matchAll` with one shared paired validator chronology. -/
 theorem auditedSynthMatchAll_complete_paired
