@@ -313,7 +313,7 @@ theorem patternOrigin_complete_nonempty
               targetAlignment.completion
               (DemandTypingInferenceCompletenessPatternMain.DualListBisimulation.capabilities
                 dualsAtCap)
-              declarativeCapsBounded executableCapsBounded)
+              declarativeCapsBounded executableCapsBounded compatible)
           exact ⟨boundedPatternCtor_complete lookup closed before children
             childrenExtends declarativeDualsBounded targetsAligned
             capPackage.val capOrigin.erase.supplyExtends capPackage.property⟩

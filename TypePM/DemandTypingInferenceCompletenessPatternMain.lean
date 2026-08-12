@@ -765,6 +765,9 @@ abbrev PatternCtorCapCompletenessMotive (signature : FrozenSig) : Prop :=
       executableChildren →
     (∀ child ∈ declarativeChildren, child.BoundedBy q) →
     (∀ child ∈ executableChildren, child.BoundedBy q) →
+    capCompatibleCheck entry
+      (declarativeChildren.map fun child => child.apply S'.cap)
+      (capability.apply S'.cap) = true →
     Nonempty { run : BoundedPatternCtorCapRunCompletion before
       (solvePatternCtorCapability signature entry constraintOrigin
         executableChildren state) q' S' ledger' capability //
