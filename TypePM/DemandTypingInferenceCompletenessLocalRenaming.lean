@@ -28,6 +28,103 @@ structure LocalRenamingOn (forward reverse : Subst)
     forward.target varId = .var image ∧
       reverse.target image = .var varId
 
+namespace LocalRenamingOn
+
+/-- Chosen capability-variable image on the certified scope, extended by the
+identity away from it. -/
+noncomputable def capImage
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    (varId : CapVar) : CapVar := by
+  classical
+  exact if member : varId ∈ capScope then
+    Classical.choose (certificate.cap varId member)
+  else varId
+
+/-- Chosen target-variable image on the certified scope. -/
+noncomputable def targetImage
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    (varId : TypePM.TyVar) : TypePM.TyVar := by
+  classical
+  exact if member : varId ∈ targetScope then
+    Classical.choose (certificate.target varId member)
+  else varId
+
+theorem cap_forward
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {varId : CapVar} (member : varId ∈ capScope) :
+    forward.cap varId = .var (certificate.capImage varId) := by
+  classical
+  simp only [capImage, dif_pos member]
+  exact (Classical.choose_spec (certificate.cap varId member)).1
+
+theorem cap_reverse
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {varId : CapVar} (member : varId ∈ capScope) :
+    reverse.cap (certificate.capImage varId) = .var varId := by
+  classical
+  simp only [capImage, dif_pos member]
+  exact (Classical.choose_spec (certificate.cap varId member)).2
+
+theorem target_forward
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {varId : TypePM.TyVar} (member : varId ∈ targetScope) :
+    forward.target varId = .var (certificate.targetImage varId) := by
+  classical
+  simp only [targetImage, dif_pos member]
+  exact (Classical.choose_spec (certificate.target varId member)).1
+
+theorem target_reverse
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {varId : TypePM.TyVar} (member : varId ∈ targetScope) :
+    reverse.target (certificate.targetImage varId) = .var varId := by
+  classical
+  simp only [targetImage, dif_pos member]
+  exact (Classical.choose_spec (certificate.target varId member)).2
+
+/-- The chosen capability renaming is injective on its certified scope. -/
+theorem capImage_injectiveOn
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {left right : CapVar} (leftMem : left ∈ capScope)
+    (rightMem : right ∈ capScope)
+    (equal : certificate.capImage left = certificate.capImage right) :
+    left = right := by
+  have leftInverse := certificate.cap_reverse leftMem
+  have rightInverse := certificate.cap_reverse rightMem
+  rw [equal] at leftInverse
+  rw [leftInverse] at rightInverse
+  exact Cap.var.inj rightInverse
+
+/-- The chosen target renaming is injective on its certified scope. -/
+theorem targetImage_injectiveOn
+    {forward reverse : Subst} {capScope : List CapVar}
+    {targetScope : List TypePM.TyVar}
+    (certificate : LocalRenamingOn forward reverse capScope targetScope)
+    {left right : TypePM.TyVar} (leftMem : left ∈ targetScope)
+    (rightMem : right ∈ targetScope)
+    (equal : certificate.targetImage left = certificate.targetImage right) :
+    left = right := by
+  have leftInverse := certificate.target_reverse leftMem
+  have rightInverse := certificate.target_reverse rightMem
+  rw [equal] at leftInverse
+  rw [leftInverse] at rightInverse
+  exact Ty.var.inj rightInverse
+
+end LocalRenamingOn
+
 /-- Restrict a local renaming certificate to smaller scopes. -/
 theorem LocalRenamingOn.mono
     {forward reverse : Subst}
