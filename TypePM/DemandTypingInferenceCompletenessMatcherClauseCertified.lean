@@ -668,8 +668,6 @@ theorem clauseOrigin_complete_certified_below
               armsExecutableBodyBounded armsAudit armsAdequate)
           exact ⟨inferClauseFuel_complete_certified before targetRelated
             primitiveRun.certified decomposed nextRun armsRun⟩
-termination_by fuel
-
 /-- Certified reconstruction of a matcher-clause list. -/
 theorem clausesOrigin_complete_certified_below
     {terminal : Subst} {signature : FrozenSig}
@@ -798,6 +796,7 @@ theorem clausesOrigin_complete_certified_from_below
       q' S' ledger' declarativeTarget holeLists) :=
   clausesOrigin_complete_certified_below closed ppatComplete dpatComplete fuel
     (fun {childFuel} childLt =>
+      let _ := childFuel
       checkBelow (Nat.lt_trans childLt fuelLt)) before signatureBelow
     contexts targetRelated contextBounded executableContextBounded targetBounded
     executableTargetBounded audit adequate

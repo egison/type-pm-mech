@@ -208,7 +208,7 @@ theorem CapListBisimulation.wrapCon
         change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
         injection pointwise with capEq
         have tailListEq := (Cap.con.inj (Ty.matcher.inj ih).1).2
-        simp only [Cap.apply, Cap.applyList]
+        simp only [Cap.applyList]
         rw [capEq, tailListEq]
   · change state.prevailing.apply (.matcher (.con name _) .unit) =
       relation.reverse.apply
@@ -221,7 +221,7 @@ theorem CapListBisimulation.wrapCon
         change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
         injection pointwise with capEq
         have tailListEq := (Cap.con.inj (Ty.matcher.inj ih).1).2
-        simp only [Cap.apply, Cap.applyList]
+        simp only [Cap.applyList]
         rw [capEq, tailListEq]
 
 theorem CapListBisimulation.wrapProd
@@ -244,7 +244,7 @@ theorem CapListBisimulation.wrapProd
         injection pointwise with capEq
         injection ih with tailEq
         injection tailEq with tailListEq
-        simp only [Cap.apply, Cap.applyList]
+        simp only [Cap.applyList]
         rw [capEq, tailListEq]
   · change state.prevailing.apply (.matcher (.prod _) .unit) =
       relation.reverse.apply
@@ -258,7 +258,7 @@ theorem CapListBisimulation.wrapProd
         injection pointwise with capEq
         injection ih with tailEq
         injection tailEq with tailListEq
-        simp only [Cap.apply, Cap.applyList]
+        simp only [Cap.applyList]
         rw [capEq, tailListEq]
 
 /-! ## Projection transport under the state residual renaming -/

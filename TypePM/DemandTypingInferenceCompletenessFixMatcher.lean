@@ -81,7 +81,7 @@ private theorem freshenSkeletonMasked_supplyExtends
       | cons evidence rest =>
           cases observableHead with
           | false =>
-              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              simp only [Inference.freshenSkeletonMasked] at success
               rcases Option.bind_eq_some_iff.mp success with
                 ⟨tailPair, tailSuccess, finished⟩
               rcases tailPair with ⟨tail, result⟩
@@ -123,8 +123,7 @@ theorem TraversalStateCorrespondence.freshenSkeleton
       (DDLedger.markCapRange ledger q final.supply) final) := by
   cases evidence with
   | unseen =>
-      simp only [Inference.freshenSkeleton, Option.some.injEq,
-        Prod.mk.injEq] at success
+      simp only [Inference.freshenSkeleton, Option.some.injEq] at success
       rcases success with ⟨_, rfl⟩
       exact ⟨by
         simpa [DDLedger.markCapRange, DDLedger.markFreshCap,
@@ -246,7 +245,7 @@ theorem TraversalStateCorrespondence.freshenSkeletonMasked
       | cons evidence rest =>
           cases observableHead with
           | false =>
-              simp only [Inference.freshenSkeletonMasked, ↓reduceIte] at success
+              simp only [Inference.freshenSkeletonMasked] at success
               rcases Option.bind_eq_some_iff.mp success with
                 ⟨tailPair, tailSuccess, finished⟩
               rcases tailPair with ⟨tail, result⟩
@@ -341,7 +340,7 @@ where
         initial.supply with
     | none =>
         unfold fixMatcherPlaceholderSupply at pure
-        simp [evidenceEq, notUnseen, freshEq] at pure
+        simp [evidenceEq, freshEq] at pure
     | some pair =>
         rcases pair with ⟨capability, q₁⟩
         rcases freshenSkeleton_complete_exact
@@ -350,7 +349,7 @@ where
           ⟨middle, executableFresh, supplyEq, _, _⟩
         have pureTail := pure
         unfold fixMatcherPlaceholderSupply at pureTail
-        simp [evidenceEq, notUnseen, freshEq] at pureTail
+        simp [evidenceEq, freshEq] at pureTail
         generalize fcvEq : capability.fcv = variables at pureTail
         cases variables with
         | nil =>
@@ -407,7 +406,7 @@ theorem ValidatorRunExtension.ofBuildFixPlaceholderMatcher
   have recursiveRun : ValidatorRunExtension terminal signature initial middle := by
     cases evidence with
     | unseen =>
-        simp only [Option.some.injEq, Prod.mk.injEq] at freshSuccess
+        simp only at freshSuccess
         rcases freshSuccess with ⟨rfl, rfl⟩
         exact ValidatorRunExtension.refl terminal signature initial
     | known leaf => exact ValidatorRunExtension.ofFreshenSkeleton freshSuccess
@@ -416,7 +415,7 @@ theorem ValidatorRunExtension.ofBuildFixPlaceholderMatcher
   generalize fcvEq : capability.fcv = variables at rest
   cases variables with
   | nil =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      simp only at rest
       rcases rest with ⟨rfl, rfl, rfl⟩
       let capOrigin := freshOrigin .recursiveBinder path
         "fix-argument-capability"
@@ -435,7 +434,7 @@ theorem ValidatorRunExtension.ofBuildFixPlaceholderMatcher
             (ValidatorRunExtension.freshTy terminal signature targetState
               producerOrigin)))
   | cons first tail =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      simp only at rest
       rcases rest with ⟨rfl, rfl, rfl⟩
       let targetOrigin := freshOrigin .recursiveBinder path
         "fix-argument-target"
@@ -462,6 +461,8 @@ def TraversalStateCorrespondence.markCapRangeExtension
       DDLedger.markCapRange initial.capabilityOrigins q q') :
     BisimulationExtension before.prevailing
       (DDLedger.markCapRange ledger q q') S final := by
+  let _ := supplyExtension
+  let _ := supplyEq
   let fresh : List CapVar :=
     ((List.range (q'.nextCap - q.nextCap)).map fun offset =>
     ⟨q.nextCap + offset⟩).reverse
@@ -527,7 +528,7 @@ theorem buildFixPlaceholder_correspondence
       (DDLedger.markCapRange ledger q middle.supply) middle :=
     match evidence with
     | .unseen => by
-        simp only [Option.some.injEq, Prod.mk.injEq] at freshSuccess
+        simp only at freshSuccess
         rcases freshSuccess with ⟨_, rfl⟩
         simpa [DDLedger.markCapRange, CapabilityOriginLedger.setOrigins,
           before.supply_eq] using before
@@ -543,7 +544,7 @@ theorem buildFixPlaceholder_correspondence
   generalize fcvEq : capability.fcv = variables at rest
   cases variables with
   | nil =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      simp only at rest
       rcases rest with ⟨rfl, rfl, rfl⟩
       let capOrigin := freshOrigin .recursiveBinder path
         "fix-argument-capability"
@@ -589,7 +590,7 @@ theorem buildFixPlaceholder_correspondence
       simpa only [producerState, rangeEq', producerRun.state.supply_eq] using
         producerRun.state
   | cons first tail =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      simp only at rest
       rcases rest with ⟨rfl, rfl, rfl⟩
       let targetOrigin := freshOrigin .recursiveBinder path
         "fix-argument-target"

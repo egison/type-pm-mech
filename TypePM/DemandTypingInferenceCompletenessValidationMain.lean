@@ -305,6 +305,7 @@ theorem synthFix
     let placeholder := Ty.fn domain.1 codomain.1
     ValidatorRunExtension terminal signature initial
       (finishExpr (.fix self argument body) path placeholder alignedState).state := by
+  let _ := bodyTarget
   dsimp only
   exact (ValidatorRunExtension.visit terminal signature initial .exprFix
     path).trans

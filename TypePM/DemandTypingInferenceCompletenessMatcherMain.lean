@@ -256,7 +256,8 @@ abbrev MatcherDPatCompletenessMotive (signature : FrozenSig) : Prop :=
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
     (raw : DDDPat signature q S pattern target bindings q' S')
     (origin : DDDPatOrigin signature raw ledger ledger'),
-    (before : TraversalStateCorrespondence q S ledger state) →
+    (before : TraversalStateCorrespondence q S
+      (let _ := origin; ledger) state) →
     TyBisimulation before.prevailing target executableTarget →
     target.BoundedBy q → executableTarget.BoundedBy q →
     DPatAdequate fuel pattern →
@@ -555,7 +556,8 @@ abbrev MatcherPPatCompletenessMotive (signature : FrozenSig) : Prop :=
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
     (raw : DDPPat signature q S pattern target holes bindings q' S')
     (origin : DDPPatOrigin signature raw ledger ledger'),
-    (before : TraversalStateCorrespondence q S ledger state) →
+    (before : TraversalStateCorrespondence q S
+      (let _ := origin; ledger) state) →
     TyBisimulation before.prevailing target executableTarget →
     target.BoundedBy q → executableTarget.BoundedBy q →
     PPatAdequate fuel pattern →
@@ -843,6 +845,7 @@ theorem clausesOrigin_complete_nonempty_from_below
       q' S' ledger' declarativeTarget holeLists) :=
   clausesOrigin_complete_nonempty_below closed ppatComplete dpatComplete fuel
     (fun {childFuel} childLt =>
+      let _ := childFuel
       checkBelow (Nat.lt_trans childLt fuelLt)) before
     targetRelated contextBounded targetBounded executableTargetBounded audit
     adequate

@@ -3087,7 +3087,9 @@ def completeOrientedCapFuelAux :
               leftComponents rightComponents + 1
         | _, _ => 1
 termination_by
-  ledger budget left right => (budget, sizeOf left + sizeOf right)
+  ledger budget left right =>
+    let _ := ledger
+    (budget, sizeOf left + sizeOf right)
 decreasing_by
   all_goals simp_wf
   all_goals apply Prod.Lex.right <;> omega
@@ -3118,7 +3120,9 @@ def completeOrientedCapListFuelAux :
                     (Cap.applyList headResult.subst rightTail) + 1
   | _, _, _, _ => 1
 termination_by
-  ledger budget left right => (budget, sizeOf left + sizeOf right)
+  ledger budget left right =>
+    let _ := ledger
+    (budget, sizeOf left + sizeOf right)
 decreasing_by
   all_goals simp_wf
   all_goals first
@@ -3959,7 +3963,9 @@ private def completePairedTyFuelAux :
                           (rightTarget.applyCapability capResult.subst) + 1
         | _, _ => 1
 termination_by
-  budget ledger left right => (budget, sizeOf left + sizeOf right)
+  budget ledger left right =>
+    let _ := ledger
+    (budget, sizeOf left + sizeOf right)
 decreasing_by
   all_goals simp_wf
   all_goals first
@@ -3990,7 +3996,9 @@ private def completePairedTyListFuelAux :
                     (rightTail.map headResult.subst.apply) + 1
   | _, _, _, _ => 1
 termination_by
-  budget ledger left right => (budget, sizeOf left + sizeOf right)
+  budget ledger left right =>
+    let _ := ledger
+    (budget, sizeOf left + sizeOf right)
 decreasing_by
   all_goals simp_wf
   all_goals first
@@ -4118,7 +4126,7 @@ private theorem completePairedTyFuelAux_fn_domain_ne
       Ty.fn rightDomain rightCodomain := by
     intro equation
     exact hdomainNe (Ty.fn.inj equation).1
-  simpa [houter, hdomainNe, hrun]
+  simp [houter, hdomainNe, hrun]
 
 private theorem completePairedTyFuelAux_matcher_cap_eq
     (budget : Nat) (ledger : CapabilityOriginLedger)
@@ -4157,7 +4165,7 @@ private theorem completePairedTyFuelAux_matcher_cap_ne
       Ty.matcher rightCap rightTarget := by
     intro equation
     exact hcapNe (Ty.matcher.inj equation).1
-  simpa [houter, hcapNe, hrun]
+  simp [houter, hcapNe, hrun]
 
 private theorem completePairedTyFuelAux_slot_cap_ne
     (remaining : Nat) (ledger : CapabilityOriginLedger)
@@ -4176,7 +4184,7 @@ private theorem completePairedTyFuelAux_slot_cap_ne
       Ty.slot rightCap rightTarget := by
     intro equation
     exact hcapNe (Ty.slot.inj equation).1
-  simpa [houter, hcapNe, hrun]
+  simp [houter, hcapNe, hrun]
 
 mutual
 

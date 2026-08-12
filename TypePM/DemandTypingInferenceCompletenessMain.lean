@@ -3023,6 +3023,7 @@ theorem auditedSynthMatcher_complete_of_finalization
         (.matcher clauses) state) q' S'
       (DDLedger.freezeMatcherProducer ledger₁ capability)
       (.matcher capability (.var q.nextTy))) := by
+  let _ := declarativeContext
   let rawRun :=
     DemandTypingInferenceCompletenessMatcherExprTraversal.inferMatcherFuel_complete
       (before.visit .exprMatcher path) clausesRun finalization

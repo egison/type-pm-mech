@@ -551,7 +551,7 @@ theorem ValidatorRunExtension.ofFreshenSkeleton
     ValidatorRunExtension terminal signature state result := by
   cases evidence with
   | unseen =>
-      simp only [freshenSkeleton, Option.some.injEq, Prod.mk.injEq] at success
+      simp only [freshenSkeleton, Option.some.injEq] at success
       rcases success with ⟨_, rfl⟩
       exact ValidatorRunExtension.freshCap terminal signature state origin
   | known leaf =>

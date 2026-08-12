@@ -773,7 +773,8 @@ abbrev PatternCtorCapCompletenessMotive (signature : FrozenSig) : Prop :=
     {raw : DDPatternCtorCap signature entry q S declarativeChildren capability
       q' S'}
     {rawOrigin : DDPatternCtorCapOrigin signature entry raw ledger ledger'},
-    (before : TraversalStateCorrespondence q S ledger state) →
+    (before : TraversalStateCorrespondence q S
+      (let _ := rawOrigin; ledger) state) →
     CapListBisimulation before.prevailing declarativeChildren
       executableChildren →
     (∀ child ∈ declarativeChildren, child.BoundedBy q) →

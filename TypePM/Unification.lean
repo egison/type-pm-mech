@@ -805,7 +805,7 @@ private theorem targetOnly_seq (later earlier : TySubst) :
   apply subst_mk_congr
   · funext candidate; rfl
   · funext candidate
-    simp [Subst.seq, Subst.apply, TySubst.comp, Ty.applyCapability_id]
+    simp [Subst.apply, TySubst.comp, Ty.applyCapability_id]
 
 private theorem subst_seq_assoc (latest middle earliest : Subst) :
     Subst.seq latest (Subst.seq middle earliest) =
@@ -876,9 +876,9 @@ private def solveTy :
                   · funext candidate
                     by_cases hcandidate : varId = candidate
                     · subst candidate
-                      simpa [Subst.seq, TySubst.single, Subst.apply,
+                      simpa [TySubst.single, Subst.apply,
                         Ty.applyCapability, Ty.applyTarget] using hunify
-                    · simp [Subst.seq, TySubst.single, Subst.apply,
+                    · simp [TySubst.single, Subst.apply,
                         Ty.applyCapability, Ty.applyTarget, hcandidate]
               }
         | left, .var varId =>
@@ -914,9 +914,9 @@ private def solveTy :
                   · funext candidate
                     by_cases hcandidate : varId = candidate
                     · subst candidate
-                      simpa [Subst.seq, TySubst.single, Subst.apply,
+                      simpa [TySubst.single, Subst.apply,
                         Ty.applyCapability, Ty.applyTarget] using hunify.symm
-                    · simp [Subst.seq, TySubst.single, Subst.apply,
+                    · simp [TySubst.single, Subst.apply,
                         Ty.applyCapability, Ty.applyTarget, hcandidate]
               }
         | .data leftName leftFields, .data rightName rightFields =>

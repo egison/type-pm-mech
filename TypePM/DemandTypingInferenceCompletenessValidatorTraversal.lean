@@ -1328,9 +1328,7 @@ theorem alignResolvedSlotTupleAtSlot_canonicalSlotEventCondition
             [capStep, targetStep] ++ suffix := by
         simp only [solveSlice]
         rw [List.take_length, solves']
-        simpa [List.append_assoc] using
-          (List.drop_append_length state.trace.solves
-            ([capStep, targetStep] ++ suffix))
+        simp [List.append_assoc]
       have applyDeltas_append
           (firstSteps tailSteps : List SolveStep) (target : Ty) :
           applyDeltas (firstSteps ++ tailSteps) target =

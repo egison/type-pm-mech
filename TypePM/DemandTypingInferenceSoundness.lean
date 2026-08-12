@@ -1094,6 +1094,8 @@ theorem checkExprFuel_matcherToSlot_ddCheckRun
     (success : checkExprFuel (fuel + 1) signature context selfEnv path
       expression expected initial = some final) :
     DDCheckRun signature context expression expected initial final := by
+  let _ := rawView
+  let _ := expectedView
   have alignmentEq :
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success
@@ -1117,6 +1119,8 @@ theorem checkExprFuel_productMatcherLift_ddCheckRun
     (success : checkExprFuel (fuel + 1) signature context selfEnv path
       expression expected initial = some final) :
     DDCheckRun signature context expression expected initial final := by
+  let _ := rawView
+  let _ := expectedView
   have alignmentEq :
       alignExprResultAtExpected path synthesized expected = some final := by
     simpa [checkExprFuel, inferEq] using success

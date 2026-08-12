@@ -136,6 +136,7 @@ theorem auditedSynthLeaf_complete_paired
     Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
       before (inferExprFuel fuel signature executableContext selfEnv path
         expression state) q' S' ledger' target) := by
+  let _ := executableContextBounded
   cases fuel with
   | zero => simp [SynthBudgetAdequate] at adequate
   | succ inner =>
@@ -1799,7 +1800,15 @@ theorem auditedSynth_complete_paired_except_matchers
       {arms : armExhaustiveCheck signature clauses
         (S'.apply (.var q.nextTy)) = true}
       {coverage : coverageCheck signature.toMatcherSig clauses capability = true},
-      DDClausesTerminalAudit terminal signature clausesOrigin →
+      DDClausesTerminalAudit terminal signature
+        (let _ := collected
+         let _ := inferred
+         let _ := clauseCaps
+         let _ := catchAll
+         let _ := binders
+         let _ := arms
+         let _ := coverage
+         clausesOrigin) →
       DDTerminalAudit.MatcherFacts terminal signature clauses rawHoleLists
         capability (.var q.nextTy) →
       SynthBudgetAdequate fuel (.matcher clauses) →

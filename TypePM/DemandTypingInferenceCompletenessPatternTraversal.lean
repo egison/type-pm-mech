@@ -301,7 +301,7 @@ theorem DualListBisimulation.prodCaps
         injection pointwise with capEq
         injection ih with tailEq
         injection tailEq with tailListEq
-        simp only [List.map_cons, Cap.apply, Cap.applyList]
+        simp only [List.map_cons, Cap.applyList]
         rw [capEq, tailListEq]
   · change state.prevailing.apply (.matcher (.prod _) .unit) =
       relation.reverse.apply
@@ -315,7 +315,7 @@ theorem DualListBisimulation.prodCaps
         injection pointwise with capEq
         injection ih with tailEq
         injection tailEq with tailListEq
-        simp only [List.map_cons, Cap.apply, Cap.applyList]
+        simp only [List.map_cons, Cap.applyList]
         rw [capEq, tailListEq]
 
 theorem DualListBisimulation.prodTargets
@@ -1675,6 +1675,8 @@ def patternVar_complete
       (DDLedger.markFreshCap ledger q)
       ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩
       (declarativeBindings ++ [(name, .var q.nextTy)]) := by
+  let _ := declarativeContext
+  let _ := declarativeParameters
   let capOrigin := freshOrigin .pattern path "pattern-variable-capability"
   let targetOrigin := freshOrigin .pattern path "pattern-variable-target"
   let freshCap := state.freshCap capOrigin
@@ -1768,6 +1770,8 @@ def patternWild_complete
       { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
       (DDLedger.markFreshCap ledger q)
       ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ declarativeBindings := by
+  let _ := declarativeContext
+  let _ := declarativeParameters
   let capOrigin := freshOrigin .pattern path "pattern-wild-capability"
   let targetOrigin := freshOrigin .pattern path "pattern-wild-target"
   let freshCap := state.freshCap capOrigin
@@ -1859,6 +1863,8 @@ def patternValue_complete
       { q₁ with nextCap := q₁.nextCap + 1 } S₁
       (DDLedger.markFreshCap ledger₁ q₁)
       ⟨.var ⟨q₁.nextCap⟩, target⟩ declarativeBindings := by
+  let _ := declarativeContext
+  let _ := declarativeParameters
   let capOrigin := freshOrigin .pattern path "pattern-value-capability"
   let expressionRelation := expressionRun.completion.state
   let fresh := expressionRun.result.state.freshCap capOrigin
@@ -2004,6 +2010,7 @@ def patternTuple_complete
         executableBindings selfEnv path (.ptuple patterns) state)
       q' S' ledger'
       ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings := by
+  let _ := declarativeParameters
   let executableDual := Dual.mk (.prod (children.result.duals.map Dual.cap))
     (.prod (children.result.duals.map Dual.target))
   let event := TraceEvent.inferredPattern (.ptuple patterns) executableDual
@@ -2448,6 +2455,9 @@ noncomputable def patternApp_complete
         (.papp name patterns) state)
       q₁ S' ledger₁
       (InferenceBase.instantiateDualScheme q scheme).value.2 bindings' := by
+  let _ := declarativeContext
+  let _ := declarativeParameters
+  let _ := declarativeBindings
   let instantiation := instantiateDualInState_complete before signature
     executableContext executableParameters executableBindings
     (executableContext.applySubst state.prevailing)
@@ -2508,7 +2518,7 @@ noncomputable def patternApp_complete
   rw [lookup]
   simp only [children.success]
   simp only [alignment.success]
-  simp [event, before.supply_eq]
+  simp [event]
 
 /-! ## Empty and cons list packaging -/
 

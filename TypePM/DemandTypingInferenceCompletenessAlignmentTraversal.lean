@@ -1243,7 +1243,7 @@ noncomputable def runResolvedOneWay_complete
                   executableProducerTarget executableConsumerCap
                   executableConsumerTarget) = some cut.step by
               exact cut.success]
-            simpa [protectedCheck]) }
+            simp [protectedCheck]) }
   · unfold runResolvedConstraint
     change (do
       let step ← solveProducerToSlotWithLedger initial.capabilityOrigins

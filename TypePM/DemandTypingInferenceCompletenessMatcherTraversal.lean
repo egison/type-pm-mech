@@ -179,6 +179,7 @@ def checkArmsFuel_cons_complete
       (checkArmsFuel (fuel + 1) signature context selfEnv executablePPBindings
         parent index (.mk dataPattern body :: arms) executableClauseTarget
         executableBodyTarget state) q' S' ledger' := by
+  let _ := bodyTarget
   have ppAtData :=
     DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
       data.transition ppRelated
