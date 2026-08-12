@@ -225,5 +225,109 @@ noncomputable def dpatCtor_complete_related
   simp [capImages, executablePayload, executableBindings, before.supply_eq,
     event]
 
+noncomputable def dpatTuple_complete_related
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
+    (patterns : List DPat)
+    {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {declarativeTarget executableTarget : Ty}
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (declarativeBounded : declarativeTarget.BoundedBy q)
+    (executableBounded : executableTarget.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger ledger S
+      (.prod (freshTargetsSupply patterns.length q).1) declarativeTarget S₁)
+    {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
+    (children :
+      let fresh := freshTargets_complete before
+        (freshOrigin .dataPattern path "dp-tuple-field") patterns.length
+      ∀ alignment : StateRunCompletion fresh.state
+          (alignTypes (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).2
+            (freshOrigin .dataPattern path "dp-tuple-result")
+            (.prod (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).1)
+            executableTarget)
+          (freshTargetsSupply patterns.length q).2 S₁ ledger,
+        DPatsRunCompletion alignment.completion
+          (inferDPatsFuel fuel signature path 0 patterns
+            (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).1 alignment.result)
+          q' S' ledger₂ (freshTargetsSupply patterns.length q).1 bindings) :
+    DPatRunCompletion before
+      (inferDPatFuel (fuel + 1) signature path (.tuple patterns)
+        executableTarget state)
+      q' S' ledger₂ declarativeTarget bindings := by
+  let fieldOrigin := freshOrigin .dataPattern path "dp-tuple-field"
+  let resultOrigin := freshOrigin .dataPattern path "dp-tuple-result"
+  let fresh := freshTargets_complete before fieldOrigin patterns.length
+  let supplyExtension := SupplyExtends.freshTargets patterns.length q
+  have declarativeProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargetsSupply patterns.length q).1) :=
+    Ty.BoundedBy.prodOfForall
+      (freshTargetsSupply_boundedBy patterns.length q)
+  have executableProductRelated : TyBisimulation fresh.state.prevailing
+      (.prod (freshTargetsSupply patterns.length q).1)
+      (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact fresh.state.prevailing.sameTarget _
+  have executableProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact declarativeProductBounded
+  have targetAtFresh : TyBisimulation fresh.state.prevailing
+      declarativeTarget executableTarget := by
+    rw [fresh.prevailing_eq]
+    exact fresh.transition.transportTy targetRelated
+  let alignment := ddAlignTypesWithLedger_complete
+    (origin := resultOrigin) fresh.state executableProductRelated
+    targetAtFresh
+    declarativeProductBounded (declarativeBounded.mono supplyExtension)
+    executableProductBounded (executableBounded.mono supplyExtension) aligned
+  let childrenRun := children alignment
+  let executableBindings := childrenRun.result.bindings
+  let event := TraceEvent.inferredDPat (.tuple patterns) executableTarget
+    executableBindings path
+  let visited := childrenRun.completion.visit .dpatTuple path
+  let final := visited.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let finishExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension
+      childrenRun.completion .dpatTuple path event
+  let transition := ((fresh.extension.seq alignment.transition).seq
+    childrenRun.transition).seq finishExtension
+  refine
+    { result := ⟨executableTarget, executableBindings,
+        (visit childrenRun.result.state .dpatTuple path).recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      protected_safe := final.protected_safe
+      target := transition.transportTy targetRelated
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          finishExtension childrenRun.bindings }
+  simp only [inferDPatFuel]
+  have alignmentSuccess := alignment.success
+  dsimp [fieldOrigin, resultOrigin] at alignmentSuccess
+  simp only [alignmentSuccess, childrenRun.success]
+  rfl
+
 end DemandTypingInferenceCompletenessMatcherDPat
 end TypePM
