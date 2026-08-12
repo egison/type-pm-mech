@@ -373,6 +373,95 @@ theorem inferPPatFuel_leaf_validation
     exact finishPPat (pattern := .pval name) (target := target) (holes := [])
       (bindings := [(name, target)]) (path := path) (by simp)
 
+/-- Constructor primitive patterns compose instantiation, result alignment,
+recursive children, export freezing, and the neutral result event. -/
+theorem inferPPatFuel_ctor_validation
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {fuel : Nat} {path : SyntaxPath} {name : String}
+    {patterns : List PPat} {target : Ty} {state aligned : InferState}
+    {result : PPatResult} {entry : PatternCtorScheme signature.observability}
+    {children : PPatsResult}
+    (lookup : signature.findPatternCtor name = some entry)
+    (alignedEq : alignTypes (instantiateCtorInState state entry.scheme).2
+      (freshOrigin .primitivePattern path "pp-constructor-result")
+      (instantiateCtorInState state entry.scheme).1.2 target = some aligned)
+    (childrenEq : inferPPatsFuel fuel signature path 0 patterns
+      (instantiateCtorInState state entry.scheme).1.1 aligned = some children)
+    (childrenValidation : ValidatorRunExtension terminal signature aligned
+      children.state)
+    (success : inferPPatFuel (fuel + 1) signature path (.ctor name patterns)
+      target state = some result) :
+    ValidatorRunExtension terminal signature state result.state := by
+  have alignedCoreEq :
+      alignTypes (instantiateCtorInState state entry.scheme).2
+        (freshOrigin .primitivePattern path "pp-constructor-result")
+        (InferenceBase.instantiateCtorScheme state.supply entry.scheme).value.2
+        target = some aligned := by
+    simpa [Inference.instantiateCtorInState] using alignedEq
+  have childrenCoreEq :
+      inferPPatsFuel fuel signature path 0 patterns
+        (InferenceBase.instantiateCtorScheme state.supply entry.scheme).value.1
+        aligned = some children := by
+    simpa [Inference.instantiateCtorInState] using childrenEq
+  simp [inferPPatFuel, lookup, alignedCoreEq, childrenCoreEq] at success
+  subst result
+  let images := freshCapImages state.supply entry.scheme.capBinders
+  let payload := capabilityExportPayload (children.holes.map Dual.cap)
+    (children.holes.map Dual.target ++
+      target :: children.bindings.map fun binding => binding.2)
+  exact (ValidatorRunExtension.instantiateCtorInState state entry.scheme
+    (closed.patternCtors lookup)).trans
+      ((ValidatorRunExtension.ofAlignTypes alignedEq).trans
+        (childrenValidation.trans
+          ((ValidatorRunExtension.freezeCapabilityExport terminal signature
+            children.state images payload).trans
+            (finishPPat (pattern := .ctor name patterns) (target := target)
+              (holes := children.holes) (bindings := children.bindings)
+              (path := path) (by simp)))))
+
+/-- Tuple primitive patterns compose target allocation, product alignment,
+recursive children, and the neutral result event. -/
+theorem inferPPatFuel_tuple_validation
+    {terminal : Subst} {signature : FrozenSig}
+    {fuel : Nat} {path : SyntaxPath} {patterns : List PPat} {target : Ty}
+    {state aligned : InferState} {result : PPatResult}
+    {children : PPatsResult}
+    (alignedEq : alignTypes
+      (freshTargets state
+        (freshOrigin .primitivePattern path "pp-tuple-field") patterns.length).2
+      (freshOrigin .primitivePattern path "pp-tuple-result")
+      (.prod (freshTargets state
+        (freshOrigin .primitivePattern path "pp-tuple-field") patterns.length).1)
+      target = some aligned)
+    (childrenEq : inferPPatsFuel fuel signature path 0 patterns
+      (freshTargets state
+        (freshOrigin .primitivePattern path "pp-tuple-field") patterns.length).1
+      aligned = some children)
+    (childrenValidation : ValidatorRunExtension terminal signature aligned
+      children.state)
+    (success : inferPPatFuel (fuel + 1) signature path (.tuple patterns)
+      target state = some result) :
+    ValidatorRunExtension terminal signature state result.state := by
+  simp [inferPPatFuel, alignedEq, childrenEq] at success
+  subst result
+  exact (freshTargetsValidation terminal signature state
+    (freshOrigin .primitivePattern path "pp-tuple-field") patterns.length).trans
+      ((ValidatorRunExtension.ofAlignTypes alignedEq).trans
+        (childrenValidation.trans
+          (finishPPat (pattern := .tuple patterns) (target := target)
+            (holes := children.holes) (bindings := children.bindings)
+            (path := path) (by simp))))
+
+/-- A successful primitive-pattern list is chronologically head then tail. -/
+theorem inferPPatsFuel_cons_validation
+    {terminal : Subst} {signature : FrozenSig}
+    {state middle final : InferState}
+    (headValidation : ValidatorRunExtension terminal signature state middle)
+    (tailValidation : ValidatorRunExtension terminal signature middle final) :
+    ValidatorRunExtension terminal signature state final :=
+  headValidation.trans tailValidation
+
 /-! ## Packaging adapters -/
 
 /-- Attach the independently reconstructed DPat validator chronology to any
