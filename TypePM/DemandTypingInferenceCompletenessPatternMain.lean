@@ -335,6 +335,92 @@ noncomputable def patternPValOrigin_complete
     expression before declarativeBindings executableBindings bindings
     expressionRun
 
+noncomputable def boundedPatternPValOrigin_complete
+    {terminal : Subst} {signature : FrozenSig}
+    (synthComplete : PatternSynthCompletenessMotive terminal signature)
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (bindingsBounded : declarativeBindings.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    {raw : DDSynth signature q S
+      (declarativeBindings.toContext ++ declarativeContext) expression target
+      q₁ S₁}
+    {origin : DDSynthOrigin signature raw ledger ledger₁}
+    (audit : DDSynthTerminalAudit terminal signature origin)
+    (adequate : PatternBudgetAdequate (fuel + 1) (.pval expression)) :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.pval expression) state)
+      { q₁ with nextCap := q₁.nextCap + 1 } S₁
+      (DDLedger.markFreshCap ledger₁ q₁) ⟨.var ⟨q₁.nextCap⟩, target⟩
+      declarativeBindings := by
+  have visitedBindings : MonoCtxBisimulation
+      (before.visit .patternValue path).prevailing declarativeBindings
+      executableBindings :=
+    BisimulationExtension.transportMonoCtx
+      (before.visitExtension .patternValue path) bindings
+  have visitedContexts : ContextBisimulation
+      (before.visit .patternValue path).prevailing declarativeContext
+      executableContext := by
+    constructor
+    · exact contexts.forward
+    · exact contexts.reverse
+  have expressionContexts : ContextBisimulation
+      (before.visit .patternValue path).prevailing
+      (declarativeBindings.toContext ++ declarativeContext)
+      (executableBindings.toContext ++ executableContext) :=
+    ContextBisimulation.append visitedBindings.toContext visitedContexts
+  have expressionContextBounded :
+      (declarativeBindings.toContext ++ declarativeContext).BoundedBy q :=
+    Context.BoundedBy.append bindingsBounded.toContext contextBounded
+  let expressionPackage := Classical.choice
+    (synthComplete (selfEnv := selfEnv) (path := 0 :: path)
+      (before.visit .patternValue path) expressionContexts
+      expressionContextBounded audit (by
+        change 8 * (exprTraversalFuel expression + 1) ≤ fuel
+        change 8 * ((1 + exprTraversalFuel expression) + 1) ≤ fuel + 1
+          at adequate
+        omega))
+  let run := patternValue_complete fuel signature declarativeContext
+    executableContext declarativeParameters executableParameters selfEnv path
+    expression before declarativeBindings executableBindings bindings
+    expressionPackage.val
+  refine ⟨run, ?_, ?_⟩
+  · have dualEq :
+        ⟨.var ⟨expressionPackage.val.result.state.supply.nextCap⟩,
+          expressionPackage.val.result.target⟩ = run.result.dual := by
+      have mapped := congrArg (Option.map PatternResult.dual) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [expressionPackage.val.success] at mapped
+      simpa [InferState.freshCap, InferenceBase.freshCapMeta] using mapped
+    rw [← dualEq]
+    constructor
+    · apply Cap.BoundedBy.varOf
+      change expressionPackage.val.result.state.supply.nextCap <
+        q₁.nextCap + 1
+      rw [expressionPackage.val.supply_eq]
+      omega
+    · exact expressionPackage.property.mono (SupplyExtends.bumpCap q₁ 1)
+  · have bindingsEq : executableBindings = run.result.bindings := by
+      have mapped := congrArg (Option.map PatternResult.bindings) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [expressionPackage.val.success] at mapped
+      simpa using mapped
+    rw [← bindingsEq]
+    exact executableBindingsBounded.mono
+      (origin.erase.supplyExtends.trans (SupplyExtends.bumpCap q₁ 1))
+
 noncomputable def patternEmbedOrigin_complete
     {signature : FrozenSig} {context : Context}
     {declarativeParameters executableParameters : PatternCtx}
@@ -355,6 +441,47 @@ noncomputable def patternEmbedOrigin_complete
   patternEmbed_complete fuel signature context selfEnv path name before
     declarativeParameters executableParameters parameters declarativeBindings
     executableBindings bindings lookup
+
+noncomputable def boundedPatternEmbedOrigin_complete
+    {signature : FrozenSig} {context : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {name : String} {dual : Dual}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (parameters : PatternCtxBisimulation before.prevailing
+      declarativeParameters executableParameters)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    (lookup : declarativeParameters.find? name = some dual) :
+    BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context executableParameters
+        executableBindings selfEnv path (.embed name) state)
+      q S ledger dual declarativeBindings := by
+  let witness := PatternCtxBisimulation.find?_complete parameters lookup
+  let executableDual := Classical.choose witness
+  have executableLookup := (Classical.choose_spec witness).1
+  let run := patternEmbedOrigin_complete
+    (signature := signature) (context := context) (selfEnv := selfEnv)
+    (path := path) fuel before parameters bindings lookup
+  refine ⟨run, ?_, ?_⟩
+  · have dualEq : executableDual = run.result.dual := by
+      have resultEq := run.success
+      simp only [inferPatternFuel] at resultEq
+      rw [executableLookup] at resultEq
+      exact congrArg PatternResult.dual (Option.some.inj resultEq)
+    rw [← dualEq]
+    exact executableParametersBounded.find? executableLookup
+  · have bindingsEq : executableBindings = run.result.bindings := by
+      have resultEq := run.success
+      simp only [inferPatternFuel] at resultEq
+      rw [executableLookup] at resultEq
+      exact congrArg PatternResult.bindings (Option.some.inj resultEq)
+    rw [← bindingsEq]
+    exact executableBindingsBounded
 
 end DemandTypingInferenceCompletenessPatternMain
 end TypePM
