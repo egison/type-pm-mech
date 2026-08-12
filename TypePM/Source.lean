@@ -3031,7 +3031,6 @@ structure MatcherToSlotRawCert
     Unification.mguTy
       (producerTarget.applyCapability C)
       (consumerTarget.applyCapability C) = some T
-  rangeFixed : (Subst.mk C T).RangeFixed
 
 /-- Raw, generation-time certificate for slot-to-slot checking. -/
 structure SlotToSlotRawCert
@@ -3043,7 +3042,6 @@ structure SlotToSlotRawCert
     Unification.mguTy
       (sourceTarget.applyCapability C)
       (requestedTarget.applyCapability C) = some T
-  rangeFixed : (Subst.mk C T).RangeFixed
 
 /-- Runtime demand exposed by an executable matcher-to-slot certificate. -/
 theorem MatcherToSlotRawCert.capabilityDemand

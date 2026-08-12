@@ -878,13 +878,12 @@ theorem canonicalSlotAlignment_matcherToSlot_suffix
     {producerCap consumerCap : Cap}
     {producerTarget consumerTarget : Ty}
     (constraintEq : step.constraint = .producerToSlot producerCap
-      producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed) :
+      producerTarget consumerCap consumerTarget) :
     CanonicalSlotAlignmentAtTerminal [step] ([step] ++ suffix)
       (.matcher producerCap producerTarget)
       (.slot consumerCap consumerTarget) := by
   apply CanonicalSlotAlignmentAtTerminal.matcherToSlot
-      (step := step) rfl rfl rfl constraintEq rangeFixed
+      (step := step) rfl rfl rfl constraintEq
   · simp only [List.cons_append, List.nil_append, applyDeltas,
       List.tail_cons]
     have equation := replayFrom_apply Subst.id suffix
@@ -927,14 +926,13 @@ theorem canonicalSlotEventCondition_matcherToSlot
       solveSlice state.trace start state.trace.solves.length =
         [step] ++ suffix)
     (constraintEq : step.constraint = .producerToSlot producerCap
-      producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed) :
+      producerTarget consumerCap consumerTarget) :
     CanonicalSlotEventCondition state
       (.slotAlignment start stop (.matcher producerCap producerTarget)
         (.slot consumerCap consumerTarget)) := by
   refine ⟨startStop, stopBound, ?_⟩
   rw [localSlice, terminalSlice]
-  exact canonicalSlotAlignment_matcherToSlot_suffix constraintEq rangeFixed
+  exact canonicalSlotAlignment_matcherToSlot_suffix constraintEq
 
 /-! ## Direct executable leaf branches -/
 
@@ -1065,6 +1063,84 @@ theorem inferPatternFuel_wild_patternLeaves
     trivial
   · subst event
     trivial
+
+/-! ## Expected-alignment emitter -/
+
+/-- A successful resolved producer-to-slot solve, followed by any later
+solver suffix, supplies the exact canonical witness for the slot event emitted
+at that checking cut. -/
+theorem runResolvedConstraint_producerToSlot_canonicalSlotEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
+    (success : runResolvedConstraint state origin
+      (.producerToSlot producerCap producerTarget consumerCap consumerTarget) =
+        some aligned)
+    (history : (aligned.recordEvent (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (.matcher producerCap producerTarget)
+      (.slot consumerCap consumerTarget))).HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (.matcher producerCap producerTarget)
+      (.slot consumerCap consumerTarget)) := by
+  unfold runResolvedConstraint at success
+  cases stepEq : solveResolvedWithLedger state.capabilityOrigins
+      state.trace.solves.length origin
+      (.producerToSlot producerCap producerTarget consumerCap consumerTarget) with
+  | none => simp [stepEq] at success
+  | some step =>
+      simp only [stepEq] at success
+      dsimp at success
+      split at success
+      · have alignedEq := Option.some.inj success
+        subst aligned
+        rcases history with ⟨suffix, eventSuffix, solves, events⟩
+        have solves' : terminal.trace.solves =
+            (state.trace.solves ++ [step]) ++ suffix := by
+          simpa [InferState.recordEvent, InferState.recordSolve] using solves
+        have startStop : state.trace.solves.length ≤
+            (state.recordSolve step).trace.solves.length := by
+          simp [InferState.recordSolve]
+        have stopBound : (state.recordSolve step).trace.solves.length ≤
+            terminal.trace.solves.length := by
+          rw [solves', List.length_append]
+          simp only [InferState.recordSolve, List.length_append,
+            List.length_singleton]
+          exact Nat.le_add_right _ _
+        have localSlice : solveSlice terminal.trace
+            state.trace.solves.length
+            (state.recordSolve step).trace.solves.length = [step] := by
+          have stopEq : (state.recordSolve step).trace.solves.length =
+              (state.trace.solves ++ [step]).length := by
+            rfl
+          rw [solveSlice, stopEq, solves',
+            List.take_append_of_le_length (Nat.le_refl _),
+            List.take_length,
+            List.drop_append_length]
+        have terminalSlice : solveSlice terminal.trace
+            state.trace.solves.length terminal.trace.solves.length =
+              [step] ++ suffix := by
+          simp only [solveSlice]
+          rw [List.take_length, solves', List.append_assoc,
+            List.drop_append_length]
+        have constraintEq : step.constraint = .producerToSlot producerCap
+            producerTarget consumerCap consumerTarget := by
+          change solveProducerToSlotWithLedger state.capabilityOrigins
+            state.trace.solves.length origin producerCap producerTarget
+            consumerCap consumerTarget = some step at stepEq
+          unfold solveProducerToSlotWithLedger at stepEq
+          split at stepEq
+          · contradiction
+          · simp only at stepEq
+            split at stepEq
+            · split at stepEq
+              · contradiction
+              · exact (congrArg SolveStep.constraint
+                  (Option.some.inj stepEq)).symm
+            · contradiction
+        exact canonicalSlotEventCondition_matcherToSlot startStop stopBound
+          localSlice terminalSlice constraintEq
+      · contradiction
 
 end Reconstruction
 end Inference

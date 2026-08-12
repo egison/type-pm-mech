@@ -372,7 +372,6 @@ private def slotAlignmentAtTerminalCheck
             decide (rawProducerTarget = producerTarget) &&
             decide (rawConsumerCap = consumerCap) &&
             decide (rawConsumerTarget = consumerTarget) &&
-            rangeFixedOnCheck step.delta step.targetDomain &&
             decide
               (applyDeltas terminalSteps
                   (.matcher producerCap producerTarget) =
@@ -407,7 +406,6 @@ inductive CanonicalSlotAlignmentAtTerminal
       (localEq : localSteps = [step])
       (constraintEq : step.constraint = .producerToSlot producerCap
         producerTarget consumerCap consumerTarget)
-      (rangeFixed : step.delta.RangeFixed)
       (producerResult :
         applyDeltas terminalSteps (.matcher producerCap producerTarget) =
           (replay terminalSteps.tail).apply
@@ -432,7 +430,7 @@ theorem slotAlignmentAtTerminalCheck_complete
   | equal aligned =>
       simp [slotAlignmentAtTerminalCheck, aligned]
   | @matcherToSlot producerCap consumerCap producerTarget consumerTarget step
-      inferredEq requestedEq localEq constraintEq rangeFixed producerResult
+      inferredEq requestedEq localEq constraintEq producerResult
       consumerResult =>
       subst inferred
       subst requested
@@ -442,25 +440,24 @@ theorem slotAlignmentAtTerminalCheck_complete
             applyDeltas terminalSteps (.slot consumerCap consumerTarget)
       · simp [slotAlignmentAtTerminalCheck, aligned]
       · simp [slotAlignmentAtTerminalCheck, constraintEq,
-          rangeFixedOnCheck_complete rangeFixed, producerResult,
-          consumerResult]
+          producerResult, consumerResult]
 
 private theorem solveStep_producerToSlot_raw
     {step : SolveStep} {producerCap consumerCap : Cap}
     {producerTarget consumerTarget : Ty}
     (constraintEq : step.constraint = .producerToSlot producerCap
       producerTarget consumerCap consumerTarget)
-    (rangeFixed : step.delta.RangeFixed) :
+    :
     ∃ bindings, MatcherToSlotRawCert producerCap consumerCap producerTarget
       consumerTarget bindings step.delta.cap step.delta.target := by
   rcases step with
     ⟨solveCount, origin, ledgerSnapshot, constraint, delta, targetDomain, targetSupport,
       certificate, locallySound⟩
-  dsimp only at constraintEq rangeFixed ⊢
+  dsimp only at constraintEq ⊢
   subst constraint
   cases certificate with
   | producerToSlot matched unified =>
-      exact ⟨_, matched, rfl, unified, rangeFixed⟩
+      exact ⟨_, matched, rfl, unified⟩
 
 private theorem slotAlignmentAtTerminalCheck_sound
     {localSteps terminalSteps : List SolveStep}
@@ -497,18 +494,16 @@ private theorem slotAlignmentAtTerminalCheck_sound
                     simp [slotAlignmentAtTerminalCheck, aligned,
                       constraintForm] at checked
                     rcases checked with
-                      ⟨⟨⟨⟨⟨⟨producerCapEq, producerTargetEq⟩,
-                        consumerCapEq⟩, consumerTargetEq⟩, rangeChecked⟩,
+                      ⟨⟨⟨⟨⟨producerCapEq, producerTargetEq⟩,
+                        consumerCapEq⟩, consumerTargetEq⟩,
                         producerResult⟩, consumerResult⟩
                     subst rawProducerCap
                     subst rawProducerTarget
                     subst rawConsumerCap
                     subst rawConsumerTarget
                     let post := replay terminalSteps.tail
-                    have rangeFixed : step.delta.RangeFixed :=
-                      rangeFixedOnCheck_sound step.targetSupport rangeChecked
                     rcases solveStep_producerToSlot_raw constraintForm
-                        rangeFixed with ⟨bindings, raw⟩
+                        with ⟨bindings, raw⟩
                     exact .matcherToSlot rfl rfl rfl constraintForm rfl raw
                       producerResult consumerResult
 

@@ -458,8 +458,7 @@ theorem emptyProductMatcherToSlotRaw :
   refine
     { matched := rfl
       capSubstitution := rfl
-      targetUnified := Unification.mguTy_self _
-      rangeFixed := Subst.id_rangeFixed }
+      targetUnified := Unification.mguTy_self _ }
 
 /-- The empty slot-product surface rule normalizes through the matcher-first
 two-step policy, because observable `slotTuple` steps are nonempty. -/

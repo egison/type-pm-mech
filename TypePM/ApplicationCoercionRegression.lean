@@ -79,12 +79,10 @@ private theorem concretePairMatcher_toSlot_raw :
   refine
     { matched := ?_
       capSubstitution := ?_
-      targetUnified := ?_
-      rangeFixed := ?_ }
+      targetUnified := ?_ }
   · rfl
   · rfl
   · simp
-  · exact Subst.id_rangeFixed
 
 /-- Observable canonical evidence chooses the whole-product lift before the
 single direct matcher-to-slot alignment. -/
