@@ -2765,6 +2765,34 @@ theorem auditedSynthFix_complete_nonempty
         ((Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends)
     exact placeholderBounded⟩⟩
 
+/-- A matcher capability inferred from already-normalized clause holes is an
+image of the idempotent local substitution and is therefore already fixed. -/
+theorem matcherInferredCapability_fixed
+    {signature : FrozenSig} {S : Subst}
+    {clauses : List Clause} {rawHoleLists : List (List Dual)}
+    {evidence : List Shape.Evidence} {capability : Cap}
+    (idempotent : S.Idempotent)
+    (collected : collectClauseEvidence signature.toMatcherSig clauses
+      (terminalHoleCaps S rawHoleLists) = some evidence)
+    (inferred : Shape.inferShape signature.observability evidence =
+      some capability) :
+    capability.apply S.cap = capability := by
+  apply Cap.apply_eq_self_of_fcv_fixed
+  intro varId varMem
+  obtain ⟨holeCaps, holeCapsMem, varIn⟩ :=
+    Inference.collectClauseEvidence_fcv collected varId
+      (Shape.inferShape_fcv inferred varMem)
+  obtain ⟨rawHoles, rawHolesMem, rfl⟩ := List.mem_map.mp holeCapsMem
+  obtain ⟨resolvedCap, resolvedCapMem, varInCap⟩ :=
+    Cap.mem_fcvList_split varIn
+  obtain ⟨resolvedDual, resolvedDualMem, rfl⟩ :=
+    List.mem_map.mp resolvedCapMem
+  obtain ⟨rawDual, rawDualMem, rfl⟩ := List.mem_map.mp resolvedDualMem
+  apply idempotent.image_cap_fixed (.matcher rawDual.cap rawDual.target) varId
+  change varId ∈ (S.apply (.matcher rawDual.cap rawDual.target)).fcv
+  simp only [Subst.apply_matcher, Ty.fcv, List.mem_append]
+  exact Or.inl varInCap
+
 /-- Final assembly of a matcher literal once the clause dispatcher and its
 paired local finalization bridge have been reconstructed.  Keeping this
 constructor independent isolates the remaining equivariance proof which
