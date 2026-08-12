@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessContext
 import TypePM.DemandTypingInferenceCompletenessLocalRenaming
+import TypePM.DemandTypingInferenceCompletenessGeneralizationTransport
 
 /-!
 # Paired contexts for inference completeness
@@ -16,6 +17,8 @@ namespace DemandTypingInferenceCompletenessContextBisimulation
 open Inference
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessContext
+open DemandTypingInferenceCompletenessLocalRenaming
+open DemandTypingInferenceCompletenessGeneralizationEquivariance
 
 /-- Two raw contexts correspond after normalization by their respective
 prevailing substitutions. -/
@@ -169,6 +172,133 @@ structure GeneralizationBisimulation
   reverse : executableScheme =
     declarativeScheme.applyMeta relation.reverse
 
+/-- Mutual state, context, and value correspondence determine the canonical
+generalization transport.  Local renaming is derived internally from the
+idempotent prevailing states; callers do not choose or maintain a separate
+renaming witness. -/
+theorem GeneralizationBisimulation.ofBisimulation
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    (signature : FrozenSig) (signatureClosed : signature.SchemesClosed)
+    {declarativeTarget executableTarget : Ty}
+    (targets : TyBisimulation relation declarativeTarget executableTarget) :
+    GeneralizationBisimulation relation
+      (signature.generalize (declarativeContext.applySubst declarative)
+        (declarative.apply declarativeTarget))
+      (signature.generalize (executableContext.applySubst state.prevailing)
+        (state.prevailing.apply executableTarget)) := by
+  let declarativeContext' := declarativeContext.applySubst declarative
+  let executableContext' := executableContext.applySubst state.prevailing
+  let declarativeTarget' := declarative.apply declarativeTarget
+  let executableTarget' := state.prevailing.apply executableTarget
+  have contextForward : declarativeContext' =
+      executableContext'.applySubst relation.forward := by
+    simpa [declarativeContext', executableContext'] using contexts.forward
+  have contextReverse : executableContext' =
+      declarativeContext'.applySubst relation.reverse := by
+    simpa [declarativeContext', executableContext'] using contexts.reverse
+  have targetForward : declarativeTarget' =
+      relation.forward.apply executableTarget' := by
+    simpa [declarativeTarget', executableTarget'] using targets.forward
+  have targetReverse : executableTarget' =
+      relation.reverse.apply declarativeTarget' := by
+    simpa [declarativeTarget', executableTarget'] using targets.reverse
+  constructor
+  · let localMap :=
+      DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.localRenamingOn_image
+        relation executableTarget
+    have capEnvironment : ∀ varId, varId ∈ executableTarget'.fcv →
+        (localMap.capImage varId ∈ signature.fcv ++ declarativeContext'.fcv ↔
+          varId ∈ signature.fcv ++ executableContext'.fcv) := by
+      intro varId free
+      rw [signatureClosed.signatureCaps]
+      simp only [List.nil_append]
+      constructor
+      · intro membership
+        rw [contextReverse]
+        exact Context.mem_fcv_applySubst_of_cap declarativeContext'
+          relation.reverse membership (localMap.cap_reverse free)
+      · intro membership
+        rw [contextForward]
+        exact Context.mem_fcv_applySubst_of_cap executableContext'
+          relation.forward membership (localMap.cap_forward free)
+    have targetEnvironment : ∀ varId, varId ∈ executableTarget'.ftv →
+        (localMap.targetImage varId ∈ signature.ftv ++ declarativeContext'.ftv ↔
+          varId ∈ signature.ftv ++ executableContext'.ftv) := by
+      intro varId free
+      rw [signatureClosed.signatureTargets]
+      simp only [List.nil_append]
+      constructor
+      · intro membership
+        rw [contextReverse]
+        exact Context.mem_ftv_applySubst_of_target declarativeContext'
+          relation.reverse membership (localMap.target_reverse free)
+      · intro membership
+        rw [contextForward]
+        exact Context.mem_ftv_applySubst_of_target executableContext'
+          relation.forward membership (localMap.target_forward free)
+    change signature.generalize declarativeContext' declarativeTarget' =
+      (signature.generalize executableContext' executableTarget').applyMeta
+        relation.forward
+    rw [targetForward]
+    unfold FrozenSig.generalize
+    exact Scheme.generalize_forward localMap
+      (signature.fcv ++ declarativeContext'.fcv)
+      (signature.fcv ++ executableContext'.fcv)
+      (signature.ftv ++ declarativeContext'.ftv)
+      (signature.ftv ++ executableContext'.ftv) executableTarget'
+      (fun _ member => member) (fun _ member => member)
+      capEnvironment targetEnvironment
+  · let localMap :=
+      DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.reverseLocalRenamingOn_image
+        relation declarativeTarget
+    have capEnvironment : ∀ varId, varId ∈ declarativeTarget'.fcv →
+        (localMap.capImage varId ∈ signature.fcv ++ executableContext'.fcv ↔
+          varId ∈ signature.fcv ++ declarativeContext'.fcv) := by
+      intro varId free
+      rw [signatureClosed.signatureCaps]
+      simp only [List.nil_append]
+      constructor
+      · intro membership
+        rw [contextForward]
+        exact Context.mem_fcv_applySubst_of_cap executableContext'
+          relation.forward membership (localMap.cap_reverse free)
+      · intro membership
+        rw [contextReverse]
+        exact Context.mem_fcv_applySubst_of_cap declarativeContext'
+          relation.reverse membership (localMap.cap_forward free)
+    have targetEnvironment : ∀ varId, varId ∈ declarativeTarget'.ftv →
+        (localMap.targetImage varId ∈ signature.ftv ++ executableContext'.ftv ↔
+          varId ∈ signature.ftv ++ declarativeContext'.ftv) := by
+      intro varId free
+      rw [signatureClosed.signatureTargets]
+      simp only [List.nil_append]
+      constructor
+      · intro membership
+        rw [contextForward]
+        exact Context.mem_ftv_applySubst_of_target executableContext'
+          relation.forward membership (localMap.target_reverse free)
+      · intro membership
+        rw [contextReverse]
+        exact Context.mem_ftv_applySubst_of_target declarativeContext'
+          relation.reverse membership (localMap.target_forward free)
+    change signature.generalize executableContext' executableTarget' =
+      (signature.generalize declarativeContext' declarativeTarget').applyMeta
+        relation.reverse
+    rw [targetReverse]
+    unfold FrozenSig.generalize
+    exact Scheme.generalize_forward localMap
+      (signature.fcv ++ executableContext'.fcv)
+      (signature.fcv ++ declarativeContext'.fcv)
+      (signature.ftv ++ executableContext'.ftv)
+      (signature.ftv ++ declarativeContext'.ftv) declarativeTarget'
+      (fun _ member => member) (fun _ member => member)
+      capEnvironment targetEnvironment
+
 /-- A proved generalization transport extends paired contexts.  Idempotence
 from the state bisimulation discharges the otherwise easy but essential
 re-normalization of the freshly constructed schemes. -/
@@ -205,6 +335,30 @@ theorem ContextBisimulation.consGeneralized
     rw [FrozenSig.generalize_image_fixed signature declarativeContext
       declarativeTarget declarative relation.declarativeIdempotent]
     exact generalizations.reverse
+
+/-- Complete `let`-context extension: state, context, and value
+bisimulations plus public signature closedness discharge every canonical
+generalization and local-renaming obligation. -/
+theorem ContextBisimulation.consGeneralized_complete
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    (signature : FrozenSig) (signatureClosed : signature.SchemesClosed)
+    (name : String) {declarativeTarget executableTarget : Ty}
+    (targets : TyBisimulation relation declarativeTarget executableTarget) :
+    ContextBisimulation relation
+      ((name, signature.generalize
+        (declarativeContext.applySubst declarative)
+        (declarative.apply declarativeTarget)) :: declarativeContext)
+      ((name, signature.generalize
+        (executableContext.applySubst state.prevailing)
+        (state.prevailing.apply executableTarget)) :: executableContext) :=
+  contexts.consGeneralized signature name declarativeTarget executableTarget
+    (GeneralizationBisimulation.ofBisimulation contexts signature
+      signatureClosed targets)
 
 end DemandTypingInferenceCompletenessContextBisimulation
 end TypePM
