@@ -512,6 +512,134 @@ theorem ctorInstanceEventCondition_atTerminal
       (CtorScheme.Closed.cap_scoped closed).2
       (CtorScheme.Closed.ty_scoped closed).2
 
+/-- For a closed dual scheme, replaying the canonical fresh opening through
+the terminal executable substitution is the binder-local post operation used
+by `DualScheme.post_apply`. -/
+theorem dualTerminalCandidates_eq_post
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (scheme : DualScheme) :
+    terminalCapCandidate state supply scheme.capBinders =
+        scheme.postCap state.prevailing
+          (InferenceBase.freshCapSubst supply.nextCap scheme.capBinders) ∧
+      terminalTyCandidate state supply scheme.tyBinders =
+        scheme.postTarget state.prevailing
+          (InferenceBase.freshTySubst supply.nextTy scheme.tyBinders) := by
+  constructor
+  · funext varId
+    by_cases membership : varId ∈ scheme.capBinders <;>
+      simp [terminalCapCandidate, DualScheme.postCap,
+        InferenceBase.freshCapSubst, membership, Cap.apply]
+  · funext varId
+    by_cases membership : varId ∈ scheme.tyBinders <;>
+      simp [terminalTyCandidate, DualScheme.postTarget,
+        InferenceBase.freshTySubst, membership]
+
+/-- One body dual of a closed scheme commutes with the canonical terminal
+opening.  This is the dual-scheme analogue of
+`terminalCandidates_apply_of_scoped`. -/
+theorem DualScheme.Closed.terminal_apply
+    {scheme : DualScheme} (closed : scheme.Closed)
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (dual : Dual)
+    (capScope : ∀ varId, varId ∈ dual.fcv →
+      varId ∈ scheme.args.flatMap Dual.fcv ++ scheme.result.fcv)
+    (tyScope : ∀ varId, varId ∈ dual.ftv →
+      varId ∈ scheme.args.flatMap Dual.ftv ++ scheme.result.ftv) :
+    dual.apply (terminalCapCandidate state supply scheme.capBinders)
+        (terminalTyCandidate state supply scheme.tyBinders) =
+      (dual.apply
+          (InferenceBase.freshCapSubst supply.nextCap scheme.capBinders)
+          (InferenceBase.freshTySubst supply.nextTy scheme.tyBinders)
+        ).applySubst state.prevailing := by
+  rw [(dualTerminalCandidates_eq_post state supply scheme).1,
+    (dualTerminalCandidates_eq_post state supply scheme).2]
+  apply DualScheme.post_apply
+  · exact InferenceBase.instantiateBinders_cap_support supply
+      scheme.capBinders scheme.tyBinders
+  · exact InferenceBase.instantiateBinders_ty_support supply
+      scheme.capBinders scheme.tyBinders
+  · intro varId membership
+    rw [closed.1] at membership
+    exact nomatch membership
+  · intro varId membership
+    rw [closed.2] at membership
+    exact nomatch membership
+  · exact capScope
+  · exact tyScope
+
+/-- A protected canonical capability image is variable-valued at the final
+executable cut. -/
+theorem terminalCapCandidate_variable_of_protected
+    {state : InferState} {supply : InferenceBase.FreshSupply}
+    {binders : List CapVar}
+    (producerSafe : ProtectedProducerTrace state)
+    (freshProtected : ∀ image, image ∈ freshCapImages supply binders →
+      image ∈ state.protectedCaps)
+    {binder : CapVar} (membership : binder ∈ binders) :
+    ∃ image,
+      terminalCapCandidate state supply binders binder = .var image := by
+  let fresh : CapVar := ⟨supply.nextCap + binder.id⟩
+  have freshMembership : fresh ∈ freshCapImages supply binders := by
+    exact List.mem_map.mpr ⟨binder, membership, rfl⟩
+  rcases producerSafe fresh (freshProtected fresh freshMembership) with
+    ⟨image, equation, _safe⟩
+  refine ⟨image, ?_⟩
+  simpa [terminalCapCandidate, InferenceBase.freshCapSubst, membership,
+    fresh, InferState.prevailing] using equation
+
+/-- A closed dual-scheme instantiation has the validator's exact canonical
+terminal witness.  The variable-image fact is derived internally from the
+protected-producer invariant; callers only transport membership of the
+freshly protected batch to the final state. -/
+theorem dualInstanceEventCondition_atTerminal
+    {state : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : DualScheme}
+    {rawContext : Context} {rawParameters : PatternCtx}
+    {rawBindings : MonoCtx} {context : Context}
+    {parameters : PatternCtx} {bindings : MonoCtx}
+    {fixedCaps reservedCaps : List CapVar}
+    {fixedTys reservedTys : List TypePM.TyVar}
+    (closed : scheme.Closed)
+    (solveBound : solveCount ≤ state.trace.solves.length)
+    (producerSafe : ProtectedProducerTrace state)
+    (freshProtected : ∀ image,
+      image ∈ freshCapImages supply scheme.capBinders →
+        image ∈ state.protectedCaps) :
+    CanonicalInstanceEventCondition state
+      (.dualInstantiation solveCount supply scheme rawContext rawParameters
+        rawBindings context parameters bindings fixedCaps fixedTys
+        reservedCaps reservedTys
+        (InferenceBase.instantiateDualScheme supply scheme).value.1
+        (InferenceBase.instantiateDualScheme supply scheme).value.2
+        (freshCapImages supply scheme.capBinders)
+        (freshTyImages supply scheme.tyBinders)) := by
+  simp only [CanonicalInstanceEventCondition]
+  refine ⟨solveBound, ?_, ?_, ?_⟩
+  · intro varId membership
+    exact terminalCapCandidate_variable_of_protected producerSafe freshProtected
+      membership
+  · change scheme.args.map _ =
+      (scheme.args.map
+        (Dual.apply
+          (InferenceBase.freshCapSubst supply.nextCap scheme.capBinders)
+          (InferenceBase.freshTySubst supply.nextTy scheme.tyBinders))).map
+        (Dual.applySubst state.prevailing)
+    rw [List.map_map]
+    apply List.map_congr_left
+    intro dual dualMem
+    apply DualScheme.Closed.terminal_apply closed state supply dual
+    · intro varId varMem
+      exact List.mem_append_left _
+        (List.mem_flatMap.mpr ⟨dual, dualMem, varMem⟩)
+    · intro varId varMem
+      exact List.mem_append_left _
+        (List.mem_flatMap.mpr ⟨dual, dualMem, varMem⟩)
+  · apply DualScheme.Closed.terminal_apply closed state supply scheme.result
+    · intro varId varMem
+      exact List.mem_append_right _ varMem
+    · intro varId varMem
+      exact List.mem_append_right _ varMem
+
 /-- Constructor instantiation itself establishes the canonical instance
 clause at its emission cut.  Later suffix transport is the only remaining
 obligation for the surrounding completeness recursion. -/
