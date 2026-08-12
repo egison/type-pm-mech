@@ -111,7 +111,132 @@ theorem admissiblePostBetween_markDualInstance_of_bounded
       (DDLedger.markDualInstance source q scheme)
       (DDLedger.markDualInstance destination q scheme) post := by
   exact admissiblePostBetween_setFreshRenameOnly_of_bounded between bounded
-    sourceBelow (freshCapImages_above q scheme.capBinders)
+    sourceBelow (fun varId membership => by
+      simp only [Inference.freshCapImages] at membership
+      rcases List.mem_map.mp membership with ⟨binder, _, rfl⟩
+      exact Nat.le_add_right q.nextCap binder.id)
+
+/-! ## Dual-scheme instantiation -/
+
+structure DualInstantiationCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (result : (List Dual × Dual) × InferState)
+    (q' : InferenceBase.FreshSupply) (ledger' : CapabilityOriginLedger)
+    (arguments : List Dual) (target : Dual) : Type where
+  transition : BisimulationExtension before.prevailing ledger' S result.2
+  correspondence : TraversalStateCorrespondence q' S ledger' result.2
+  arguments : DualListBisimulation transition.after arguments result.1.1
+  target : DualBisimulation transition.after target result.1.2
+
+def instantiateDualInState_complete
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (signature : FrozenSig) (rawContext : Context)
+    (rawParameters : PatternCtx) (rawBindings : MonoCtx)
+    (context : Context) (parameters : PatternCtx) (bindings : MonoCtx)
+    (scheme : DualScheme) :
+    DualInstantiationCompletion before
+      (instantiateDualInState signature rawContext rawParameters rawBindings
+        context parameters bindings initial scheme)
+      (InferenceBase.instantiateDualScheme q scheme).supply
+      (DDLedger.markDualInstance ledger q scheme)
+      (InferenceBase.instantiateDualScheme q scheme).value.1
+      (InferenceBase.instantiateDualScheme q scheme).value.2 := by
+  let operation := instantiateDualInState signature rawContext rawParameters
+    rawBindings context parameters bindings initial scheme
+  let q' := (InferenceBase.instantiateDualScheme q scheme).supply
+  let ledger' := DDLedger.markDualInstance ledger q scheme
+  let after : StateBisimulation ledger' S operation.2 :=
+    { forward := before.prevailing.forward
+      forwardEquation := by
+        simpa [operation, Inference.instantiateDualInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.forwardEquation
+      declarativeIdempotent := before.prevailing.declarativeIdempotent
+      reverse := before.prevailing.reverse
+      reverseEquation := by
+        simpa [operation, Inference.instantiateDualInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.reverseEquation
+      ledgerBisimulation := by
+        constructor
+        · simpa [ledger', operation, Inference.instantiateDualInState,
+            before.supply_eq, DDLedger.markDualInstance] using
+            admissiblePostBetween_markDualInstance_of_bounded
+              before.prevailing.ledgerBisimulation.forwardBetween
+              before.forward_bounded before.executable_ledger_below scheme
+        · simpa [ledger', operation, Inference.instantiateDualInState,
+            before.supply_eq, DDLedger.markDualInstance] using
+            admissiblePostBetween_markDualInstance_of_bounded
+              before.prevailing.ledgerBisimulation.reverseBetween
+              before.reverse_bounded before.ledger_below scheme
+      executableIdempotent := by
+        simpa [operation, Inference.instantiateDualInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.executableIdempotent }
+  let transition : BisimulationExtension before.prevailing ledger' S
+      operation.2 :=
+    { after := after
+      transportTy := by
+        intro declarativeTarget executableTarget related
+        exact ⟨by simpa [after, operation, Inference.instantiateDualInState,
+            InferState.prevailing, InferState.recordEvent] using related.forward,
+          by simpa [after, operation, Inference.instantiateDualInState,
+            InferState.prevailing, InferState.recordEvent] using related.reverse⟩ }
+  have actualValue : operation.1 =
+      (InferenceBase.instantiateDualScheme q scheme).value := by
+    simp [operation, Inference.instantiateDualInState, before.supply_eq]
+  let supplyExtension := SupplyExtends.instantiateDualScheme q scheme
+  let correspondence : TraversalStateCorrespondence q' S ledger'
+      operation.2 :=
+    { supply_eq := by
+        simp [q', operation, Inference.instantiateDualInState,
+          before.supply_eq]
+      prevailing := after
+      declarative_bounded := before.declarative_bounded.mono supplyExtension
+      executable_bounded := by
+        simpa [q', operation, Inference.instantiateDualInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.executable_bounded.mono supplyExtension
+      forward_bounded := before.forward_bounded.mono supplyExtension
+      reverse_bounded := before.reverse_bounded.mono supplyExtension
+      ledger_below := DDLedger.LedgerBelow.markDualInstance scheme
+        before.ledger_below
+      executable_ledger_below := by
+        simpa [q', ledger', operation, Inference.instantiateDualInState,
+          before.supply_eq, DDLedger.markDualInstance] using
+          DDLedger.LedgerBelow.markDualInstance scheme
+            before.executable_ledger_below
+      protected_origins := before.protected_origins.instantiateDualInState
+        signature rawContext rawParameters rawBindings context parameters
+        bindings scheme
+      protected_below := before.protected_below.instantiateDualInState
+        signature rawContext rawParameters rawBindings context parameters
+        bindings scheme
+      allocated_recorded := before.allocated_recorded.instantiateDualInState
+        signature rawContext rawParameters rawBindings context parameters
+        bindings scheme }
+  have sameDual : ∀ dual,
+      DualBisimulation transition.after dual dual :=
+    fun dual => DualBisimulation.same transition.after dual
+  have sameArguments : DualListBisimulation transition.after
+      (InferenceBase.instantiateDualScheme q scheme).value.1
+      (InferenceBase.instantiateDualScheme q scheme).value.1 := by
+    induction (InferenceBase.instantiateDualScheme q scheme).value.1 with
+    | nil => exact .nil
+    | cons head tail induction => exact .cons (sameDual head) induction
+  refine
+    { transition := transition
+      correspondence := correspondence
+      arguments := ?_
+      target := ?_ }
+  · rw [actualValue]
+    exact sameArguments
+  · rw [actualValue]
+    exact sameDual _
 
 theorem PatternCtxBisimulation.find?_complete
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -2084,6 +2209,100 @@ noncomputable def patternOr_complete
       bindings :=
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
           suffix leftBindingsAtRight }
+
+/-- Pattern-function application instantiates its expected dual list, checks
+all children, and aligns the two lists pointwise. -/
+noncomputable def patternApp_complete
+    (fuel : Nat) (signature : FrozenSig)
+    (declarativeContext executableContext : Context)
+    (declarativeParameters executableParameters : PatternCtx)
+    (declarativeBindings executableBindings : MonoCtx)
+    (selfEnv : SelfEnv) (path : SyntaxPath) (name : String)
+    (patterns : List Pattern) {scheme : DualScheme}
+    (lookup : signature.findPatternFun name = some scheme)
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {duals : List Dual} {bindings' : MonoCtx}
+    (children :
+      let instantiation := instantiateDualInState_complete before signature
+        declarativeContext declarativeParameters declarativeBindings
+        executableContext executableParameters executableBindings scheme
+      PatternsRunCompletion
+        (instantiation.correspondence.visit .patternApp path)
+        (inferPatternsFuel fuel signature executableContext
+          executableParameters executableBindings selfEnv path 0 patterns
+          (visit (instantiateDualInState signature declarativeContext
+            declarativeParameters declarativeBindings executableContext
+            executableParameters executableBindings state scheme).2
+            .patternApp path))
+        q₁ S₁ ledger₁ duals bindings')
+    (declarativeDualsBounded : ∀ dual ∈ duals, Dual.BoundedBy q₁ dual)
+    (executableDualsBounded : ∀ dual ∈ children.result.duals,
+      Dual.BoundedBy q₁ dual)
+    (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.papp name patterns) state)
+      q₁ S' ledger₁
+      (InferenceBase.instantiateDualScheme q scheme).value.2 bindings' := by
+  let instantiation := instantiateDualInState_complete before signature
+    declarativeContext declarativeParameters declarativeBindings
+    executableContext executableParameters executableBindings scheme
+  let closed := signature.patternFunSchemesClosed lookup
+  let instBounded := instantiateDualScheme_boundedBy
+    (DualScheme.Closed.boundedBy closed)
+  let expectedAtChildren :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+      ((instantiation.correspondence.visitExtension .patternApp path).seq
+        children.transition) instantiation.arguments
+  let alignment := ddAlignDualListWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-function-arguments")
+    children.completion children.duals expectedAtChildren
+    declarativeDualsBounded
+    (fun dual mem => (instBounded.1 dual mem).mono
+      (children.completion.supply_eq ▸ SupplyExtends.refl q₁))
+    executableDualsBounded
+    (fun dual mem => (instBounded.1 dual mem).mono
+      (children.completion.supply_eq ▸ SupplyExtends.refl q₁)) aligned
+  let event := TraceEvent.inferredPattern (.papp name patterns)
+    instantiation.target.executable children.result.bindings path
+  let final := alignment.completion.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let finishExtension := alignment.transition.after.recordEventExtension event
+  let suffix := children.transition.seq
+    (alignment.transition.seq finishExtension)
+  let transition := instantiation.transition.seq
+    ((instantiation.correspondence.visitExtension .patternApp path).seq suffix)
+  refine
+    { result := ⟨instantiation.target.executable, children.result.bindings,
+        alignment.result.recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+          ((instantiation.correspondence.visitExtension .patternApp path).seq
+            suffix) instantiation.target
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          (alignment.transition.seq finishExtension) children.bindings }
+  simp only [inferPatternFuel]
+  rw [lookup]
+  simp [instantiation, children.success, alignment.success, event,
+    Inference.instantiateDualInState]
 
 /-! ## Empty and cons list packaging -/
 
