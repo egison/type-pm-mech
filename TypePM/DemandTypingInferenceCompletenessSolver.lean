@@ -20,6 +20,8 @@ subsequent normalized type, and the complete prevailing state, unchanged.
 namespace TypePM
 namespace DemandTypingInferenceCompletenessSolver
 
+open Inference
+
 /-- The state-level relation between one origin-safe exact DD solution and
 the executable result for the same already-resolved paired constraint. -/
 structure PairedStateCorrespondence
@@ -65,6 +67,53 @@ theorem mguPairedTy_correspondence
         simpa [run] using success
       subst executable
       exact pairedResult_correspondence dd result
+
+/-! ## Concrete executable steps -/
+
+/-- Capability-only counterpart of `solveTargetEqWithLedger_complete`. -/
+theorem solveCapEqWithLedger_complete
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    {declarative : CapSubst}
+    (dd : OriginSafeExactCapMGU ledger left right declarative)
+    (solveCount : Nat) (origin : ConstraintOrigin) :
+    ∃ (result : PairedUnification.OrientedCapResult ledger left right)
+        (step : SolveStep),
+      solveCapEqWithLedger ledger solveCount origin left right = some step ∧
+        step.delta = ⟨result.subst, TySubst.id⟩ := by
+  unfold solveCapEqWithLedger
+  split
+  next run =>
+    obtain ⟨_executable, success⟩ :=
+      PairedUnification.mguOrientedCap_complete_of_admissible
+        dd.admissible dd.exact.1.1
+    unfold PairedUnification.mguOrientedCap at success
+    rw [run] at success
+    contradiction
+  next result run =>
+    refine ⟨result, _, rfl, rfl⟩
+
+/-- An origin-safe exact paired solution makes the executable equality
+solver emit a step retaining the proof-carrying kernel result. -/
+theorem solveTargetEqWithLedger_complete
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    {declarative : Subst}
+    (dd : OriginSafeExactPairedMGU ledger left right declarative)
+    (solveCount : Nat) (origin : ConstraintOrigin) :
+    ∃ (result : PairedUnification.PairedResult ledger left right)
+        (step : SolveStep),
+      solveTargetEqWithLedger ledger solveCount origin left right = some step ∧
+        step.delta = result.subst := by
+  unfold solveTargetEqWithLedger
+  split
+  next run =>
+    obtain ⟨_executable, success⟩ :=
+      PairedUnification.mguPairedTy_complete_of_admissible
+        dd.admissible dd.exact.1.1
+    unfold PairedUnification.mguPairedTy at success
+    rw [run] at success
+    contradiction
+  next result run =>
+    refine ⟨result, _, rfl, rfl⟩
 
 /-- Applying the DD residual after the executable result gives exactly the DD
 normal form of every type.  This is the pointwise form used to transport raw
