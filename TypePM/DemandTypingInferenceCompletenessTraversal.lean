@@ -88,6 +88,57 @@ theorem admissiblePost_markSchemeInstance_of_bounded
     | renameOnly => exact ⟨varId, fixed, by simp [origin]⟩
     | structuralFlexible => trivial
 
+private theorem freshCapImages_above
+    (q : InferenceBase.FreshSupply) (binders : List CapVar)
+    (varId : CapVar)
+    (membership : varId ∈ Inference.freshCapImages q binders) :
+    q.nextCap ≤ varId.id := by
+  simp only [Inference.freshCapImages] at membership
+  rcases List.mem_map.mp membership with ⟨binder, _, rfl⟩
+  exact Nat.le_add_right q.nextCap binder.id
+
+/-- Structural ctor-instance allocation also preserves bounded residual
+admissibility.  A residual image of an old variable is itself below the old
+cut, so it cannot accidentally become one of the new structural variables. -/
+theorem admissiblePost_markCtorInstance_of_bounded
+    {q : InferenceBase.FreshSupply} {ledger : CapabilityOriginLedger}
+    {post : Subst} (admissible : AdmissiblePost ledger post)
+    (bounded : post.BoundedBy q) (scheme : CtorScheme) :
+    AdmissiblePost (DDLedger.markCtorInstance ledger q scheme) post := by
+  constructor
+  intro varId
+  by_cases below : varId.id < q.nextCap
+  · have notFresh : varId ∉ Inference.freshCapImages q scheme.capBinders := by
+      intro membership
+      exact Nat.not_le_of_lt below
+        (freshCapImages_above q scheme.capBinders varId membership)
+    rw [DDLedger.markCtorInstance,
+      CapabilityOriginLedger.originOf_setOrigins_eq, if_neg notFresh]
+    cases oldOrigin : ledger.originOf varId with
+    | rigid => exact admissible.cap.rigid oldOrigin
+    | renameOnly =>
+        rcases admissible.cap.renameOnly oldOrigin with
+          ⟨image, imageEquation, imageSafe⟩
+        have imageBelow : image.id < q.nextCap := by
+          apply bounded.capImagesBounded varId below image
+          rw [imageEquation]
+          simp [Cap.fcv]
+        have imageNotFresh :
+            image ∉ Inference.freshCapImages q scheme.capBinders := by
+          intro membership
+          exact Nat.not_le_of_lt imageBelow
+            (freshCapImages_above q scheme.capBinders image membership)
+        refine ⟨image, imageEquation, ?_⟩
+        rw [CapabilityOriginLedger.originOf_setOrigins_eq,
+          if_neg imageNotFresh]
+        exact imageSafe
+    | structuralFlexible => trivial
+  · have fixed := bounded.capFixedAbove varId (Nat.le_of_not_gt below)
+    cases origin : (DDLedger.markCtorInstance ledger q scheme).originOf varId with
+    | rigid => exact fixed
+    | renameOnly => exact ⟨varId, fixed, by simp [origin]⟩
+    | structuralFlexible => trivial
+
 theorem subst_seq_self_eq_of_idempotent {substitution : Subst}
     (idempotent : substitution.Idempotent) :
     Subst.seq substitution substitution = substitution := by
@@ -598,6 +649,119 @@ def instantiateSchemeInState_complete
     exact before.executable_bounded.mono supplyExtension
   · rw [actualTarget]
     exact transition.transportTy canonical
+
+/-- Deterministic completion package for one constructor/primitive scheme
+instantiation.  Both the argument list and result target are retained because
+the former seeds recursive checking while the latter is exported afterward. -/
+structure CtorInstantiationCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (result : (List Ty × Ty) × InferState)
+    (q' : InferenceBase.FreshSupply) (ledger' : CapabilityOriginLedger)
+    (arguments : List Ty) (target : Ty) : Type where
+  supply_eq : result.2.supply = q'
+  ledger_eq : result.2.capabilityOrigins = ledger'
+  transition : BisimulationExtension before.prevailing ledger' S result.2
+  declarative_bounded : S.BoundedBy q'
+  executable_bounded : result.2.prevailing.BoundedBy q'
+  forward_bounded : transition.after.forward.BoundedBy q'
+  reverse_bounded : transition.after.reverse.BoundedBy q'
+  ledger_below : DDLedger.LedgerBelow q' ledger'
+  protected_origins : ProtectedCapOrigins result.2
+  protected_below : ProtectedCapsBelowSupply result.2
+  allocated_recorded : AllocatedCapsRecorded result.2
+  arguments : TyListBisimulation transition.after arguments result.1.1
+  target : TyBisimulation transition.after target result.1.2
+
+/-- Constructor and primitive lookup use the same deterministic scheme
+instantiation.  Since the signature scheme is shared literally, both sides
+allocate identical raw argument/result types and differ only in prevailing
+state. -/
+def instantiateCtorInState_complete
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (scheme : CtorScheme) :
+    CtorInstantiationCompletion before (instantiateCtorInState initial scheme)
+      (InferenceBase.instantiateCtorScheme q scheme).supply
+      (DDLedger.markCtorInstance ledger q scheme)
+      (InferenceBase.instantiateCtorScheme q scheme).value.1
+      (InferenceBase.instantiateCtorScheme q scheme).value.2 := by
+  let operation := instantiateCtorInState initial scheme
+  let q' := (InferenceBase.instantiateCtorScheme q scheme).supply
+  let ledger' := DDLedger.markCtorInstance ledger q scheme
+  have supplyExtension : SupplyExtends q q' :=
+    SupplyExtends.instantiateCtorScheme q scheme
+  let after : StateBisimulation ledger' S operation.2 :=
+    { forward := before.prevailing.forward
+      forwardEquation := by
+        change S = Subst.seq before.prevailing.forward operation.2.prevailing
+        simpa [operation, Inference.instantiateCtorInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.forwardEquation
+      forwardAdmissible :=
+        admissiblePost_markCtorInstance_of_bounded
+          before.prevailing.forwardAdmissible before.forward_bounded scheme
+      declarativeIdempotent := before.prevailing.declarativeIdempotent
+      reverse := before.prevailing.reverse
+      reverseEquation := by
+        change operation.2.prevailing = Subst.seq before.prevailing.reverse S
+        simpa [operation, Inference.instantiateCtorInState,
+          InferState.prevailing, InferState.recordEvent] using
+          before.prevailing.reverseEquation
+      reverseAdmissible :=
+        admissiblePost_markCtorInstance_of_bounded
+          before.prevailing.reverseAdmissible before.reverse_bounded scheme
+      executableIdempotent := before.prevailing.executableIdempotent }
+  let transition : BisimulationExtension before.prevailing ledger' S
+      operation.2 :=
+    { after := after
+      transportTy := by
+        intro declarativeTarget executableTarget related
+        exact ⟨by simpa [after, operation, Inference.instantiateCtorInState,
+            InferState.prevailing, InferState.recordEvent]
+            using related.forward,
+          by simpa [after, operation, Inference.instantiateCtorInState,
+            InferState.prevailing, InferState.recordEvent]
+            using related.reverse⟩ }
+  have actualValue : operation.1 =
+      (InferenceBase.instantiateCtorScheme q scheme).value := by
+    simp [operation, Inference.instantiateCtorInState, before.supply_eq]
+  have sameArguments : TyListBisimulation transition.after
+      (InferenceBase.instantiateCtorScheme q scheme).value.1
+      (InferenceBase.instantiateCtorScheme q scheme).value.1 := by
+    induction (InferenceBase.instantiateCtorScheme q scheme).value.1 with
+    | nil => exact .nil
+    | cons head tail induction =>
+        exact .cons (transition.after.sameTarget head) induction
+  refine
+    { supply_eq := by
+        simp [Inference.instantiateCtorInState, before.supply_eq]
+      ledger_eq := by
+        simp [DDLedger.markCtorInstance, Inference.instantiateCtorInState,
+          before.supply_eq, before.ledger_eq]
+      transition := transition
+      declarative_bounded := before.declarative_bounded.mono supplyExtension
+      executable_bounded := ?_
+      forward_bounded := before.forward_bounded.mono supplyExtension
+      reverse_bounded := before.reverse_bounded.mono supplyExtension
+      ledger_below := DDLedger.LedgerBelow.markCtorInstance scheme
+        before.ledger_below
+      protected_origins := before.protected_origins.instantiateCtorInState
+        before.protected_below scheme
+      protected_below := before.protected_below.instantiateCtorInState scheme
+      allocated_recorded := before.allocated_recorded.instantiateCtorInState
+        scheme
+      arguments := ?_
+      target := ?_ }
+  · change initial.prevailing.BoundedBy
+      (InferenceBase.instantiateCtorScheme q scheme).supply
+    exact before.executable_bounded.mono supplyExtension
+  · rw [actualValue]
+    exact sameArguments
+  · rw [actualValue]
+    exact transition.after.sameTarget _
 
 /-- A successful executable expression run paired with its typed output
 correspondence.  The package lives in `Type` because the state bisimulation
