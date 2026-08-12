@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessValidatorIntrinsic
 import TypePM.InferenceTraversalStateExtension
+import TypePM.PolyInstantiationTransport
 
 /-!
 # Compositional traversal facts for terminal-validator completeness
@@ -586,6 +587,107 @@ theorem terminalCapCandidate_variable_of_protected
   refine ⟨image, ?_⟩
   simpa [terminalCapCandidate, InferenceBase.freshCapSubst, membership,
     fresh, InferState.prevailing] using equation
+
+/-- Canonical expression-scheme opening commutes with the terminal executable
+substitution when the protected capability images remain variables. -/
+theorem schemeCanonicalOpening_atTerminal
+    (state : InferState) (supply : InferenceBase.FreshSupply)
+    (scheme : Scheme)
+    (capVariable : ∀ index : Fin scheme.capArity,
+      ∃ image, state.prevailing.cap
+          ((Scheme.canonicalFreshOpening supply scheme).capImage index) =
+        .var image) :
+    (scheme.applyMeta state.prevailing).openValue
+        (terminalSchemeOpening state supply
+          (scheme.applyMeta state.prevailing)) =
+      state.prevailing.apply
+        (InferenceBase.instantiateScheme supply scheme).value := by
+  let opening :=
+    (Scheme.canonicalFreshOpening supply scheme).toValueOpening
+  let post : opening.Post state.prevailing :=
+    { capImage := fun index =>
+        match state.prevailing.cap
+            ((Scheme.canonicalFreshOpening supply scheme).capImage index) with
+        | .var image => image
+        | _ => (Scheme.canonicalFreshOpening supply scheme).capImage index
+      capEquation := by
+        intro index
+        rcases capVariable index with ⟨image, equation⟩
+        change state.prevailing.cap
+            ((Scheme.canonicalFreshOpening supply scheme).capImage index) =
+          .var (match state.prevailing.cap
+              ((Scheme.canonicalFreshOpening supply scheme).capImage index) with
+            | .var image => image
+            | _ => (Scheme.canonicalFreshOpening supply scheme).capImage index)
+        rw [equation] }
+  rw [InferenceBase.instantiateScheme_value]
+  rw [← Scheme.openValue_applyMeta state.prevailing opening post]
+  congr
+
+/-- The protected-producer trace supplies the local variable-image premise of
+`schemeCanonicalOpening_atTerminal` for a canonical fresh opening. -/
+theorem schemeCanonicalOpening_atTerminal_of_protected
+    {state : InferState} {supply : InferenceBase.FreshSupply}
+    {scheme : Scheme}
+    (producerSafe : ProtectedProducerTrace state)
+    (freshProtected : ∀ image,
+      image ∈ Scheme.canonicalCapImages supply scheme →
+        image ∈ state.protectedCaps) :
+    (scheme.applyMeta state.prevailing).openValue
+        (terminalSchemeOpening state supply
+          (scheme.applyMeta state.prevailing)) =
+      state.prevailing.apply
+        (InferenceBase.instantiateScheme supply scheme).value := by
+  apply schemeCanonicalOpening_atTerminal
+  intro index
+  let fresh := (Scheme.canonicalFreshOpening supply scheme).capImage index
+  have freshMembership : fresh ∈ Scheme.canonicalCapImages supply scheme := by
+    rw [Scheme.canonicalCapImages, Scheme.FreshOpening.capImages,
+      List.mem_ofFn]
+    exact ⟨index, rfl⟩
+  rcases producerSafe fresh (freshProtected fresh freshMembership) with
+    ⟨image, equation, _safe⟩
+  exact ⟨image, by simpa [InferState.prevailing, fresh] using equation⟩
+
+/-- A context lookup whose terminal scheme is the ambiently substituted
+recorded scheme has the validator's exact canonical expression-instance
+witness.  The lookup equality is deliberately exposed: the completeness
+recursion obtains it from final context bisimulation, while capability-image
+safety is discharged here from the protected-producer invariant. -/
+theorem schemeInstanceEventCondition_atTerminal
+    {state : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : Scheme}
+    {name : String} {rawContext context : Context}
+    {fixedCaps reservedCaps : List CapVar}
+    {fixedTys reservedTys : List TypePM.TyVar}
+    (solveBound : solveCount ≤ state.trace.solves.length)
+    (terminalLookup :
+      (rawContext.applySubst state.prevailing).find? name =
+        some (scheme.applyMeta state.prevailing))
+    (producerSafe : ProtectedProducerTrace state)
+    (freshProtected : ∀ image,
+      image ∈ Scheme.canonicalCapImages supply scheme →
+        image ∈ state.protectedCaps) :
+    CanonicalInstanceEventCondition state
+      (.schemeInstantiation solveCount supply scheme name rawContext context
+        fixedCaps fixedTys reservedCaps reservedTys
+        (InferenceBase.instantiateScheme supply scheme).value
+        (Scheme.canonicalCapImages supply scheme)
+        (Scheme.canonicalTyImages supply scheme)) := by
+  simp only [CanonicalInstanceEventCondition]
+  refine ⟨solveBound, scheme.applyMeta state.prevailing, terminalLookup, ?_, ?_⟩
+  · intro varId membership
+    have imagesEq :
+        Scheme.canonicalCapImages supply (scheme.applyMeta state.prevailing) =
+          Scheme.canonicalCapImages supply scheme := by
+      cases scheme
+      rfl
+    rw [imagesEq] at membership
+    rcases producerSafe varId (freshProtected varId membership) with
+      ⟨image, equation, _safe⟩
+    exact ⟨image, by simpa [InferState.prevailing] using equation⟩
+  · exact schemeCanonicalOpening_atTerminal_of_protected producerSafe
+      freshProtected
 
 /-- A closed dual-scheme instantiation has the validator's exact canonical
 terminal witness.  The variable-image fact is derived internally from the
