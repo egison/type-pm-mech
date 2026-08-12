@@ -50,6 +50,18 @@ coercion demandとする．
 principalである．open termについては，実行runのresolved context／targetと，各derivationの
 terminal-normalized context／targetを同じpaired substitutionで比較する相対principalityも成立する．
 
+pattern-freeでcapability-inertなDamas--Milner断片についても二方向の境界を機械化する．closed
+source fragmentのtypingはDM typingへ消去でき，逆に任意のDM typing derivationは，そのcontextを
+埋め込んだ公開推論器で受理される：
+\[
+\mathsf{FrozenSigWF}(\Sighat)\land
+\mathsf{DM.Typing}(\Gamma,e,\tau)
+\Longrightarrow
+\mathsf{inferenceSucceeds}(\Sighat,\mathsf{emb}(\Gamma),e)=\mathsf{true}.
+\]
+この保証はacceptanceであり，DM derivationが選ぶ$\tau$と公開推論器の返値型の構文的一致ではない．
+後者はprincipality／instance preorderによる別の比較問題である．
+
 \subsection{判断の役割を分ける}
 
 \begin{center}
@@ -86,6 +98,7 @@ $\mathsf{ValueTy}$とmatching judgments
 すべて要求する．未解決lambda domainを複数箇所で共有したときのsource-order依存は正負回帰で
 固定する．これはno-guessとchronological state threadingの意図された言語境界であり，source要素の
 順序不変性は主張しない．
+またDM acceptanceは推論成功だけを主張し，DM targetと推論返値の構文的一致は非目標である．
 
 \subsection{読み方}
 

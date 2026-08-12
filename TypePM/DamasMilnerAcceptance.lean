@@ -2,6 +2,8 @@ import TypePM.DamasMilner
 import TypePM.TypeInstance
 import TypePM.InferenceBase
 import TypePM.PolyCloseLaws
+import TypePM.PolyInstantiationTransport
+import TypePM.DemandTyping
 
 /-!
 # Executable acceptance of the Damas--Milner fragment
@@ -16,6 +18,14 @@ reconstruction backwards into source acceptance.
 
 namespace TypePM
 namespace DM
+
+/-- Pattern-free DM expressions never select the matcher-specific recursive
+placeholder branch. -/
+theorem InFragmentExpr.nonMatcherBody {expression : Expr}
+    (fragment : InFragmentExpr expression) : NonMatcherBody expression := by
+  cases expression <;>
+    simp_all [InFragmentExpr, inFragmentExpr, NonMatcherBody,
+      Inference.matcherProducingRoot]
 
 /-! ## One-sort substitution algebra -/
 
@@ -376,6 +386,184 @@ theorem SScheme.instantiateScheme_principal
       target.emb := by
   rw [SScheme.canonicalTarget_emb]
   exact (SScheme.canonicalTarget_principal instantiation fresh).emb
+
+/-! ## Exact ordinary cuts supplied by one-sort witnesses -/
+
+/-- If an origin-admissible competitor solves a capability-inert equality,
+the executable paired solver yields exactly the ledger-aware MGU premise used
+by `DemandAlignTypesWithLedger.ordinary`. -/
+theorem exactOrdinaryCutOfCompetitor
+    {ledger : CapabilityOriginLedger} {left right : Ty} {competitor : Subst}
+    (admissible : AdmissiblePost ledger competitor)
+    (sound : competitor.apply left = competitor.apply right) :
+    ∃ delta : Subst,
+      OriginSafeExactPairedMGU ledger left right delta := by
+  let hExists := PairedUnification.mguPairedTy_complete_of_admissible
+    admissible sound
+  let delta := Classical.choose hExists
+  have success := Classical.choose_spec hExists
+  exact ⟨delta,
+    PairedUnification.mguPairedTy_originSafeExactPairedMGU success⟩
+
+/-- Empty capability ledgers admit every target-only competitor. -/
+theorem targetOnly_admissible_empty (target : TySubst) :
+    AdmissiblePost [] { cap := CapSubst.id, target := target } := by
+  exact ⟨AdmissibleCapPost.id []⟩
+
+/-- In the capability-inert DM fragment, an arbitrary one-sort unifier is a
+valid competitor for a public exact ordinary cut. -/
+theorem exactOrdinaryCutOfSSubst
+    {left right : STy} (competitor : SSubst)
+    (sound : left.applySubst competitor = right.applySubst competitor) :
+    ∃ delta : Subst,
+      OriginSafeExactPairedMGU [] left.emb right.emb delta := by
+  let paired : Subst := { cap := CapSubst.id, target := SSubst.emb competitor }
+  apply exactOrdinaryCutOfCompetitor (competitor := paired)
+    (targetOnly_admissible_empty _)
+  simp [paired, Subst.apply, STy.emb_applyCapability,
+    STy.emb_applyTarget, sound]
+
+/-- The same cut, strengthened with the residual factorization needed by the
+Algorithm W invariant.  The selected DM specialization is not required to be
+the syntactic substitution returned by the executable solver. -/
+theorem factorOrdinaryCutOfCompetitor
+    {ledger : CapabilityOriginLedger} {left right : Ty} {competitor : Subst}
+    (admissible : AdmissiblePost ledger competitor)
+    (sound : competitor.apply left = competitor.apply right) :
+    ∃ delta residual : Subst,
+      OriginSafeExactPairedMGU ledger left right delta ∧
+      AdmissiblePost ledger residual ∧
+      competitor = Subst.seq residual delta := by
+  obtain ⟨delta, success⟩ :=
+    PairedUnification.mguPairedTy_complete_of_admissible admissible sound
+  obtain ⟨residual, residualAdmissible, factor⟩ :=
+    PairedUnification.mguPairedTy_universal success admissible sound
+  exact ⟨delta, residual,
+    PairedUnification.mguPairedTy_originSafeExactPairedMGU success,
+    residualAdmissible, factor⟩
+
+/-- Exact paired unification of embedded simple types cannot alter any
+capability variable: its exact support is empty in that sort. -/
+theorem OriginSafeExactPairedMGU.cap_eq_id_of_emb
+    {left right : STy} {delta : Subst}
+    (cut : OriginSafeExactPairedMGU [] left.emb right.emb delta) :
+    delta.cap = CapSubst.id := by
+  funext varId
+  have support := cut.exact.2.1
+  rw [STy.emb_fcv, STy.emb_fcv, List.nil_append] at support
+  exact support varId (by simp)
+
+/-- Pointwise variable-valued form used by scheme-opening transport. -/
+theorem OriginSafeExactPairedMGU.capVariable_of_emb
+    {left right : STy} {delta : Subst}
+    (cut : OriginSafeExactPairedMGU [] left.emb right.emb delta) :
+    ∀ varId, ∃ image, delta.cap varId = .var image := by
+  intro varId
+  exact ⟨varId, by
+    rw [OriginSafeExactPairedMGU.cap_eq_id_of_emb cut]
+    rfl⟩
+
+/-- A one-sort competitor itself may be retained as the residual across its
+executable MGU cut.  Exact MGU absorption supplies the sequencing equation. -/
+theorem factorOrdinaryCutOfSSubst
+    {left right : STy} (competitor : SSubst)
+    (sound : left.applySubst competitor = right.applySubst competitor) :
+    ∃ delta : Subst,
+      OriginSafeExactPairedMGU [] left.emb right.emb delta ∧
+      let paired : Subst :=
+        { cap := CapSubst.id, target := SSubst.emb competitor }
+      paired = Subst.seq paired delta := by
+  obtain ⟨delta, cut⟩ := exactOrdinaryCutOfSSubst competitor sound
+  refine ⟨delta, cut, ?_⟩
+  exact cut.exact.absorbs (by
+    simp [Subst.apply, STy.emb_applyCapability,
+      STy.emb_applyTarget, sound])
+
+/-! ## Residual-relative scheme and context semantics -/
+
+/-- After applying the current residual to its free metavariables, `general`
+admits every use of `specific`.  Quantified binders remain available for each
+use independently; requiring a fixed-post preimage would be false even for
+`forall a. a` when the post redirects an unrelated free variable. -/
+def SScheme.RealizedBy (post : Subst)
+    (general : Scheme) (specific : SScheme) : Prop :=
+  ∀ {target : STy}, specific.Inst target →
+    (general.applyMeta post).ValueFlowInst target.emb
+
+/-- An embedded DM scheme is realized by the identity residual. -/
+theorem SScheme.realizedBy_emb_id (scheme : SScheme) :
+    scheme.RealizedBy Subst.id scheme.emb := by
+  intro target instantiation
+  simpa using SScheme.emb_valueFlowInst instantiation
+
+/-- Realization survives an algorithm substitution when the old residual
+factors through that substitution. -/
+theorem SScheme.RealizedBy.applyMeta
+    {post delta residual : Subst} {general : Scheme} {specific : SScheme}
+    (realizes : specific.RealizedBy post general)
+    (factor : post = Subst.seq residual delta) :
+    specific.RealizedBy residual (general.applyMeta delta) := by
+  intro target instantiation
+  have use := realizes instantiation
+  rw [factor, Scheme.applyMeta_seq] at use
+  exact use
+
+/-- A normalized algorithm context realizes every use admitted by the DM
+context through one shared residual substitution. -/
+def WContextRel (post : Subst) (general : Context)
+    (specific : SCtx) : Prop :=
+  ∀ {name : String} {specificScheme : SScheme},
+    specific.find? name = some specificScheme →
+      ∃ generalScheme : Scheme,
+        general.find? name = some generalScheme ∧
+        generalScheme.capArity = 0 ∧
+        specificScheme.RealizedBy post generalScheme
+
+/-- The embedded DM context is the initial identity-residual W context. -/
+theorem WContextRel.emb_id (context : SCtx) :
+    WContextRel Subst.id context.emb context := by
+  intro name specificScheme found
+  exact ⟨specificScheme.emb, SCtx.find?_emb found, rfl,
+    specificScheme.realizedBy_emb_id⟩
+
+/-- Normalize the algorithm context across one W solver cut while replacing
+the residual by the corresponding factor. -/
+theorem WContextRel.applySubst
+    {post delta residual : Subst} {general : Context} {specific : SCtx}
+    (contexts : WContextRel post general specific)
+    (factor : post = Subst.seq residual delta) :
+    WContextRel residual (general.applySubst delta) specific := by
+  intro name specificScheme found
+  obtain ⟨generalScheme, generalFound, capArity, schemeFactors⟩ :=
+    contexts found
+  refine ⟨generalScheme.applyMeta delta, ?_, capArity,
+    schemeFactors.applyMeta factor⟩
+  rw [Context.find?_applySubst, generalFound]
+  rfl
+
+/-- Extend related contexts with one related binding.  Lookup shadowing is
+handled identically on both one-sort and algorithm contexts. -/
+theorem WContextRel.cons
+    {post : Subst} {general : Context} {specific : SCtx}
+    {name : String} {generalScheme : Scheme} {specificScheme : SScheme}
+    (capArity : generalScheme.capArity = 0)
+    (head : specificScheme.RealizedBy post generalScheme)
+    (tail : WContextRel post general specific) :
+    WContextRel post
+      ((name, generalScheme) :: general)
+      ((name, specificScheme) :: specific) := by
+  intro query selected found
+  unfold SCtx.find? at found
+  unfold Context.find?
+  simp only [List.find?_cons] at found ⊢
+  cases nameEq : (name == query) with
+  | true =>
+      simp only [nameEq, Option.map_some, Option.some.injEq] at found ⊢
+      subst selected
+      exact ⟨generalScheme, rfl, capArity, head⟩
+  | false =>
+      simp only [nameEq] at found ⊢
+      exact tail found
 
 end DM
 end TypePM

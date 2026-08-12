@@ -499,6 +499,19 @@ chronological compositionと有限scope restriction，monotype／scheme／contex
 scheme openingのprincipality，coreの`instantiateScheme`との一致を与える．これらは
 全`DM.Typing`受理証明のvariable／let case用の基礎である．
 
+[`TypePM/DamasMilnerAcceptanceMutual.lean`](../TypePM/DamasMilnerAcceptanceMutual.lean)は，DMの
+式／式列typingを相互帰納し，fresh supply，paired residual，retired let cuts，provenance surfaceを
+constructor間で輸送する．公開rootは内部certificateをcanonical initial stateで初期化し，
+
+```text
+DM.Typing.inferenceSucceeds :
+  FrozenSigWF signature → DM.Typing context expression target →
+  Inference.inferenceSucceeds signature context.emb expression = true
+```
+
+を与える．これはDM derivationが選ぶ`target`と`inferType`返値の構文的一致を主張しない．公開結論は
+埋込みcontext上でのexecutable acceptanceに限られ，型の一般性比較はprincipality定理の役割である．
+
 [`TypePM/DamasMilnerConservativity.lean`](../TypePM/DamasMilnerConservativity.lean)は，監査済み
 source judgmentからDMへのclosed-program方向を証明する．`eraseTy`は関数・積を一sortへ
 構造的に写し，dataをcomponentの積へ，基本型とskolemをDMの`Int`へ正規化し，
@@ -523,9 +536,12 @@ DM.sourceTyping_to_dm :
 `SourceTyping.typingInvariant signatureWF.schemesClosed`による監査済みclosed state erasureから
 得た導出だけを消去する．入力contextが空でないconverseや，任意のsource targetと
 DM principal targetの構文的一致は主張しない．後者の型比較はprincipalityと分離する．
+D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定したclosed fragmentのsource typingから
+公開推論器の成功まで到達するが，その合成にもtarget equalityは含まれない．
 
 [`TypePM/DMTerminalAcceptance.lean`](../TypePM/DMTerminalAcceptance.lean) は terminal acceptance
-の具体例を固定する．全 `DM.Typing` に対する executable acceptance は未証明である．
+の具体例を固定する．全 `DM.Typing` に対する一般定理は上記
+`DM.Typing.inferenceSucceeds`である．
 
 ## 8. 回帰の読み方
 
@@ -557,6 +573,8 @@ DM principal targetの構文的一致は主張しない．後者の型比較はp
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
+- `DMTerminalAcceptance`: concrete terminal acceptanceと，公開
+  `DM.Typing.inferenceSucceeds`へ接続されるDM fragmentの受理境界．
 
 正例と負例は設計境界を対で固定する．変更時は受理結果だけでなく，`SourceTyping` derivation，raw trace，
 typing invariant，実行結果のどの層を検査する回帰かを確認する．
@@ -586,6 +604,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
 | `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context `SourceTyping` target一意性，入力meta固定版の反例 |
 | `TypeInstance`／`SourcePrincipality`／`RelativePrincipality` | 有限scope二sort instance preorder，一般／closed target principality，同一postによるopen context／target相対principality |
+| `DamasMilnerAcceptanceTheorem`／`DamasMilnerAcceptanceMutual` | Algorithm Wのretired-state／normalized witnessと，全DM typingから公開inference acceptanceへの相互帰納 |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期typing-invariant projection |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |
@@ -605,7 +624,7 @@ demand-directed関連moduleの役割は次のとおりである．
 埋めない．
 
 公理監査：`AxiomAudit` は，`PublicTheorems` の見出し定理と README の定理表が指す公開定数
-（計11個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
+（計17個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
 `Quot.sound` 以外の公理（`native_decide` が導入する補助公理，`sorryAx`，project-defined
 `axiom`）が現れた時点で elaboration を失敗させる．検査は許容集合方式なので，公理の生成名の
 変化に依存しない．監査対象は double-backquote 名前リテラルで解決するため，公開定理の改名は

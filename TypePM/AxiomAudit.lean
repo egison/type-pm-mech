@@ -44,6 +44,7 @@ def auditedConstants : List Name :=
    ``TypePM.SourceTyping.safe,
    ``TypePM.SourceTyping.typingInvariant,
    ``TypePM.DM.sourceTyping_to_dm,
+   ``TypePM.DM.Typing.inferenceSucceeds,
    ``TypePM.PrincipalityCounterexample.no_principal_type]
 
 /--

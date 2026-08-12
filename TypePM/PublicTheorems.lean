@@ -5,6 +5,7 @@ import TypePM.RelativePrincipality
 import TypePM.PrincipalityCounterexample
 import TypePM.Soundness
 import TypePM.DamasMilnerConservativity
+import TypePM.DamasMilnerAcceptanceMutual
 
 /-!
 # Public theorem index
@@ -33,6 +34,10 @@ statements are introduced.
   resolved context and target together under one paired substitution.
 * `DM.sourceTyping_to_dm` — a closed audited source typing in the explicit
   pattern-free fragment erases to a Damas--Milner typing.
+* `DM.Typing.inferenceSucceeds` — every Damas--Milner typing derivation is
+  accepted by executable inference on the embedded context.  The result does
+  not identify the derivation's selected target with the inference return
+  value syntactically.
 * `PrincipalityCounterexample.no_principal_type` — the internal
   `TypingInvariant` family is not a source principal-type
   specification; this is not a counterexample about `SourceTyping`.

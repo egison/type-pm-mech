@@ -104,15 +104,15 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 ## Roadmap
 
 完了済みのsoundness，completeness，受理同値，安全性，target一意性を基盤`F`とする．principality系は
-完了し，今後はDamas--Milner系を進める．source-order依存は現行のno-guess calculusの意図された
-仕様として採用済みである．
+完了し，Damas--Milner系も完了した．source-order依存は現行のno-guess calculusの意図された
+仕様として採用済みであり，以下のroadmap項目はすべて完了している．
 
 ```text
 [x] F. soundness / completeness / safety / target uniqueness
     ├──→ [x] P1. 二sort instance preorder
     │          └──→ [x] P2. closed principality
     │                    └──→ [x] P3. context相対principality
-    ├──→ [ ] D1. 全DM.Typingのexecutable acceptance
+    ├──→ [x] D1. 全DM.Typingのexecutable acceptance
     │          └──→ [x] D2. DM断片でのconservativity
     └──→ [x] O. source-order依存を現行仕様として採用
 ```
@@ -155,10 +155,16 @@ substitutionで正規化したcontextと公開targetを取り出すviewである
 `DamasMilner`はpattern-free expression classifierとcapability-inert type decoderを持ち，埋込みの
 像と単射性を証明する．`DamasMilnerAcceptance`は一sort substitutionの合成／restriction，monotype／
 contextの一般性，canonical scheme openingのprincipalityとcore instantiationとの一致を証明済みである．
-これを基礎に，D1では任意の
-DM derivationから埋込みcontext上のsource typabilityを構成し，完成済みの受理完全性へ接続する．DM
-derivationが選んだ型はprincipal targetの特殊化であり得るため，`inferType`が同じ型を構文的に返すとは
-要求しない．
+これを基礎に，D1の公開定理`DM.Typing.inferenceSucceeds`は次を与える．
+
+```text
+FrozenSigWF Σ → DM.Typing Γ e τ →
+  Inference.inferenceSucceeds Σ Γ.emb e = true
+```
+
+証明はDM derivationをconstructorごとにAlgorithm Wの監査済みrunへ再生し，公開推論器のterminal
+acceptanceへ接続する．結論はacceptanceだけである．DM derivationが選んだ`τ`は推論器のprincipal
+targetの特殊化であり得るため，`inferType`の返値と`τ.emb`の構文的一致は主張しない．
 
 D2の逆方向は`DamasMilnerConservativity`で証明済みである．`eraseTy`は関数・積を一sortへ
 構造的に写し，基本型をDMの`Int`へ正規化し，matcher／slot wrapperとcapabilityを消去する．`ContextErases`はcore contextの
@@ -174,8 +180,10 @@ FrozenSigWF Σ → InFragmentExpr e → SourceTyping Σ [] e τ →
 実際のwitnessは`eraseTy τ`である．ここで必要な`TypingInvariant`は仮定ではなく，
 `SourceTyping.typingInvariant`の監査済みclosed state erasureから得る．したがって第二のsource
 judgmentを介した逆向接続ではない．open contextのconverseはこの定理の主張に含めない．
-D1でDMからsource acceptanceへの方向を完成した後，両方向をP2／P3と合成することで，
-coreの推論結果とDMのprincipal typeの対応を議論できる．
+D1は任意のDM typingからsource inference acceptanceを与え，D2は指定したclosed source fragmentを
+DMへ消去する．従って両者を合わせると，そのfragmentではsourceからDMへの保守的な射影と，得られた
+DM derivationの実行可能受理が成立する．ただしDM targetとsource推論返値の型比較はP2／P3の
+principality層に分離され，D1／D2自体の結論には含めない．
 
 ### O: source-order依存
 
@@ -188,7 +196,7 @@ permutation invarianceは現行仕様に含めない．
 
 将来この境界を変更する場合も通常単一化の失敗をcoercionの根拠に戻してはならず，未解決headの
 constraintまたはchecking obligationを遅延する別calculusとして設計する必要がある．それは受理集合を
-変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapで残る作業はD1である．
+変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapに未完了項目はない．
 
 ## モジュール案内
 
@@ -201,7 +209,7 @@ constraintまたはchecking obligationを遅延する別calculusとして設計�
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
-| fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，closed sourceからDMへの保守性，受理回帰 |
+| fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
 [`docs/details.md`](docs/details.md)を参照．

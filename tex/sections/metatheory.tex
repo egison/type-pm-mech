@@ -145,6 +145,29 @@ $\mathsf{SourceTyping}$から再構成したrunに対する受理完全性であ
 recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$を，外部から
 paired rootを渡さずこの公開定理へ到達するend-to-end regressionとして機械検査している．
 
+\subsection{Damas--Milner断片の実行可能受理}
+
+capability binderを持たないpattern-freeな一sort judgment
+$\mathsf{DM.Typing}(\Gamma,e,\tau)$については，constructorごとのAlgorithm W replayを別の相互帰納で
+構成する．variableのcanonical opening，lambda／applicationのfresh target，chronological list，
+$\mathtt{let}$ generalization，direct-self $\mathtt{fix}$を，一つのpaired residualとretired-cut監査の下で
+接続する．公開rootでは初期substitution，frontier，pending cut，provenance surfaceをcanonicalな空状態に
+固定するため，caller-suppliedなrun certificateは残らない．得られる定理は
+\[
+\frac{
+  \mathsf{FrozenSigWF}(\Sighat)
+  \qquad
+  \mathsf{DM.Typing}(\Gamma,e,\tau)
+}{
+  \mathsf{inferenceSucceeds}(\Sighat,\mathsf{emb}(\Gamma),e)=\mathsf{true}
+}
+\tag{\textsc{DM-Acceptance}}
+\]
+である．$\tau$は結論に現れない．DM derivationが選ぶ型は公開推論器のprincipal targetのinstanceであり得る
+ため，推論返値と$\mathsf{emb}(\tau)$の構文的一致は要求しない．逆方向のclosed source fragmentからDMへの
+消去と合わせると，そのfragmentのsource typingから公開推論成功まで到達するが，型の一致は依然として
+principality層に分離される．
+
 \subsection{State erasureと公開安全性}
 
 $\mathsf{SourceTyping}$から内部invariantを作るとき，局所cutの状態をそのままruntime typingへ
