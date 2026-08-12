@@ -151,7 +151,10 @@ substitutionで正規化したcontextと公開targetを取り出すviewである
 
 ### D1--D2: Damas--Milner断片
 
-現状は`DM.Typing → TypingInvariant`の埋込みとpolymorphic identityの受理例だけがある．D1では任意の
+`DamasMilner`はpattern-free expression classifierとcapability-inert type decoderを持ち，埋込みの
+像と単射性を証明する．`DamasMilnerAcceptance`は一sort substitutionの合成／restriction，monotype／
+contextの一般性，canonical scheme openingのprincipalityとcore instantiationとの一致を証明済みである．
+これを基礎に，D1では任意の
 DM derivationから埋込みcontext上のsource typabilityを構成し，完成済みの受理完全性へ接続する．DM
 derivationが選んだ型はprincipal targetの特殊化であり得るため，`inferType`が同じ型を構文的に返すとは
 要求しない．
@@ -184,7 +187,7 @@ constraintまたはchecking obligationを遅延する別calculusとして設計�
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
-| fragments | `DamasMilner`, `DMTerminalAcceptance` | pattern-free DM断片 |
+| fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
 [`docs/details.md`](docs/details.md)を参照．

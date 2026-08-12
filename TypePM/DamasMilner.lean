@@ -183,6 +183,220 @@ inductive Typings : SCtx → List Expr → List STy → Prop where
 
 end
 
+/-! ## The syntactic and type images of the DM fragment
+
+These executable classifiers make the domain of the future conservativity
+theorem explicit.  In particular, `Expr.InFragment` excludes every
+matcher/capability-producing constructor rather than relying on the absence of
+such a constructor in one particular typing derivation.
+-/
+
+mutual
+
+/-- Pattern-free expressions shared by the one-sort DM system and the core. -/
+def inFragmentExpr : Expr → Bool
+  | .var _ => true
+  | .lam _ body => inFragmentExpr body
+  | .fix _ _ body => inFragmentExpr body
+  | .app function argument =>
+      inFragmentExpr function && inFragmentExpr argument
+  | .lit _ => true
+  | .tuple expressions => inFragmentExprs expressions
+  | .letE _ value body => inFragmentExpr value && inFragmentExpr body
+  | .ctor _ _ => false
+  | .prim _ _ => false
+  | .something => false
+  | .matcher _ => false
+  | .matchAll _ _ _ _ => false
+
+/-- Pointwise expression-list form of `Expr.inDMFragment`. -/
+def inFragmentExprs : List Expr → Bool
+  | [] => true
+  | expression :: expressions =>
+      inFragmentExpr expression && inFragmentExprs expressions
+
+end
+
+
+/-- Proof-relevant spelling of the executable pattern-free classifier. -/
+def InFragmentExpr (expression : Expr) : Prop :=
+  inFragmentExpr expression = true
+
+mutual
+
+/-- Decode precisely the capability-inert one-sort image inside `Ty`. -/
+def STy.ofTy? : Ty → Option STy
+  | .var name => some (.var name)
+  | .int => some .int
+  | .fn domain codomain => do
+      let domain' ← STy.ofTy? domain
+      let codomain' ← STy.ofTy? codomain
+      pure (.fn domain' codomain')
+  | .prod components => do
+      let components' ← STy.ofTyList? components
+      pure (.prod components')
+  | _ => none
+
+/-- List decoder for the one-sort image. -/
+def STy.ofTyList? : List Ty → Option (List STy)
+  | [] => some []
+  | component :: components => do
+      let component' ← STy.ofTy? component
+      let components' ← STy.ofTyList? components
+      pure (component' :: components')
+
+end
+
+
+/-- A core type lies in the capability-inert one-sort image exactly when it
+can be decoded as a DM simple type. -/
+def InFragmentTy (target : Ty) : Prop :=
+  (STy.ofTy? target).isSome = true
+
+mutual
+
+@[simp] theorem STy.ofTy?_emb : ∀ target : STy,
+    STy.ofTy? target.emb = some target
+  | .var _ => rfl
+  | .int => rfl
+  | .fn domain codomain => by
+      simp [STy.emb, STy.ofTy?, STy.ofTy?_emb domain,
+        STy.ofTy?_emb codomain]
+  | .prod components => by
+      simp [STy.emb, STy.ofTy?, STy.ofTyList?_emb components]
+
+@[simp] theorem STy.ofTyList?_emb : ∀ targets : List STy,
+    STy.ofTyList? (STy.embList targets) = some targets
+  | [] => rfl
+  | target :: targets => by
+      simp [STy.embList, STy.ofTyList?, STy.ofTy?_emb target,
+        STy.ofTyList?_emb targets]
+
+end
+
+
+/-- Every embedded DM type is capability-inert. -/
+@[simp] theorem STy.emb_inDMFragment (target : STy) :
+    InFragmentTy target.emb := by
+  simp [InFragmentTy]
+
+mutual
+
+/-- Successful decoding really is an inverse of `STy.emb`. -/
+theorem STy.ofTy?_sound : ∀ {target : Ty} {decoded : STy},
+    STy.ofTy? target = some decoded → decoded.emb = target
+  | .var name, decoded, success => by
+      simp only [STy.ofTy?, Option.some.injEq] at success
+      subst decoded
+      rfl
+  | .skolem _, _, success => by simp [STy.ofTy?] at success
+  | .unit, _, success => by simp [STy.ofTy?] at success
+  | .int, decoded, success => by
+      simp only [STy.ofTy?, Option.some.injEq] at success
+      subst decoded
+      rfl
+  | .bool, _, success => by simp [STy.ofTy?] at success
+  | .data _ _, _, success => by simp [STy.ofTy?] at success
+  | .prod components, decoded, success => by
+      cases componentsEq : STy.ofTyList? components with
+      | none => simp [STy.ofTy?, componentsEq] at success
+      | some decodedComponents =>
+          simp [STy.ofTy?, componentsEq] at success
+          subst decoded
+          rw [STy.emb]
+          exact congrArg Ty.prod (STy.ofTyList?_sound componentsEq)
+  | .fn domain codomain, decoded, success => by
+      cases domainEq : STy.ofTy? domain with
+      | none => simp [STy.ofTy?, domainEq] at success
+      | some decodedDomain =>
+          cases codomainEq : STy.ofTy? codomain with
+          | none => simp [STy.ofTy?, domainEq, codomainEq] at success
+          | some decodedCodomain =>
+              simp [STy.ofTy?, domainEq, codomainEq] at success
+              subst decoded
+              rw [STy.emb, STy.ofTy?_sound domainEq,
+                STy.ofTy?_sound codomainEq]
+  | .matcher _ _, _, success => by simp [STy.ofTy?] at success
+  | .slot _ _, _, success => by simp [STy.ofTy?] at success
+
+/-- List form of `STy.ofTy?_sound`. -/
+theorem STy.ofTyList?_sound : ∀ {targets : List Ty} {decoded : List STy},
+    STy.ofTyList? targets = some decoded →
+      STy.embList decoded = targets
+  | [], decoded, success => by
+      simp only [STy.ofTyList?, Option.some.injEq] at success
+      subst decoded
+      rfl
+  | target :: targets, decoded, success => by
+      cases targetEq : STy.ofTy? target with
+      | none => simp [STy.ofTyList?, targetEq] at success
+      | some decodedTarget =>
+          cases targetsEq : STy.ofTyList? targets with
+          | none => simp [STy.ofTyList?, targetEq, targetsEq] at success
+          | some decodedTargets =>
+              simp [STy.ofTyList?, targetEq, targetsEq] at success
+              subst decoded
+              rw [STy.embList, STy.ofTy?_sound targetEq,
+                STy.ofTyList?_sound targetsEq]
+
+end
+
+/-- The executable type classifier is equivalent to membership in the exact
+image of the one-sort embedding. -/
+theorem Ty.inDMFragment_iff (target : Ty) :
+    InFragmentTy target ↔ ∃ source : STy, source.emb = target := by
+  constructor
+  · intro classified
+    unfold InFragmentTy at classified
+    cases decodedEq : STy.ofTy? target with
+    | none => simp [decodedEq] at classified
+    | some decoded => exact ⟨decoded, STy.ofTy?_sound decodedEq⟩
+  · rintro ⟨source, rfl⟩
+    exact STy.emb_inDMFragment source
+
+/-- The one-sort embedding is injective. -/
+theorem STy.emb_injective {left right : STy}
+    (equality : left.emb = right.emb) : left = right := by
+  have decoded := congrArg STy.ofTy? equality
+  simpa using decoded
+
+mutual
+
+/-- A DM typing derivation can mention only expressions in the explicit
+pattern-free fragment. -/
+theorem Typing.inDMFragment :
+    ∀ {context : SCtx} {expression : Expr} {target : STy},
+      Typing context expression target → InFragmentExpr expression
+  | _, _, _, .var _ _ => rfl
+  | _, _, _, .lam body => by
+      simpa [InFragmentExpr, inFragmentExpr] using
+        Typing.inDMFragment body
+  | _, _, _, .app function argument => by
+      simp only [InFragmentExpr, inFragmentExpr, Bool.and_eq_true]
+      exact ⟨Typing.inDMFragment function, Typing.inDMFragment argument⟩
+  | _, _, _, .letE value body => by
+      simp only [InFragmentExpr, inFragmentExpr, Bool.and_eq_true]
+      exact ⟨Typing.inDMFragment value, Typing.inDMFragment body⟩
+  | _, _, _, .fixE _ _ body => by
+      simpa [InFragmentExpr, inFragmentExpr] using
+        Typing.inDMFragment body
+  | _, _, _, .lit => rfl
+  | _, _, _, .tuple components => by
+      simpa [InFragmentExpr, inFragmentExpr] using
+        Typings.inDMFragment components
+
+/-- List form of `Typing.inDMFragment`. -/
+theorem Typings.inDMFragment :
+    ∀ {context : SCtx} {expressions : List Expr} {targets : List STy},
+      Typings context expressions targets →
+        inFragmentExprs expressions = true
+  | _, _, _, .nil => rfl
+  | _, _, _, .cons head tail => by
+      simp only [inFragmentExprs, Bool.and_eq_true]
+      exact ⟨Typing.inDMFragment head, Typings.inDMFragment tail⟩
+
+end
+
 /-! ## Embedding into the two-sort system -/
 
 /-- Embed a one-sorted scheme by closing its target binders into canonical

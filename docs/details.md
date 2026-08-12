@@ -490,6 +490,14 @@ source `SourceTyping`も保持し，`Inference.infer_closed_safe`はclosed infer
 `DM.Typing`／`DM.Typings` として定義する．recursion は core と同じ direct-self singleton に
 制限される．`DM.Typing.emb` は capability binder を使わず二 sort の `TypingInvariant` proof
 へ埋め込み，`dm_coherent` は reconstruction certificate まで持ち上げる．
+同moduleの`inFragmentExpr`はpattern-free syntaxを実行可能に判定し，`STy.ofTy?`は
+capability-inertな一sort imageだけをdecodeする．`STy.emb`とdecoderの往復，imageの特徴付け，
+埋込みの単射性，全`DM.Typing`がこのsyntax fragmentに入ることを証明済みである．
+
+[`TypePM/DamasMilnerAcceptance.lean`](../TypePM/DamasMilnerAcceptance.lean)は，一sort substitutionの
+chronological compositionと有限scope restriction，monotype／scheme／contextの一般性，canonical
+scheme openingのprincipality，coreの`instantiateScheme`との一致を与える．これらは
+全`DM.Typing`受理証明のvariable／let case用の基礎である．
 
 [`TypePM/DMTerminalAcceptance.lean`](../TypePM/DMTerminalAcceptance.lean) は terminal acceptance
 の具体例を固定する．全 `DM.Typing` に対する executable acceptance は未証明である．
