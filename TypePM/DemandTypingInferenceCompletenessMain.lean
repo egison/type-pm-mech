@@ -45,6 +45,58 @@ structure BoundedSynthRunCompletion
   run : SynthRunCompletion before operation q' declarative ledger target
   rawTargetBounded : run.result.target.BoundedBy q'
 
+structure BoundedSynthsRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option ExprsResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (targets : List Ty) : Type where
+  run : SynthsRunCompletion before operation q' declarative ledger targets
+  rawTargetsBounded : ∀ target ∈ run.result.targets, target.BoundedBy q'
+
+def boundedSynthsNil_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (selfEnv : SelfEnv) (parent : SyntaxPath) (index : Nat)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state) :
+    BoundedSynthsRunCompletion before
+      (inferExprsFuel (fuel + 1) signature context selfEnv parent index [] state)
+      q S ledger [] := by
+  refine ⟨inferExprsFuel_nil_complete before fuel, ?_⟩
+  intro target membership
+  change target ∈ [] at membership
+  exact nomatch membership
+
+def boundedSynthsCons_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
+    {expression : Expr} {expressions : List Expr}
+    {target : Ty} {targets : List Ty}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (head : BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature context selfEnv (index :: parent)
+        expression state) q₁ S₁ ledger₁ target)
+    (tail : BoundedSynthsRunCompletion head.run.completion.state
+      (inferExprsFuel fuel signature context selfEnv parent (index + 1)
+        expressions head.run.result.state) q' S' ledger' targets)
+    (tailSupplyExtends : SupplyExtends q₁ q') :
+    BoundedSynthsRunCompletion before
+      (inferExprsFuel (fuel + 1) signature context selfEnv parent index
+        (expression :: expressions) state) q' S' ledger'
+      (target :: targets) := by
+  let run := inferExprsFuel_cons_complete before head.run tail.run
+  refine ⟨run, ?_⟩
+  intro item membership
+  change item ∈ head.run.result.target :: tail.run.result.targets at membership
+  rcases List.mem_cons.mp membership with equality | tailMembership
+  · subst item
+    exact head.rawTargetBounded.mono tailSupplyExtends
+  · exact tail.rawTargetsBounded item tailMembership
+
 /-- Compose the `DDCheckOrigin.mk` boundary once the recursive synthesis run
 has supplied its raw executable target and its syntactic bound.  Solver
 success and expected-coercion selection remain internal to the generic
