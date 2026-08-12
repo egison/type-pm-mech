@@ -10,7 +10,7 @@ well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する�
 
 ## 現在の到達点
 
-中心となる接続は次の三つである．
+中心となる接続は次の四つである．
 
 ```text
 infer Σ Γ e = some r
@@ -21,6 +21,9 @@ SourceTyping Σ Γ e τ + FrozenSigWF Σ
 
 SourceTyping Σ [] e τ + FrozenSigWF Σ
   ── state erasure / safety ──→ TypingInvariant Σ [] e τ + CoreSafety
+
+DM.Typing Γ e τ + FrozenSigWF Σ
+  ── normalized Algorithm W replay ──→ inferenceSucceeds Σ Γ.emb e = true
 ```
 
 したがって一般contextについて，次の受理同値と決定可能性が得られている．
@@ -43,10 +46,12 @@ FrozenSigWF Σ →
 | `Inference.infer_relative_principal` | open termのresolved contextとtargetを同じsubstitutionで相対比較できる |
 | `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
 | `DM.sourceTyping_to_dm` | closed・pattern-freeの`SourceTyping`を型消去して`DM.Typing`を得る |
+| `DM.Typing.inferenceSucceeds` | 任意の`DM.Typing` derivationを埋込みcontext上で公開推論器が受理する |
 
 targetのrenaming一意性に加えて，target単体のinstance preorder上のprincipalityと，open contextで
 context／targetを同時に比較する相対principalityまで証明済みである．一般のprogram terminationは
-主張しない．
+主張しない．Damas--Milner側の結果はexecutable acceptanceであり，DM derivationが選ぶtargetと
+`inferType`返値の構文的一致は主張しない．
 
 ## judgmentの役割
 
@@ -117,14 +122,14 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
     └──→ [x] O. source-order依存を現行仕様として採用
 ```
 
-| ID | 作業 | 依存 | 達成後に主張できること |
+| ID | 状態 | 依存 | 現在の達成内容 |
 |---|---|---|---|
-| P1 | capability／target metaを同時に扱うinstance preorderを定義し，renamingとの関係を証明する | F | targetをmetavariable名ではなく一般性で比較できる |
-| P2 | `inferType`が返すclosed targetのprincipalityを証明する | P1 | closed source programのprincipal typeを公開推論器が計算する |
-| P3 | contextとtargetの同時instance化を含む相対principalityを定式化する | P2 | open termでも，明示したcontext可変性の下でprincipal typeを計算する |
-| D1 | 任意の`DM.Typing` derivationから公開推論器の成功を導く | F | pattern-free let-polymorphismを推論器が取りこぼさない |
-| O | 現在のsource-order依存をno-guessとchronological state threadingの意図された帰結として仕様化する | F | typabilityの順序依存をsource judgmentの正負定理として説明できる |
-| D2 | closed・pattern-free・capability-inert・direct-self断片の`SourceTyping`をDMへ消去する | F；双方向化にはD1 | 公開source judgmentからDMへの保守性境界が得られる |
+| P1 | 完了 | F | capability／target metaを同時に扱うinstance preorderと，renamingとの関係を証明した |
+| P2 | 完了 | P1 | `inferType`が返すclosed targetのprincipalityを証明した |
+| P3 | 完了 | P2 | contextとtargetの同時instance化を含むopen-term相対principalityを証明した |
+| D1 | 完了 | F | 任意の`DM.Typing` derivationに対する公開推論器のexecutable acceptanceを証明した |
+| O | 完了 | F | source-order依存をno-guessとchronological state threadingの意図された仕様として固定した |
+| D2 | 完了 | F；D1と合成 | closed・pattern-free・capability-inert・direct-self断片の`SourceTyping`をDMへ消去した |
 
 ### P1--P3: principality
 
