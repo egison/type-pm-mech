@@ -69,6 +69,114 @@ def StateRunCompletion.finishExpectedRaw
     _ = finish (some run.result) := congrArg finish run.success
     _ = some (run.result.recordEvent event) := rfl
 
+def StateRunCompletion.finishExpectedProductMatcher
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger₀ ledger : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {path : SyntaxPath} {inferred expected : Ty} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (plan : expectedCoercionPlan initial inferred expected =
+      .productMatcherLift duals)
+    (requested : initial.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (run : StateRunCompletion before
+      (alignResolvedProductMatcherAtSlot initial
+        (freshOrigin .expression path "expected-type") duals consumerCap
+        consumerTarget) q S' ledger) :
+    StateRunCompletion before
+      (alignExprResultAtExpected path ⟨inferred, initial⟩ expected)
+      q S' ledger := by
+  let inferredResolved := productMatcherTarget duals
+  let requestedResolved := Ty.slot consumerCap consumerTarget
+  let event := TraceEvent.slotAlignment initial.trace.solves.length
+    run.result.trace.solves.length inferredResolved requestedResolved
+  let extension := run.transition.after.recordEventExtension event
+  let final := run.completion.recordEvent event
+    (by simp [event, TraceEvent.allocatedCapVars])
+  refine
+    { result := run.result.recordEvent event
+      success := ?_
+      supply_eq := run.supply_eq
+      transition := run.transition.seq extension
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded }
+  unfold alignExprResultAtExpected
+  rw [plan, requested]
+  simp only
+  let finish : Option InferState → Option InferState := fun candidate =>
+    match candidate with
+    | none => none
+    | some aligned => some (aligned.recordEvent (.slotAlignment
+        initial.trace.solves.length aligned.trace.solves.length
+        inferredResolved requestedResolved))
+  change finish (alignResolvedProductMatcherAtSlot initial
+    (freshOrigin .expression path "expected-type") duals consumerCap
+    consumerTarget) = some (run.result.recordEvent event)
+  calc
+    _ = finish (some run.result) := congrArg finish run.success
+    _ = some (run.result.recordEvent event) := rfl
+
+def StateRunCompletion.finishExpectedSlotTuple
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger₀ ledger : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {path : SyntaxPath} {inferred expected : Ty} {duals : List Dual}
+    {consumerCap : Cap} {consumerTarget : Ty}
+    (plan : expectedCoercionPlan initial inferred expected =
+      .slotTupleLift duals)
+    (requested : initial.prevailing.apply expected =
+      .slot consumerCap consumerTarget)
+    (run : StateRunCompletion before
+      (alignResolvedSlotTupleAtSlot initial
+        (freshOrigin .expression path "expected-type") duals consumerCap
+        consumerTarget) q S' ledger) :
+    StateRunCompletion before
+      (alignExprResultAtExpected path ⟨inferred, initial⟩ expected)
+      q S' ledger := by
+  let inferredResolved := slotTupleTarget duals
+  let requestedResolved := Ty.slot consumerCap consumerTarget
+  let event := TraceEvent.slotAlignment initial.trace.solves.length
+    run.result.trace.solves.length inferredResolved requestedResolved
+  let extension := run.transition.after.recordEventExtension event
+  let final := run.completion.recordEvent event
+    (by simp [event, TraceEvent.allocatedCapVars])
+  refine
+    { result := run.result.recordEvent event
+      success := ?_
+      supply_eq := run.supply_eq
+      transition := run.transition.seq extension
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded }
+  unfold alignExprResultAtExpected
+  rw [plan, requested]
+  simp only
+  let finish : Option InferState → Option InferState := fun candidate =>
+    match candidate with
+    | none => none
+    | some aligned => some (aligned.recordEvent (.slotAlignment
+        initial.trace.solves.length aligned.trace.solves.length
+        inferredResolved requestedResolved))
+  change finish (alignResolvedSlotTupleAtSlot initial
+    (freshOrigin .expression path "expected-type") duals consumerCap
+    consumerTarget) = some (run.result.recordEvent event)
+  calc
+    _ = finish (some run.result) := congrArg finish run.success
+    _ = some (run.result.recordEvent event) := rfl
+
 /-! ## Raw matcher to slot -/
 
 noncomputable def matcherToSlot_complete
@@ -329,6 +437,194 @@ noncomputable def slotToSlot_complete
         rw [afterRaw, afterExpected]
         simp only [Subst.apply_slot]
   exact StateRunCompletion.finishExpectedRaw planRaw rawRun
+
+/-! ## Product matcher lifting -/
+
+noncomputable def productMatcherLift_complete
+    {q : InferenceBase.FreshSupply} {S delta : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeRaw executableRaw declarativeExpected executableExpected : Ty}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    {path : SyntaxPath}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (raw : TyBisimulation relation.prevailing declarativeRaw executableRaw)
+    (expected : TyBisimulation relation.prevailing declarativeExpected
+      executableExpected)
+    (rawView : productMatcherDuals? (S.apply declarativeRaw) = some duals)
+    (expectedView : S.apply declarativeExpected =
+      .slot consumerCap consumerTarget)
+    (dd : OriginSafeOneWayDelta ledger (.prod (duals.map Dual.cap))
+      (.prod (duals.map Dual.target)) consumerCap consumerTarget delta)
+    (declarativeRawBounded : declarativeRaw.BoundedBy q)
+    (declarativeExpectedBounded : declarativeExpected.BoundedBy q)
+    (executableRawBounded : executableRaw.BoundedBy q)
+    (executableExpectedBounded : executableExpected.BoundedBy q) :
+    StateRunCompletion relation
+      (alignExprResultAtExpected path ⟨executableRaw, initial⟩
+        executableExpected) q (Subst.seq delta S) ledger := by
+  let executableDuals := duals.map
+    (Dual.applySubst relation.prevailing.reverse)
+  let declarativeProducerCap := Cap.prod (duals.map Dual.cap)
+  let declarativeProducerTarget := Ty.prod (duals.map Dual.target)
+  let executableProducerCap := Cap.prod (executableDuals.map Dual.cap)
+  let executableProducerTarget := Ty.prod (executableDuals.map Dual.target)
+  let executableConsumerCap := consumerCap.apply relation.prevailing.reverse.cap
+  let executableConsumerTarget := relation.prevailing.reverse.apply consumerTarget
+  have executableRawView : productMatcherDuals?
+      (initial.prevailing.apply executableRaw) = some executableDuals := by
+    rw [raw.reverse]
+    exact productMatcherDuals?_apply rawView
+  have executableExpectedView : initial.prevailing.apply executableExpected =
+      .slot executableConsumerCap executableConsumerTarget := by
+    rw [expected.reverse, expectedView]
+    rfl
+  have declarativeDualsFixed :
+      duals.map (Dual.applySubst S) = duals := by
+    have fixed := congrArg productMatcherDuals?
+      (relation.prevailing.declarativeIdempotent declarativeRaw)
+    rw [productMatcherDuals?_apply rawView, rawView] at fixed
+    exact Option.some.inj fixed
+  have declarativeProducerCapFixed : declarativeProducerCap.apply S.cap =
+      declarativeProducerCap := by
+    change (Cap.prod (duals.map Dual.cap)).apply S.cap =
+      Cap.prod (duals.map Dual.cap)
+    simpa only [Cap.apply, Dual.map_cap_applySubst] using
+      congrArg (fun values => Cap.prod (values.map Dual.cap))
+        declarativeDualsFixed
+  have declarativeProducerTargetFixed : S.apply declarativeProducerTarget =
+      declarativeProducerTarget := by
+    change S.apply (.prod (duals.map Dual.target)) =
+      .prod (duals.map Dual.target)
+    simpa only [Subst.apply_prod, Dual.map_target_applySubst] using
+      congrArg (fun values => Ty.prod (values.map Dual.target))
+        declarativeDualsFixed
+  have declarativeConsumerTargetFixed : S.apply consumerTarget =
+      consumerTarget := by
+    have fixed := relation.prevailing.declarativeIdempotent declarativeExpected
+    rw [expectedView] at fixed
+    exact (Ty.slot.inj fixed).2
+  have dualsReverse : executableDuals =
+      duals.map (Dual.applySubst relation.prevailing.reverse) := rfl
+  have dualsForward : duals = executableDuals.map
+      (Dual.applySubst relation.prevailing.forward) := by
+    have moved := congrArg productMatcherDuals? raw.forward
+    rw [rawView, productMatcherDuals?_apply executableRawView] at moved
+    exact Option.some.inj moved
+  have executableProducerCapReverse : executableProducerCap =
+      declarativeProducerCap.apply relation.prevailing.reverse.cap := by
+    simpa only [executableProducerCap, declarativeProducerCap, Cap.apply,
+      Dual.map_cap_applySubst] using
+      congrArg (fun values => Cap.prod (values.map Dual.cap)) dualsReverse
+  have executableProducerTargetReverse : executableProducerTarget =
+      relation.prevailing.reverse.apply declarativeProducerTarget := by
+    simpa only [executableProducerTarget, declarativeProducerTarget,
+      Subst.apply_prod, Dual.map_target_applySubst] using
+      congrArg (fun values => Ty.prod (values.map Dual.target)) dualsReverse
+  have executableProducerCapForward : declarativeProducerCap =
+      executableProducerCap.apply relation.prevailing.forward.cap := by
+    simpa only [executableProducerCap, declarativeProducerCap, Cap.apply,
+      Dual.map_cap_applySubst] using
+      congrArg (fun values => Cap.prod (values.map Dual.cap)) dualsForward
+  have executableProducerTargetForward : declarativeProducerTarget =
+      relation.prevailing.forward.apply executableProducerTarget := by
+    simpa only [executableProducerTarget, declarativeProducerTarget,
+      Subst.apply_prod, Dual.map_target_applySubst] using
+      congrArg (fun values => Ty.prod (values.map Dual.target)) dualsForward
+  have expectedForward := expected.forward
+  rw [expectedView, executableExpectedView] at expectedForward
+  have resolved : ResolvedOneWayComponents relation.prevailing.forward
+      relation.prevailing.reverse declarativeProducerCap
+      executableProducerCap declarativeProducerTarget executableProducerTarget
+      consumerCap executableConsumerCap consumerTarget
+      executableConsumerTarget :=
+    ⟨executableProducerCapForward, executableProducerCapReverse,
+      executableProducerTargetForward, executableProducerTargetReverse,
+      (Ty.slot.inj expectedForward).1, rfl,
+      (Ty.slot.inj expectedForward).2, rfl⟩
+  have executableDualsFixed : executableDuals.map
+      (Dual.applySubst initial.prevailing) = executableDuals := by
+    have fixed := congrArg productMatcherDuals?
+      (relation.prevailing.executableIdempotent executableRaw)
+    rw [productMatcherDuals?_apply executableRawView,
+      executableRawView] at fixed
+    exact Option.some.inj fixed
+  have executableProducerCapFixed : executableProducerCap.apply
+      initial.prevailing.cap = executableProducerCap := by
+    change (Cap.prod (executableDuals.map Dual.cap)).apply
+      initial.prevailing.cap = Cap.prod (executableDuals.map Dual.cap)
+    simpa only [Cap.apply, Dual.map_cap_applySubst] using
+      congrArg (fun values => Cap.prod (values.map Dual.cap))
+        executableDualsFixed
+  have executableProducerTargetFixed : initial.prevailing.apply
+      executableProducerTarget = executableProducerTarget := by
+    change initial.prevailing.apply (.prod (executableDuals.map Dual.target)) =
+      .prod (executableDuals.map Dual.target)
+    simpa only [Subst.apply_prod, Dual.map_target_applySubst] using
+      congrArg (fun values => Ty.prod (values.map Dual.target))
+        executableDualsFixed
+  have executableExpectedFixed :=
+    relation.prevailing.executableIdempotent executableExpected
+  rw [executableExpectedView] at executableExpectedFixed
+  have declarativeRawResolved :=
+    relation.declarative_bounded.apply declarativeRawBounded
+  have declarativeExpectedResolved :=
+    relation.declarative_bounded.apply declarativeExpectedBounded
+  rw [productMatcherDuals?_sound rawView] at declarativeRawResolved
+  rw [expectedView] at declarativeExpectedResolved
+  have declarativeDualsBounded : ∀ dual ∈ duals,
+      dual.cap.BoundedBy q ∧ dual.target.BoundedBy q := by
+    intro dual member
+    exact (declarativeRawResolved.of_mem_prod
+      (List.mem_map.mpr ⟨dual, member, rfl⟩)).matcherParts
+  have declarativeProducerCapBounded : declarativeProducerCap.BoundedBy q := by
+    apply Cap.BoundedBy.prodOfForall
+    intro cap member
+    rcases List.mem_map.mp member with ⟨dual, dualMem, rfl⟩
+    exact (declarativeDualsBounded dual dualMem).1
+  have declarativeProducerTargetBounded :
+      declarativeProducerTarget.BoundedBy q := by
+    apply Ty.BoundedBy.prodOfForall
+    intro target member
+    rcases List.mem_map.mp member with ⟨dual, dualMem, rfl⟩
+    exact (declarativeDualsBounded dual dualMem).2
+  have executableRawResolved :=
+    relation.executable_bounded.apply executableRawBounded
+  have executableExpectedResolved :=
+    relation.executable_bounded.apply executableExpectedBounded
+  rw [productMatcherDuals?_sound executableRawView] at executableRawResolved
+  rw [executableExpectedView] at executableExpectedResolved
+  have executableDualsBounded : ∀ dual ∈ executableDuals,
+      dual.cap.BoundedBy q ∧ dual.target.BoundedBy q := by
+    intro dual member
+    exact (executableRawResolved.of_mem_prod
+      (List.mem_map.mpr ⟨dual, member, rfl⟩)).matcherParts
+  have executableProducerCapBounded : executableProducerCap.BoundedBy q := by
+    apply Cap.BoundedBy.prodOfForall
+    intro cap member
+    rcases List.mem_map.mp member with ⟨dual, dualMem, rfl⟩
+    exact (executableDualsBounded dual dualMem).1
+  have executableProducerTargetBounded : executableProducerTarget.BoundedBy q := by
+    apply Ty.BoundedBy.prodOfForall
+    intro target member
+    rcases List.mem_map.mp member with ⟨dual, dualMem, rfl⟩
+    exact (executableDualsBounded dual dualMem).2
+  let run := alignResolvedProductMatcher_complete
+    (origin := freshOrigin .expression path "expected-type") relation resolved dd
+    declarativeProducerCapFixed declarativeProducerTargetFixed
+    declarativeConsumerTargetFixed executableProducerCapFixed
+    (Ty.slot.inj executableExpectedFixed).1 executableProducerTargetFixed
+    (Ty.slot.inj executableExpectedFixed).2
+    declarativeProducerCapBounded declarativeProducerTargetBounded
+    declarativeExpectedResolved.slotParts.1
+    declarativeExpectedResolved.slotParts.2 executableProducerCapBounded
+    executableProducerTargetBounded executableExpectedResolved.slotParts.1
+    executableExpectedResolved.slotParts.2
+  have plan : expectedCoercionPlan initial executableRaw executableExpected =
+      .productMatcherLift executableDuals := by
+    unfold expectedCoercionPlan
+    rw [executableRawView, executableExpectedView]
+  exact StateRunCompletion.finishExpectedProductMatcher plan
+    executableExpectedView run
 
 end DemandTypingInferenceCompletenessCheckingAlignment
 end TypePM
