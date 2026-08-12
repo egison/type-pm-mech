@@ -47,6 +47,17 @@ theorem MonoCtxBisimulation.append
   | nil => exact rightRelated
   | cons target tail induction => exact .cons target induction
 
+theorem TyListBisimulation.append
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {left left' right right' : List Ty}
+    (leftRelated : TyListBisimulation relation left left')
+    (rightRelated : TyListBisimulation relation right right') :
+    TyListBisimulation relation (left ++ right) (left' ++ right') := by
+  induction leftRelated with
+  | nil => exact rightRelated
+  | cons head tail induction => exact .cons head induction
+
 theorem MonoCtxBisimulation.targets
     {ledger : CapabilityOriginLedger} {declarative : Subst}
     {state : InferState} {relation : StateBisimulation ledger declarative state}
@@ -163,6 +174,53 @@ theorem DualListBisimulation.prodTargets
   induction related with
   | nil => exact .nil
   | cons head tail ih => exact .cons head.target ih
+
+theorem DualListBisimulation.targets
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    (related : DualListBisimulation relation declarativeDuals executableDuals) :
+    TyListBisimulation relation (declarativeDuals.map Dual.target)
+      (executableDuals.map Dual.target) := by
+  induction related with
+  | nil => exact .nil
+  | cons head tail induction => exact .cons head.target induction
+
+theorem DualListBisimulation.exportPayload
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    {declarativeBindings executableBindings : MonoCtx} {target : Ty}
+    (duals : DualListBisimulation relation declarativeDuals executableDuals)
+    (bindings : MonoCtxBisimulation relation declarativeBindings
+      executableBindings) :
+    TyBisimulation relation
+      (capabilityExportPayload (declarativeDuals.map Dual.cap)
+        (declarativeDuals.map Dual.target ++
+          target :: declarativeBindings.map fun entry => entry.2))
+      (capabilityExportPayload (executableDuals.map Dual.cap)
+        (executableDuals.map Dual.target ++
+          target :: executableBindings.map fun entry => entry.2)) := by
+  unfold capabilityExportPayload
+  apply tyListBisimulation_prod
+  have caps : TyListBisimulation relation
+      ((declarativeDuals.map Dual.cap).map fun capability =>
+        .matcher capability .unit)
+      ((executableDuals.map Dual.cap).map fun capability =>
+        .matcher capability .unit) := by
+    induction duals with
+    | nil => exact .nil
+    | cons head tail induction => exact .cons head.cap induction
+  have targets :=
+    DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.targets
+      duals
+  exact
+    DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+      caps
+      (DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+        targets (.cons (relation.sameTarget target)
+          (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
+            bindings)))
 
 /-! ## Paired export freezing -/
 
@@ -539,6 +597,20 @@ structure FreshTargetsCompletion
   targets_eq : result.1 = targets
   transition : BisimulationExtension before.prevailing ledger S result.2
   state : TraversalStateCorrespondence q' S ledger result.2
+  prevailing_eq : state.prevailing = transition.after
+
+def FreshTargetsCompletion.extension
+    {q q' : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    {before : TraversalStateCorrespondence q S ledger state}
+    {result : List Ty × InferState} {targets : List Ty}
+    (run : FreshTargetsCompletion before result q' targets) :
+    BisimulationExtension before.prevailing ledger S result.2 where
+  after := run.state.prevailing
+  transportTy := by
+    intro declarativeTarget executableTarget related
+    rw [run.prevailing_eq]
+    exact run.transition.transportTy related
 
 /-- Executable tuple-field allocation is literally the pure supply-indexed
 DD allocation, including left-to-right order. -/
@@ -554,14 +626,16 @@ def freshTargets_complete
       exact
         { targets_eq := rfl
           transition := .refl before.prevailing
-          state := before }
+          state := before
+          prevailing_eq := rfl }
   | succ count ih =>
       let allocated := before.freshTy origin
       let tail := ih allocated.state
       refine
         { targets_eq := ?_
           transition := before.freshTyExtension origin |>.seq tail.transition
-          state := tail.state }
+          state := tail.state
+          prevailing_eq := tail.prevailing_eq }
       simp only [Inference.freshTargets, freshTargetsSupply]
       rw [allocated.target_eq, tail.targets_eq]
 
@@ -1005,6 +1079,101 @@ noncomputable def dpatCtor_complete
   simp only [childrenRun.success]
   simp [capImages, executablePayload, executableBindings, before.supply_eq,
     event]
+
+noncomputable def dpatTuple_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
+    (patterns : List DPat)
+    {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger ledger S
+      (.prod (freshTargetsSupply patterns.length q).1) expectedTarget S₁)
+    {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
+    (children :
+      let fresh := freshTargets_complete before
+        (freshOrigin .dataPattern path "dp-tuple-field") patterns.length
+      ∀ alignment : StateRunCompletion fresh.state
+          (alignTypes (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).2
+            (freshOrigin .dataPattern path "dp-tuple-result")
+            (.prod (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).1)
+            expectedTarget)
+          (freshTargetsSupply patterns.length q).2 S₁ ledger,
+        DPatsRunCompletion alignment.completion
+          (inferDPatsFuel fuel signature path 0 patterns
+            (freshTargets state
+              (freshOrigin .dataPattern path "dp-tuple-field")
+              patterns.length).1 alignment.result)
+          q' S' ledger₂ (freshTargetsSupply patterns.length q).1 bindings) :
+    DPatRunCompletion before
+      (inferDPatFuel (fuel + 1) signature path (.tuple patterns)
+        expectedTarget state)
+      q' S' ledger₂ expectedTarget bindings := by
+  let fieldOrigin := freshOrigin .dataPattern path "dp-tuple-field"
+  let resultOrigin := freshOrigin .dataPattern path "dp-tuple-result"
+  let fresh := freshTargets_complete before fieldOrigin patterns.length
+  let supplyExtension := SupplyExtends.freshTargets patterns.length q
+  have declarativeProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargetsSupply patterns.length q).1) :=
+    Ty.BoundedBy.prodOfForall
+      (freshTargetsSupply_boundedBy patterns.length q)
+  have executableProductRelated : TyBisimulation fresh.state.prevailing
+      (.prod (freshTargetsSupply patterns.length q).1)
+      (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact fresh.state.prevailing.sameTarget _
+  have executableProductBounded :
+      Ty.BoundedBy (freshTargetsSupply patterns.length q).2
+        (.prod (freshTargets state fieldOrigin patterns.length).1) := by
+    rw [fresh.targets_eq]
+    exact declarativeProductBounded
+  let alignment := ddAlignTypesWithLedger_complete
+    (origin := resultOrigin) fresh.state executableProductRelated
+    (fresh.state.prevailing.sameTarget expectedTarget)
+    declarativeProductBounded (expectedBounded.mono supplyExtension)
+    executableProductBounded (expectedBounded.mono supplyExtension) aligned
+  let childrenRun := children alignment
+  let executableBindings := childrenRun.result.bindings
+  let event := TraceEvent.inferredDPat (.tuple patterns) expectedTarget
+    executableBindings path
+  let visited := childrenRun.completion.visit .dpatTuple path
+  let final := visited.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let visitExtension := childrenRun.completion.visitExtension .dpatTuple path
+  let eventExtension := visitExtension.after.recordEventExtension event
+  let transition := ((fresh.extension.seq alignment.transition).seq
+    childrenRun.transition).seq (visitExtension.seq eventExtension)
+  refine
+    { result := ⟨expectedTarget, executableBindings,
+        (visit childrenRun.result.state .dpatTuple path).recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      target := transition.after.sameTarget expectedTarget
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          (visitExtension.seq eventExtension) childrenRun.bindings }
+  simp only [inferDPatFuel]
+  have alignmentSuccess := alignment.success
+  dsimp [fieldOrigin, resultOrigin] at alignmentSuccess
+  simp only [alignmentSuccess]
+  simp only [childrenRun.success]
+  rfl
 
 def ppatWild_complete
     (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
