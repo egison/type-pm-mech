@@ -1255,6 +1255,24 @@ theorem alignAtSlot_canonicalSlotEventCondition
     exact alignedEqual_canonicalSlotEventCondition alignmentHistory
       alignedDD.output_equal history
 
+/-- The explicit product-matcher lift emits the same one-way solver event,
+with the lifted unary matcher as its source. -/
+theorem alignResolvedProductMatcherAtSlot_canonicalSlotEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some aligned)
+    (history : (aligned.recordEvent (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (productMatcherTarget duals)
+      (.slot consumerCap consumerTarget))).HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (productMatcherTarget duals) (.slot consumerCap consumerTarget)) := by
+  unfold alignResolvedProductMatcherAtSlot at success
+  exact runResolvedConstraint_producerToSlot_canonicalSlotEventCondition
+    success history
+
 end Reconstruction
 end Inference
 end TypePM
