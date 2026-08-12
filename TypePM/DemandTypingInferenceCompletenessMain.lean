@@ -330,5 +330,394 @@ noncomputable def ppatsLeafOrigin_complete
   Classical.choice
     (ppatsLeafOrigin_complete_nonempty fuel before leaf adequate)
 
+/-! ## Full primitive-pattern recursion
+
+Unlike the leaf adapters above, these theorems recurse over the actual origin
+trees.  Constructor instantiation and tuple-field allocation produce the same
+raw target lists on the DD and executable sides; the surrounding state
+correspondence records how their interpretations differ.
+-/
+
+mutual
+
+theorem dpatOrigin_complete_nonempty
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {path : SyntaxPath} {pattern : DPat} {target : Ty}
+    {bindings : MonoCtx} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDDPat signature q S pattern target bindings q' S'}
+    (origin : DDDPatOrigin signature raw ledger ledger')
+    (targetBounded : target.BoundedBy q)
+    (adequate : DPatAdequate fuel pattern) :
+    Nonempty (DPatRunCompletion before
+      (inferDPatFuel fuel signature path pattern target state)
+      q' S' ledger' target bindings) := by
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases origin with
+  | var =>
+      exact ⟨dpatVar_complete fuel signature path _ before target⟩
+  | wild =>
+      exact ⟨dpatWild_complete fuel signature path before target⟩
+  | @ctor q S name patterns expectedTarget scheme S₁ bindings q' S'
+      ledger ledger₂ lookup aligned childrenRaw childrenOrigin =>
+      have childAdequate := dpat_ctor (fuel := fuel) adequate
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.dataCtors lookup).boundedBy)
+      refine ⟨dpatCtor_complete fuel signature path name patterns lookup closed
+        before target targetBounded aligned (children := ?_)⟩
+      dsimp
+      intro alignment
+      have executableTargetsEq :
+          (InferenceBase.instantiateCtorScheme state.supply scheme).value.1 =
+            (InferenceBase.instantiateCtorScheme q scheme).value.1 := by
+        rw [before.supply_eq]
+      exact Classical.choice
+        (dpatsOrigin_complete_nonempty (parent := path) (index := 0) closed
+          fuel alignment.completion childrenOrigin executableTargetsEq instBounded.1
+          childAdequate)
+  | @tuple q S patterns expectedTarget S₁ bindings q' S' ledger ledger'
+      aligned childrenRaw childrenOrigin =>
+      have childAdequate := dpat_tuple (fuel := fuel) adequate
+      have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
+      refine ⟨dpatTuple_complete fuel signature path patterns before
+        target targetBounded aligned (children := ?_)⟩
+      dsimp
+      intro alignment
+      have executableTargetsEq := (freshTargets_complete before
+        (freshOrigin .dataPattern path "dp-tuple-field")
+        patterns.length).targets_eq
+      exact Classical.choice
+        (dpatsOrigin_complete_nonempty (parent := path) (index := 0) closed
+          fuel alignment.completion childrenOrigin executableTargetsEq targetsBounded
+          childAdequate)
+termination_by fuel
+
+theorem dpatsOrigin_complete_nonempty
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {parent : SyntaxPath} {index : Nat}
+    {patterns : List DPat} {targets executableTargets : List Ty}
+    {bindings : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDDPats signature q S patterns targets bindings q' S'}
+    (origin : DDDPatsOrigin signature raw ledger ledger')
+    (targetsEq : executableTargets = targets)
+    (targetsBounded : ∀ target ∈ targets, target.BoundedBy q)
+    (adequate : DPatListAdequate fuel patterns) :
+    Nonempty (DPatsRunCompletion before
+      (inferDPatsFuel fuel signature parent index patterns executableTargets state)
+      q' S' ledger' targets bindings) := by
+  subst executableTargets
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases origin with
+  | nil =>
+      exact ⟨dpatsNil_complete fuel signature parent index before⟩
+  | @cons q S pattern patterns target targets bindings restBindings q₁ S₁
+      q' S' ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin
+      disjoint =>
+      have childAdequate := dpatList_cons (fuel := fuel) adequate
+      have headBounded := targetsBounded target (by simp)
+      let headRun := Classical.choice
+        (dpatOrigin_complete_nonempty (path := index :: parent) closed fuel
+          before headOrigin headBounded childAdequate.1)
+      have tailBounded : ∀ item ∈ targets, item.BoundedBy q₁ := by
+        intro item membership
+        exact (targetsBounded item (by simp [membership])).mono
+          headOrigin.erase.supplyExtends
+      let tailRun := Classical.choice
+        (dpatsOrigin_complete_nonempty (parent := parent) (index := index + 1)
+          closed fuel headRun.completion tailOrigin rfl tailBounded
+          childAdequate.2)
+      exact ⟨dpatsCons_complete fuel signature parent index pattern patterns
+        before headRun tailRun disjoint⟩
+termination_by fuel
+
+end
+
+noncomputable def dpatOrigin_complete
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {path : SyntaxPath} {pattern : DPat} {target : Ty}
+    {bindings : MonoCtx} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDDPat signature q S pattern target bindings q' S'}
+    (origin : DDDPatOrigin signature raw ledger ledger')
+    (targetBounded : target.BoundedBy q)
+    (adequate : DPatAdequate fuel pattern) :
+    DPatRunCompletion before
+      (inferDPatFuel fuel signature path pattern target state)
+      q' S' ledger' target bindings :=
+  Classical.choice
+    (dpatOrigin_complete_nonempty closed fuel before origin targetBounded
+      adequate)
+
+noncomputable def dpatsOrigin_complete
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {parent : SyntaxPath} {index : Nat}
+    {patterns : List DPat} {targets executableTargets : List Ty}
+    {bindings : MonoCtx} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDDPats signature q S patterns targets bindings q' S'}
+    (origin : DDDPatsOrigin signature raw ledger ledger')
+    (targetsEq : executableTargets = targets)
+    (targetsBounded : ∀ target ∈ targets, target.BoundedBy q)
+    (adequate : DPatListAdequate fuel patterns) :
+    DPatsRunCompletion before
+      (inferDPatsFuel fuel signature parent index patterns executableTargets state)
+      q' S' ledger' targets bindings :=
+  Classical.choice
+    (dpatsOrigin_complete_nonempty closed fuel before origin targetsEq
+      targetsBounded adequate)
+
+mutual
+
+theorem ppatOrigin_complete_nonempty
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {path : SyntaxPath} {pattern : PPat} {target : Ty}
+    {holes : List Dual} {bindings : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDPPat signature q S pattern target holes bindings q' S'}
+    (origin : DDPPatOrigin signature raw ledger ledger')
+    (targetBounded : target.BoundedBy q)
+    (adequate : PPatAdequate fuel pattern) :
+    Nonempty (PPatRunCompletion before
+      (inferPPatFuel fuel signature path pattern target state)
+      q' S' ledger' target holes bindings) := by
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases origin with
+  | hole => exact ⟨ppatHole_complete fuel signature path before target⟩
+  | wild => exact ⟨ppatWild_complete fuel signature path before target⟩
+  | pval => exact ⟨ppatValue_complete fuel signature path _ before target⟩
+  | @ctor q S name patterns expectedTarget entry S₁ holes bindings q' S'
+      ledger ledger₂ lookup aligned childrenRaw childrenOrigin =>
+      have childAdequate := ppat_ctor (fuel := fuel) adequate
+      have instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.patternCtors lookup).boundedBy)
+      refine ⟨ppatCtor_complete fuel signature path name patterns lookup closed
+        before target targetBounded aligned (children := ?_)⟩
+      dsimp
+      intro alignment
+      have executableTargetsEq :
+          (InferenceBase.instantiateCtorScheme state.supply entry.scheme).value.1 =
+            (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 := by
+        rw [before.supply_eq]
+      exact Classical.choice
+        (ppatsOrigin_complete_nonempty (parent := path) (index := 0) closed
+          fuel alignment.completion childrenOrigin executableTargetsEq instBounded.1
+          childAdequate)
+  | @tuple q S patterns expectedTarget S₁ holes bindings q' S' ledger ledger'
+      aligned childrenRaw childrenOrigin =>
+      have childAdequate := ppat_tuple (fuel := fuel) adequate
+      have targetsBounded := freshTargetsSupply_boundedBy patterns.length q
+      refine ⟨ppatTuple_complete fuel signature path patterns before
+        target targetBounded aligned (children := ?_)⟩
+      dsimp
+      intro alignment
+      have executableTargetsEq := (freshTargets_complete before
+        (freshOrigin .primitivePattern path "pp-tuple-field")
+        patterns.length).targets_eq
+      exact Classical.choice
+        (ppatsOrigin_complete_nonempty (parent := path) (index := 0) closed
+          fuel alignment.completion childrenOrigin executableTargetsEq targetsBounded
+          childAdequate)
+termination_by fuel
+
+theorem ppatsOrigin_complete_nonempty
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {parent : SyntaxPath} {index : Nat}
+    {patterns : List PPat} {targets executableTargets : List Ty}
+    {holes : List Dual}
+    {bindings : MonoCtx} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDPPats signature q S patterns targets holes bindings q' S'}
+    (origin : DDPPatsOrigin signature raw ledger ledger')
+    (targetsEq : executableTargets = targets)
+    (targetsBounded : ∀ target ∈ targets, target.BoundedBy q)
+    (adequate : PPatListAdequate fuel patterns) :
+    Nonempty (PPatsRunCompletion before
+      (inferPPatsFuel fuel signature parent index patterns executableTargets state)
+      q' S' ledger' targets holes bindings) := by
+  subst executableTargets
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases origin with
+  | nil => exact ⟨ppatsNil_complete fuel signature parent index before⟩
+  | @cons q S pattern patterns target targets holes restHoles bindings
+      restBindings q₁ S₁ q' S' ledger ledger₁ ledger' headRaw tailRaw
+      headOrigin tailOrigin disjoint =>
+      have childAdequate := ppatList_cons (fuel := fuel) adequate
+      have headBounded := targetsBounded target (by simp)
+      let headRun := Classical.choice
+        (ppatOrigin_complete_nonempty (path := index :: parent) closed fuel
+          before headOrigin headBounded childAdequate.1)
+      have tailBounded : ∀ item ∈ targets, item.BoundedBy q₁ := by
+        intro item membership
+        exact (targetsBounded item (by simp [membership])).mono
+          headOrigin.erase.supplyExtends
+      let tailRun := Classical.choice
+        (ppatsOrigin_complete_nonempty (parent := parent) (index := index + 1)
+          closed fuel headRun.completion tailOrigin rfl tailBounded
+          childAdequate.2)
+      exact ⟨ppatsCons_complete fuel signature parent index pattern patterns
+        before headRun tailRun disjoint⟩
+termination_by fuel
+
+end
+
+noncomputable def ppatOrigin_complete
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {path : SyntaxPath} {pattern : PPat} {target : Ty}
+    {holes : List Dual} {bindings : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDPPat signature q S pattern target holes bindings q' S'}
+    (origin : DDPPatOrigin signature raw ledger ledger')
+    (targetBounded : target.BoundedBy q)
+    (adequate : PPatAdequate fuel pattern) :
+    PPatRunCompletion before
+      (inferPPatFuel fuel signature path pattern target state)
+      q' S' ledger' target holes bindings :=
+  Classical.choice
+    (ppatOrigin_complete_nonempty closed fuel before origin targetBounded
+      adequate)
+
+noncomputable def ppatsOrigin_complete
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {parent : SyntaxPath} {index : Nat}
+    {patterns : List PPat} {targets executableTargets : List Ty}
+    {holes : List Dual} {bindings : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDPPats signature q S patterns targets holes bindings q' S'}
+    (origin : DDPPatsOrigin signature raw ledger ledger')
+    (targetsEq : executableTargets = targets)
+    (targetsBounded : ∀ target ∈ targets, target.BoundedBy q)
+    (adequate : PPatListAdequate fuel patterns) :
+    PPatsRunCompletion before
+      (inferPPatsFuel fuel signature parent index patterns executableTargets state)
+      q' S' ledger' targets holes bindings :=
+  Classical.choice
+    (ppatsOrigin_complete_nonempty closed fuel before origin targetsEq
+      targetsBounded adequate)
+
+/-! ## Structural synthesis fragment
+
+This certificate isolates the synthesis constructors whose recursive edges
+remain entirely inside synthesis: leaves, lambdas, tuples, and expression
+lists.  Application and matching enter the checking and user-pattern
+families, so they are connected by the later global mutual recursion.
+-/
+
+mutual
+
+inductive DDSynthStructuralOrigin (signature : FrozenSig) :
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
+    {expression : Expr} -> {target : Ty} ->
+    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
+    {raw : DDSynth signature q S context expression target q' S'} ->
+    {ledger ledger' : CapabilityOriginLedger} ->
+    DDSynthOrigin signature raw ledger ledger' -> Prop where
+  | leaf (certificate : DDSynthLeafOrigin signature origin) :
+      DDSynthStructuralOrigin signature origin
+  | lam
+      (body : DDSynthStructuralOrigin signature bodyOrigin) :
+      DDSynthStructuralOrigin signature (DDSynthOrigin.lam bodyOrigin)
+  | tuple
+      (children : DDSynthsStructuralOrigin signature childrenOrigin) :
+      DDSynthStructuralOrigin signature (DDSynthOrigin.tuple childrenOrigin)
+
+inductive DDSynthsStructuralOrigin (signature : FrozenSig) :
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
+    {expressions : List Expr} -> {targets : List Ty} ->
+    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
+    {raw : DDSynths signature q S context expressions targets q' S'} ->
+    {ledger ledger' : CapabilityOriginLedger} ->
+    DDSynthsOrigin signature raw ledger ledger' -> Prop where
+  | nil : DDSynthsStructuralOrigin signature DDSynthsOrigin.nil
+  | cons
+      (head : DDSynthStructuralOrigin signature headOrigin)
+      (tail : DDSynthsStructuralOrigin signature tailOrigin) :
+      DDSynthsStructuralOrigin signature
+        (DDSynthsOrigin.cons headOrigin tailOrigin)
+
+end
+
+mutual
+
+theorem synthStructuralOrigin_complete_nonempty
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDSynth signature q S context expression target q' S'}
+    {origin : DDSynthOrigin signature raw ledger ledger'}
+    (certificate : DDSynthStructuralOrigin signature origin)
+    (adequate : ExprAdequate fuel expression) :
+    Nonempty (SynthRunCompletion before
+      (inferExprFuel fuel signature context selfEnv path expression state)
+      q' S' ledger' target) := by
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases certificate with
+  | leaf leaf =>
+      exact synthLeafOrigin_complete_nonempty (fuel + 1) before
+        (ContextBisimulation.same before.prevailing context) leaf adequate
+  | @lam _ _ binderName _ _ _ _ _ _ _ _ _ bodyCertificate =>
+      have bodyAdequate := expr_lam (fuel := fuel) adequate
+      let bodyBefore := before.afterVisitFreshTy .exprLam path
+        (freshOrigin .expression path "lambda-domain")
+      let bodyRun := Classical.choice
+        (synthStructuralOrigin_complete_nonempty
+          (selfEnv := selfEnv.erase binderName)
+          (path := 0 :: path) fuel bodyBefore bodyCertificate bodyAdequate)
+      exact ⟨inferExprFuel_lam_complete before bodyRun⟩
+  | tuple children =>
+      have childrenAdequate := expr_tuple (fuel := fuel) adequate
+      let childrenBefore := before.afterVisit .exprTuple path
+      let childrenRun := Classical.choice
+        (synthsStructuralOrigin_complete_nonempty (parent := path) (index := 0)
+          (selfEnv := selfEnv) fuel childrenBefore children childrenAdequate)
+      exact ⟨inferExprFuel_tuple_complete before childrenRun⟩
+termination_by fuel
+
+theorem synthsStructuralOrigin_complete_nonempty
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    {raw : DDSynths signature q S context expressions targets q' S'}
+    {origin : DDSynthsOrigin signature raw ledger ledger'}
+    (certificate : DDSynthsStructuralOrigin signature origin)
+    (adequate : ExprListAdequate fuel expressions) :
+    Nonempty (SynthsRunCompletion before
+      (inferExprsFuel fuel signature context selfEnv parent index expressions
+        state) q' S' ledger' targets) := by
+  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
+  cases certificate with
+  | nil => exact ⟨inferExprsFuel_nil_complete before fuel⟩
+  | cons head tail =>
+      have childAdequate := exprList_cons (fuel := fuel) adequate
+      let headRun := Classical.choice
+        (synthStructuralOrigin_complete_nonempty (path := index :: parent)
+          (selfEnv := selfEnv) fuel before head childAdequate.1)
+      let tailRun := Classical.choice
+        (synthsStructuralOrigin_complete_nonempty (parent := parent)
+          (index := index + 1) (selfEnv := selfEnv) fuel
+          headRun.completion.state tail
+          childAdequate.2)
+      exact ⟨inferExprsFuel_cons_complete before headRun tailRun⟩
+termination_by fuel
+
+end
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
