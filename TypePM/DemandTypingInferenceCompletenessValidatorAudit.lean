@@ -229,6 +229,72 @@ theorem TerminalAuditEventCoverage.recordSensitiveEvent
     cases event <;> try trivial
     all_goals exact latest
 
+/-! ## Sensitive-emitter constructors -/
+
+/-- Record the exact compatibility event emitted by a successful user-pattern
+constructor.  The only semantic input is the corresponding local node of the
+terminal audit tree. -/
+theorem TerminalAuditEventCoverage.recordPatternCtor
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {name : String} {entry : PatternCtorScheme signature.observability}
+    {duals : List Dual} {capability : Cap}
+    (before : TerminalAuditEventCoverage terminal signature state)
+    (lookup : signature.findPatternCtor name = some entry)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry duals capability) :
+    TerminalAuditEventCoverage terminal signature
+      (state.recordEvent (.patternCtorCompatibility
+        state.trace.solves.length name (duals.map Dual.cap) capability)) := by
+  apply before.recordSensitiveEvent
+  exact .patternCtor (Nat.le_refl _) lookup facts
+
+/-- Record the canonical matcher-finalization event at its actual local cut.
+The replay equations are definitional because the emitter stores the current
+prevailing target and holes together with the complete current solve count. -/
+theorem TerminalAuditEventCoverage.recordMatcherFinalization
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {clauses : List Clause} {rawTarget : Ty}
+    {rawHoleLists : List (List Dual)} {evidence : List Shape.Evidence}
+    {capability : Cap}
+    (before : TerminalAuditEventCoverage terminal signature state)
+    (catchAll : catchAllLastCheck clauses = true)
+    (binders : matcherBindersCheck clauses = true)
+    (facts : DDTerminalAudit.MatcherFacts terminal signature clauses
+      rawHoleLists capability rawTarget) :
+    TerminalAuditEventCoverage terminal signature
+      (state.recordEvent (.matcherFinalization state.trace.solves.length clauses
+        rawTarget rawHoleLists (state.prevailing.apply rawTarget)
+        (resolvedHoleCaps state.prevailing rawHoleLists) evidence capability)) := by
+  apply before.recordSensitiveEvent
+  exact .matcher (Nat.le_refl _)
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing])
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing]) catchAll binders facts
+
+/-- Record the canonical let-generalization event at the value-result cut.
+As for matcher finalization, the event's normalized operands are precisely the
+current replay images, so no reconstruction oracle is needed. -/
+theorem TerminalAuditEventCoverage.recordLetGeneralization
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {name : String} {rawContext : Context} {rawTarget : Ty}
+    (before : TerminalAuditEventCoverage terminal signature state)
+    (facts : DDTerminalAudit.LetFacts terminal signature rawContext rawTarget
+      state.prevailing) :
+    TerminalAuditEventCoverage terminal signature
+      (state.recordEvent (.letGeneralization state.trace.solves.length name
+        rawContext rawTarget (rawContext.applySubst state.prevailing)
+        (state.prevailing.apply rawTarget)
+        (signature.generalize (rawContext.applySubst state.prevailing)
+          (state.prevailing.apply rawTarget)))) := by
+  apply before.recordSensitiveEvent
+  exact .letE (Nat.le_refl _)
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing])
+    (by simp only [InferState.recordEvent, List.take_length,
+      InferState.prevailing]) rfl
+    (by simpa only [InferState.recordEvent, List.take_length,
+      InferState.prevailing] using facts)
+
 /-! ## Elimination at the executable terminal state -/
 
 /-- A covered pattern-constructor event satisfies its validator condition. -/
