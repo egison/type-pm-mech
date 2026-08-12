@@ -287,5 +287,131 @@ theorem auditedSynthLam_complete_paired
   refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
   exact validation
 
+/-- Expression lists preserve the exact left-to-right pairing of raw runs and
+validator chronology. -/
+theorem auditedSynths_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    {raw : DDSynths signature q S declarativeContext expressions targets q' S'}
+    {origin : DDSynthsOrigin signature raw ledger ledger'}
+    (audit : DDSynthsTerminalAudit terminal signature origin)
+    (adequate : SynthsBudgetAdequate fuel expressions) :
+    Nonempty (BoundedPairedCertifiedSynthsRunCompletion terminal signature
+      before (inferExprsFuel fuel signature executableContext selfEnv parent
+        index expressions state) q' S' ledger' targets) := by
+  cases fuel with
+  | zero => simp [SynthsBudgetAdequate] at adequate
+  | succ inner =>
+      cases audit with
+      | nil =>
+          let rawRun := boundedSynthsNil_complete inner signature
+            executableContext selfEnv parent index before
+          refine ⟨⟨rawRun, InferState.StateExtension.refl state, ?_⟩⟩
+          exact PairedValidatorRunExtension.refl terminal signature
+            before.prevailing
+      | cons headAudit tailAudit =>
+          rename_i expression target q₁ S₁ ledger₁ expressions targets
+            headRaw tailRaw headOrigin tailOrigin
+          have headAdequate : SynthBudgetAdequate inner expression := by
+            simp only [SynthsBudgetAdequate, SynthBudgetAdequate,
+              exprListTraversalFuel] at adequate ⊢
+            omega
+          have tailAdequate : SynthsBudgetAdequate inner expressions := by
+            simp only [SynthsBudgetAdequate, exprListTraversalFuel]
+              at adequate ⊢
+            omega
+          let headRun := Classical.choice
+            (synthBelow (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := index :: parent)
+              before contexts contextBounded executableContextBounded headAudit
+              headAdequate)
+          have tailContexts : ContextBisimulation
+              headRun.raw.run.completion.state.prevailing declarativeContext
+              executableContext :=
+            contexts.transport headRun.raw.run.transition
+          have tailContextBounded : declarativeContext.BoundedBy q₁ :=
+            contextBounded.mono headOrigin.erase.supplyExtends
+          have tailExecutableContextBounded : executableContext.BoundedBy q₁ :=
+            executableContextBounded.mono headOrigin.erase.supplyExtends
+          have belowTail : PairedAuditedSynthCompletenessBelow terminal
+              signature inner := synthBelow.mono (Nat.le_succ inner)
+          let tailRun := Classical.choice
+            (auditedSynths_complete_paired
+              (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+              inner belowTail headRun.raw.run.completion.state tailContexts
+              tailContextBounded tailExecutableContextBounded tailAudit
+              tailAdequate)
+          let rawRun := boundedSynthsCons_complete before headRun.raw tailRun.raw
+            tailOrigin.erase.supplyExtends
+          let validation := headRun.validation.trans tailRun.validation
+          refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+          exact validation
+termination_by fuel
+
+/-- Tuple synthesis surrounds the paired child list by exact visit and result
+events. -/
+theorem auditedSynthTuple_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature
+      (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    {childrenRaw : DDSynths signature q S declarativeContext expressions
+      targets q' S'}
+    {childrenOrigin : DDSynthsOrigin signature childrenRaw ledger ledger'}
+    (childrenAudit : DDSynthsTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.tuple expressions)) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+      before (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.tuple expressions) state) q' S' ledger' (.prod targets)) := by
+  have childrenAdequate : SynthsBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, SynthsBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let childrenBefore := before.afterVisit .exprTuple path
+  have childrenContexts : ContextBisimulation childrenBefore.prevailing
+      declarativeContext executableContext :=
+    contexts.transport (before.visitExtension .exprTuple path)
+  have childrenBelow : PairedAuditedSynthCompletenessBelow terminal signature
+      fuel := synthBelow.mono (Nat.le_succ fuel)
+  let childrenRun := Classical.choice
+    (auditedSynths_complete_paired
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      fuel childrenBelow childrenBefore childrenContexts contextBounded
+      executableContextBounded childrenAudit childrenAdequate)
+  let rawRun := boundedSynthTuple_complete before childrenRun.raw
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprTuple path)
+    (ValidatorRunExtension.visit terminal signature state .exprTuple path)
+  let finishTransition := childrenRun.raw.run.transition.after.recordEventExtension
+    (.inferredExpr (.tuple expressions) (.prod childrenRun.raw.run.result.targets)
+      path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _ (.tuple expressions)
+      path _)
+  let validation := visitValidation.trans childrenRun.validation |>.trans
+    finishValidation
+  refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+  exact validation
+
 end DemandTypingInferenceCompletenessGlobalCertified
 end TypePM
