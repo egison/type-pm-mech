@@ -529,3 +529,12 @@ demand-directed関連moduleの役割は次のとおりである．
 `lake build` を実行する．形式仕様は `tex/` で `make` を実行し，`type-pm-mech.pdf` を生成する．
 `sorry`，`admit`，project-defined `axiom`，typing derivation を premise に持つ oracle で証明を
 埋めない．
+
+公理監査：`AxiomAudit` は，`PublicTheorems` の見出し定理と README の定理表が指す公開定数
+（計11個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
+`Quot.sound` 以外の公理（`native_decide` が導入する補助公理，`sorryAx`，project-defined
+`axiom`）が現れた時点で elaboration を失敗させる．検査は許容集合方式なので，公理の生成名の
+変化に依存しない．監査対象は double-backquote 名前リテラルで解決するため，公開定理の改名は
+監査リストの更新をビルドエラーとして強制する．`TypePM.lean` から import されるので，
+`lake build`（および CI）は常にこの監査を含む．`native_decide` は executable regression
+（具体プログラムの受理・拒否・実行結果の検査）に限定し，メタ理論の証明鎖では使わない．

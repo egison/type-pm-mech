@@ -101,6 +101,7 @@ import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
 import TypePM.DemandTypingTerminalAuditErasureRegression
 import TypePM.PublicTheorems
+import TypePM.AxiomAudit
 
 /-!
 # Egison core with two-index matcher types

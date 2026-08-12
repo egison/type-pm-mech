@@ -180,3 +180,5 @@ make
 ```
 
 形式仕様の出力は`tex/type-pm-mech.pdf`である．`sorry`，`admit`，project-defined `axiom`は使わない．
+公開定理が標準3公理（`propext`・`Classical.choice`・`Quot.sound`）のみに依存することは，
+[`TypePM/AxiomAudit.lean`](TypePM/AxiomAudit.lean)が`lake build`のたびに検査し，逸脱はビルドエラーになる．
