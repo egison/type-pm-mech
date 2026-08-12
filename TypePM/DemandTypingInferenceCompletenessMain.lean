@@ -1872,5 +1872,37 @@ termination_by fuel
 
 end
 
+/-! ## Audited global synthesis: pattern-independent constructors -/
+
+/-- The three solver-free audited leaves already have the complete paired,
+bounded reconstruction required by the global recursion. -/
+theorem auditedSynthLeaf_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    {raw : DDSynth signature q S declarativeContext expression target q' S'}
+    {origin : DDSynthOrigin signature raw ledger ledger'}
+    (audit : DDSynthTerminalAudit terminal signature origin)
+    (leaf : DDSynthLeafOrigin signature origin)
+    (adequate : SynthBudgetAdequate fuel expression) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature executableContext selfEnv path expression
+        state) q' S' ledger' target) := by
+  cases fuel with
+  | zero => simp [SynthBudgetAdequate] at adequate
+  | succ inner =>
+      cases leaf with
+      | var lookup =>
+          exact ⟨boundedSynthVarPaired_complete before contexts contextBounded
+            lookup inner⟩
+      | lit => exact ⟨boundedSynthLit_complete before inner⟩
+      | something => exact ⟨boundedSynthSomething_complete before inner⟩
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
