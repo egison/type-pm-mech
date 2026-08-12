@@ -2544,5 +2544,158 @@ theorem auditedSynthLet_complete_nonempty
       bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
   exact ⟨boundedSynthLet_complete closed before valueRun bodyRun⟩
 
+/-- Ordinary recursive functions use the canonical two-target placeholder;
+the matcher-bodied specialization is handled separately because its
+placeholder additionally freshens matcher skeleton capabilities. -/
+theorem auditedSynthFix_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {self argument : String} {body : Expr}
+    {bodyTarget : Ty} {q q₁ : InferenceBase.FreshSupply}
+    {S S₁ S' : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
+    (nonMatcher : NonMatcherBody body)
+    {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
+        declarativeContext)
+      body bodyTarget q₁ S₁}
+    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger ledger₁}
+    (aligned : DDAlignTypesWithLedger ledger₁ S₁ bodyTarget
+      (.var (q.nextTy + 1)) S')
+    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.fix self argument body)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.fix self argument body) state)
+      q₁ S' ledger₁ (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) := by
+  have bodyAdequate : SynthBudgetAdequate fuel body := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  let visited := before.afterVisit .exprFix path
+  let domainOrigin := freshOrigin .recursiveBinder path "fix-domain"
+  let codomainOrigin := freshOrigin .recursiveBinder path "fix-codomain"
+  let resultOrigin := freshOrigin .recursiveBinder path "fix-result"
+  let domainAllocation := visited.freshTy domainOrigin
+  let codomainAllocation := domainAllocation.state.freshTy codomainOrigin
+  let executablePlaceholder := Ty.fn (fixDomain state path)
+    (fixCodomain state path)
+  let placeholderEvent := TraceEvent.fixPlaceholder self argument
+    executablePlaceholder path
+  let directEvent := TraceEvent.directSelfAccepted self executablePlaceholder path
+  let placeholderExtension :=
+    codomainAllocation.state.prevailing.recordEventExtension placeholderEvent
+  let directExtension := placeholderExtension.after.recordEventExtension directEvent
+  let bodyBefore :=
+    (codomainAllocation.state.recordEvent placeholderEvent
+      (by simp [placeholderEvent, TraceEvent.allocatedCapVars])).recordEvent
+      directEvent (by simp [directEvent, TraceEvent.allocatedCapVars])
+  have domainRelated : TyBisimulation bodyBefore.prevailing
+      (.var q.nextTy) (fixDomain state path) := by
+    have atAllocation : TyBisimulation codomainAllocation.state.prevailing
+        (.var q.nextTy) (fixDomain state path) := by
+      change TyBisimulation codomainAllocation.state.prevailing
+        (.var q.nextTy) (visit state .exprFix path |>.freshTy domainOrigin).1
+      rw [domainAllocation.target_eq]
+      exact codomainAllocation.state.prevailing.sameTarget _
+    exact directExtension.transportTy
+      (placeholderExtension.transportTy atAllocation)
+  have placeholderRelated : TyBisimulation bodyBefore.prevailing
+      (.fn (.var q.nextTy) (.var (q.nextTy + 1))) executablePlaceholder := by
+    have atAllocation : TyBisimulation codomainAllocation.state.prevailing
+        (.fn (.var q.nextTy) (.var (q.nextTy + 1))) executablePlaceholder := by
+      change TyBisimulation codomainAllocation.state.prevailing
+        (.fn (.var q.nextTy) (.var (q.nextTy + 1)))
+        (.fn (visit state .exprFix path |>.freshTy domainOrigin).1
+          ((visit state .exprFix path |>.freshTy domainOrigin).2.freshTy
+            codomainOrigin).1)
+      rw [domainAllocation.target_eq, codomainAllocation.target_eq]
+      exact codomainAllocation.state.prevailing.sameTarget _
+    exact directExtension.transportTy
+      (placeholderExtension.transportTy atAllocation)
+  have bodyContexts : ContextBisimulation bodyBefore.prevailing
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
+        declarativeContext)
+      ((argument, Scheme.mono (fixDomain state path)) ::
+        (self, Scheme.mono executablePlaceholder) :: executableContext) := by
+    let base := (((contexts.transport (before.visitExtension .exprFix path)).transport
+      (visited.freshTyExtension domainOrigin)).transport
+      (domainAllocation.state.freshTyExtension codomainOrigin)).transport
+      placeholderExtension |>.transport directExtension
+    exact (base.consMono self placeholderRelated).consMono argument domainRelated
+  have bodyContextBounded : Context.BoundedBy
+      { q with nextTy := q.nextTy + 2 }
+      ((argument, Scheme.mono (.var q.nextTy)) ::
+        (self, Scheme.mono
+          (.fn (.var q.nextTy) (.var (q.nextTy + 1)))) ::
+        declarativeContext) :=
+    Context.BoundedBy.cons
+      (Scheme.BoundedBy.ofMono (Ty.BoundedBy.varOf (by simp)))
+      (Context.BoundedBy.cons
+        (Scheme.BoundedBy.ofMono (Ty.BoundedBy.fnOf
+          (Ty.BoundedBy.varOf (by simp))
+          (Ty.BoundedBy.varOf (by simp))))
+        (contextBounded.mono (SupplyExtends.bumpTy q 2)))
+  let bodyRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := (self, executablePlaceholder) ::
+        selfEnv.eraseMany [self, argument]) (path := 0 :: path)
+      bodyBefore bodyContexts bodyContextBounded bodyAudit bodyAdequate)
+  have codomainRelatedAtBody : TyBisimulation
+      bodyRun.run.completion.state.prevailing (.var (q.nextTy + 1))
+      (fixCodomain state path) := by
+    have atBody := bodyRun.run.transition.transportTy
+      (show TyBisimulation bodyBefore.prevailing (.var (q.nextTy + 1))
+          (fixCodomain state path) from by
+        have atAllocation : TyBisimulation codomainAllocation.state.prevailing
+            (.var (q.nextTy + 1)) (fixCodomain state path) := by
+          change TyBisimulation codomainAllocation.state.prevailing
+            (.var (q.nextTy + 1))
+            ((visit state .exprFix path |>.freshTy domainOrigin).2.freshTy
+              codomainOrigin).1
+          rw [codomainAllocation.target_eq]
+          exact codomainAllocation.state.prevailing.sameTarget _
+        exact directExtension.transportTy
+          (placeholderExtension.transportTy atAllocation))
+    exact atBody
+  have bodyDeclarativeBounded : bodyTarget.BoundedBy q₁ :=
+    (bodyRaw.boundedBy closed
+      codomainAllocation.state.declarative_bounded bodyContextBounded).2
+  have codomainBounded : Ty.BoundedBy q₁ (.var (q.nextTy + 1)) :=
+    (Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends
+  have executableCodomainBounded : (fixCodomain state path).BoundedBy q₁ := by
+    change (((visit state .exprFix path |>.freshTy domainOrigin).2.freshTy
+      codomainOrigin).1).BoundedBy q₁
+    rw [codomainAllocation.target_eq]
+    exact codomainBounded
+  let alignmentRun :=
+    DemandTypingInferenceCompletenessAlignmentTraversal.ddAlignTypesWithLedger_complete
+      (origin := resultOrigin) bodyRun.run.completion.state bodyRun.run.target
+      codomainRelatedAtBody bodyDeclarativeBounded codomainBounded
+      bodyRun.rawTargetBounded executableCodomainBounded aligned
+  let rawRun := DemandTypingInferenceCompletenessExprTraversal.inferExprFuel_fix_complete
+    before distinct direct nonMatcher bodyRun.run alignmentRun
+  exact ⟨⟨rawRun, by
+    have placeholderBounded : executablePlaceholder.BoundedBy q₁ := by
+      change (Ty.fn (visit state .exprFix path |>.freshTy domainOrigin).1
+        ((visit state .exprFix path |>.freshTy domainOrigin).2.freshTy
+          codomainOrigin).1).BoundedBy q₁
+      rw [domainAllocation.target_eq, codomainAllocation.target_eq]
+      exact Ty.BoundedBy.fnOf
+        ((Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends)
+        ((Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends)
+    exact placeholderBounded⟩⟩
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
