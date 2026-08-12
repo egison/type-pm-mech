@@ -275,6 +275,215 @@ theorem CapListBisimulation.projectSignature_miss
       rw [miss] at renamed
       contradiction
 
+/-! ## Reverse completeness of the pure allocation twins -/
+
+/- The executable skeleton freshener succeeds whenever its pure
+supply-indexed twin succeeds.  The proof follows the same three mutually
+recursive shapes, so it also pins the executable allocation order. -/
+mutual
+
+theorem freshenSkeleton_complete_of_supply
+    (observable : Shape.Observability) (origin : ConstraintOrigin) :
+    ∀ (evidence : Shape.Evidence) (initial : InferState)
+      (capability : Cap) (q' : InferenceBase.FreshSupply),
+      freshenSkeletonSupply observable evidence initial.supply =
+          some (capability, q') →
+        ∃ final, freshenSkeleton observable origin evidence initial =
+          some (capability, final)
+  | .unseen, initial, capability, q', pureSuccess => by
+      simp only [freshenSkeletonSupply, Option.some.injEq,
+        Prod.mk.injEq] at pureSuccess
+      rcases pureSuccess with ⟨rfl, rfl⟩
+      refine ⟨(initial.freshCap origin).2, ?_⟩
+      simp [freshenSkeleton, InferState.freshCap]
+  | .known leaf, initial, capability, q', pureSuccess => by
+      simp only [freshenSkeletonSupply, Option.some.injEq,
+        Prod.mk.injEq] at pureSuccess
+      rcases pureSuccess with ⟨rfl, rfl⟩
+      exact ⟨initial, rfl⟩
+  | .con name children, initial, capability, q', pureSuccess => by
+      cases maskEq : observable name with
+      | none => simp [freshenSkeletonSupply, maskEq] at pureSuccess
+      | some mask =>
+          cases pureChildren : freshenSkeletonMaskedSupply observable mask
+              children initial.supply with
+          | none =>
+              simp [freshenSkeletonSupply, maskEq, pureChildren] at pureSuccess
+          | some pair =>
+              rcases pair with ⟨capabilities, childrenSupply⟩
+              simp [freshenSkeletonSupply, maskEq, pureChildren] at pureSuccess
+              rcases pureSuccess with ⟨rfl, rfl⟩
+              rcases freshenSkeletonMasked_complete_of_supply observable origin
+                  mask children initial capabilities childrenSupply pureChildren
+                with ⟨final, executableChildren⟩
+              exact ⟨final, by
+                simp [freshenSkeleton, maskEq, executableChildren]⟩
+  | .prod components, initial, capability, q', pureSuccess => by
+      cases pureComponents : freshenSkeletonListSupply observable components
+          initial.supply with
+      | none =>
+          simp [freshenSkeletonSupply, pureComponents] at pureSuccess
+      | some pair =>
+          rcases pair with ⟨capabilities, componentsSupply⟩
+          simp [freshenSkeletonSupply, pureComponents] at pureSuccess
+          rcases pureSuccess with ⟨rfl, rfl⟩
+          rcases freshenSkeletonList_complete_of_supply observable origin
+              components initial capabilities componentsSupply pureComponents
+            with ⟨final, executableComponents⟩
+          exact ⟨final, by
+            simp [freshenSkeleton, executableComponents]⟩
+
+theorem freshenSkeletonList_complete_of_supply
+    (observable : Shape.Observability) (origin : ConstraintOrigin) :
+    ∀ (evidences : List Shape.Evidence) (initial : InferState)
+      (capabilities : List Cap) (q' : InferenceBase.FreshSupply),
+      freshenSkeletonListSupply observable evidences initial.supply =
+          some (capabilities, q') →
+        ∃ final, freshenSkeletonList observable origin evidences initial =
+          some (capabilities, final)
+  | [], initial, capabilities, q', pureSuccess => by
+      simp only [freshenSkeletonListSupply, Option.some.injEq,
+        Prod.mk.injEq] at pureSuccess
+      rcases pureSuccess with ⟨rfl, rfl⟩
+      exact ⟨initial, rfl⟩
+  | evidence :: rest, initial, capabilities, q', pureSuccess => by
+      cases pureHead : freshenSkeletonSupply observable evidence initial.supply
+          with
+      | none => simp [freshenSkeletonListSupply, pureHead] at pureSuccess
+      | some headPair =>
+          rcases headPair with ⟨head, middleSupply⟩
+          cases pureTail : freshenSkeletonListSupply observable rest middleSupply
+              with
+          | none =>
+              simp [freshenSkeletonListSupply, pureHead, pureTail] at pureSuccess
+          | some tailPair =>
+              rcases tailPair with ⟨tail, tailSupply⟩
+              simp [freshenSkeletonListSupply, pureHead, pureTail] at pureSuccess
+              rcases pureSuccess with ⟨rfl, rfl⟩
+              rcases freshenSkeleton_complete_of_supply observable origin
+                  evidence initial head middleSupply pureHead with
+                ⟨middle, executableHead⟩
+              have middleExact := freshenSkeleton_supplyExact executableHead
+              have pairEq := Option.some.inj
+                (middleExact.1.symm.trans pureHead)
+              have middleSupplyEq : middle.supply = middleSupply :=
+                congrArg Prod.snd pairEq
+              rw [← middleSupplyEq] at pureTail
+              rcases freshenSkeletonList_complete_of_supply observable origin
+                  rest middle tail tailSupply pureTail with
+                ⟨final, executableTail⟩
+              exact ⟨final, by
+                simp [freshenSkeletonList, executableHead, executableTail]⟩
+
+theorem freshenSkeletonMasked_complete_of_supply
+    (observable : Shape.Observability) (origin : ConstraintOrigin) :
+    ∀ (mask : List Bool) (evidences : List Shape.Evidence)
+      (initial : InferState) (capabilities : List Cap)
+      (q' : InferenceBase.FreshSupply),
+      freshenSkeletonMaskedSupply observable mask evidences initial.supply =
+          some (capabilities, q') →
+        ∃ final, freshenSkeletonMasked observable origin mask evidences
+          initial = some (capabilities, final)
+  | [], [], initial, capabilities, q', pureSuccess => by
+      simp only [freshenSkeletonMaskedSupply, Option.some.injEq,
+        Prod.mk.injEq] at pureSuccess
+      rcases pureSuccess with ⟨rfl, rfl⟩
+      exact ⟨initial, rfl⟩
+  | [], _ :: _, _, _, _, pureSuccess => by
+      simp [freshenSkeletonMaskedSupply] at pureSuccess
+  | _ :: _, [], _, _, _, pureSuccess => by
+      simp [freshenSkeletonMaskedSupply] at pureSuccess
+  | isObservable :: mask, evidence :: rest, initial, capabilities, q',
+      pureSuccess => by
+      cases isObservable with
+      | false =>
+          cases pureTail : freshenSkeletonMaskedSupply observable mask rest
+              initial.supply with
+          | none =>
+              simp [freshenSkeletonMaskedSupply, pureTail] at pureSuccess
+          | some tailPair =>
+              rcases tailPair with ⟨tail, tailSupply⟩
+              simp [freshenSkeletonMaskedSupply, pureTail] at pureSuccess
+              rcases pureSuccess with ⟨rfl, rfl⟩
+              rcases freshenSkeletonMasked_complete_of_supply observable origin
+                  mask rest initial tail tailSupply pureTail with
+                ⟨final, executableTail⟩
+              exact ⟨final, by
+                simp [freshenSkeletonMasked, executableTail]⟩
+      | true =>
+          cases pureHead : freshenSkeletonSupply observable evidence
+              initial.supply with
+          | none =>
+              simp [freshenSkeletonMaskedSupply, pureHead] at pureSuccess
+          | some headPair =>
+              rcases headPair with ⟨head, middleSupply⟩
+              cases pureTail : freshenSkeletonMaskedSupply observable mask rest
+                  middleSupply with
+              | none =>
+                  simp [freshenSkeletonMaskedSupply, pureHead, pureTail]
+                    at pureSuccess
+              | some tailPair =>
+                  rcases tailPair with ⟨tail, tailSupply⟩
+                  simp [freshenSkeletonMaskedSupply, pureHead, pureTail]
+                    at pureSuccess
+                  rcases pureSuccess with ⟨rfl, rfl⟩
+                  rcases freshenSkeleton_complete_of_supply observable origin
+                      evidence initial head middleSupply pureHead with
+                    ⟨middle, executableHead⟩
+                  have middleExact := freshenSkeleton_supplyExact executableHead
+                  have pairEq := Option.some.inj
+                    (middleExact.1.symm.trans pureHead)
+                  have middleSupplyEq : middle.supply = middleSupply :=
+                    congrArg Prod.snd pairEq
+                  rw [← middleSupplyEq] at pureTail
+                  rcases freshenSkeletonMasked_complete_of_supply observable
+                      origin mask rest middle tail tailSupply pureTail with
+                    ⟨final, executableTail⟩
+                  exact ⟨final, by
+                    simp [freshenSkeletonMasked, executableHead,
+                      executableTail]⟩
+
+end
+
+/-- Exact reverse surface for skeleton freshening, including the terminal
+supply, unchanged prevailing substitution, and the structural ledger range. -/
+theorem freshenSkeleton_complete_exact
+    {observable : Shape.Observability} {origin : ConstraintOrigin}
+    {evidence : Shape.Evidence} {initial : InferState}
+    {capability : Cap} {q' : InferenceBase.FreshSupply}
+    (pureSuccess : freshenSkeletonSupply observable evidence initial.supply =
+      some (capability, q')) :
+    ∃ final,
+      freshenSkeleton observable origin evidence initial =
+          some (capability, final) ∧
+      final.supply = q' ∧
+      final.prevailing = initial.prevailing ∧
+      final.capabilityOrigins =
+        DDLedger.markCapRange initial.capabilityOrigins initial.supply q' := by
+  rcases freshenSkeleton_complete_of_supply observable origin evidence initial
+      capability q' pureSuccess with ⟨final, executableSuccess⟩
+  rcases freshenSkeleton_supplyExact executableSuccess with
+    ⟨pureAgain, prevailing, ledger⟩
+  have resultEq := Option.some.inj (pureAgain.symm.trans pureSuccess)
+  have supplyEq : final.supply = q' := congrArg Prod.snd resultEq
+  exact ⟨final, executableSuccess, supplyEq, prevailing, by
+    simpa [supplyEq] using ledger⟩
+
+/-- The total shared-result allocator is literally its pure supply twin. -/
+theorem freshPatternCtorAssignments_complete_exact
+    (origin : ConstraintOrigin) (variables : List TypePM.TyVar)
+    (initial : InferState) :
+    let allocated := freshPatternCtorAssignments origin variables initial
+    allocated.1 =
+        (patternCtorAssignmentsSupply variables initial.supply).1 ∧
+      allocated.2.supply =
+        (patternCtorAssignmentsSupply variables initial.supply).2 ∧
+      allocated.2.prevailing = initial.prevailing ∧
+      allocated.2.capabilityOrigins =
+        DDLedger.markCapRange initial.capabilityOrigins initial.supply
+          allocated.2.supply :=
+  freshPatternCtorAssignments_supplyExact origin variables initial
+
 private def StateRunCompletion.refl
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
