@@ -253,6 +253,59 @@ def boundedSynthLet_complete
     closed before valueRun.run bodyRun.run,
     bodyRun.rawTargetBounded⟩
 
+def boundedSynthApp_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {function argument : Expr}
+    {functionTarget argumentTarget : Ty}
+    {q q₁ q₂ q₃ q₄ : InferenceBase.FreshSupply}
+    {S S₁ S₂ S₃ S₄ : Subst}
+    {ledger ledger₁ ledger₂ ledger₃ ledger₄ : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (functionRun : BoundedSynthRunCompletion (before.visit .exprApp path)
+      (inferExprFuel fuel signature context selfEnv (0 :: path) function
+        (visit state .exprApp path)) q₁ S₁ ledger₁ functionTarget)
+    (functionAlignment :
+      let domainAllocation := functionRun.run.completion.state.freshTy
+        (freshOrigin .expression path "application-domain")
+      let resultAllocation := domainAllocation.state.freshTy
+        (freshOrigin .expression path "application-result")
+      StateRunCompletion resultAllocation.state
+        (alignTypes
+          ((functionRun.run.result.state.freshTy
+            (freshOrigin .expression path "application-domain")).2.freshTy
+              (freshOrigin .expression path "application-result")).2
+          (freshOrigin .expression path "application-function")
+          functionRun.run.result.target
+          (.fn (functionRun.run.result.state.freshTy
+              (freshOrigin .expression path "application-domain")).1
+            ((functionRun.run.result.state.freshTy
+              (freshOrigin .expression path "application-domain")).2.freshTy
+                (freshOrigin .expression path "application-result")).1))
+        q₂ S₂ ledger₂)
+    (argumentRun : BoundedSynthRunCompletion functionAlignment.completion
+      (inferExprFuel fuel signature context selfEnv (1 :: path) argument
+        functionAlignment.result) q₃ S₃ ledger₃ argumentTarget)
+    (expectedAlignment :
+      let executableDomain := (functionRun.run.result.state.freshTy
+        (freshOrigin .expression path "application-domain")).1
+      StateRunCompletion argumentRun.run.completion.state
+        (alignExprResultAtExpected (1 :: path) argumentRun.run.result
+          executableDomain) q₄ S₄ ledger₄)
+    (resultBounded :
+      let run :=
+        DemandTypingInferenceCompletenessExprTraversal.inferExprFuel_app_complete
+          before functionRun.run functionAlignment argumentRun.run
+          expectedAlignment
+      run.result.target.BoundedBy q₄) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.app function argument) state)
+      q₄ S₄ ledger₄ (.var (q₁.nextTy + 1)) :=
+  ⟨DemandTypingInferenceCompletenessExprTraversal.inferExprFuel_app_complete
+    before functionRun.run functionAlignment argumentRun.run expectedAlignment,
+    resultBounded⟩
+
 /-- Compose the `DDCheckOrigin.mk` boundary once the recursive synthesis run
 has supplied its raw executable target and its syntactic bound.  Solver
 success and expected-coercion selection remain internal to the generic
