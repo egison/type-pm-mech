@@ -9,8 +9,11 @@ namespace DemandTypingInferenceCompletenessFixMatcher
 
 open Inference
 open DemandTypingInferenceCompletenessTraversal
+open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessPatternCtorCapability
 open DemandTypingInferenceCompletenessCertifiedRun
+open DemandTypingInferenceCompletenessMatcherExprTraversal
 
 private theorem setOrigins_append (ledger : CapabilityOriginLedger)
     (left right : List CapVar) (origin : CapabilityOrigin) :
@@ -445,6 +448,231 @@ theorem ValidatorRunExtension.ofBuildFixPlaceholderMatcher
           targetOrigin).trans
           (ValidatorRunExtension.freshTy terminal signature targetState
             producerOrigin))
+
+/-- A solve-free structural allocation range keeps the existing residuals
+and extends only the two origin ledgers. -/
+def TraversalStateCorrespondence.markCapRangeExtension
+    {q q' : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial final : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    (supplyExtension : SupplyExtends q q')
+    (supplyEq : final.supply = q')
+    (prevailingEq : final.prevailing = initial.prevailing)
+    (ledgerEq : final.capabilityOrigins =
+      DDLedger.markCapRange initial.capabilityOrigins q q') :
+    BisimulationExtension before.prevailing
+      (DDLedger.markCapRange ledger q q') S final := by
+  let fresh : List CapVar :=
+    ((List.range (q'.nextCap - q.nextCap)).map fun offset =>
+    ⟨q.nextCap + offset⟩).reverse
+  have freshAbove : ∀ varId, varId ∈ fresh → q.nextCap ≤ varId.id := by
+    intro varId membership
+    simp only [fresh, List.mem_reverse, List.mem_map] at membership
+    rcases membership with ⟨offset, _, rfl⟩
+    exact Nat.le_add_right _ _
+  have forwardBetween : AdmissiblePostBetween final.capabilityOrigins
+      (DDLedger.markCapRange ledger q q') before.prevailing.forward := by
+    have extended := admissiblePostBetween_setFreshStructural_of_bounded
+      before.prevailing.ledgerBisimulation.forwardBetween
+      before.forward_bounded before.executable_ledger_below freshAbove
+    simpa [DDLedger.markCapRange, fresh, ledgerEq] using extended
+  have reverseBetween : AdmissiblePostBetween
+      (DDLedger.markCapRange ledger q q') final.capabilityOrigins
+      before.prevailing.reverse := by
+    have extended := admissiblePostBetween_setFreshStructural_of_bounded
+      before.prevailing.ledgerBisimulation.reverseBetween
+      before.reverse_bounded before.ledger_below freshAbove
+    simpa [DDLedger.markCapRange, fresh, ledgerEq] using extended
+  refine
+    { after :=
+        { forward := before.prevailing.forward
+          forwardEquation := by
+            simpa [prevailingEq] using before.prevailing.forwardEquation
+          declarativeIdempotent := before.prevailing.declarativeIdempotent
+          reverse := before.prevailing.reverse
+          reverseEquation := by
+            simpa [prevailingEq] using before.prevailing.reverseEquation
+          ledgerBisimulation := ⟨forwardBetween, reverseBetween⟩
+          executableIdempotent := by
+            simpa [prevailingEq] using before.prevailing.executableIdempotent }
+      transportTy := ?_
+      transportScheme := ?_ }
+  · intro declarativeTarget executableTarget related
+    exact ⟨by simpa [prevailingEq] using related.forward,
+      by simpa [prevailingEq] using related.reverse⟩
+  · intro _ _ forward reverse
+    exact ⟨by simpa [prevailingEq] using forward,
+      by simpa [prevailingEq] using reverse⟩
+
+/-- The matcher placeholder allocator preserves the entire traversal
+correspondence at the pure range ledger. -/
+theorem buildFixPlaceholder_correspondence
+    {signature : FrozenSig} {path : SyntaxPath} {clauses : List Clause}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial final : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    {domain codomain : Ty}
+    (success : buildFixPlaceholder signature path (.matcher clauses) initial =
+      some (domain, codomain, final)) :
+    Nonempty (TraversalStateCorrespondence final.supply S
+      (DDLedger.markCapRange ledger q final.supply) final) := by
+  unfold buildFixPlaceholder at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨pair, recursiveSuccess, rest⟩
+  rcases pair with ⟨capability, middle⟩
+  unfold recursiveMatcherTemplate at recursiveSuccess
+  rcases Option.bind_eq_some_iff.mp recursiveSuccess with
+    ⟨evidence, _, freshSuccess⟩
+  let middleRun : TraversalStateCorrespondence middle.supply S
+      (DDLedger.markCapRange ledger q middle.supply) middle :=
+    match evidence with
+    | .unseen => by
+        simp only [Option.some.injEq, Prod.mk.injEq] at freshSuccess
+        rcases freshSuccess with ⟨_, rfl⟩
+        simpa [DDLedger.markCapRange, CapabilityOriginLedger.setOrigins,
+          before.supply_eq] using before
+    | .known leaf => Classical.choice
+        (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+          before freshSuccess)
+    | .con name children => Classical.choice
+        (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+          before freshSuccess)
+    | .prod components => Classical.choice
+        (DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.freshenSkeleton
+          before freshSuccess)
+  generalize fcvEq : capability.fcv = variables at rest
+  cases variables with
+  | nil =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      rcases rest with ⟨rfl, rfl, rfl⟩
+      let capOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-capability"
+      let targetOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-target"
+      let producerOrigin := freshOrigin .recursiveBinder path
+        "fix-producer-target"
+      let capRun :=
+        DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
+          middleRun capOrigin
+      let targetRun := capRun.freshTy targetOrigin
+      let producerRun := targetRun.state.freshTy producerOrigin
+      let producerState :=
+        (((middle.freshCap capOrigin).2.freshTy targetOrigin).2.freshTy
+          producerOrigin).2
+      have front : SupplyExtends q middle.supply := by
+        let extension := recursiveMatcherTemplate_stateExtension (by
+          simpa [recursiveMatcherTemplate] using recursiveSuccess)
+        exact ⟨by simpa [before.supply_eq] using extension.supplyCap,
+          by simpa [before.supply_eq] using extension.supplyTy⟩
+      have back : SupplyExtends middle.supply producerState.supply := by
+        exact ((SupplyExtends.bumpCap middle.supply 1).trans
+          (SupplyExtends.bumpTy _ 1)).trans (SupplyExtends.bumpTy _ 1)
+      have rangeEq :
+          DDLedger.markFreshCap (DDLedger.markCapRange ledger q middle.supply)
+              middle.supply =
+            DDLedger.markCapRange ledger q producerState.supply := by
+        rw [← markCapRange_trans ledger q middle.supply producerState.supply
+          front back]
+        simp [DDLedger.markCapRange, DDLedger.markFreshCap,
+          CapabilityOriginLedger.markStructuralFlexible, producerState,
+          CapabilityOriginLedger.setOrigins,
+          InferState.freshCap, InferenceBase.freshCapMeta,
+          InferState.freshTy, InferenceBase.freshTyMeta,
+          InferState.recordEvent]
+      refine ⟨?_⟩
+      simp only [fcvEq]
+      change TraversalStateCorrespondence producerState.supply S
+        (DDLedger.markCapRange ledger q producerState.supply) producerState
+      have rangeEq' := rangeEq
+      dsimp [producerState] at rangeEq'
+      rw [producerRun.state.supply_eq]
+      simpa only [producerState, rangeEq', producerRun.state.supply_eq] using
+        producerRun.state
+  | cons first tail =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      rcases rest with ⟨rfl, rfl, rfl⟩
+      let targetOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-target"
+      let producerOrigin := freshOrigin .recursiveBinder path
+        "fix-producer-target"
+      let targetRun := middleRun.freshTy targetOrigin
+      let producerRun := targetRun.state.freshTy producerOrigin
+      let producerState :=
+        ((middle.freshTy targetOrigin).2.freshTy producerOrigin).2
+      have front : SupplyExtends q middle.supply := by
+        let extension := recursiveMatcherTemplate_stateExtension (by
+          simpa [recursiveMatcherTemplate] using recursiveSuccess)
+        exact ⟨by simpa [before.supply_eq] using extension.supplyCap,
+          by simpa [before.supply_eq] using extension.supplyTy⟩
+      have back : SupplyExtends middle.supply producerState.supply :=
+        (SupplyExtends.bumpTy middle.supply 1).trans
+          (SupplyExtends.bumpTy _ 1)
+      have rangeEq : DDLedger.markCapRange ledger q middle.supply =
+          DDLedger.markCapRange ledger q producerState.supply := by
+        rw [← markCapRange_trans ledger q middle.supply producerState.supply
+          front back]
+        simp [DDLedger.markCapRange, producerState,
+          CapabilityOriginLedger.setOrigins, InferState.freshTy,
+          InferenceBase.freshTyMeta, InferState.recordEvent]
+      refine ⟨?_⟩
+      simp only [fcvEq]
+      change TraversalStateCorrespondence producerState.supply S
+        (DDLedger.markCapRange ledger q producerState.supply) producerState
+      have rangeEq' := rangeEq
+      dsimp [producerState] at rangeEq'
+      rw [producerRun.state.supply_eq]
+      simpa only [producerState, rangeEq', producerRun.state.supply_eq] using
+        producerRun.state
+
+/-- Full recursive-matcher placeholder completion: deterministic result,
+state correspondence, and chronological transition. -/
+theorem fixMatcherPlaceholder_complete
+    {signature : FrozenSig} {path : SyntaxPath} {clauses : List Clause}
+    {q q₀ : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger initial)
+    {domain codomain : Ty}
+    (pure : fixMatcherPlaceholderSupply signature clauses q =
+      some (domain, codomain, q₀)) :
+    Nonempty (FixMatcherPlaceholderCompletion before signature path clauses
+      domain codomain q₀) := by
+  have pureAtState : fixMatcherPlaceholderSupply signature clauses
+      initial.supply = some (domain, codomain, q₀) := by
+    simpa [before.supply_eq] using pure
+  rcases buildFixPlaceholder_complete_of_supply (path := path) pureAtState with
+    ⟨final, success, supplyEq⟩
+  subst q₀
+  let correspondence := Classical.choice
+    (buildFixPlaceholder_correspondence before success)
+  rcases buildFixPlaceholder_matcher_ddRun success with
+    ⟨_, prevailingEq, ledgerEq⟩
+  have supplyExtension : SupplyExtends q final.supply := by
+    have stateExtension := buildFixPlaceholder_stateExtension success
+    exact ⟨by
+        rw [← before.supply_eq]
+        exact stateExtension.supplyCap,
+      by
+        rw [← before.supply_eq]
+        exact stateExtension.supplyTy⟩
+  let transition :=
+    DemandTypingInferenceCompletenessFixMatcher.TraversalStateCorrespondence.markCapRangeExtension
+      before supplyExtension rfl
+    prevailingEq (by simpa [before.supply_eq] using ledgerEq)
+  exact ⟨
+    { state := final
+      success := success
+      supply_eq := rfl
+      transition := transition
+      declarative_bounded := correspondence.declarative_bounded
+      executable_bounded := correspondence.executable_bounded
+      forward_bounded := before.forward_bounded.mono supplyExtension
+      reverse_bounded := before.reverse_bounded.mono supplyExtension
+      ledger_below := correspondence.ledger_below
+      executable_ledger_below := correspondence.executable_ledger_below
+      protected_origins := correspondence.protected_origins
+      protected_below := correspondence.protected_below
+      allocated_recorded := correspondence.allocated_recorded
+      protected_safe := correspondence.protected_safe }⟩
 
 end DemandTypingInferenceCompletenessFixMatcher
 end TypePM
