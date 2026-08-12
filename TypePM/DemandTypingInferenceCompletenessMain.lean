@@ -197,15 +197,16 @@ def AuditedCheckComponents.ofAudit
   | @mk _ _ _ _ _ _ _ synthesized _ _ synthOrigin _ _ aligned child =>
       exact ⟨_, _, synthesized, synthOrigin, aligned, child⟩
 
-/-- An audited paired synthesis motive closes the correspondingly paired
-checking boundary.  The expected type is transported across the synthesis
+/-- At one fuel ceiling, audited paired synthesis closes every strictly
+smaller checking call.  The expected type is transported across the synthesis
 transition before reconstructing the executable coercion/alignment cut. -/
-theorem auditedCheckCompletenessMotive_of_synth
+theorem auditedCheckCompletenessAt_of_synthBelow
     {terminal : Subst} {signature : FrozenSig}
     (closed : signature.SchemesClosed)
-    (synthComplete : AuditedSynthCompletenessMotive terminal signature) :
-    MatcherCheckCompletenessMotive terminal signature := by
-  intro fuel declarativeContext executableContext selfEnv path expression
+    {fuel : Nat}
+    (synthComplete : AuditedSynthCompletenessBelow terminal signature fuel) :
+    MatcherCheckCompletenessAt terminal signature fuel := by
+  intro declarativeContext executableContext selfEnv path expression
     declarativeExpected executableExpected q q' S S' ledger ledger' state raw
     origin before contexts expectedRelated contextBounded expectedBounded
     executableExpectedBounded audit adequate
@@ -218,7 +219,8 @@ theorem auditedCheckCompletenessMotive_of_synth
           at adequate ⊢
         omega
       let synth := Classical.choice
-        (synthComplete (selfEnv := selfEnv) (path := path)
+        (synthComplete (Nat.lt_succ_self fuel)
+          (selfEnv := selfEnv) (path := path)
           (origin := components.synthOrigin) before contexts contextBounded
           components.synthAudit synthAdequate)
       obtain ⟨_, declarativeRawBounded⟩ :=
@@ -234,6 +236,42 @@ theorem auditedCheckCompletenessMotive_of_synth
         declarativeRawBounded expectedAtCut synth.rawTargetBounded
         executableExpectedAtCut components.aligned
       exact ⟨checkExprFuel_complete before synth.run alignedRun⟩
+
+/-- Unrestricted wrapper used after the global audited synthesis recursion
+has been closed. -/
+theorem auditedCheckCompletenessMotive_of_synth
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (synthComplete : AuditedSynthCompletenessMotive terminal signature) :
+    MatcherCheckCompletenessMotive terminal signature := by
+  intro fuel
+  exact auditedCheckCompletenessAt_of_synthBelow closed
+    (fun _ => synthComplete)
+
+/-- The same raw bounded synthesis package is the subtype expected by the
+user-pattern dispatcher. -/
+theorem patternSynthCompletenessBelow_of_audited
+    {terminal : Subst} {signature : FrozenSig} {bound : Nat}
+    (complete : AuditedSynthCompletenessBelow terminal signature bound) :
+    PatternSynthCompletenessBelow terminal signature bound := by
+  intro fuel fuelLt declarativeContext executableContext selfEnv path
+    expression target q q' S S' ledger ledger' state raw origin before
+    contexts contextBounded audit adequate
+  let run := Classical.choice
+    (complete fuelLt (selfEnv := selfEnv) (path := path) (origin := origin)
+      before contexts contextBounded audit adequate)
+  exact ⟨⟨run.run, run.rawTargetBounded⟩⟩
+
+/-- Audited synthesis below a ceiling also supplies all matcher checking
+calls below that ceiling. -/
+theorem matcherCheckCompletenessBelow_of_audited
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed) {bound : Nat}
+    (complete : AuditedSynthCompletenessBelow terminal signature bound) :
+    MatcherCheckCompletenessBelow terminal signature bound := by
+  intro fuel fuelLt
+  exact auditedCheckCompletenessAt_of_synthBelow closed
+    (complete.mono (Nat.le_of_lt fuelLt))
 
 /-- Traversal-stable checking counterpart of `SynthCompletenessMotive`. -/
 abbrev CheckCompletenessAt (signature : FrozenSig) (fuel : Nat) : Prop :=
