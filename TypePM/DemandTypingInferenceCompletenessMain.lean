@@ -158,6 +158,72 @@ abbrev AuditedSynthCompletenessMotive
     (terminal : Subst) (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat}, AuditedSynthCompletenessAt terminal signature fuel
 
+/-- Proof-relevant synthesis data stored by an audited checking node.  This
+package hides the constructor's dependent proof indices from later clients. -/
+structure AuditedCheckComponents
+    (terminal : Subst) (signature : FrozenSig)
+    (q : InferenceBase.FreshSupply) (S : Subst) (context : Context)
+    (expression : Expr) (expected : Ty) (q' : InferenceBase.FreshSupply)
+    (S' : Subst) (ledger ledger' : CapabilityOriginLedger) : Type where
+  rawTarget : Ty
+  middle : Subst
+  synthesized : DDSynth signature q S context expression rawTarget q' middle
+  synthOrigin : DDSynthOrigin signature synthesized ledger ledger'
+  aligned : DDAlignWithLedger ledger' middle rawTarget expected S'
+  synthAudit : DDSynthTerminalAudit terminal signature synthOrigin
+
+def AuditedCheckComponents.ofAudit
+    {terminal : Subst} {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
+    {expression : Expr} {expected : Ty} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} {raw : DDCheck signature q S context expression expected q' S'}
+    {ledger ledger' : CapabilityOriginLedger}
+    {origin : DDCheckOrigin signature raw ledger ledger'}
+    (audit : DDCheckTerminalAudit terminal signature origin) :
+    AuditedCheckComponents terminal signature q S context expression expected
+      q' S' ledger ledger' := by
+  cases audit with
+  | @mk _ _ _ _ _ _ _ synthesized _ _ synthOrigin _ _ aligned child =>
+      exact ⟨_, _, synthesized, synthOrigin, aligned, child⟩
+
+/-- An audited paired synthesis motive closes the correspondingly paired
+checking boundary.  The expected type is transported across the synthesis
+transition before reconstructing the executable coercion/alignment cut. -/
+theorem auditedCheckCompletenessMotive_of_synth
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (synthComplete : AuditedSynthCompletenessMotive terminal signature) :
+    MatcherCheckCompletenessMotive terminal signature := by
+  intro fuel declarativeContext executableContext selfEnv path expression
+    declarativeExpected executableExpected q q' S S' ledger ledger' state raw
+    origin before contexts expectedRelated contextBounded expectedBounded
+    executableExpectedBounded audit adequate
+  cases fuel with
+  | zero => simp [MatcherCheckBudgetAdequate] at adequate
+  | succ fuel =>
+      let components := AuditedCheckComponents.ofAudit audit
+      have synthAdequate : SynthBudgetAdequate fuel expression := by
+        simp only [MatcherCheckBudgetAdequate, SynthBudgetAdequate]
+          at adequate ⊢
+        omega
+      let synth := Classical.choice
+        (synthComplete (selfEnv := selfEnv) (path := path)
+          (origin := components.synthOrigin) before contexts contextBounded
+          components.synthAudit synthAdequate)
+      obtain ⟨_, declarativeRawBounded⟩ :=
+        components.synthesized.boundedBy closed before.declarative_bounded
+          contextBounded
+      have expectedAtCut := expectedBounded.mono
+        components.synthesized.supplyExtends
+      have executableExpectedAtCut := executableExpectedBounded.mono
+        components.synthesized.supplyExtends
+      let alignedRun := ddAlignWithLedger_complete (path := path)
+        synth.run.completion.state synth.run.target
+        (synth.run.transition.transportTy expectedRelated)
+        declarativeRawBounded expectedAtCut synth.rawTargetBounded
+        executableExpectedAtCut components.aligned
+      exact ⟨checkExprFuel_complete before synth.run alignedRun⟩
+
 /-- Traversal-stable checking counterpart of `SynthCompletenessMotive`. -/
 abbrev CheckCompletenessAt (signature : FrozenSig) (fuel : Nat) : Prop :=
   ∀ {context : Context} {selfEnv : SelfEnv}
