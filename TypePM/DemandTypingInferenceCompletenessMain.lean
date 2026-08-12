@@ -1,6 +1,7 @@
 import TypePM.DemandTypingInferenceCompletenessMatcherMain
 import TypePM.DemandTypingInferenceCompletenessMatcherExprTraversal
 import TypePM.DemandTypingInferenceCompletenessPatternMain
+import TypePM.DemandTypingInferenceCompletenessPatternDispatcher
 import TypePM.DemandTypingInferenceCompletenessCheckingAlignment
 import TypePM.DemandTypingInferenceCompletenessFuel
 
@@ -27,11 +28,15 @@ open DemandTypingInferenceCompletenessFuel
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessCheckingAlignment
+open DemandTypingInferenceCompletenessAlignmentTraversal
+open DemandTypingInferenceCompletenessExprTraversal
 open DemandTypingInferenceCompletenessMatcherTraversal
 open DemandTypingInferenceCompletenessMatcherMain
 open DemandTypingInferenceCompletenessPatternMain
+open DemandTypingInferenceCompletenessPatternDispatcher
 
 /-! ## Global recursion packages -/
 
@@ -2792,6 +2797,201 @@ theorem matcherInferredCapability_fixed
   change varId ∈ (S.apply (.matcher rawDual.cap rawDual.target)).fcv
   simp only [Subst.apply_matcher, Ty.fcv, List.mem_append]
   exact Or.inl varInCap
+
+/-- Componentwise dual/target correspondence combines under a slot shell. -/
+def TyBisimulation.slot
+    {ledger : CapabilityOriginLedger} {S : Subst} {state : InferState}
+    {relation : StateBisimulation ledger S state}
+    {declarativeCap executableCap : Cap}
+    {declarativeTarget executableTarget : Ty}
+    (capability : CapBisimulation relation declarativeCap executableCap)
+    (target : TyBisimulation relation declarativeTarget executableTarget) :
+    TyBisimulation relation (.slot declarativeCap declarativeTarget)
+      (.slot executableCap executableTarget) := by
+  constructor
+  · have capEq := (Ty.matcher.inj capability.forward).1
+    simp only [Subst.apply_slot]
+    rw [capEq]
+    exact congrArg (Ty.slot _) target.forward
+  · have capEq := (Ty.matcher.inj capability.reverse).1
+    simp only [Subst.apply_slot]
+    rw [capEq]
+    exact congrArg (Ty.slot _) target.reverse
+
+/-- Reconstruct `matchAll` from the four audited children.  User-pattern
+recursion is supplied by the closed pattern-family package at the same strict
+fuel ceiling as expression recursion. -/
+theorem auditedSynthMatchAll_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (capComplete : PatternCtorCapCompletenessPackage signature)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {target matcher : Expr} {pattern : Pattern}
+    {body : Expr} {targetTarget bodyTarget : Ty} {dual : Dual}
+    {bindings : MonoCtx}
+    {q q₁ q₂ q₃ q' : InferenceBase.FreshSupply}
+    {S S₁ S₂ S₃ S₄ S' : Subst}
+    {ledger ledger₁ ledger₂ ledger₃ ledger' : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : AuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    {targetRaw : DDSynth signature q S declarativeContext target targetTarget
+      q₁ S₁}
+    {targetOrigin : DDSynthOrigin signature targetRaw ledger ledger₁}
+    {patternRaw : DDPattern signature q₁ S₁ declarativeContext [] []
+      pattern dual bindings q₂ S₂}
+    {patternOrigin : DDPatternOrigin signature patternRaw ledger₁ ledger₂}
+    (targetAligned : DDAlignTypesWithLedger ledger₂ S₂ dual.target
+      targetTarget S₃)
+    {matcherRaw : DDCheck signature q₂ S₃ declarativeContext matcher
+      (.slot dual.cap targetTarget) q₃ S₄}
+    {matcherOrigin : DDCheckOrigin signature matcherRaw ledger₂ ledger₃}
+    {bodyRaw : DDSynth signature q₃ S₄
+      (bindings.toContext ++ declarativeContext) body bodyTarget q' S'}
+    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger₃ ledger'}
+    (targetAudit : DDSynthTerminalAudit terminal signature targetOrigin)
+    (patternAudit : DDPatternTerminalAudit terminal signature patternOrigin)
+    (matcherAudit : DDCheckTerminalAudit terminal signature matcherOrigin)
+    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1)
+      (.matchAll target matcher pattern body)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.matchAll target matcher pattern body) state)
+      q' S' ledger' (.listT bodyTarget)) := by
+  have targetAdequate : SynthBudgetAdequate fuel target := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  have patternAdequate : PatternBudgetAdequate fuel pattern := by
+    simp only [SynthBudgetAdequate, PatternBudgetAdequate, exprTraversalFuel]
+      at adequate ⊢
+    omega
+  have matcherAdequate : MatcherCheckBudgetAdequate fuel matcher := by
+    simp only [SynthBudgetAdequate, MatcherCheckBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  have bodyAdequate : SynthBudgetAdequate fuel body := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  let targetBefore := before.afterVisit .exprMatchAll path
+  have targetContexts : ContextBisimulation targetBefore.prevailing
+      declarativeContext executableContext :=
+    contexts.transport (before.visitExtension .exprMatchAll path)
+  let targetRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel) (selfEnv := selfEnv)
+      (path := 0 :: path) targetBefore targetContexts contextBounded
+      executableContextBounded targetAudit targetAdequate)
+  have patternContexts : ContextBisimulation targetRun.run.completion.state.prevailing
+      declarativeContext executableContext :=
+    targetContexts.transport targetRun.run.transition
+  have patternContextBounded : declarativeContext.BoundedBy q₁ :=
+    contextBounded.mono targetOrigin.erase.supplyExtends
+  have patternExecutableContextBounded : executableContext.BoundedBy q₁ :=
+    executableContextBounded.mono targetOrigin.erase.supplyExtends
+  let patternFamilies := patternFamilies_complete_below closed (fuel + 1)
+    (patternSynthCompletenessBelow_of_audited synthBelow) capComplete
+  let patternRun := Classical.choice
+    (patternFamilies.1.complete (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv) (path := 2 :: path)
+      targetRun.run.completion.state patternContexts .nil .nil
+      patternContextBounded (by intro entry membership; simp at membership)
+      (by intro entry membership; simp at membership)
+      patternExecutableContextBounded
+      (by intro entry membership; simp at membership)
+      (by intro entry membership; simp at membership)
+      patternAudit patternAdequate)
+  have targetDeclarativeBounded : targetTarget.BoundedBy q₁ :=
+    (targetRaw.boundedBy closed before.declarative_bounded contextBounded).2
+  have patternBounds :=
+    (patternRaw.boundedBy closed targetRun.run.completion.state.declarative_bounded
+      patternContextBounded (by intro entry membership; simp at membership)
+      (by intro entry membership; simp at membership))
+  have patternDeclarativeBounded := patternBounds.2.1
+  have bindingsDeclarativeBounded := patternBounds.2.2
+  let targetAlignment := ddAlignTypesWithLedger_complete
+    (origin := freshOrigin .pattern (2 :: path) "match-target")
+    patternRun.run.completion patternRun.run.dual.target
+    (patternRun.run.transition.transportTy targetRun.run.target)
+    patternDeclarativeBounded.2
+    (targetDeclarativeBounded.mono patternOrigin.erase.supplyExtends)
+    patternRun.rawDualBounded.2
+    (targetRun.rawTargetBounded.mono patternOrigin.erase.supplyExtends)
+    targetAligned
+  have matcherContexts : ContextBisimulation
+      targetAlignment.completion.prevailing declarativeContext
+      executableContext :=
+    (patternContexts.transport patternRun.run.transition).transport
+      targetAlignment.transition
+  have matcherContextBounded : declarativeContext.BoundedBy q₂ :=
+    patternContextBounded.mono patternOrigin.erase.supplyExtends
+  have matcherExecutableContextBounded : executableContext.BoundedBy q₂ :=
+    patternExecutableContextBounded.mono patternOrigin.erase.supplyExtends
+  let declarativeExpected := Ty.slot dual.cap targetTarget
+  let executableExpected := Ty.slot patternRun.run.result.dual.cap
+    targetRun.run.result.target
+  have expectedRelated : TyBisimulation targetAlignment.completion.prevailing
+      declarativeExpected executableExpected :=
+    TyBisimulation.slot
+      (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+        targetAlignment.transition patternRun.run.dual.cap)
+      (targetAlignment.transition.transportTy
+        (patternRun.run.transition.transportTy targetRun.run.target))
+  have expectedBounded : declarativeExpected.BoundedBy q₂ :=
+    Ty.BoundedBy.slotOf patternDeclarativeBounded.1
+      (targetDeclarativeBounded.mono patternOrigin.erase.supplyExtends)
+  have executableExpectedBounded : executableExpected.BoundedBy q₂ :=
+    Ty.BoundedBy.slotOf patternRun.rawDualBounded.1
+      (targetRun.rawTargetBounded.mono patternOrigin.erase.supplyExtends)
+  let matcherRun := Classical.choice
+    (auditedCheckCompletenessAt_of_synthBelow closed
+      (synthBelow.mono (Nat.le_succ fuel))
+      (selfEnv := selfEnv) (path := 1 :: path)
+      (origin := matcherOrigin) targetAlignment.completion matcherContexts
+      expectedRelated matcherContextBounded matcherExecutableContextBounded
+      expectedBounded executableExpectedBounded matcherAudit matcherAdequate)
+  have bodyContexts : ContextBisimulation matcherRun.completion.prevailing
+      (bindings.toContext ++ declarativeContext)
+      (patternRun.run.result.bindings.toContext ++ executableContext) :=
+    DemandTypingInferenceCompletenessPatternMain.ContextBisimulation.append
+      ((DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          matcherRun.transition
+          (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+            targetAlignment.transition patternRun.run.bindings)).toContext)
+      (matcherContexts.transport matcherRun.transition)
+  have bodyContextBounded : Context.BoundedBy q₃
+      (bindings.toContext ++ declarativeContext) :=
+    Context.BoundedBy.append
+      ((bindingsDeclarativeBounded.mono
+        matcherOrigin.erase.supplyExtends).toContext)
+      (contextBounded.mono
+        (targetOrigin.erase.supplyExtends.trans
+          (patternOrigin.erase.supplyExtends.trans
+            matcherOrigin.erase.supplyExtends)))
+  have bodyExecutableContextBounded : Context.BoundedBy q₃
+      (patternRun.run.result.bindings.toContext ++ executableContext) :=
+    Context.BoundedBy.append
+      ((patternRun.rawBindingsBounded.mono
+        matcherOrigin.erase.supplyExtends).toContext)
+      (executableContextBounded.mono
+        (targetOrigin.erase.supplyExtends.trans
+          (patternOrigin.erase.supplyExtends.trans
+            matcherOrigin.erase.supplyExtends)))
+  let bodyRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv.eraseMany pattern.patVars) (path := 3 :: path)
+      matcherRun.completion bodyContexts bodyContextBounded
+      bodyExecutableContextBounded bodyAudit bodyAdequate)
+  exact ⟨⟨DemandTypingInferenceCompletenessExprTraversal.inferExprFuel_matchAll_complete
+      before targetRun.run patternRun.run
+      targetAlignment matcherRun bodyRun.run,
+    by
+      change Ty.BoundedBy q' (.listT bodyRun.run.result.target)
+      exact listT_boundedBy bodyRun.rawTargetBounded⟩⟩
 
 /-- Final assembly of a matcher literal once the clause dispatcher and its
 paired local finalization bridge have been reconstructed.  Keeping this
