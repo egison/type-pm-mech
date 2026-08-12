@@ -18,6 +18,7 @@ open DemandTypingInferenceCompletenessFuel
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessMain
+open DemandTypingInferenceCompletenessMatcherMain
 open DemandTypingInferenceCompletenessCertifiedRun
 open DemandTypingInferenceCompletenessSignatureBounds
 
@@ -320,6 +321,95 @@ theorem inferDPatsFuel_validation
               · simp [headEq, tailEq, distinct] at success
 
 end
+
+/-! ## Primitive-pattern chronology -/
+
+/-- A primitive hole allocates its capability before emitting the leaf event. -/
+theorem inferPPatFuel_hole_validation
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {path : SyntaxPath} {target : Ty} {state : InferState}
+    {result : PPatResult}
+    (signatureBelow : SignatureVarsBelow state.supply signature)
+    (targetBounded : target.BoundedBy state.supply)
+    (success : inferPPatFuel (fuel + 1) signature path .hole target state =
+      some result) :
+    ValidatorRunExtension terminal signature state result.state := by
+  simp only [inferPPatFuel, Option.some.injEq] at success
+  subst result
+  let allocated := (state.freshCap
+    (freshOrigin .primitivePattern path "primitive-hole")).2
+  have freshRun := ValidatorRunExtension.freshCap terminal signature state
+    (freshOrigin .primitivePattern path "primitive-hole")
+  have visitRun := ValidatorRunExtension.visit terminal signature allocated
+    .ppatHole path
+  have eventRun : ValidatorRunExtension terminal signature
+      (visit allocated .ppatHole path)
+      ((visit allocated .ppatHole path).recordEvent
+        (.inferredPPat .hole target
+          [Dual.mk (.var ⟨state.supply.nextCap⟩) target] [] path)) := by
+    apply ValidatorRunExtension.recordOrdinaryEvent
+    · intro future extension producerSafe
+      exact Inference.Reconstruction.primitiveHole_ordinaryValidatorEventCondition
+        signatureBelow.caps targetBounded
+    · simp [Inference.Reconstruction.TerminalAuditSensitiveEvent]
+  exact freshRun.trans (visitRun.trans eventRun)
+
+/-- Non-hole primitive leaves emit only their neutral visit and result events. -/
+theorem inferPPatFuel_leaf_validation
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {path : SyntaxPath} {pattern : PPat} {target : Ty} {state : InferState}
+    {result : PPatResult}
+    (leaf : pattern = .wild ∨ ∃ name, pattern = .pval name)
+    (success : inferPPatFuel (fuel + 1) signature path pattern target state =
+      some result) :
+    ValidatorRunExtension terminal signature state result.state := by
+  rcases leaf with rfl | ⟨name, rfl⟩
+  · simp only [inferPPatFuel, Option.some.injEq] at success
+    subst result
+    exact finishPPat (pattern := .wild) (target := target) (holes := [])
+      (bindings := []) (path := path) (by simp)
+  · simp only [inferPPatFuel, Option.some.injEq] at success
+    subst result
+    exact finishPPat (pattern := .pval name) (target := target) (holes := [])
+      (bindings := [(name, target)]) (path := path) (by simp)
+
+/-! ## Packaging adapters -/
+
+/-- Attach the independently reconstructed DPat validator chronology to any
+bounded raw matcher-arm completion. -/
+def certifyBoundedDPatRun
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {fuel : Nat} {path : SyntaxPath} {pattern : DPat}
+    {target : Ty} {bindings : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {before : TraversalStateCorrespondence q S ledger state}
+    (signatureBelow : SignatureVarsBelow q signature)
+    (executableTargetBounded : target.BoundedBy q)
+    (raw : BoundedDPatRunCompletion before
+      (inferDPatFuel fuel signature path pattern target state)
+      q' S' ledger' target bindings) :
+    BoundedCertifiedDPatRunCompletion terminal signature before
+      (inferDPatFuel fuel signature path pattern target state)
+      q' S' ledger' target bindings := by
+  have signatureBelowState : SignatureVarsBelow state.supply signature := by
+    rw [before.supply_eq]
+    exact signatureBelow
+  have targetBoundedState : target.BoundedBy state.supply := by
+    rw [before.supply_eq]
+    exact executableTargetBounded
+  refine
+    { certified :=
+        { run := raw.run
+          validation := inferDPatFuel_validation closed signatureBelowState
+            targetBoundedState raw.run.success }
+      rawTargetBounded := raw.rawTargetBounded
+      rawBindingsBounded := raw.rawBindingsBounded }
+
+/-! These executable-history theorems are deliberately independent of the
+raw DD origin.  A raw completion and the corresponding validation proof can
+therefore be paired after the global recursion chooses its exact run. -/
 
 end DemandTypingInferenceCompletenessPrimitivePatternCertified
 end TypePM
