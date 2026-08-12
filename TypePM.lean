@@ -94,10 +94,13 @@ import TypePM.DemandTypingInferenceCompletenessPublic
 import TypePM.DemandTypingInferenceCompletenessRegression
 import TypePM.DemandTypingInferenceEquivalence
 import TypePM.DemandTypingInferenceEquivalenceRegression
+import TypePM.DemandTypingTargetUniqueness
+import TypePM.DemandTypingTargetUniquenessRegression
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
 import TypePM.DemandTypingTerminalAuditErasureRegression
+import TypePM.PublicTheorems
 
 /-!
 # Egison core with two-index matcher types
@@ -118,4 +121,7 @@ the premise-free acceptance-completeness boundary from `DDTyping` back to
 successful executable inference.  `DemandTypingInferenceEquivalence` composes
 the two directions into decidable DD typability, closed-program
 annotation-freeness, and soundness of the type reported by `inferType`.
+`DemandTypingTargetUniqueness` strengthens this result: every two audited DD
+targets for the same source have one common representative under local
+two-sort variable renamings of all residual metavariables.
 -/

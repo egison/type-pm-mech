@@ -200,11 +200,16 @@ $\mathsf{Decidable}(\exists\tau.\,\mathsf{DDTyping})$を返す．
 \mathsf{DDTyping}(\Sighat,\Gamma,e,\tau)
 \]
 を証明済みである．完全性方向では，任意に与えたDD derivationのtargetと返値型の構文的一致ではなく，
-$\mathsf{inferType}$が返す何らかの型と，その返値自身のDD derivationを同時に得る．従ってこの結果は
-target一意性やprincipalityを含まない．それらを将来定式化するなら，initial supplyに既に存在する
-変数を固定する二sort metavariable renamingを法とする一意性を先に証明し，次に型のinstance
-preorderを定義してprincipalityを述べる必要がある．$\mathsf{RuntimeTyping}$全体のprincipality反例はこのDD結果には
-流用しない．
+$\mathsf{inferType}$が返す何らかの型と，その返値自身のDD derivationを同時に得る．さらに同じ
+$\Sighat,\Gamma,e$に対する二つのDD target $\tau_1,\tau_2$には，共通の決定的な実行target $\upsilon$と，
+各$\tau_i$の全residual capability／target metavariable上で局所的に可逆な二sort変数renaming
+$R_i$が存在し，$R_i\tau_i=\upsilon$となることを機械化済みである．
+
+initial supply以前のmetavariableまで固定するより強い形は一般contextでは成立しない．例えば
+$f:?0\to ?0, x:?1$の下の$f\,x$では，constraint $?1\doteq ?0$のexact MGUをどちら向きに取るかにより，
+公開targetは$?0$にも$?1$にもなる．両導出はterminal auditまで含む回帰として機械化している．
+従って一意性は全residual metaのrenamingを法として述べる．型のinstance preorder上のprincipalityは
+別の結果であり，$\mathsf{RuntimeTyping}$全体のprincipality反例をこのDD結果には流用しない．
 
 \subsection{機械化の範囲}
 
@@ -216,6 +221,7 @@ $\mathsf{RuntimeTyping}$へのreconstruction，$\mathsf{DDTyping.safe}$による
 concrete dynamic safety，DD derivationから全実行traversal familyへの受理完全性，terminal auditから
 validator event coverageへの輸送，公開の$\mathtt{DDTyping.infer\_isSome}$，一般contextの受理同値，
 closed annotation-freeness，$\mathtt{inferType}$返値soundness，DD typabilityのdecidabilityは
-Lean~4に機械化済みである．
+Lean~4に機械化済みである．同じsourceのDD targetが全residual二sortmetaの局所renamingを法として
+一意であることと，open contextでinitial metaを固定する強い形の反例も機械化済みである．
 public freeze回帰も閉じている．
 主定理と一般補題に $\mathtt{sorry}$，$\mathtt{admit}$，project-defined $\mathtt{axiom}$ はない．

@@ -102,6 +102,13 @@ expected head が matcher または未解決変数なら coercion branch はな�
 負 premise として別 branch を選ぶこともない．branch は head から先に一意に決まり，選択した
 solve が失敗すれば judgment は成立しない．
 
+このno-guess方針とlistの左から右のstate threadingには観測可能な順序依存がある．well-formedな
+`use : (MatcherSlot Any Int -> Int) -> Used`を持つclosed probeでは，
+`lambda f. (use f, f something)`は最初のchecking cutが`f`のdomainをslotへ確定するため受理される．
+逆順は最初の通常適用がdomainをraw `Matcher Any ?target`へ確定し，後続の`use`と一致しないため
+拒否される．`AcceptanceGapRegression`はpublic `inferType`の正負を固定するが，この挙動を恒久的な
+設計境界とはまだ分類しない．
+
 `ExactCapMGU`，`ExactTargetMGU`，`ExactPairedMGU` は次を要求する．
 
 - constraint を解くこと
@@ -115,7 +122,22 @@ exact solution である．ordinary equalityとone-way solveはいずれも，�
 admissibleでなければならない．特に `renameOnly` keyはvariableへのrenameしか許さず，
 `structuralFlexible` keyだけがconstructor，product，`Any` などへ構造化できる．
 
-### 2.4 pattern，arm，clause
+### 2.4 文献用語との対応
+
+現行識別子は実装上の不変量を正確に表すため維持する．次表の「近い文献概念」は同義語ではなく，
+読者が既存文献から本開発へ移るための橋である．本開発固有の強化点を最終列に明記する．
+
+| 現行概念 | 近い文献概念 | 出典 | 本開発での相違・強化 |
+|---|---|---|---|
+| `ExactCapMGU`／`ExactTargetMGU`／`ExactPairedMGU` | relevantなsolved-form idempotent MGU | Robinsonのfirst-order unification；Damas--Milnerのprincipal type-scheme | MGU性と冪等性だけでなくconstraint外の恒等性，両sortのsupport/range confinement，target像中のcapability rangeまで証明書に含める |
+| `OneWayDelta`／`matchCap` | first-order matching（one-way solve） | producer/consumer非対称なmatchingの標準的な向き | consumer capabilityだけを束縛しproducerを固定した後，capability適用済みtargetのexact MGUも同じdeltaに含める |
+| `q; S; Ω`（fresh supply・prevailing substitution・origin ledger） | ordered algorithmic contextとcontext application | [Dunfield--Krishnaswami 2013](https://doi.org/10.1145/2500365.2500582) | 一つのcontextではなく三成分に分離する．`q`は割当境界，`S`は解の情報増加，ledgerはcapability固有のsolve権限を担う |
+| ledgerの`rigid`／`renameOnly`／`structuralFlexible` | rigid--flexible metavariable discipline | rigid parameterとflexible existentialを分けるunification／bidirectional typing | 二値ではなく，外部へ流れたproducerにalpha-renamingだけを許す中間状態`renameOnly`を持つ |
+
+Dunfield--Krishnaswamiのcomplete contextは記号 `Ω` を使い，unsolved existentialを持たない．
+本開発のledgerも内部文書で `Ω` と略記するが同じ対象ではないため，論文ではledgerに別記号を使う．
+
+### 2.5 pattern，arm，clause
 
 式以外の DD family は executable traversal と同じ割当順を関係として記述する．主な family は
 `DDPattern`／`DDPatterns`，`DDPPat`／`DDPPats`，`DDDPat`／`DDDPats`，
@@ -126,7 +148,7 @@ pattern constructor は target instance と capability projection を同じ sign
 literal は全 clause の共有 target を生成し，shape，catch-all order，data-arm exhaustiveness，
 primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を finalization で要求する．
 
-### 2.5 DDTyping と ledger の証明済み性質
+### 2.6 DDTyping と ledger の証明済み性質
 
 - alignmentの非 ordinary branchならexpected typeはslot-headedである．
 - matcher-headed expected type の derivation は ordinary equality に限られる．
@@ -258,10 +280,16 @@ inferType signature context expression = some target →
 
 を証明する．さらに`ddTypable_iff_inferType_some_ddTyping`は，DD typabilityがあれば
 `inferType`の具体的な返値とその返値自身のDD derivationを同時に得る．一方，入力した任意の
-DD derivationのtargetと返値型が構文的に等しいとは主張しない．完全性内部ではDD側と実行側の
-metavariable名を`StateBisimulation`で結んでおり，target一意性やprincipalityは別の定理を要する．
-将来の順序は，initial supplyに既に存在する変数を固定する二sort metavariable renamingを法とした
-一意性を先に定め，その後に型のinstance preorderを導入してprincipalityを述べる，である．
+DD derivationのtargetと返値型が構文的に等しいとは主張しない．
+
+`DDTyping.target_unique_modulo_renaming`は，完全性内部の同じ決定的な実行runを共通代表として
+二つのDD targetを結ぶ．各辺の`TargetRenaming`は，公開型に残るcapability／target variableの
+全有限scope上でforward／reverse substitutionがpointwise inverseな`LocalRenamingOn`であり，
+source targetと共通実行targetを両方向に写す．これは一般contextにも成立する．ただしinitial
+supply以前のmetaまで固定する形は偽である．`f : ?0 -> ?0, x : ?1`のcontextで`f x`を導出すると，
+argument constraint `?1 = ?0`のexact MGUをどちら向きに取るかにより`?0`と`?1`の双方を公開できる．
+`DemandTypingTargetUniquenessRegression`は両方をterminal audit込みの`DDTyping`として固定する．
+型のinstance preorder上のprincipalityは，このrenaming一意性とは別の定理を要する．
 
 ## 4. RuntimeTyping は内部 certificate である
 
@@ -275,6 +303,10 @@ matching，MGU，後続 substitution を持たない．slot-to-slot solve は終
 premise を書き換えるため，専用 runtime constructor を持たない．実行可能な
 `MatcherToSlotRawCert`／`SlotToSlotRawCert` は reconstruction 境界まで保持され，そこで終端
 demand または等式へ射影される．
+
+`RuntimeTyping.coerceProductMatcher` は product-to-slot の直接constructorへ融合せず，独立した
+unary product liftとして維持する．融合は検討済みだが，`let`をまたいでmatcher viewの選択を
+利用位置まで遅延できることと，明示的coercion planの二段構造を失うため採用しない．
 
 この family が state-free であることにより，closure body，matcher literal，substitution，
 preservation の帰納法を推論器の履歴から独立に記述できる．その代わり，DD derivation から
@@ -427,7 +459,8 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
 ## 8. 回帰の読み方
 
 - `DemandTypingRegression`: raw DD の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
-- `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，constructor export freeze．
+- `AcceptanceGapRegression`: or-pattern 正例，nested matcher DD 拒否，unresolved lambda domainの
+  source-order正負，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
 - `InferenceRegression`: 公開inference traversalと主要な成功／拒否境界．
@@ -439,6 +472,8 @@ source `DDTyping`も保持し，`Inference.infer_closed_safe`はclosed inference
   premise-free `DDTyping.infer_isSome`．
 - `DemandTypingInferenceEquivalenceRegression`: 一般／closed受理同値の両方向，`inferType`返値の
   DD soundness，DD typabilityの`Decidable` API．
+- `DemandTypingTargetUniquenessRegression`: open contextでsource metaを固定する一意性が偽である
+  exact-MGU orientation境界．
 - `DemandTypingSafetyRegression`: closed inferenceから`DDTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
@@ -476,6 +511,7 @@ DD関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`PairedRoot` | terminal auditの実行stateへの輸送，paired rootから有限validatorへの直接射影 |
 | `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `DDTyping.infer_isSome`，premise-free recursive matcher回帰 |
 | `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
+| `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context DD target一意性，入力meta固定版の反例 |
 | `DemandTypingErasure` | state-erasure開発全体のpublic facade |
 | `DemandTypingErasureCore` | scoped residual post，factorization core，初期runtime erasure |
 | `DemandTypingErasureFactorization` | 全14 Origin familyのpremise-free state factorization |
