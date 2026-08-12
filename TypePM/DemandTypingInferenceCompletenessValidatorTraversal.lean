@@ -1273,6 +1273,143 @@ theorem alignResolvedProductMatcherAtSlot_canonicalSlotEventCondition
   exact runResolvedConstraint_producerToSlot_canonicalSlotEventCondition
     success history
 
+/-- The two-step slot-tuple lift first equates capabilities and then equates
+the capability-adjusted targets.  Replaying those two exact deltas therefore
+makes the two slot endpoints equal; every later suffix preserves that
+equality. -/
+theorem alignResolvedSlotTupleAtSlot_canonicalSlotEventCondition
+    {state aligned terminal : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some aligned)
+    (history : (aligned.recordEvent (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (slotTupleTarget duals)
+      (.slot consumerCap consumerTarget))).HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      state.trace.solves.length aligned.trace.solves.length
+      (slotTupleTarget duals) (.slot consumerCap consumerTarget)) := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨capStep, capSuccess, targetSuccess⟩
+  unfold runResolvedConstraint at targetSuccess
+  rcases Option.bind_eq_some_iff.mp targetSuccess with
+    ⟨targetStep, targetEq, finalEq⟩
+  have alignedEq : (state.recordSolve capStep).recordSolve targetStep =
+      aligned := Option.some.inj finalEq
+  subst aligned
+  ·
+      have capExact :=
+        (solveResolvedWithLedger_capEq_originSafeExactCapMGU capSuccess).2.exact.1.1
+      have targetExact :=
+        (solveResolvedWithLedger_targetEq_originSafeExactPairedMGU
+          targetEq).exact.1.1
+      have localEqual :
+          applyDeltas [capStep, targetStep] (slotTupleTarget duals) =
+            applyDeltas [capStep, targetStep]
+              (.slot consumerCap consumerTarget) := by
+        simp only [applyDeltas, slotTupleTarget, Subst.apply_slot]
+        rw [capExact, targetExact]
+      rcases history with ⟨suffix, eventSuffix, solves, events⟩
+      have solves' : terminal.trace.solves =
+          (state.trace.solves ++ [capStep, targetStep]) ++ suffix := by
+        simpa [InferState.recordEvent, InferState.recordSolve,
+          List.append_assoc] using solves
+      have startStop : state.trace.solves.length ≤
+          ((state.recordSolve capStep).recordSolve targetStep).trace.solves.length := by
+        simp [InferState.recordSolve]
+      have stopBound :
+          ((state.recordSolve capStep).recordSolve targetStep).trace.solves.length ≤
+            terminal.trace.solves.length := by
+        rw [solves', List.length_append]
+        simp [InferState.recordSolve]
+      have terminalSlice : solveSlice terminal.trace
+          state.trace.solves.length terminal.trace.solves.length =
+            [capStep, targetStep] ++ suffix := by
+        simp only [solveSlice]
+        rw [List.take_length, solves']
+        simpa [List.append_assoc] using
+          (List.drop_append_length state.trace.solves
+            ([capStep, targetStep] ++ suffix))
+      have applyDeltas_append
+          (firstSteps tailSteps : List SolveStep) (target : Ty) :
+          applyDeltas (firstSteps ++ tailSteps) target =
+            applyDeltas tailSteps (applyDeltas firstSteps target) := by
+        induction firstSteps generalizing target with
+        | nil => rfl
+        | cons step steps induction =>
+            simp only [List.cons_append, applyDeltas]
+            exact induction (step.delta.apply target)
+      apply canonicalSlotEventCondition_equal startStop stopBound
+      rw [terminalSlice]
+      rw [applyDeltas_append, applyDeltas_append]
+      rw [localEqual]
+
+/-- Every successful expected-type alignment emits a canonical slot event.
+The proof follows the executable selector: product matchers use the one-way
+rule, slot tuples use the exact two-step equality above, and the raw branch
+delegates to `alignAtSlot`. -/
+theorem alignExprResultAtExpected_canonicalSlotEventCondition
+    {path : SyntaxPath} {expressionResult : ExprResult} {expected : Ty}
+    {final terminal : InferState}
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some final)
+    (history : final.HistoryPrefix terminal) :
+    CanonicalSlotEventCondition terminal (.slotAlignment
+      expressionResult.state.trace.solves.length final.trace.solves.length
+      (match expectedCoercionPlan expressionResult.state
+          expressionResult.target expected with
+        | .productMatcherLift duals => productMatcherTarget duals
+        | .slotTupleLift duals => slotTupleTarget duals
+        | .raw => expressionResult.state.prevailing.apply
+            expressionResult.target)
+      (expressionResult.state.prevailing.apply expected)) := by
+  unfold alignExprResultAtExpected at success
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success ⊢
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedProductMatcherAtSlot
+          expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst final
+          have canonical :=
+            alignResolvedProductMatcherAtSlot_canonicalSlotEventCondition
+              (aligned := aligned) alignmentEq history
+          simpa [InferState.recordEvent] using canonical
+  | slotTupleLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success ⊢
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedSlotTupleAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst final
+          have canonical :=
+            alignResolvedSlotTupleAtSlot_canonicalSlotEventCondition
+              (aligned := aligned) alignmentEq history
+          simpa [InferState.recordEvent] using canonical
+  | raw =>
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type")
+          expressionResult.target expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some aligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success ⊢
+          subst final
+          have canonical := alignAtSlot_canonicalSlotEventCondition
+            (aligned := aligned) alignmentEq history
+          simpa [InferState.recordEvent] using canonical
+
 end Reconstruction
 end Inference
 end TypePM
