@@ -77,6 +77,7 @@ abbrev PatternSynthCompletenessMotive
     (before : TraversalStateCorrespondence q S ledger state) →
     ContextBisimulation before.prevailing declarativeContext executableContext →
     declarativeContext.BoundedBy q →
+    executableContext.BoundedBy q →
     DDSynthTerminalAudit terminal signature origin →
     PatternSynthBudgetAdequate fuel expression →
     Nonempty { run : SynthRunCompletion before
@@ -99,6 +100,7 @@ abbrev PatternSynthCompletenessBelow
       ContextBisimulation before.prevailing declarativeContext
         executableContext →
       declarativeContext.BoundedBy q →
+      executableContext.BoundedBy q →
       DDSynthTerminalAudit terminal signature origin →
       PatternSynthBudgetAdequate fuel expression →
       Nonempty { run : SynthRunCompletion before
@@ -330,6 +332,8 @@ noncomputable def patternPValOrigin_complete
       executableBindings)
     (contextBounded : declarativeContext.BoundedBy q)
     (bindingsBounded : declarativeBindings.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
     {raw : DDSynth signature q S
       (declarativeBindings.toContext ++ declarativeContext) expression target
       q₁ S₁}
@@ -368,11 +372,15 @@ noncomputable def patternPValOrigin_complete
   have expressionContextBounded :
       (declarativeBindings.toContext ++ declarativeContext).BoundedBy q :=
     Context.BoundedBy.append bindingsBounded.toContext contextBounded
+  have executableExpressionContextBounded :
+      (executableBindings.toContext ++ executableContext).BoundedBy q :=
+    Context.BoundedBy.append executableBindingsBounded.toContext
+      executableContextBounded
   let expressionPackage := Classical.choice
     (synthComplete (Nat.lt_succ_self fuel) (selfEnv := selfEnv)
       (path := 0 :: path)
       (before.visit .patternValue path) expressionContexts
-      expressionContextBounded audit (by
+      expressionContextBounded executableExpressionContextBounded audit (by
         change 8 * (exprTraversalFuel expression + 1) ≤ fuel
         change 8 * ((1 + exprTraversalFuel expression) + 1) ≤ fuel + 1
           at adequate
@@ -400,6 +408,7 @@ noncomputable def boundedPatternPValOrigin_complete
       executableBindings)
     (contextBounded : declarativeContext.BoundedBy q)
     (bindingsBounded : declarativeBindings.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     (executableBindingsBounded : executableBindings.BoundedBy q)
     {raw : DDSynth signature q S
       (declarativeBindings.toContext ++ declarativeContext) expression target
@@ -433,11 +442,15 @@ noncomputable def boundedPatternPValOrigin_complete
   have expressionContextBounded :
       (declarativeBindings.toContext ++ declarativeContext).BoundedBy q :=
     Context.BoundedBy.append bindingsBounded.toContext contextBounded
+  have executableExpressionContextBounded :
+      (executableBindings.toContext ++ executableContext).BoundedBy q :=
+    Context.BoundedBy.append executableBindingsBounded.toContext
+      executableContextBounded
   let expressionPackage := Classical.choice
     (synthComplete (Nat.lt_succ_self fuel) (selfEnv := selfEnv)
       (path := 0 :: path)
       (before.visit .patternValue path) expressionContexts
-      expressionContextBounded audit (by
+      expressionContextBounded executableExpressionContextBounded audit (by
         change 8 * (exprTraversalFuel expression + 1) ≤ fuel
         change 8 * ((1 + exprTraversalFuel expression) + 1) ≤ fuel + 1
           at adequate

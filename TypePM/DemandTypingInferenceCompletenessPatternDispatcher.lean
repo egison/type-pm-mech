@@ -203,8 +203,8 @@ theorem patternOrigin_complete_nonempty
       | succ inner =>
           exact ⟨boundedPatternPValOrigin_complete inner synthBelow
             (declarativeParameters := declarativeParameters) before contexts
-            bindings contextBounded bindingsBounded executableBindingsBounded
-            expressionAudit adequate⟩
+            bindings contextBounded bindingsBounded executableContextBounded
+            executableBindingsBounded expressionAudit adequate⟩
   | ptuple childrenAudit =>
       cases fuel with
       | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
