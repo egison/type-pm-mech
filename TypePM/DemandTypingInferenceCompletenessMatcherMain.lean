@@ -52,7 +52,8 @@ abbrev MatcherCheckCompletenessAt
     (before : TraversalStateCorrespondence q S ledger state) →
     ContextBisimulation before.prevailing declarativeContext executableContext →
     TyBisimulation before.prevailing declarativeExpected executableExpected →
-    declarativeContext.BoundedBy q → declarativeExpected.BoundedBy q →
+    declarativeContext.BoundedBy q → executableContext.BoundedBy q →
+    declarativeExpected.BoundedBy q →
     executableExpected.BoundedBy q →
     DDCheckTerminalAudit terminal signature origin →
     MatcherCheckBudgetAdequate fuel expression →
@@ -140,7 +141,7 @@ theorem checksOrigin_complete_nonempty_from_below
                   (selfEnv := selfEnv) (path := index :: parent)
                   before
                   (ContextBisimulation.same before.prevailing context)
-                  expectedRelated contextBounded expectedBounded
+                  expectedRelated contextBounded contextBounded expectedBounded
                   executableExpectedBounded headAudit headAdequate)
               have tailContextBounded : context.BoundedBy q₁ :=
                 contextBounded.mono headOrigin.erase.supplyExtends
@@ -237,6 +238,17 @@ theorem ContextBisimulation.append
       _ = _ := by simp [Context.applySubst, List.map_append]
 
 /-- Data-pattern recursion required by an arm. -/
+structure BoundedDPatRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option DPatResult) (q' : InferenceBase.FreshSupply)
+    (S' : Subst) (ledger' : CapabilityOriginLedger)
+    (target : Ty) (bindings : MonoCtx) : Type where
+  run : DPatRunCompletion before operation q' S' ledger' target bindings
+  rawTargetBounded : run.result.target.BoundedBy q'
+  rawBindingsBounded : run.result.bindings.BoundedBy q'
+
 abbrev MatcherDPatCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat} {path : SyntaxPath} {pattern : DPat}
     {target executableTarget : Ty}
@@ -248,7 +260,7 @@ abbrev MatcherDPatCompletenessMotive (signature : FrozenSig) : Prop :=
     TyBisimulation before.prevailing target executableTarget →
     target.BoundedBy q → executableTarget.BoundedBy q →
     DPatAdequate fuel pattern →
-    Nonempty (DPatRunCompletion before
+    Nonempty (BoundedDPatRunCompletion before
       (inferDPatFuel fuel signature path pattern executableTarget state)
       q' S' ledger' target bindings)
 
@@ -280,6 +292,7 @@ theorem armsOrigin_complete_nonempty_below
       declarativeBodyTarget executableBodyTarget)
     (contextBounded : context.BoundedBy q)
     (ppBounded : ppBindings.BoundedBy q)
+    (executablePPBounded : executablePPBindings.BoundedBy q)
     (clauseTargetBounded : declarativeClauseTarget.BoundedBy q)
     (bodyTargetBounded : declarativeBodyTarget.BoundedBy q)
     (executableClauseTargetBounded : executableClauseTarget.BoundedBy q)
@@ -321,13 +334,13 @@ theorem armsOrigin_complete_nonempty_below
             (dpatComplete (path := 0 :: index :: parent)
               patternRaw patternOrigin before clauseTargetRelated
               clauseTargetBounded executableClauseTargetBounded dataAdequate)
-          have ppAtData : MonoCtxBisimulation dataRun.transition.after
+          have ppAtData : MonoCtxBisimulation dataRun.run.transition.after
               ppBindings executablePPBindings :=
-            BisimulationExtension.transportMonoCtx dataRun.transition ppRelated
+            BisimulationExtension.transportMonoCtx dataRun.run.transition ppRelated
           let bodyContexts := ContextBisimulation.append
-            (ContextBisimulation.append dataRun.bindings.toContext
+            (ContextBisimulation.append dataRun.run.bindings.toContext
               ppAtData.toContext)
-            (ContextBisimulation.same dataRun.transition.after context)
+            (ContextBisimulation.same dataRun.run.transition.after context)
           obtain ⟨_, armBindingsBounded⟩ :=
             patternOrigin.erase.boundedBy closed before.declarative_bounded
               clauseTargetBounded
@@ -339,16 +352,25 @@ theorem armsOrigin_complete_nonempty_below
                 (ppBounded.mono
                   patternOrigin.erase.supplyExtends).toContext)
               (contextBounded.mono patternOrigin.erase.supplyExtends)
+          have bodyExecutableContextBounded :
+              (dataRun.run.result.bindings.toContext ++
+                executablePPBindings.toContext ++ context).BoundedBy q₁ :=
+            Context.BoundedBy.append
+              (Context.BoundedBy.append dataRun.rawBindingsBounded.toContext
+                (executablePPBounded.mono
+                  patternOrigin.erase.supplyExtends).toContext)
+              (contextBounded.mono patternOrigin.erase.supplyExtends)
           have bodyExpectedBounded : declarativeBodyTarget.BoundedBy q₁ :=
             bodyTargetBounded.mono patternOrigin.erase.supplyExtends
           let bodyRun := Classical.choice
             (checkBelow (Nat.lt_succ_self fuel)
               (selfEnv := selfEnv.eraseMany
-                (executablePPBindings.names ++ dataRun.result.bindings.names))
-              (path := 1 :: index :: parent) dataRun.completion
+                (executablePPBindings.names ++
+                  dataRun.run.result.bindings.names))
+              (path := 1 :: index :: parent) dataRun.run.completion
               bodyContexts
-              (dataRun.transition.transportTy bodyTargetRelated)
-              bodyContextBounded bodyExpectedBounded
+              (dataRun.run.transition.transportTy bodyTargetRelated)
+              bodyContextBounded bodyExecutableContextBounded bodyExpectedBounded
               (executableBodyTargetBounded.mono
                 patternOrigin.erase.supplyExtends)
               bodyAudit bodyAdequate)
@@ -358,6 +380,8 @@ theorem armsOrigin_complete_nonempty_below
             contextBounded.mono prefixExtension
           have tailPPBounded : ppBindings.BoundedBy q₂ :=
             ppBounded.mono prefixExtension
+          have tailExecutablePPBounded : executablePPBindings.BoundedBy q₂ :=
+            executablePPBounded.mono prefixExtension
           have tailClauseBounded : declarativeClauseTarget.BoundedBy q₂ :=
             clauseTargetBounded.mono prefixExtension
           have tailBodyBounded : declarativeBodyTarget.BoundedBy q₂ :=
@@ -371,17 +395,17 @@ theorem armsOrigin_complete_nonempty_below
           have ppAtBody : MonoCtxBisimulation bodyRun.transition.after
               ppBindings executablePPBindings :=
             BisimulationExtension.transportMonoCtx
-              (dataRun.transition.seq bodyRun.transition) ppRelated
+              (dataRun.run.transition.seq bodyRun.transition) ppRelated
           let tailRun := Classical.choice
             (armsOrigin_complete_nonempty_below closed dpatComplete fuel
               checkBelow.lower
               (selfEnv := selfEnv) (parent := parent) (index := index + 1)
               bodyRun.completion ppAtBody
-              ((dataRun.transition.seq bodyRun.transition).transportTy
+              ((dataRun.run.transition.seq bodyRun.transition).transportTy
                 clauseTargetRelated)
-              ((dataRun.transition.seq bodyRun.transition).transportTy
+              ((dataRun.run.transition.seq bodyRun.transition).transportTy
                 bodyTargetRelated)
-              tailContextBounded tailPPBounded
+              tailContextBounded tailPPBounded tailExecutablePPBounded
               tailClauseBounded tailBodyBounded tailExecutableClauseBounded
               tailExecutableBodyBounded (origin := tailOrigin)
               tailAudit tailAdequate)
@@ -390,7 +414,7 @@ theorem armsOrigin_complete_nonempty_below
             (executableBodyTarget := executableBodyTarget)
             (clauseTarget := declarativeClauseTarget)
             (bodyTarget := declarativeBodyTarget)
-            before ppRelated dataRun disjoint bodyRun tailRun⟩
+            before ppRelated dataRun.run disjoint bodyRun tailRun⟩
 termination_by fuel
 
 /-- Unrestricted wrapper retained for completed global motives. -/
@@ -415,6 +439,7 @@ theorem armsOrigin_complete_nonempty
       declarativeBodyTarget executableBodyTarget)
     (contextBounded : context.BoundedBy q)
     (ppBounded : ppBindings.BoundedBy q)
+    (executablePPBounded : executablePPBindings.BoundedBy q)
     (clauseTargetBounded : declarativeClauseTarget.BoundedBy q)
     (bodyTargetBounded : declarativeBodyTarget.BoundedBy q)
     (executableClauseTargetBounded : executableClauseTarget.BoundedBy q)
@@ -430,7 +455,7 @@ theorem armsOrigin_complete_nonempty
       q' S' ledger') :=
   armsOrigin_complete_nonempty_below closed dpatComplete fuel
     (fun _ => checkComplete) before ppRelated clauseTargetRelated
-    bodyTargetRelated contextBounded ppBounded clauseTargetBounded
+    bodyTargetRelated contextBounded ppBounded executablePPBounded clauseTargetBounded
     bodyTargetBounded executableClauseTargetBounded executableBodyTargetBounded
     audit adequate
 
@@ -519,7 +544,9 @@ structure BoundedPPatRunCompletion
     (S' : Subst) (ledger' : CapabilityOriginLedger)
     (target : Ty) (holes : List Dual) (bindings : MonoCtx) : Type where
   run : PPatRunCompletion before operation q' S' ledger' target holes bindings
+  rawTargetBounded : run.result.target.BoundedBy q'
   rawHolesBounded : ∀ hole ∈ run.result.holes, Dual.BoundedBy q' hole
+  rawBindingsBounded : run.result.bindings.BoundedBy q'
 
 abbrev MatcherPPatCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat} {path : SyntaxPath} {pattern : PPat}
@@ -662,7 +689,9 @@ theorem clauseOrigin_complete_nonempty_below
               checkBelow.lower
               (selfEnv := selfEnv) (parent := 2 :: path) (index := 0)
               nextRun.completion ppAtNext targetAtNext bodyTargetRelated
-              armsContextBounded armsPPBounded armsTargetBounded
+              armsContextBounded armsPPBounded
+              (primitiveRun.rawBindingsBounded.mono
+                nextOrigin.erase.supplyExtends) armsTargetBounded
               armsBodyBounded armsExecutableTargetBounded
               armsExecutableBodyBounded armsAudit armsAdequate)
           exact ⟨inferClauseFuel_complete before targetRelated primitiveRun.run
