@@ -438,5 +438,97 @@ theorem ctor
   DemandTypingInferenceCompletenessValidationMain.patternCtor lookup closed
     children targetAlignment capabilitySolve facts
 
+/-! ## Certified list dispatch -/
+
+/-- Pattern-list traversal preserves the exact validator chronology supplied
+by each certified head.  This is the list half of the final mutually
+recursive pattern dispatcher; no validator premise is exposed to callers. -/
+theorem certifiedPatternsOrigin_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {index : Nat}
+    {patterns : List Pattern} {duals : List Dual} {bindings' : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (patternBelow : CertifiedPatternCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (parameters : PatternCtxBisimulation before.prevailing
+      declarativeParameters executableParameters)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (parametersBounded : declarativeParameters.BoundedBy q)
+    (bindingsBounded : declarativeBindings.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    {raw : DDPatterns signature q S declarativeContext declarativeParameters
+      declarativeBindings patterns duals bindings' q' S'}
+    {origin : DDPatternsOrigin signature raw ledger ledger'}
+    (audit : DDPatternsTerminalAudit terminal signature origin)
+    (adequate : PatternsBudgetAdequate fuel patterns) :
+    Nonempty (BoundedCertifiedPatternsRunCompletion terminal signature before
+      (inferPatternsFuel fuel signature executableContext executableParameters
+        executableBindings selfEnv path index patterns state)
+      q' S' ledger' duals bindings') := by
+  cases fuel with
+  | zero => simp [PatternsBudgetAdequate] at adequate
+  | succ inner =>
+      cases audit with
+      | nil =>
+          let bounded := boundedPatternsNil_complete
+            (signature := signature) (context := executableContext)
+            (parameters := executableParameters) (selfEnv := selfEnv)
+            (path := path) (index := index) inner before
+            declarativeBindings bindings executableBindingsBounded
+          exact ⟨⟨bounded, patternsNil terminal signature state⟩⟩
+      | cons headAudit tailAudit =>
+          rename_i pattern dual bindings₁ q₁ S₁ ledger₁ patterns duals
+            headRaw tailRaw headOrigin tailOrigin
+          have headAdequate : PatternBudgetAdequate inner pattern := by
+            simp only [PatternsBudgetAdequate, PatternBudgetAdequate,
+              patternListTraversalFuel] at adequate ⊢
+            omega
+          have tailAdequate : PatternsBudgetAdequate inner patterns := by
+            simp only [PatternsBudgetAdequate, patternListTraversalFuel]
+              at adequate ⊢
+            omega
+          let head := Classical.choice
+            (patternBelow.complete (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := index :: path) before
+              signatureBelow contexts parameters bindings contextBounded
+              parametersBounded bindingsBounded executableContextBounded
+              executableParametersBounded executableBindingsBounded headAudit
+              headAdequate)
+          let headExtends := headOrigin.erase.supplyExtends
+          obtain ⟨_, _, declarativeBindings₁Bounded⟩ :=
+            headOrigin.erase.boundedBy closed before.declarative_bounded
+              contextBounded parametersBounded bindingsBounded
+          let tail := Classical.choice
+            (certifiedPatternsOrigin_complete_nonempty closed
+              (selfEnv := selfEnv) (path := path) (index := index + 1) inner
+              (patternBelow.mono (Nat.le_succ inner)) head.bounded.run.completion
+              (signatureBelow.mono headExtends)
+              (contexts.transport head.bounded.run.transition)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                head.bounded.run.transition parameters)
+              head.bounded.run.bindings (contextBounded.mono headExtends)
+              (parametersBounded.mono headExtends)
+              declarativeBindings₁Bounded
+              (executableContextBounded.mono headExtends)
+              (executableParametersBounded.mono headExtends)
+              head.bounded.rawBindingsBounded tailAudit tailAdequate)
+          let bounded := boundedPatternsCons_complete before head.bounded
+            tail.bounded tailOrigin.erase.supplyExtends
+          exact ⟨⟨bounded, patternsCons head.validation tail.validation⟩⟩
+termination_by fuel
+
 end DemandTypingInferenceCompletenessPatternCertified
 end TypePM
