@@ -2,6 +2,7 @@ import TypePM.DemandTypingInferenceCompletenessTraversal
 import TypePM.DemandTypingInferenceCompletenessDataBisimulation
 import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
 import TypePM.DemandTypingInferenceCompletenessAlignmentFamilies
+import TypePM.DemandTypingInferenceCompletenessPatternCtorCapability
 
 /-!
 # Pattern traversal completeness packages
@@ -24,6 +25,7 @@ open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessAlignmentTraversal
 open DemandTypingInferenceCompletenessAlignmentFamilies
+open DemandTypingInferenceCompletenessPatternCtorCapability
 
 /-! ## Compositional output relations -/
 
@@ -931,6 +933,36 @@ structure DPatsRunCompletion
   allocated_recorded : AllocatedCapsRecorded result.state
   targets : TyListBisimulation transition.after targets result.targets
   bindings : MonoCtxBisimulation transition.after bindings result.bindings
+
+/-- Result package for the pattern-constructor capability subroutine. -/
+structure PatternCtorCapRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option (Cap × InferState))
+    (q' : InferenceBase.FreshSupply) (declarative : Subst)
+    (ledger : CapabilityOriginLedger) (capability : Cap) : Type where
+  result : Cap × InferState
+  success : operation = some result
+  transition : BisimulationExtension before.prevailing ledger declarative
+    result.2
+  correspondence : TraversalStateCorrespondence q' declarative ledger result.2
+  prevailing_eq : correspondence.prevailing = transition.after
+  capability : CapBisimulation transition.after capability result.1
+
+def PatternCtorCapRunCompletion.extension
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger₀ ledger : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option (Cap × InferState)} {capability : Cap}
+    (run : PatternCtorCapRunCompletion before operation q' S' ledger
+      capability) :
+    BisimulationExtension before.prevailing ledger S' run.result.2 where
+  after := run.correspondence.prevailing
+  transportTy := by
+    intro declarativeTarget executableTarget related
+    rw [run.prevailing_eq]
+    exact run.transition.transportTy related
 
 def PatternRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -2210,6 +2242,187 @@ noncomputable def patternOr_complete
         DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
           suffix leftBindingsAtRight }
 
+/-- User pattern-constructor completion after the capability-origin subroutine
+has supplied its exact state/capability package. -/
+noncomputable def patternCtor_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (parameters : PatternCtx) (selfEnv : SelfEnv) (path : SyntaxPath)
+    (name : String) (patterns : List Pattern)
+    {entry : PatternCtorScheme signature.observability}
+    (lookup : signature.findPatternCtor name = some entry)
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (executableBindings : MonoCtx) {duals : List Dual}
+    {bindings' : MonoCtx} {capability : Cap}
+    (children :
+      let instantiation := instantiateCtorInState_complete before entry.scheme
+      PatternsRunCompletion
+        (instantiation.correspondence.visit .patternCtor path)
+        (inferPatternsFuel fuel signature context parameters
+          executableBindings selfEnv path 0 patterns
+          (visit (instantiateCtorInState state entry.scheme).2
+            .patternCtor path))
+        q₁ S₁ ledger₁ duals bindings')
+    (declarativeDualsBounded : ∀ dual ∈ duals, Dual.BoundedBy q₁ dual)
+    (declarativeTargetsBounded : ∀ target ∈
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+      target.BoundedBy q₁)
+    (executableDualsBounded : ∀ dual ∈ children.result.duals,
+      Dual.BoundedBy q₁ dual)
+    (executableTargetsBounded : ∀ target ∈
+      (instantiateCtorInState state entry.scheme).1.1, target.BoundedBy q₁)
+    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
+    (capRun :
+      let targetAlignment := ddAlignTargetListWithLedger_complete
+        (origin := freshOrigin .pattern path "pattern-constructor-fields")
+        children.completion children.duals
+        (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+          ((instantiateCtorInState_complete before entry.scheme).correspondence.visitExtension
+            .patternCtor path |>.seq children.transition)
+          (instantiateCtorInState_complete before entry.scheme).arguments)
+        declarativeDualsBounded declarativeTargetsBounded
+        executableDualsBounded executableTargetsBounded targetsAligned
+      PatternCtorCapRunCompletion targetAlignment.completion
+        (solvePatternCtorCapability signature entry
+          (freshOrigin .pattern path "pattern-constructor-capability")
+          (children.result.duals.map Dual.cap) targetAlignment.result)
+        q₂ S₃ ledger₂ capability)
+    (compatible : capCompatibleCheck entry
+      ((children.result.duals.map Dual.cap).map fun child =>
+        child.apply capRun.result.2.prevailing.cap)
+      (capRun.result.1.apply capRun.result.2.prevailing.cap) = true) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pctor name patterns) state)
+      q₂ S₃
+      (DDLedger.freezeExport ledger₂ S₃
+        (freshCapImages q entry.scheme.capBinders)
+        (capabilityExportPayload [capability]
+          ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+            bindings'.map fun binding => binding.2)))
+      ⟨capability,
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩
+      bindings' := by
+  let instantiation := instantiateCtorInState_complete before entry.scheme
+  let visitExtension := instantiation.correspondence.visitExtension
+    .patternCtor path
+  let targetsAtChildren :=
+    DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+      (visitExtension.seq children.transition) instantiation.arguments
+  let targetAlignment := ddAlignTargetListWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-constructor-fields")
+    children.completion children.duals
+    (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+      ((instantiateCtorInState_complete before entry.scheme).correspondence.visitExtension
+        .patternCtor path |>.seq children.transition)
+      (instantiateCtorInState_complete before entry.scheme).arguments)
+    declarativeDualsBounded declarativeTargetsBounded executableDualsBounded
+    executableTargetsBounded targetsAligned
+  have capSuccess := capRun.success
+  let capExtension := capRun.extension
+  let targetAtCap :=
+    capExtension.transportTy
+      (targetAlignment.transition.transportTy
+        ((visitExtension.seq children.transition).transportTy
+          instantiation.target))
+  let bindingsAtCap :=
+    DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+      (targetAlignment.transition.seq capExtension) children.bindings
+  have capabilityAtCap : CapBisimulation capRun.correspondence.prevailing
+      capability capRun.result.1 := by
+    rw [capRun.prevailing_eq]
+    exact capRun.capability
+  let declarativePayload := capabilityExportPayload [capability]
+    ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+      bindings'.map fun binding => binding.2)
+  let executablePayload := capabilityExportPayload [capRun.result.1]
+    ((instantiateCtorInState state entry.scheme).1.2 ::
+      children.result.bindings.map fun binding => binding.2)
+  have payloadRelated : TyBisimulation capRun.correspondence.prevailing
+      declarativePayload executablePayload := by
+    unfold declarativePayload executablePayload capabilityExportPayload
+    apply tyListBisimulation_prod
+    exact DemandTypingInferenceCompletenessPatternTraversal.TyListBisimulation.append
+      (.cons capabilityAtCap .nil)
+      (.cons targetAtCap
+        (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
+          bindingsAtCap))
+  let capImages := freshCapImages q entry.scheme.capBinders
+  let frozen :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelated
+      capRun.correspondence capImages payloadRelated
+  let freezeExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
+      capRun.correspondence capImages payloadRelated
+  let compatibilityEvent := TraceEvent.patternCtorCompatibility
+    (capRun.result.2.freezeCapabilityExport capImages executablePayload).trace.solves.length
+    name (children.result.duals.map Dual.cap) capRun.result.1
+  let afterCompatibility := frozen.recordEvent compatibilityEvent (by
+    intro _ membership
+    simp [compatibilityEvent, TraceEvent.allocatedCapVars] at membership)
+  let inferredEvent := TraceEvent.inferredPattern (.pctor name patterns)
+    ⟨capRun.result.1, (instantiateCtorInState state entry.scheme).1.2⟩
+    children.result.bindings path
+  let final := afterCompatibility.recordEvent inferredEvent (by
+    intro _ membership
+    simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
+  let compatibilityExtension :=
+    freezeExtension.after.recordEventExtension compatibilityEvent
+  let inferredExtension :=
+    compatibilityExtension.after.recordEventExtension inferredEvent
+  let suffix := freezeExtension.seq
+    (compatibilityExtension.seq inferredExtension)
+  let transition := instantiation.transition.seq
+    (visitExtension.seq (children.transition.seq
+      (targetAlignment.transition.seq (capExtension.seq suffix))))
+  refine
+    { result :=
+        ⟨⟨capRun.result.1, (instantiateCtorInState state entry.scheme).1.2⟩,
+          children.result.bindings,
+          InferState.recordEvent
+            (InferState.recordEvent
+              (capRun.result.2.freezeCapabilityExport capImages
+                executablePayload) compatibilityEvent) inferredEvent⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual := ⟨
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+          suffix capabilityAtCap,
+        suffix.transportTy targetAtCap⟩
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          suffix bindingsAtCap }
+  simp only [inferPatternFuel]
+  rw [lookup]
+  simp only [children.success]
+  simp only [targetAlignment.success]
+  conv =>
+    lhs
+    rw [capSuccess]
+  simp only
+  have compatible' := compatible
+  have condition : capCompatibleCheck entry
+      ((children.result.duals.map Dual.cap).map fun child =>
+        child.apply capRun.result.2.prevailing.cap)
+      (capRun.result.1.apply capRun.result.2.prevailing.cap) = true := by
+    exact compatible'
+  rw [if_pos condition]
+  simp [capImages, executablePayload, compatibilityEvent,
+    inferredEvent, before.supply_eq]
+
 /-- Pattern-function application instantiates its expected dual list, checks
 all children, and aligns the two lists pointwise. -/
 noncomputable def patternApp_complete
@@ -2226,19 +2439,32 @@ noncomputable def patternApp_complete
     {duals : List Dual} {bindings' : MonoCtx}
     (children :
       let instantiation := instantiateDualInState_complete before signature
-        declarativeContext declarativeParameters declarativeBindings
-        executableContext executableParameters executableBindings scheme
+        executableContext executableParameters executableBindings
+        (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) scheme
       PatternsRunCompletion
         (instantiation.correspondence.visit .patternApp path)
         (inferPatternsFuel fuel signature executableContext
           executableParameters executableBindings selfEnv path 0 patterns
-          (visit (instantiateDualInState signature declarativeContext
-            declarativeParameters declarativeBindings executableContext
-            executableParameters executableBindings state scheme).2
+          (visit (instantiateDualInState signature executableContext
+            executableParameters executableBindings
+            (executableContext.applySubst state.prevailing)
+            (executableParameters.applySubst state.prevailing)
+            (executableBindings.applySubst state.prevailing) state scheme).2
             .patternApp path))
         q₁ S₁ ledger₁ duals bindings')
     (declarativeDualsBounded : ∀ dual ∈ duals, Dual.BoundedBy q₁ dual)
     (executableDualsBounded : ∀ dual ∈ children.result.duals,
+      Dual.BoundedBy q₁ dual)
+    (declarativeExpectedBounded : ∀ dual ∈
+      (InferenceBase.instantiateDualScheme q scheme).value.1,
+      Dual.BoundedBy q₁ dual)
+    (executableExpectedBounded : ∀ dual ∈
+      (instantiateDualInState signature executableContext executableParameters
+        executableBindings (executableContext.applySubst state.prevailing)
+        (executableParameters.applySubst state.prevailing)
+        (executableBindings.applySubst state.prevailing) state scheme).1.1,
       Dual.BoundedBy q₁ dual)
     (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
@@ -2249,11 +2475,10 @@ noncomputable def patternApp_complete
       q₁ S' ledger₁
       (InferenceBase.instantiateDualScheme q scheme).value.2 bindings' := by
   let instantiation := instantiateDualInState_complete before signature
-    declarativeContext declarativeParameters declarativeBindings
-    executableContext executableParameters executableBindings scheme
-  let closed := signature.patternFunSchemesClosed lookup
-  let instBounded := instantiateDualScheme_boundedBy
-    (DualScheme.Closed.boundedBy closed)
+    executableContext executableParameters executableBindings
+    (executableContext.applySubst state.prevailing)
+    (executableParameters.applySubst state.prevailing)
+    (executableBindings.applySubst state.prevailing) scheme
   let expectedAtChildren :=
     DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
       ((instantiation.correspondence.visitExtension .patternApp path).seq
@@ -2261,14 +2486,14 @@ noncomputable def patternApp_complete
   let alignment := ddAlignDualListWithLedger_complete
     (origin := freshOrigin .pattern path "pattern-function-arguments")
     children.completion children.duals expectedAtChildren
-    declarativeDualsBounded
-    (fun dual mem => (instBounded.1 dual mem).mono
-      (children.completion.supply_eq ▸ SupplyExtends.refl q₁))
-    executableDualsBounded
-    (fun dual mem => (instBounded.1 dual mem).mono
-      (children.completion.supply_eq ▸ SupplyExtends.refl q₁)) aligned
+    declarativeDualsBounded declarativeExpectedBounded
+    executableDualsBounded executableExpectedBounded aligned
   let event := TraceEvent.inferredPattern (.papp name patterns)
-    instantiation.target.executable children.result.bindings path
+    (instantiateDualInState signature executableContext executableParameters
+      executableBindings (executableContext.applySubst state.prevailing)
+      (executableParameters.applySubst state.prevailing)
+      (executableBindings.applySubst state.prevailing) state scheme).1.2
+    children.result.bindings path
   let final := alignment.completion.recordEvent event (by
     intro _ membership
     simp [event, TraceEvent.allocatedCapVars] at membership)
@@ -2278,7 +2503,12 @@ noncomputable def patternApp_complete
   let transition := instantiation.transition.seq
     ((instantiation.correspondence.visitExtension .patternApp path).seq suffix)
   refine
-    { result := ⟨instantiation.target.executable, children.result.bindings,
+    { result := ⟨(instantiateDualInState signature executableContext
+          executableParameters executableBindings
+          (executableContext.applySubst state.prevailing)
+          (executableParameters.applySubst state.prevailing)
+          (executableBindings.applySubst state.prevailing) state scheme).1.2,
+        children.result.bindings,
         alignment.result.recordEvent event⟩
       success := ?_
       supply_eq := final.supply_eq
@@ -2301,8 +2531,9 @@ noncomputable def patternApp_complete
           (alignment.transition.seq finishExtension) children.bindings }
   simp only [inferPatternFuel]
   rw [lookup]
-  simp [instantiation, children.success, alignment.success, event,
-    Inference.instantiateDualInState]
+  simp only [children.success]
+  simp only [alignment.success]
+  simp [event, before.supply_eq]
 
 /-! ## Empty and cons list packaging -/
 
