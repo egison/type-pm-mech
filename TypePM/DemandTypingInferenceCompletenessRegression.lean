@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessPublic
 import TypePM.DemandTypingInferenceSoundnessPublic
+import TypePM.DemandTypingRegression
 import TypePM.RecursiveExamples
 
 /-!
@@ -17,6 +18,17 @@ namespace TypePM
 namespace DemandTypingInferenceCompletenessRegression
 
 open DemandTypingInferenceCompletenessPublic
+
+/-- A DD derivation assembled independently of executable inference still
+reaches public acceptance.  This pins the terminal audit as a genuine
+relative-completeness premise rather than a copy of an `infer` result. -/
+theorem handwrittenOrProgram_infer_isSome :
+    (Inference.infer RecursiveExamples.listSignature []
+      AcceptanceGapRegression.orProgram).isSome = true := by
+  exact DDTyping.infer_isSome
+    (DemandTypingRegression.orProgram_ddTyping RecursiveExamples.listSignature
+      (by decide))
+    RecursiveExamples.listSignature_wf
 
 /-- The recursive list matcher reaches public acceptance from `DDTyping`
 under the executable frozen-signature check. -/

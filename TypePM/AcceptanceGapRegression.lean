@@ -1,5 +1,6 @@
 import TypePM.CertifiedInferenceRegression
 import TypePM.CoherentTyping
+import TypePM.SignatureChecker
 
 /-!
 # DD acceptance and state-erasure boundary regressions
@@ -268,6 +269,74 @@ non-matcher expected head before any coercion branch fires. -/
 theorem nestedCapSwappedProgram_rejected :
     Inference.inferenceSucceeds emptySignature [] nestedCapSwappedProgram =
       false := by
+  native_decide
+
+/-! ## Source-order sensitivity of an unresolved lambda domain -/
+
+/-- `use` fixes its argument to a function whose domain is a matcher slot.
+This gives the first tuple component a concrete expected type without adding
+a source annotation.  Its result is an otherwise opaque data value because
+well-formed source data constructors must have a data-headed result. -/
+def orderProbeUseScheme : CtorScheme where
+  capBinders := []
+  tyBinders := []
+  args := [.fn (.slot .any .int) .int]
+  result := .data "Used" []
+
+def orderProbeSignature : FrozenSig :=
+  { emptySignature with
+    dataCtors :=
+      [("nil", nilCanonicalScheme), ("cons", consCanonicalScheme),
+       ("use", orderProbeUseScheme)] }
+
+theorem orderProbeSignature_wf : FrozenSigWF orderProbeSignature :=
+  frozenSigWFCheck_sound (by decide) rfl
+
+/-- The demanded use precedes the ordinary application.  Checking `f` as the
+argument of `use` first resolves its fresh lambda-domain metavariable to
+`MatcherSlot Any Int`; the later application can therefore coerce
+`something` at a visible slot demand. -/
+def demandedUseFirstProgram : Expr :=
+  .lam "f" (.tuple
+    [.ctor "use" [.var "f"],
+     .app (.var "f") .something])
+
+/-- The same two tuple components in the opposite source order. -/
+def ordinaryUseFirstProgram : Expr :=
+  .lam "f" (.tuple
+    [.app (.var "f") .something,
+     .ctor "use" [.var "f"]])
+
+/-- Left-to-right checking accepts the demanded-use-first ordering. -/
+theorem demandedUseFirstProgram_accepted :
+    Inference.inferenceSucceeds orderProbeSignature []
+      demandedUseFirstProgram = true := by
+  native_decide
+
+/-- The accepted public run reports the type fixed by `use` and the two
+tuple-component result types. -/
+theorem demandedUseFirstProgram_inferType :
+    Inference.inferType orderProbeSignature [] demandedUseFirstProgram =
+      some (.fn (.fn (.slot .any .int) .int)
+        (.prod [.data "Used" [], .int])) := by
+  native_decide
+
+/-- The reverse ordering is currently rejected.  Its first application sees
+an unresolved domain, so the no-guess rule performs ordinary alignment and
+pins that domain to raw `Matcher Any ?target`.  The subsequent `use` check
+cannot equate this matcher-headed domain with `MatcherSlot Any Int`.
+
+This theorem records an observable consequence of chronological state
+threading; it does not classify that consequence as a permanent language
+boundary. -/
+theorem ordinaryUseFirstProgram_rejected :
+    Inference.inferenceSucceeds orderProbeSignature []
+      ordinaryUseFirstProgram = false := by
+  native_decide
+
+theorem ordinaryUseFirstProgram_inferType :
+    Inference.inferType orderProbeSignature [] ordinaryUseFirstProgram =
+      none := by
   native_decide
 
 /-! ## Capability freeze: constructor instance capabilities -/

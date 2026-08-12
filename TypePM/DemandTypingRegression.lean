@@ -1557,13 +1557,17 @@ by name, the match-target alignment resolves the shared binder target to
 `Int`, and the `something` matcher expression meets the pattern's slot
 expectation through the one-way producer-to-slot solution. -/
 
+section OrPattern
+
+variable (signature : FrozenSig)
+
 /-- Prevailing substitution after the or-alternative capability alignment. -/
 def orCapAlign : Subst :=
   Subst.seq ⟨Unification.CapSubst.single ⟨0⟩ (.var ⟨1⟩), TySubst.id⟩ Subst.id
 
 /-- Prevailing substitution after the or-alternative target alignment. -/
 def orDualAlign : Subst :=
-  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 0 (.var 1)⟩ orCapAlign
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 1 (.var 2)⟩ orCapAlign
 
 /-- Prevailing substitution after the or binding alignment: the binder types
 are already shared, so the delta is an identity solve. -/
@@ -1571,7 +1575,7 @@ def orBindingsAlign : Subst := Subst.seq Subst.id orDualAlign
 
 /-- Prevailing substitution after the match-target alignment. -/
 def orTargetAlign : Subst :=
-  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 1 .int⟩ orBindingsAlign
+  Subst.seq ⟨CapSubst.id, Unification.TySubst.single 2 .int⟩ orBindingsAlign
 
 /-- One-way capability component of the producer-to-slot solution: the
 pattern's capability meta receives the `something` producer `Any`. -/
@@ -1591,34 +1595,35 @@ theorem orOneWayCap_eq_single :
 
 /-- Terminal substitution of the or-pattern program. -/
 def orTerminal : Subst :=
-  Subst.seq ⟨orOneWayCap, Unification.TySubst.single 2 .int⟩ orTargetAlign
+  Subst.seq ⟨orOneWayCap, Unification.TySubst.single 3 .int⟩ orTargetAlign
 
 def orPatternLedger₁ : CapabilityOriginLedger :=
-  DDLedger.markFreshCap [] ⟨0, 0⟩
+  DDLedger.markFreshCap [] ⟨0, 1⟩
 
 def orPatternLedger₂ : CapabilityOriginLedger :=
-  DDLedger.markFreshCap orPatternLedger₁ ⟨1, 1⟩
+  DDLedger.markFreshCap orPatternLedger₁ ⟨1, 2⟩
 
 theorem orLeft_ddPattern :
-    DDPattern emptySignature ⟨0, 0⟩ Subst.id [] [] [] (.pvar "x")
-      ⟨.var ⟨0⟩, .var 0⟩ [("x", .var 0)] ⟨1, 1⟩ Subst.id :=
+    DDPattern signature ⟨0, 1⟩ Subst.id [] [] [] (.pvar "x")
+      ⟨.var ⟨0⟩, .var 1⟩ [("x", .var 1)] ⟨1, 2⟩ Subst.id :=
   .pvar (by simp [MonoCtx.names])
 
 def orLeft_ddPatternOrigin :
-    DDPatternOrigin emptySignature orLeft_ddPattern [] orPatternLedger₁ :=
-  DDPatternOrigin.pvar (signature := emptySignature) (q := ⟨0, 0⟩)
+    DDPatternOrigin signature (orLeft_ddPattern signature) []
+      orPatternLedger₁ :=
+  DDPatternOrigin.pvar (signature := signature) (q := ⟨0, 1⟩)
     (S := Subst.id) (context := []) (parameters := []) (bindings := [])
       (ledger := []) (by simp [MonoCtx.names])
 
 theorem orRight_ddPattern :
-    DDPattern emptySignature ⟨1, 1⟩ Subst.id [] [] [] (.pvar "x")
-      ⟨.var ⟨1⟩, .var 1⟩ [("x", .var 1)] ⟨2, 2⟩ Subst.id :=
+    DDPattern signature ⟨1, 2⟩ Subst.id [] [] [] (.pvar "x")
+      ⟨.var ⟨1⟩, .var 2⟩ [("x", .var 2)] ⟨2, 3⟩ Subst.id :=
   .pvar (by simp [MonoCtx.names])
 
 def orRight_ddPatternOrigin :
-    DDPatternOrigin emptySignature orRight_ddPattern orPatternLedger₁
+    DDPatternOrigin signature (orRight_ddPattern signature) orPatternLedger₁
       orPatternLedger₂ :=
-  DDPatternOrigin.pvar (signature := emptySignature) (q := ⟨1, 1⟩)
+  DDPatternOrigin.pvar (signature := signature) (q := ⟨1, 2⟩)
     (S := Subst.id) (context := []) (parameters := []) (bindings := [])
       (ledger := orPatternLedger₁) (by simp [MonoCtx.names])
 
@@ -1626,66 +1631,67 @@ def orRight_ddPatternOrigin :
 fresh metas per alternative, dual alignment across the alternatives, and
 positional binding alignment on the shared binder name. -/
 theorem orPattern_ddPattern :
-    DDPattern emptySignature ⟨0, 0⟩ Subst.id [] [] []
-      (.por (.pvar "x") (.pvar "x")) ⟨.var ⟨0⟩, .var 0⟩ [("x", .var 0)]
-      ⟨2, 2⟩ orBindingsAlign := by
+    DDPattern signature ⟨0, 1⟩ Subst.id [] [] []
+      (.por (.pvar "x") (.pvar "x")) ⟨.var ⟨0⟩, .var 1⟩ [("x", .var 1)]
+      ⟨2, 3⟩ orBindingsAlign := by
   refine DDPattern.por (S₃ := orDualAlign)
     (.pvar (by simp [MonoCtx.names]))
     (.pvar (by simp [MonoCtx.names])) ?_ ?_
   · exact .mk (ExactCapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide))
-      (.ordinary rfl (ExactPairedMGU.varLeft 0 (.var 1) (by decide)))
-  · exact .cons rfl (.ordinary rfl (ExactPairedMGU.refl (.var 1))) .nil
+      (.ordinary rfl (ExactPairedMGU.varLeft 1 (.var 2) (by decide)))
+  · exact .cons rfl (.ordinary rfl (ExactPairedMGU.refl (.var 2))) .nil
 
 def orPattern_ddPatternOrigin :
-    DDPatternOrigin emptySignature orPattern_ddPattern [] orPatternLedger₂ := by
+    DDPatternOrigin signature (orPattern_ddPattern signature) []
+      orPatternLedger₂ := by
   refine DDPatternOrigin.por (S₃ := orDualAlign)
-    orLeft_ddPatternOrigin orRight_ddPatternOrigin ?_ ?_
-  · exact .mk (S := Subst.id) (left := ⟨.var ⟨0⟩, .var 0⟩)
-      (right := ⟨.var ⟨1⟩, .var 1⟩)
+    (orLeft_ddPatternOrigin signature) (orRight_ddPatternOrigin signature) ?_ ?_
+  · exact .mk (S := Subst.id) (left := ⟨.var ⟨0⟩, .var 1⟩)
+      (right := ⟨.var ⟨1⟩, .var 2⟩)
       ⟨ExactCapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide),
         PairedUnification.admissible_single_structuralFlexible
           orPatternLedger₂ ⟨0⟩ (.var ⟨1⟩) (by
             simp [orPatternLedger₂, orPatternLedger₁,
               DDLedger.markFreshCap])⟩
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
-        (ExactPairedMGU.varLeft 0 (.var 1) (by decide))))
+        (ExactPairedMGU.varLeft 1 (.var 2) (by decide))))
   · exact .cons (S := orDualAlign)
-      (left := ("x", Ty.var 0)) (right := ("x", Ty.var 1)) rfl
+      (left := ("x", Ty.var 1)) (right := ("x", Ty.var 2)) rfl
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
-        (ExactPairedMGU.refl (.var 1)))) .nil
+        (ExactPairedMGU.refl (.var 2)))) .nil
 
 /-- Raw synthesis of the or-pattern program at the initial supply. -/
 theorem orProgram_ddSynth :
-    DDSynth emptySignature ⟨0, 0⟩ Subst.id []
-      AcceptanceGapRegression.orProgram (Ty.listT .int) ⟨2, 3⟩ orTerminal := by
-  refine DDSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 3⟩)
-    (S₄ := orTerminal) .lit orPattern_ddPattern ?_ ?_ ?_
-  · exact .ordinary rfl (ExactPairedMGU.varLeft 1 .int (by decide))
+    DDSynth signature ⟨0, 1⟩ Subst.id []
+      AcceptanceGapRegression.orProgram (Ty.listT .int) ⟨2, 4⟩ orTerminal := by
+  refine DDSynth.matchAll (S₃ := orTargetAlign) (q₃ := ⟨2, 4⟩)
+    (S₄ := orTerminal) .lit (orPattern_ddPattern signature) ?_ ?_ ?_
+  · exact .ordinary rfl (ExactPairedMGU.varLeft 2 .int (by decide))
   · exact .mk .something (.matcherToSlot rfl rfl
       ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
-        ExactTargetMGU.varLeft 2 .int (by decide)⟩)
+        ExactTargetMGU.varLeft 3 .int (by decide)⟩)
   · simpa only [InferenceBase.instantiateScheme_mono_value,
       InferenceBase.instantiateScheme_mono_supply, MonoCtx.toContext,
       List.map, List.append_nil] using
-      (DDSynth.var (signature := emptySignature) (q := ⟨2, 3⟩)
-        (S := orTerminal) (Γ := [("x", Scheme.mono (.var 0))])
+      (DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
+        (S := orTerminal) (Γ := [("x", Scheme.mono (.var 1))])
         (name := "x") (scheme := Scheme.mono .int) (by native_decide))
 
 theorem orMatcher_ddCheck :
-    DDCheck emptySignature ⟨2, 2⟩ orTargetAlign [] .something
-      (.slot (.var ⟨0⟩) .int) ⟨2, 3⟩ orTerminal := by
+    DDCheck signature ⟨2, 3⟩ orTargetAlign [] .something
+      (.slot (.var ⟨0⟩) .int) ⟨2, 4⟩ orTerminal := by
   exact .mk .something (.matcherToSlot rfl rfl
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
-      ExactTargetMGU.varLeft 2 .int (by decide)⟩)
+      ExactTargetMGU.varLeft 3 .int (by decide)⟩)
 
 def orMatcher_ddCheckOrigin :
-    DDCheckOrigin emptySignature orMatcher_ddCheck orPatternLedger₂
+    DDCheckOrigin signature (orMatcher_ddCheck signature) orPatternLedger₂
       orPatternLedger₂ := by
-  refine .mk (synthesized := DDSynth.something (signature := emptySignature)
-    (q := ⟨2, 2⟩) (S := orTargetAlign) (Γ := [])) .something ?_
+  refine .mk (synthesized := DDSynth.something (signature := signature)
+    (q := ⟨2, 3⟩) (S := orTargetAlign) (Γ := [])) .something ?_
   exact .matcherToSlot rfl rfl ⟨
     ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
-      ExactTargetMGU.varLeft 2 .int (by decide)⟩,
+      ExactTargetMGU.varLeft 3 .int (by decide)⟩,
     ⟨by
       rw [orOneWayCap_eq_single]
       exact PairedUnification.admissible_single_structuralFlexible
@@ -1693,52 +1699,53 @@ def orMatcher_ddCheckOrigin :
           simp [orPatternLedger₂, DDLedger.markFreshCap])⟩⟩
 
 def orBody_ddSynth :
-    DDSynth emptySignature ⟨2, 3⟩ orTerminal
-      [("x", Scheme.mono (.var 0))] (.var "x") .int ⟨2, 3⟩
+    DDSynth signature ⟨2, 4⟩ orTerminal
+      [("x", Scheme.mono (.var 1))] (.var "x") .int ⟨2, 4⟩
       orTerminal := by
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using
-    (DDSynth.var (signature := emptySignature) (q := ⟨2, 3⟩)
-      (S := orTerminal) (Γ := [("x", Scheme.mono (.var 0))])
+    (DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
+      (S := orTerminal) (Γ := [("x", Scheme.mono (.var 1))])
       (name := "x") (scheme := Scheme.mono .int) (by native_decide))
 
 def orBody_ddSynthOrigin :
-    DDSynthOrigin emptySignature orBody_ddSynth orPatternLedger₂
+    DDSynthOrigin signature (orBody_ddSynth signature) orPatternLedger₂
       orPatternLedger₂ := by
   apply DDSynthOrigin.transportSome
   let lookup : (Context.applySubst orTerminal
-      [("x", Scheme.mono (.var 0))]).find?
+      [("x", Scheme.mono (.var 1))]).find?
       "x" = some (Scheme.mono .int) := by native_decide
-  let raw₀ := DDSynth.var (signature := emptySignature) (q := ⟨2, 3⟩)
+  let raw₀ := DDSynth.var (signature := signature) (q := ⟨2, 4⟩)
     lookup
-  have origin₀ : DDSynthOrigin emptySignature raw₀ orPatternLedger₂
+  have origin₀ : DDSynthOrigin signature raw₀ orPatternLedger₂
       orPatternLedger₂ := by
     simpa [raw₀, DDLedger.markSchemeInstance,
       CapabilityOriginLedger.setOrigins, Scheme.canonicalCapImages,
       Scheme.FreshOpening.capImages, Scheme.mono] using
-      (DDSynthOrigin.var (signature := emptySignature) (q := ⟨2, 3⟩)
+      (DDSynthOrigin.var (signature := signature) (q := ⟨2, 4⟩)
         (ledger := orPatternLedger₂) lookup)
-  have source₀ : ∃ raw, DDSynthOrigin emptySignature raw orPatternLedger₂
+  have source₀ : ∃ raw, DDSynthOrigin signature raw orPatternLedger₂
       orPatternLedger₂ := ⟨raw₀, origin₀⟩
   simpa only [InferenceBase.instantiateScheme_mono_value,
     InferenceBase.instantiateScheme_mono_supply] using source₀
 
 def orProgram_ddSynthOrigin :
-    DDSynthOrigin emptySignature orProgram_ddSynth [] orPatternLedger₂ := by
-  refine .matchAll .lit orPattern_ddPatternOrigin
+    DDSynthOrigin signature (orProgram_ddSynth signature) []
+      orPatternLedger₂ := by
+  refine .matchAll .lit (orPattern_ddPatternOrigin signature)
     (.ordinary rfl (originSafePairedCapId orPatternLedger₂
-      (ExactPairedMGU.varLeft 1 .int (by decide))))
-    orMatcher_ddCheckOrigin orBody_ddSynthOrigin
+      (ExactPairedMGU.varLeft 2 .int (by decide))))
+    (orMatcher_ddCheckOrigin signature) (orBody_ddSynthOrigin signature)
 
 def orBody_terminalAudit :
-    DDSynthTerminalAudit orTerminal emptySignature
-      orBody_ddSynthOrigin := by
+    DDSynthTerminalAudit orTerminal signature
+      (orBody_ddSynthOrigin signature) := by
   let lookup : (Context.applySubst orTerminal
-      [("x", Scheme.mono (.var 0))]).find? "x" =
+      [("x", Scheme.mono (.var 1))]).find? "x" =
       some (Scheme.mono .int) := by native_decide
-  let origin₀ := DDSynthOrigin.var (signature := emptySignature)
-    (q := ⟨2, 3⟩) (ledger := orPatternLedger₂) lookup
-  let audit₀ : DDSynthTerminalAudit orTerminal emptySignature origin₀ :=
+  let origin₀ := DDSynthOrigin.var (signature := signature)
+    (q := ⟨2, 4⟩) (ledger := orPatternLedger₂) lookup
+  let audit₀ : DDSynthTerminalAudit orTerminal signature origin₀ :=
     DDSynthTerminalAudit.var (lookup := lookup)
   apply DDSynthTerminalAudit.transportBuilt
   let source₀ := DDSynthTerminalAudit.BuiltAudit.of audit₀
@@ -1749,20 +1756,20 @@ def orBody_terminalAudit :
     Scheme.FreshOpening.capImages, Scheme.mono] using source₀
 
 def orLeft_terminalAudit :
-    DDPatternTerminalAudit orTerminal emptySignature
-      orLeft_ddPatternOrigin :=
+    DDPatternTerminalAudit orTerminal signature
+      (orLeft_ddPatternOrigin signature) :=
   DDPatternTerminalAudit.pvar (freshName := by simp [MonoCtx.names])
 
 def orRight_terminalAudit :
-    DDPatternTerminalAudit orTerminal emptySignature
-      orRight_ddPatternOrigin :=
+    DDPatternTerminalAudit orTerminal signature
+      (orRight_ddPatternOrigin signature) :=
   DDPatternTerminalAudit.pvar (freshName := by simp [MonoCtx.names])
 
 def orPattern_terminalAudit :
-    DDPatternTerminalAudit orTerminal emptySignature
-      orPattern_ddPatternOrigin := by
+    DDPatternTerminalAudit orTerminal signature
+      (orPattern_ddPatternOrigin signature) := by
   let dualsAligned : DDAlignDualWithLedger orPatternLedger₂ Subst.id
-      ⟨.var ⟨0⟩, .var 0⟩ ⟨.var ⟨1⟩, .var 1⟩ orDualAlign :=
+      ⟨.var ⟨0⟩, .var 1⟩ ⟨.var ⟨1⟩, .var 2⟩ orDualAlign :=
     .mk
       ⟨ExactCapMGU.varLeft ⟨0⟩ (.var ⟨1⟩) (by decide),
         PairedUnification.admissible_single_structuralFlexible
@@ -1770,24 +1777,24 @@ def orPattern_terminalAudit :
             simp [orPatternLedger₂, orPatternLedger₁,
               DDLedger.markFreshCap])⟩
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
-        (ExactPairedMGU.varLeft 0 (.var 1) (by decide))))
+        (ExactPairedMGU.varLeft 1 (.var 2) (by decide))))
   let bindingsAligned : DDAlignBindingsWithLedger orPatternLedger₂ orDualAlign
-      [("x", .var 0)] [("x", .var 1)] orBindingsAlign :=
+      [("x", .var 1)] [("x", .var 2)] orBindingsAlign :=
     .cons rfl
       (.ordinary rfl (originSafePairedCapId orPatternLedger₂
-        (ExactPairedMGU.refl (.var 1)))) .nil
+        (ExactPairedMGU.refl (.var 2)))) .nil
   exact DDPatternTerminalAudit.por (dualsAligned := dualsAligned)
-    (bindingsAligned := bindingsAligned) orLeft_terminalAudit
-    orRight_terminalAudit
+    (bindingsAligned := bindingsAligned) (orLeft_terminalAudit signature)
+    (orRight_terminalAudit signature)
 
 def orMatcher_terminalAudit :
-    DDCheckTerminalAudit orTerminal emptySignature
-      orMatcher_ddCheckOrigin := by
+    DDCheckTerminalAudit orTerminal signature
+      (orMatcher_ddCheckOrigin signature) := by
   let aligned : DDAlignWithLedger orPatternLedger₂ orTargetAlign
-      (.matcher .any (.var 2)) (.slot (.var ⟨0⟩) .int) orTerminal :=
+      (.matcher .any (.var 3)) (.slot (.var ⟨0⟩) .int) orTerminal :=
     .matcherToSlot rfl rfl ⟨
       ⟨[(⟨1⟩, Cap.any)], rfl, rfl,
-        ExactTargetMGU.varLeft 2 .int (by decide)⟩,
+        ExactTargetMGU.varLeft 3 .int (by decide)⟩,
       ⟨by
         rw [orOneWayCap_eq_single]
         exact PairedUnification.admissible_single_structuralFlexible
@@ -1797,23 +1804,31 @@ def orMatcher_terminalAudit :
     DDSynthTerminalAudit.something
 
 def orProgram_terminalAudit :
-    DDSynthTerminalAudit orTerminal emptySignature
-      orProgram_ddSynthOrigin := by
+    DDSynthTerminalAudit orTerminal signature
+      (orProgram_ddSynthOrigin signature) := by
   let targetAligned : DDAlignTypesWithLedger orPatternLedger₂ orBindingsAlign
-      (.var 0) .int orTargetAlign :=
+      (.var 1) .int orTargetAlign :=
     .ordinary rfl (originSafePairedCapId orPatternLedger₂
-      (ExactPairedMGU.varLeft 1 .int (by decide)))
+      (ExactPairedMGU.varLeft 2 .int (by decide)))
   exact .matchAll (targetAligned := targetAligned) .lit
-    orPattern_terminalAudit orMatcher_terminalAudit orBody_terminalAudit
+    (orPattern_terminalAudit signature) (orMatcher_terminalAudit signature)
+    (orBody_terminalAudit signature)
 
 /-- The or-pattern program closes at `List Int` in the demand-directed
 judgment, mirroring its executable acceptance. -/
 theorem orProgram_ddTyping :
-    DDTyping emptySignature [] AcceptanceGapRegression.orProgram
-      (Ty.listT .int) :=
-  ⟨Ty.listT .int, ⟨2, 3⟩, orTerminal, orProgram_ddSynth,
-    orPatternLedger₂, orProgram_ddSynthOrigin, orProgram_terminalAudit,
+    Inference.initialSupply signature [] = ⟨0, 1⟩ →
+    DDTyping signature [] AcceptanceGapRegression.orProgram
+      (Ty.listT .int) := by
+  intro initial
+  unfold DDTyping
+  rw [initial]
+  exact ⟨Ty.listT .int, ⟨2, 4⟩, orTerminal,
+    orProgram_ddSynth signature, orPatternLedger₂,
+    orProgram_ddSynthOrigin signature, orProgram_terminalAudit signature,
     rfl⟩
+
+end OrPattern
 
 /-! ## Pattern layer: a delegating matcher literal
 
