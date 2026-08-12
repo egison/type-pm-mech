@@ -1,5 +1,7 @@
 import TypePM.DemandTypingInferenceCompletenessCertifiedRun
 import TypePM.DemandTypingInferenceCompletenessValidatorBisimulation
+import TypePM.DemandTypingInferenceCompletenessContextBisimulation
+import TypePM.DemandTypingInferenceCompletenessValidatorEquivariance
 
 /-!
 # Paired terminal-audit coverage for completeness
@@ -25,6 +27,8 @@ open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessCertifiedRun
 open DemandTypingInferenceCompletenessValidatorBisimulation
 open DemandTypingInferenceCompletenessMatcherTraversal
+open DemandTypingInferenceCompletenessContextBisimulation
+open DemandTypingInferenceCompletenessValidatorEquivariance
 
 /-- A sensitive event justified either exactly, as before, or by paired DD
 and executable constructor operands under the current traversal relation. -/
@@ -77,6 +81,30 @@ inductive PairedTerminalAuditEventWitness
         (.matcherFinalization solveCount clauses executableTarget
           executableHoleLists localTarget localHoleLists localEvidence
           executableCapability)
+  | letE
+      {solveCount : Nat} {name : String}
+      {valueSubst : Subst}
+      {declarativeContext executableContext localContext : Context}
+      {declarativeTarget executableTarget localTarget : Ty}
+      {localScheme : Scheme}
+      (solveBound : solveCount ≤ state.trace.solves.length)
+      (localContextEq : localContext = executableContext.applySubst
+        (replay (state.trace.solves.take solveCount)))
+      (localTargetEq : localTarget =
+        (replay (state.trace.solves.take solveCount)).apply executableTarget)
+      (localSchemeEq : localScheme = signature.generalize localContext
+        localTarget)
+      (contexts : ContextBisimulation relation declarativeContext
+        executableContext)
+      (target : TyBisimulation relation declarativeTarget executableTarget)
+      (localSchemes : NormalizedSchemeBisimulation relation
+        (signature.generalize (declarativeContext.applySubst valueSubst)
+          (valueSubst.apply declarativeTarget)) localScheme)
+      (facts : DDTerminalAudit.LetFacts terminal signature declarativeContext
+        declarativeTarget valueSubst) :
+      PairedTerminalAuditEventWitness terminal signature relation
+        (.letGeneralization solveCount name executableContext executableTarget
+          localContext localTarget localScheme)
 
 /-- Paired witnesses transport with the same chronological bisimulation
 extension used by the raw completeness package. -/
@@ -123,6 +151,24 @@ theorem PairedTerminalAuditEventWitness.transport
       · exact catchAll
       · exact binders
       · exact facts
+  | letE solveBound localContextEq localTargetEq localSchemeEq contexts target
+      localSchemes facts =>
+      exact .letE
+        (Nat.le_trans solveBound stateExtension.history.solve_length_le)
+        (by
+          rw [HistoryPrefix.take_solves_of_le stateExtension.history solveBound]
+          exact localContextEq)
+        (by
+          rw [HistoryPrefix.take_solves_of_le stateExtension.history solveBound]
+          exact localTargetEq)
+        localSchemeEq
+        (contexts.transport extension)
+        (extension.transportTy target)
+        ⟨(extension.transportScheme localSchemes.forward
+            localSchemes.reverse).1,
+          (extension.transportScheme localSchemes.forward
+            localSchemes.reverse).2⟩
+        facts
 
 /-- At the root cut, paired constructor operands directly satisfy the
 executable validator condition.  We deliberately do not manufacture an
@@ -199,6 +245,37 @@ theorem PairedTerminalAuditEventWitness.matcherCondition
         ⟨evidence, collected, inferred, caps, arms, coverage⟩
       exact ⟨solveBound, localTargetEq, localHolesEq, evidence, collected,
         inferred, caps, catchAll, binders, arms, coverage⟩
+
+/-- At the root cut, a paired let witness transfers DD stability through the
+tracked context, target, and locally generalized scheme representatives. -/
+theorem PairedTerminalAuditEventWitness.letCondition
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    {relation : StateBisimulation ledger terminal state}
+    (closed : signature.SchemesClosed)
+    {solveCount : Nat} {name : String} {rawContext : Context}
+    {rawTarget : Ty} {context : Context} {target : Ty} {scheme : Scheme}
+    (witness : PairedTerminalAuditEventWitness terminal signature relation
+      (.letGeneralization solveCount name rawContext rawTarget context target
+        scheme)) :
+    solveCount ≤ state.trace.solves.length ∧
+      context = rawContext.applySubst
+        (replay (state.trace.solves.take solveCount)) ∧
+      target = (replay (state.trace.solves.take solveCount)).apply rawTarget ∧
+      scheme = signature.generalize context target ∧
+      scheme.applyMeta state.prevailing =
+        signature.generalize (rawContext.applySubst state.prevailing)
+          (state.prevailing.apply rawTarget) := by
+  cases witness with
+  | exact witness =>
+      exact TerminalAuditEventWitness.let_condition_bisimulation relation
+        closed witness
+  | letE solveBound localContextEq localTargetEq localSchemeEq contexts target
+      localSchemes facts =>
+      refine ⟨solveBound, localContextEq, localTargetEq, localSchemeEq, ?_⟩
+      exact DDTerminalAudit.LetFacts.stable_of_bisimulation facts localSchemes
+        (GeneralizationBisimulation.ofBisimulation contexts signature closed
+          target)
 
 /-- Pointwise paired coverage of every sensitive event in one trace. -/
 def PairedTerminalAuditEventCoverage
@@ -349,6 +426,72 @@ theorem PairedValidatorRunExtension.recordPatternCtor
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           transition capability)
         facts
+
+/-- Record a let-generalization event whose raw context, target, and scheme
+are executable representatives of the corresponding DD operands. -/
+theorem PairedValidatorRunExtension.recordLetGeneralization
+    {terminal : Subst} {signature : FrozenSig}
+    {valueSubst : Subst} {ledger : CapabilityOriginLedger} {state : InferState}
+    (relation : StateBisimulation ledger valueSubst state)
+    {name : String} {declarativeContext executableContext : Context}
+    {declarativeTarget executableTarget : Ty}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    (target : TyBisimulation relation declarativeTarget executableTarget)
+    (localSchemes : NormalizedSchemeBisimulation relation
+      (signature.generalize (declarativeContext.applySubst valueSubst)
+        (valueSubst.apply declarativeTarget))
+      (signature.generalize (executableContext.applySubst state.prevailing)
+        (state.prevailing.apply executableTarget)))
+    (facts : DDTerminalAudit.LetFacts terminal signature declarativeContext
+      declarativeTarget valueSubst) :
+    let event := TraceEvent.letGeneralization state.trace.solves.length name
+      executableContext executableTarget
+      (executableContext.applySubst state.prevailing)
+      (state.prevailing.apply executableTarget)
+      (signature.generalize (executableContext.applySubst state.prevailing)
+        (state.prevailing.apply executableTarget))
+    PairedValidatorRunExtension terminal signature
+      (relation.recordEventExtension event)
+      (state.stateExtension_recordEvent event) := by
+  dsimp only
+  let event := TraceEvent.letGeneralization state.trace.solves.length name
+    executableContext executableTarget
+    (executableContext.applySubst state.prevailing)
+    (state.prevailing.apply executableTarget)
+    (signature.generalize (executableContext.applySubst state.prevailing)
+      (state.prevailing.apply executableTarget))
+  let transition := relation.recordEventExtension event
+  let history := state.stateExtension_recordEvent event
+  refine ⟨?_, ⟨?_⟩⟩
+  · apply OrdinaryValidatorHistoryExtension.recordEvent
+    intro future extension producerSafe
+    refine
+      { traversal := ?_
+        typeAlignment := by trivial
+        dualAlignment := by trivial }
+    exact
+      { primitiveHole := ⟨by trivial⟩
+        patternLeaf := ⟨by trivial⟩
+        canonicalInstance := ⟨by trivial⟩
+        slot := ⟨by trivial⟩ }
+  · intro candidate membership previous
+    simp only [InferState.recordEvent, List.mem_append,
+      List.mem_singleton] at membership
+    rcases membership with old | newest
+    · exact False.elim (previous old)
+    · subst candidate
+      refine .letE (Nat.le_refl _) ?_ ?_ rfl ?_ ?_ ?_ facts
+      · simp only [InferState.recordEvent, List.take_length,
+          InferState.prevailing]
+      · simp only [InferState.recordEvent, List.take_length,
+          InferState.prevailing]
+      · exact contexts.transport transition
+      · exact transition.transportTy target
+      · exact ⟨(transition.transportScheme localSchemes.forward
+            localSchemes.reverse).1,
+          (transition.transportScheme localSchemes.forward
+            localSchemes.reverse).2⟩
 
 /-- Record the two-event matcher-finalization suffix with DD and executable
 raw operands kept explicitly paired. -/

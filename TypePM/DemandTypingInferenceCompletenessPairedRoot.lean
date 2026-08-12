@@ -103,7 +103,8 @@ theorem PairedTerminalAuditEventCoverage.finalizations
               holes capability catchAll binders facts)
   | _ => trivial
 
-/-- Let-generalization witnesses likewise remain exact in paired coverage. -/
+/-- Let-generalization witnesses project from either exact or paired DD /
+executable operands. -/
 theorem PairedTerminalAuditEventCoverage.generalizations
     {terminal : Subst} {signature : FrozenSig}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -115,10 +116,7 @@ theorem PairedTerminalAuditEventCoverage.generalizations
   have covered := coverage event membership
   cases event with
   | letGeneralization _ _ _ _ _ _ _ =>
-      cases covered with
-      | exact witness =>
-          exact TerminalAuditEventWitness.let_condition_bisimulation relation
-            closed witness
+      exact PairedTerminalAuditEventWitness.letCondition closed covered
   | _ => trivial
 
 /-- A root synthesis run carrying paired validator chronology. -/
