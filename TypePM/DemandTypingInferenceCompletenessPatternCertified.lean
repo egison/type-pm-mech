@@ -138,7 +138,7 @@ def CertifiedPatternsCompletenessBelow.mono
     CertifiedPatternsCompletenessBelow terminal signature smaller :=
   ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
 
-theorem Context.BoundedBy.capVarsBelow
+theorem contextBounded_capVarsBelow
     {q : InferenceBase.FreshSupply} {context : Context}
     (bounded : context.BoundedBy q) :
     InferenceBase.CapVarsBelow q context.fcv := by
@@ -146,7 +146,7 @@ theorem Context.BoundedBy.capVarsBelow
   obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
   exact (bounded entry entryMem).caps varId varMem
 
-theorem Context.BoundedBy.tyVarsBelow
+theorem contextBounded_tyVarsBelow
     {q : InferenceBase.FreshSupply} {context : Context}
     (bounded : context.BoundedBy q) :
     InferenceBase.TyVarsBelow q context.ftv := by
@@ -154,7 +154,7 @@ theorem Context.BoundedBy.tyVarsBelow
   obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
   exact (bounded entry entryMem).targets varId varMem
 
-theorem MonoCtx.BoundedBy.capVarsBelow
+theorem monoCtxBounded_capVarsBelow
     {q : InferenceBase.FreshSupply} {context : MonoCtx}
     (bounded : context.BoundedBy q) :
     InferenceBase.CapVarsBelow q context.fcv := by
@@ -162,7 +162,7 @@ theorem MonoCtx.BoundedBy.capVarsBelow
   obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
   exact (bounded entry entryMem).caps varId varMem
 
-theorem MonoCtx.BoundedBy.tyVarsBelow
+theorem monoCtxBounded_tyVarsBelow
     {q : InferenceBase.FreshSupply} {context : MonoCtx}
     (bounded : context.BoundedBy q) :
     InferenceBase.TyVarsBelow q context.ftv := by
@@ -170,7 +170,7 @@ theorem MonoCtx.BoundedBy.tyVarsBelow
   obtain ⟨entry, entryMem, varMem⟩ := List.mem_flatMap.mp membership
   exact (bounded entry entryMem).targets varId varMem
 
-theorem PatternCtx.BoundedBy.capVarsBelow
+theorem patternCtxBounded_capVarsBelow
     {q : InferenceBase.FreshSupply} {context : PatternCtx}
     (bounded : context.BoundedBy q) :
     InferenceBase.CapVarsBelow q context.fcv := by
@@ -180,7 +180,7 @@ theorem PatternCtx.BoundedBy.capVarsBelow
   · exact (bounded entry entryMem).1 varId capMem
   · exact (bounded entry entryMem).2.caps varId targetMem
 
-theorem PatternCtx.BoundedBy.tyVarsBelow
+theorem patternCtxBounded_tyVarsBelow
     {q : InferenceBase.FreshSupply} {context : PatternCtx}
     (bounded : context.BoundedBy q) :
     InferenceBase.TyVarsBelow q context.ftv := by
@@ -199,6 +199,113 @@ theorem leaf
     ValidatorRunExtension terminal signature initial
       (coreState.recordEvent (.inferredPattern pattern dual bindings path)) :=
   DemandTypingInferenceCompletenessValidationMain.finishPattern core
+
+/-- Exact validator chronology of a variable-pattern leaf. -/
+theorem variableLeaf
+    {terminal : Subst} {signature : FrozenSig} {initial : InferState}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {path : SyntaxPath} {name : String}
+    (signatureBelow : SignatureVarsBelow initial.supply signature)
+    (contextBounded : context.BoundedBy initial.supply)
+    (parametersBounded : parameters.BoundedBy initial.supply)
+    (bindingsBounded : bindings.BoundedBy initial.supply) :
+    let capVar : CapVar := ⟨initial.supply.nextCap⟩
+    let capability := (initial.freshCap
+      (freshOrigin .pattern path "pattern-variable-capability")).1
+    let afterCap := (initial.freshCap
+      (freshOrigin .pattern path "pattern-variable-capability")).2
+    let target := (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-variable-target")).1
+    let afterFresh := (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-variable-target")).2
+    let resultBindings := bindings ++ [(name, target)]
+    let dual := Dual.mk capability target
+    let marked := afterFresh.recordEvent
+      (.patternVarFresh context parameters bindings capVar
+        initial.supply.nextTy)
+    ValidatorRunExtension terminal signature initial
+      ((visit marked .patternVar path).recordEvent
+        (.inferredPattern (.pvar name) dual resultBindings path)) := by
+  dsimp only
+  let freshCapRun := ValidatorRunExtension.freshCap terminal signature initial
+    (freshOrigin .pattern path "pattern-variable-capability")
+  let afterCap := (initial.freshCap
+    (freshOrigin .pattern path "pattern-variable-capability")).2
+  let freshTyRun := ValidatorRunExtension.freshTy terminal signature afterCap
+    (freshOrigin .pattern path "pattern-variable-target")
+  let afterFresh := (afterCap.freshTy
+    (freshOrigin .pattern path "pattern-variable-target")).2
+  have markedRun : ValidatorRunExtension terminal signature afterFresh
+      (afterFresh.recordEvent (.patternVarFresh context parameters bindings
+        ⟨initial.supply.nextCap⟩ initial.supply.nextTy)) := by
+    apply ValidatorRunExtension.recordOrdinaryEvent
+    · intro future extension safe
+      exact Inference.Reconstruction.patternVar_ordinaryValidatorEventCondition
+        signatureBelow.caps
+        (contextBounded_capVarsBelow contextBounded)
+        (patternCtxBounded_capVarsBelow parametersBounded)
+        (monoCtxBounded_capVarsBelow bindingsBounded) signatureBelow.targets
+        (contextBounded_tyVarsBelow contextBounded)
+        (patternCtxBounded_tyVarsBelow parametersBounded)
+        (monoCtxBounded_tyVarsBelow bindingsBounded)
+    · simp [Inference.Reconstruction.TerminalAuditSensitiveEvent]
+  exact freshCapRun.trans (freshTyRun.trans (markedRun.trans
+    ((ValidatorRunExtension.visit terminal signature _ .patternVar path).trans
+      (ValidatorRunExtension.recordNeutral
+        (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+          (.pvar name) _ _ path)))))
+
+/-- Exact validator chronology of a wildcard-pattern leaf. -/
+theorem wildcardLeaf
+    {terminal : Subst} {signature : FrozenSig} {initial : InferState}
+    {context : Context} {parameters : PatternCtx} {bindings : MonoCtx}
+    {path : SyntaxPath}
+    (signatureBelow : SignatureVarsBelow initial.supply signature)
+    (contextBounded : context.BoundedBy initial.supply)
+    (parametersBounded : parameters.BoundedBy initial.supply)
+    (bindingsBounded : bindings.BoundedBy initial.supply) :
+    let capability := (initial.freshCap
+      (freshOrigin .pattern path "pattern-wild-capability")).1
+    let afterCap := (initial.freshCap
+      (freshOrigin .pattern path "pattern-wild-capability")).2
+    let target := (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-wild-target")).1
+    let afterFresh := (afterCap.freshTy
+      (freshOrigin .pattern path "pattern-wild-target")).2
+    let dual := Dual.mk capability target
+    let marked := afterFresh.recordEvent (.patternWildFresh context parameters
+      bindings ⟨initial.supply.nextCap⟩ initial.supply.nextTy)
+    ValidatorRunExtension terminal signature initial
+      ((visit marked .patternWild path).recordEvent
+        (.inferredPattern .wild dual bindings path)) := by
+  dsimp only
+  let freshCapRun := ValidatorRunExtension.freshCap terminal signature initial
+    (freshOrigin .pattern path "pattern-wild-capability")
+  let afterCap := (initial.freshCap
+    (freshOrigin .pattern path "pattern-wild-capability")).2
+  let freshTyRun := ValidatorRunExtension.freshTy terminal signature afterCap
+    (freshOrigin .pattern path "pattern-wild-target")
+  let afterFresh := (afterCap.freshTy
+    (freshOrigin .pattern path "pattern-wild-target")).2
+  have markedRun : ValidatorRunExtension terminal signature afterFresh
+      (afterFresh.recordEvent (.patternWildFresh context parameters bindings
+        ⟨initial.supply.nextCap⟩ initial.supply.nextTy)) := by
+    apply ValidatorRunExtension.recordOrdinaryEvent
+    · intro future extension safe
+      exact Inference.Reconstruction.patternWild_ordinaryValidatorEventCondition
+        signatureBelow.caps
+        (contextBounded_capVarsBelow contextBounded)
+        (patternCtxBounded_capVarsBelow parametersBounded)
+        (monoCtxBounded_capVarsBelow bindingsBounded) signatureBelow.targets
+        (contextBounded_tyVarsBelow contextBounded)
+        (patternCtxBounded_tyVarsBelow parametersBounded)
+        (monoCtxBounded_tyVarsBelow bindingsBounded)
+    · simp [Inference.Reconstruction.TerminalAuditSensitiveEvent]
+  exact freshCapRun.trans (freshTyRun.trans (markedRun.trans
+    ((ValidatorRunExtension.visit terminal signature _ .patternWild path).trans
+      (ValidatorRunExtension.recordNeutral
+        (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+          .wild _ _ path)))))
 
 /-- An empty pattern list emits no events. -/
 theorem patternsNil
