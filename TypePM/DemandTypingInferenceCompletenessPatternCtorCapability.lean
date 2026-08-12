@@ -665,6 +665,167 @@ theorem freshPatternCtorAssignments_complete_exact
           allocated.2.supply :=
   freshPatternCtorAssignments_supplyExact origin variables initial
 
+/-! ## Equivariance of the pure skeleton allocator -/
+
+/-- A renaming fixes the as-yet-unallocated capability range at `q`. -/
+def RenamingFreshAbove (rename : CapVar → CapVar)
+    (q : InferenceBase.FreshSupply) : Prop :=
+  ∀ varId, q.nextCap ≤ varId.id → rename varId = varId
+
+theorem RenamingFreshAbove.mono
+    {rename : CapVar → CapVar} {q q' : InferenceBase.FreshSupply}
+    (fixed : RenamingFreshAbove rename q) (extends_ : SupplyExtends q q') :
+    RenamingFreshAbove rename q' := by
+  intro varId above
+  exact fixed varId (Nat.le_trans extends_.1 above)
+
+/- Skeleton allocation commutes with a scoped renaming that is the identity
+on every identifier which the allocator may consume. -/
+mutual
+
+theorem freshenSkeletonSupply_applyRen
+    (observable : Shape.Observability) (rename : CapVar → CapVar) :
+    ∀ (evidence : Shape.Evidence) (q : InferenceBase.FreshSupply)
+      (capability : Cap) (q' : InferenceBase.FreshSupply),
+      RenamingFreshAbove rename q →
+      freshenSkeletonSupply observable evidence q = some (capability, q') →
+      freshenSkeletonSupply observable (evidence.applyRen rename) q =
+        some (capability.applyRen rename, q')
+  | .unseen, q, capability, q', fixed, success => by
+      simp only [freshenSkeletonSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      change some (Cap.var ⟨q.nextCap⟩,
+        { q with nextCap := q.nextCap + 1 }) =
+        some (Cap.var (rename ⟨q.nextCap⟩),
+          { q with nextCap := q.nextCap + 1 })
+      rw [fixed ⟨q.nextCap⟩ (Nat.le_refl _)]
+  | .known leaf, q, capability, q', fixed, success => by
+      simp only [freshenSkeletonSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      cases leaf <;> rfl
+  | .con name children, q, capability, q', fixed, success => by
+      cases maskEq : observable name with
+      | none => simp [freshenSkeletonSupply, maskEq] at success
+      | some mask =>
+          cases childrenEq : freshenSkeletonMaskedSupply observable mask
+              children q with
+          | none => simp [freshenSkeletonSupply, maskEq, childrenEq] at success
+          | some result =>
+              rcases result with ⟨capabilities, q₁⟩
+              simp [freshenSkeletonSupply, maskEq, childrenEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              have renamed := freshenSkeletonMaskedSupply_applyRen observable
+                rename mask children q capabilities q₁ fixed childrenEq
+              simp [Shape.Evidence.applyRen, freshenSkeletonSupply, maskEq,
+                renamed, Cap.applyRen]
+  | .prod components, q, capability, q', fixed, success => by
+      cases componentsEq : freshenSkeletonListSupply observable components q with
+      | none => simp [freshenSkeletonSupply, componentsEq] at success
+      | some result =>
+          rcases result with ⟨capabilities, q₁⟩
+          simp [freshenSkeletonSupply, componentsEq] at success
+          rcases success with ⟨rfl, rfl⟩
+          have renamed := freshenSkeletonListSupply_applyRen observable rename
+            components q capabilities q₁ fixed componentsEq
+          simp [Shape.Evidence.applyRen, freshenSkeletonSupply, renamed,
+            Cap.applyRen]
+
+theorem freshenSkeletonListSupply_applyRen
+    (observable : Shape.Observability) (rename : CapVar → CapVar) :
+    ∀ (evidences : List Shape.Evidence) (q : InferenceBase.FreshSupply)
+      (capabilities : List Cap) (q' : InferenceBase.FreshSupply),
+      RenamingFreshAbove rename q →
+      freshenSkeletonListSupply observable evidences q =
+        some (capabilities, q') →
+      freshenSkeletonListSupply observable
+          (Shape.Evidence.applyRenList rename evidences) q =
+        some (Cap.applyRenList rename capabilities, q')
+  | [], q, capabilities, q', fixed, success => by
+      simp only [freshenSkeletonListSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      rfl
+  | evidence :: rest, q, capabilities, q', fixed, success => by
+      cases headEq : freshenSkeletonSupply observable evidence q with
+      | none => simp [freshenSkeletonListSupply, headEq] at success
+      | some headResult =>
+          rcases headResult with ⟨head, q₁⟩
+          cases tailEq : freshenSkeletonListSupply observable rest q₁ with
+          | none => simp [freshenSkeletonListSupply, headEq, tailEq] at success
+          | some tailResult =>
+              rcases tailResult with ⟨tail, q₂⟩
+              simp [freshenSkeletonListSupply, headEq, tailEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              have renamedHead := freshenSkeletonSupply_applyRen observable
+                rename evidence q head q₁ fixed headEq
+              have renamedTail := freshenSkeletonListSupply_applyRen observable
+                rename rest q₁ tail q₂
+                (RenamingFreshAbove.mono fixed
+                  (SupplyExtends.freshenSkeleton headEq)) tailEq
+              simp [Shape.Evidence.applyRenList, freshenSkeletonListSupply,
+                renamedHead, renamedTail, Cap.applyRenList]
+
+theorem freshenSkeletonMaskedSupply_applyRen
+    (observable : Shape.Observability) (rename : CapVar → CapVar) :
+    ∀ (mask : List Bool) (evidences : List Shape.Evidence)
+      (q : InferenceBase.FreshSupply) (capabilities : List Cap)
+      (q' : InferenceBase.FreshSupply),
+      RenamingFreshAbove rename q →
+      freshenSkeletonMaskedSupply observable mask evidences q =
+        some (capabilities, q') →
+      freshenSkeletonMaskedSupply observable mask
+          (Shape.Evidence.applyRenList rename evidences) q =
+        some (Cap.applyRenList rename capabilities, q')
+  | [], [], q, capabilities, q', fixed, success => by
+      simp only [freshenSkeletonMaskedSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      rfl
+  | [], _ :: _, _, _, _, _, success => by
+      simp [freshenSkeletonMaskedSupply] at success
+  | _ :: _, [], _, _, _, _, success => by
+      simp [freshenSkeletonMaskedSupply] at success
+  | isObservable :: mask, evidence :: rest, q, capabilities, q', fixed,
+      success => by
+      cases isObservable with
+      | false =>
+          cases tailEq : freshenSkeletonMaskedSupply observable mask rest q with
+          | none => simp [freshenSkeletonMaskedSupply, tailEq] at success
+          | some tailResult =>
+              rcases tailResult with ⟨tail, q₁⟩
+              simp [freshenSkeletonMaskedSupply, tailEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              have renamedTail := freshenSkeletonMaskedSupply_applyRen
+                observable rename mask rest q tail q₁ fixed tailEq
+              simp [Shape.Evidence.applyRenList, freshenSkeletonMaskedSupply,
+                renamedTail, Cap.applyRenList, Cap.applyRen]
+      | true =>
+          cases headEq : freshenSkeletonSupply observable evidence q with
+          | none => simp [freshenSkeletonMaskedSupply, headEq] at success
+          | some headResult =>
+              rcases headResult with ⟨head, q₁⟩
+              cases tailEq : freshenSkeletonMaskedSupply observable mask rest
+                  q₁ with
+              | none =>
+                  simp [freshenSkeletonMaskedSupply, headEq, tailEq] at success
+              | some tailResult =>
+                  rcases tailResult with ⟨tail, q₂⟩
+                  simp [freshenSkeletonMaskedSupply, headEq, tailEq] at success
+                  rcases success with ⟨rfl, rfl⟩
+                  have renamedHead := freshenSkeletonSupply_applyRen observable
+                    rename evidence q head q₁ fixed headEq
+                  have renamedTail := freshenSkeletonMaskedSupply_applyRen
+                    observable rename mask rest q₁ tail q₂
+                    (RenamingFreshAbove.mono fixed
+                      (SupplyExtends.freshenSkeleton headEq)) tailEq
+                  simp [Shape.Evidence.applyRenList,
+                    freshenSkeletonMaskedSupply, renamedHead, renamedTail,
+                    Cap.applyRenList]
+
+end
+
 /-! ## Capability-subroutine run package -/
 
 /-- Result package for the pattern-constructor capability subroutine.  It is
