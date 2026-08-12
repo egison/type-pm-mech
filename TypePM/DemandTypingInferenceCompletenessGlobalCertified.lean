@@ -413,5 +413,139 @@ theorem auditedSynthTuple_complete_paired
   refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
   exact validation
 
+/-- Let synthesis records the paired generalization boundary between its two
+recursive children. -/
+theorem auditedSynthLet_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {value body : Expr}
+    {valueTarget bodyTarget : Ty}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature
+      (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    {valueRaw : DDSynth signature q S declarativeContext value valueTarget
+      q₁ S₁}
+    {valueOrigin : DDSynthOrigin signature valueRaw ledger ledger₁}
+    {bodyRaw : DDSynth signature q₁ S₁
+      ((name, signature.generalize (declarativeContext.applySubst S₁)
+        (S₁.apply valueTarget)) :: declarativeContext)
+      body bodyTarget q' S'}
+    {bodyOrigin : DDSynthOrigin signature bodyRaw ledger₁ ledger'}
+    (valueAudit : DDSynthTerminalAudit terminal signature valueOrigin)
+    (bodyAudit : DDSynthTerminalAudit terminal signature bodyOrigin)
+    (facts : DDTerminalAudit.LetFacts terminal signature declarativeContext
+      valueTarget S₁)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.letE name value body)) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+      before (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.letE name value body) state) q' S' ledger' bodyTarget) := by
+  have valueAdequate : SynthBudgetAdequate fuel value := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  have bodyAdequate : SynthBudgetAdequate fuel body := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  let valueBefore := before.afterVisit .exprLet path
+  have valueContexts : ContextBisimulation valueBefore.prevailing
+      declarativeContext executableContext :=
+    contexts.transport (before.visitExtension .exprLet path)
+  let valueRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv) (path := 0 :: path)
+      valueBefore valueContexts contextBounded executableContextBounded
+      valueAudit valueAdequate)
+  let executableScheme := signature.generalize
+    (executableContext.applySubst valueRun.raw.run.result.state.prevailing)
+    (valueRun.raw.run.result.state.prevailing.apply
+      valueRun.raw.run.result.target)
+  let event := TraceEvent.letGeneralization
+    valueRun.raw.run.result.state.trace.solves.length name executableContext
+    valueRun.raw.run.result.target
+    (executableContext.applySubst valueRun.raw.run.result.state.prevailing)
+    (valueRun.raw.run.result.state.prevailing.apply
+      valueRun.raw.run.result.target) executableScheme
+  let eventTransition :=
+    valueRun.raw.run.completion.state.prevailing.recordEventExtension event
+  let bodyBefore := valueRun.raw.run.completion.state.recordEvent event
+    (by simp [event, TraceEvent.allocatedCapVars])
+  have contextsAfterValue : ContextBisimulation
+      valueRun.raw.run.completion.state.prevailing declarativeContext
+      executableContext := valueContexts.transport valueRun.raw.run.transition
+  let generalizations := GeneralizationBisimulation.ofBisimulation
+    contextsAfterValue signature closed valueRun.raw.run.target
+  have localSchemes : NormalizedSchemeBisimulation
+      valueRun.raw.run.completion.state.prevailing
+      (signature.generalize (declarativeContext.applySubst S₁)
+        (S₁.apply valueTarget)) executableScheme := by
+    constructor
+    · rw [FrozenSig.generalize_image_fixed signature declarativeContext
+        valueTarget S₁
+        valueRun.raw.run.completion.state.prevailing.declarativeIdempotent]
+      rw [FrozenSig.generalize_image_fixed signature executableContext
+        valueRun.raw.run.result.target
+        valueRun.raw.run.result.state.prevailing
+        valueRun.raw.run.completion.state.prevailing.executableIdempotent]
+      exact generalizations.forward
+    · rw [FrozenSig.generalize_image_fixed signature executableContext
+        valueRun.raw.run.result.target
+        valueRun.raw.run.result.state.prevailing
+        valueRun.raw.run.completion.state.prevailing.executableIdempotent]
+      rw [FrozenSig.generalize_image_fixed signature declarativeContext
+        valueTarget S₁
+        valueRun.raw.run.completion.state.prevailing.declarativeIdempotent]
+      exact generalizations.reverse
+  have bodyContexts : ContextBisimulation bodyBefore.prevailing
+      ((name, signature.generalize (declarativeContext.applySubst S₁)
+        (S₁.apply valueTarget)) :: declarativeContext)
+      ((name, executableScheme) :: executableContext) :=
+    (contextsAfterValue.cons name localSchemes).transport eventTransition
+  have valueTargetBounded : valueTarget.BoundedBy q₁ :=
+    (valueRaw.boundedBy closed before.declarative_bounded contextBounded).2
+  have bodyContextBounded : Context.BoundedBy q₁
+      ((name, signature.generalize (declarativeContext.applySubst S₁)
+        (S₁.apply valueTarget)) :: declarativeContext) :=
+    Context.BoundedBy.cons
+      (FrozenSig.generalize_boundedBy
+        (valueRun.raw.run.completion.state.declarative_bounded.apply
+          valueTargetBounded))
+      (contextBounded.mono valueOrigin.erase.supplyExtends)
+  have bodyExecutableContextBounded : Context.BoundedBy q₁
+      ((name, executableScheme) :: executableContext) :=
+    Context.BoundedBy.cons
+      (FrozenSig.generalize_boundedBy
+        (valueRun.raw.run.completion.state.executable_bounded.apply
+          valueRun.raw.rawTargetBounded))
+      (executableContextBounded.mono valueOrigin.erase.supplyExtends)
+  let bodyRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv.erase name) (path := 1 :: path)
+      bodyBefore bodyContexts bodyContextBounded bodyExecutableContextBounded
+      bodyAudit bodyAdequate)
+  let rawRun := boundedSynthLet_complete closed before valueRun.raw bodyRun.raw
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprLet path)
+    (ValidatorRunExtension.visit terminal signature state .exprLet path)
+  let letValidation := PairedValidatorRunExtension.recordLetGeneralization
+    (name := name) valueRun.raw.run.completion.state.prevailing contextsAfterValue
+    valueRun.raw.run.target localSchemes facts
+  let finishTransition := bodyRun.raw.run.transition.after.recordEventExtension
+    (.inferredExpr (.letE name value body) bodyRun.raw.run.result.target path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _
+      (.letE name value body) path _)
+  let validation :=
+    (visitValidation.trans valueRun.validation).trans letValidation |>.trans
+      bodyRun.validation |>.trans finishValidation
+  refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+  exact validation
+
 end DemandTypingInferenceCompletenessGlobalCertified
 end TypePM
