@@ -849,6 +849,118 @@ theorem RootValidatorEventCoverage.atTerminal
     coverage.ordinary.atTerminal producerSafe
   exact ⟨traversal, coverage.sensitive, types, duals⟩
 
+/-! ## Composable sensitive-audit extensions -/
+
+/-- The pointwise clause used by `TerminalAuditEventCoverage`. -/
+def TerminalAuditCoveredEvent
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (event : TraceEvent) : Prop :=
+  match event with
+  | .patternCtorCompatibility _ _ _ _
+  | .matcherFinalization _ _ _ _ _ _ _ _
+  | .letGeneralization _ _ _ _ _ _ _ =>
+      TerminalAuditEventWitness terminal signature state event
+  | _ => True
+
+/-- A sensitive-event clause transports through a later executable state
+extension. -/
+theorem TerminalAuditCoveredEvent.transport
+    {terminal : Subst} {signature : FrozenSig} {earlier later : InferState}
+    {event : TraceEvent}
+    (covered : TerminalAuditCoveredEvent terminal signature earlier event)
+    (extension : earlier.StateExtension later) :
+    TerminalAuditCoveredEvent terminal signature later event := by
+  cases event <;> try trivial
+  all_goals exact TerminalAuditEventWitness.transport covered extension.history
+
+/-- Incremental counterpart of `TerminalAuditEventCoverage`.  It records only
+the sensitive event values introduced between two traversal cuts. -/
+structure TerminalAuditHistoryExtension
+    (terminal : Subst) (signature : FrozenSig)
+    (earlier later : InferState) : Prop where
+  state : earlier.StateExtension later
+  newEvents : ∀ event,
+    event ∈ later.trace.events → event ∉ earlier.trace.events →
+      TerminalAuditCoveredEvent terminal signature later event
+
+theorem TerminalAuditHistoryExtension.refl
+    (terminal : Subst) (signature : FrozenSig) (state : InferState) :
+    TerminalAuditHistoryExtension terminal signature state state := by
+  refine ⟨InferState.StateExtension.refl state, ?_⟩
+  intro event membership previous
+  exact False.elim (previous membership)
+
+theorem TerminalAuditHistoryExtension.trans
+    {terminal : Subst} {signature : FrozenSig}
+    {first middle last : InferState}
+    (front : TerminalAuditHistoryExtension terminal signature first middle)
+    (back : TerminalAuditHistoryExtension terminal signature middle last) :
+    TerminalAuditHistoryExtension terminal signature first last := by
+  refine ⟨front.state.trans back.state, ?_⟩
+  intro event finalMembership notFirst
+  by_cases inMiddle : event ∈ middle.trace.events
+  · exact (front.newEvents event inMiddle notFirst).transport back.state
+  · exact back.newEvents event finalMembership inMiddle
+
+/-- Advance absolute sensitive coverage through an incremental extension. -/
+theorem TerminalAuditHistoryExtension.applyCoverage
+    {terminal : Subst} {signature : FrozenSig}
+    {earlier later : InferState}
+    (extension : TerminalAuditHistoryExtension terminal signature earlier later)
+    (before : TerminalAuditEventCoverage terminal signature earlier) :
+    TerminalAuditEventCoverage terminal signature later := by
+  intro event membership
+  by_cases previous : event ∈ earlier.trace.events
+  · have covered := before event previous
+    cases event <;> try trivial
+    all_goals exact TerminalAuditEventWitness.transport covered extension.state.history
+  · exact extension.newEvents event membership previous
+
+/-- Any state extension which emits no sensitive event is an audit extension. -/
+theorem TerminalAuditHistoryExtension.ofOrdinary
+    {terminal : Subst} {signature : FrozenSig}
+    {earlier later : InferState}
+    (state : earlier.StateExtension later)
+    (ordinaryNew : ∀ event,
+      event ∈ later.trace.events → event ∉ earlier.trace.events →
+        ¬ TerminalAuditSensitiveEvent event) :
+    TerminalAuditHistoryExtension terminal signature earlier later := by
+  refine ⟨state, ?_⟩
+  intro event membership previous
+  have ordinary := ordinaryNew event membership previous
+  cases event <;> simp_all [TerminalAuditCoveredEvent,
+    TerminalAuditSensitiveEvent]
+
+/-- Append one already witnessed sensitive event. -/
+theorem TerminalAuditHistoryExtension.recordSensitive
+    {terminal : Subst} {signature : FrozenSig}
+    {state : InferState} {event : TraceEvent}
+    (witness : TerminalAuditEventWitness terminal signature
+      (state.recordEvent event) event) :
+    TerminalAuditHistoryExtension terminal signature state
+      (state.recordEvent event) := by
+  refine ⟨state.stateExtension_recordEvent event, ?_⟩
+  intro candidate membership previous
+  simp only [InferState.recordEvent, List.mem_append,
+    List.mem_singleton] at membership
+  rcases membership with old | newest
+  · exact False.elim (previous old)
+  · subst candidate
+    cases event <;> try trivial
+    all_goals exact witness
+
+/-- Ordinary validator extensions can be reused on the sensitive side when
+their newly appended events avoid the three audit forms. -/
+theorem OrdinaryValidatorHistoryExtension.auditExtension
+    {terminal : Subst} {signature : FrozenSig}
+    {earlier later : InferState}
+    (extension : OrdinaryValidatorHistoryExtension signature earlier later)
+    (ordinaryNew : ∀ event,
+      event ∈ later.trace.events → event ∉ earlier.trace.events →
+        ¬ TerminalAuditSensitiveEvent event) :
+    TerminalAuditHistoryExtension terminal signature earlier later :=
+  TerminalAuditHistoryExtension.ofOrdinary extension.history ordinaryNew
+
 end Reconstruction
 end Inference
 end TypePM
