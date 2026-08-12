@@ -444,6 +444,46 @@ theorem solveProducerToSlotWithLedger_originSafeOneWayDelta
           Unification.mguTy_exactTargetMGU targetSuccess⟩
     · contradiction
 
+/-- Replaying the exact matcher and target-unifier runs yields their literal
+paired delta, not merely an extensionally related MGU representative. -/
+theorem solveProducerToSlotWithLedger_delta_eq_of_runs
+    {ledger : CapabilityOriginLedger} {solveCount : Nat}
+    {origin : ConstraintOrigin}
+    {producerCap consumerCap : Cap} {producerTarget consumerTarget : Ty}
+    {bindings : CapMatch.Bindings} {target : TySubst} {step : SolveStep}
+    (success : solveProducerToSlotWithLedger ledger solveCount origin
+      producerCap producerTarget consumerCap consumerTarget = some step)
+    (matched : CapMatch.matchCap producerCap consumerCap = some bindings)
+    (unified : Unification.mguTy
+      (producerTarget.applyCapability
+        (bindings.toSubstWithin consumerCap.fcv))
+      (consumerTarget.applyCapability
+        (bindings.toSubstWithin consumerCap.fcv)) = some target) :
+    step.delta = Subst.mk (bindings.toSubstWithin consumerCap.fcv) target := by
+  unfold solveProducerToSlotWithLedger at success
+  split at success
+  · rename_i noMatch
+    rw [matched] at noMatch
+    contradiction
+  · rename_i found foundMatch
+    have foundEq : found = bindings := by
+      rw [matched] at foundMatch
+      exact (Option.some.inj foundMatch).symm
+    subst found
+    simp only at success
+    split at success
+    · split at success
+      · rename_i noTarget
+        rw [unified] at noTarget
+        contradiction
+      · rename_i foundTarget foundTargetSuccess
+        have targetEq : foundTarget = target := by
+          rw [unified] at foundTargetSuccess
+          exact (Option.some.inj foundTargetSuccess).symm
+        subst foundTarget
+        exact (congrArg SolveStep.delta (Option.some.inj success)).symm
+    · contradiction
+
 /-- A concrete one-way solver delta is absorbed by every paired post whose
 capability component absorbs the matcher and which solves the resulting
 capability-adjusted target equation.  This is the chronological form needed
@@ -604,6 +644,10 @@ structure OneWayCutCompletion
   solverRelation : OneWaySolverCorrespondence executableDelta step
   transition : BisimulationExtension before ledger
     (Subst.seq declarativeDelta declarative) (state.recordSolve step)
+  forwardResidualEq : transition.after.forward =
+    Subst.seq declarativeDelta before.forward
+  reverseResidualEq : transition.after.reverse =
+    Subst.seq executableDelta before.reverse
 
 /-- Traversal-facing strengthening: every substitution introduced by the
 one-way cut, including the two derived state residuals, stays below the
@@ -745,6 +789,9 @@ noncomputable def oneWayCut_complete
   have solverRelation := solverProof.2
   have stepSafe := solveProducerToSlotWithLedger_originSafeOneWayDelta
     stepSuccess
+  have stepDeltaEq : step.delta = executableDelta := by
+    exact solveProducerToSlotWithLedger_delta_eq_of_runs stepSuccess matched
+      targetSuccess
   let forwardLater := Subst.seq declarativeDelta before.forward
   have forwardDemand : DemandMatches forwardLater.cap
       (executableProducerCap.apply forwardLater.cap) executableConsumerCap := by
@@ -858,19 +905,96 @@ noncomputable def oneWayCut_complete
     DemandTypingIdempotence.OneWayDelta.seq_idempotent_of_fixed
       before.executableIdempotent stepSafe.exact executableProducerCapFixed
       executableProducerTargetFixed executableConsumerTargetFixed
-  let finalDeltaRelation := transportedRelation.trans
-    (DemandTypingInferenceCompletenessOneWayTransport.OneWaySolverCorrespondence.deltaBisimulation
-      (ledger := state.capabilityOrigins) solverRelation)
+  have executableAfterIdempotent' :
+      (Subst.seq executableDelta state.prevailing).Idempotent := by
+    rw [← stepDeltaEq]
+    exact executableAfterIdempotent
+  let transition :=
+    DemandTypingInferenceCompletenessOneWayTransport.StateBisimulation.oneWayCut_recordSolve
+      before transportedRelation declarativeAfterIdempotent
+        executableAfterIdempotent' stepDeltaEq
   exact
     { executableDelta := executableDelta
       step := step
       safe := executableSafe
       success := stepSuccess
       solverRelation := solverRelation
-      transition :=
-        DemandTypingInferenceCompletenessOneWayTransport.StateBisimulation.oneWayCut_recordSolve
-          before finalDeltaRelation declarativeAfterIdempotent
-            executableAfterIdempotent rfl }
+      transition := transition
+      forwardResidualEq := rfl
+      reverseResidualEq := rfl }
+
+/-- Bounded wrapper used by traversal completeness.  Direct absorption in
+`oneWayCut_complete` makes the two residuals definitionally the chronological
+composites `ddDelta ∘ forward` and `executableDelta ∘ reverse`; therefore no
+unconstrained MGU factor residual must be bounded. -/
+noncomputable def oneWayCut_complete_bounded
+    {q : InferenceBase.FreshSupply}
+    {ledger : CapabilityOriginLedger}
+    {declarative declarativeDelta : Subst} {state : InferState}
+    {declarativeProducerCap executableProducerCap : Cap}
+    {declarativeProducerTarget executableProducerTarget : Ty}
+    {declarativeConsumerCap executableConsumerCap : Cap}
+    {declarativeConsumerTarget executableConsumerTarget : Ty}
+    (before : StateBisimulation ledger declarative state)
+    (resolved : ResolvedOneWayComponents before.forward before.reverse
+      declarativeProducerCap executableProducerCap
+      declarativeProducerTarget executableProducerTarget
+      declarativeConsumerCap executableConsumerCap
+      declarativeConsumerTarget executableConsumerTarget)
+    (dd : OriginSafeOneWayDelta ledger declarativeProducerCap
+      declarativeProducerTarget declarativeConsumerCap
+      declarativeConsumerTarget declarativeDelta)
+    (declarativeProducerCapFixed :
+      declarativeProducerCap.apply declarative.cap = declarativeProducerCap)
+    (declarativeProducerTargetFixed :
+      declarative.apply declarativeProducerTarget = declarativeProducerTarget)
+    (declarativeConsumerTargetFixed :
+      declarative.apply declarativeConsumerTarget = declarativeConsumerTarget)
+    (executableProducerCapFixed :
+      executableProducerCap.apply state.prevailing.cap = executableProducerCap)
+    (executableConsumerCapFixed :
+      executableConsumerCap.apply state.prevailing.cap = executableConsumerCap)
+    (executableProducerTargetFixed :
+      state.prevailing.apply executableProducerTarget = executableProducerTarget)
+    (executableConsumerTargetFixed :
+      state.prevailing.apply executableConsumerTarget = executableConsumerTarget)
+    (declarativeProducerCapBounded : declarativeProducerCap.BoundedBy q)
+    (declarativeProducerTargetBounded : declarativeProducerTarget.BoundedBy q)
+    (declarativeConsumerCapBounded : declarativeConsumerCap.BoundedBy q)
+    (declarativeConsumerTargetBounded : declarativeConsumerTarget.BoundedBy q)
+    (executableProducerCapBounded : executableProducerCap.BoundedBy q)
+    (executableProducerTargetBounded : executableProducerTarget.BoundedBy q)
+    (executableConsumerCapBounded : executableConsumerCap.BoundedBy q)
+    (executableConsumerTargetBounded : executableConsumerTarget.BoundedBy q)
+    (forwardBounded : before.forward.BoundedBy q)
+    (reverseBounded : before.reverse.BoundedBy q)
+    (solveCount : Nat) (origin : ConstraintOrigin) :
+    BoundedOneWayCutCompletion (declarativeDelta := declarativeDelta) before
+      executableProducerCap executableProducerTarget executableConsumerCap
+      executableConsumerTarget solveCount origin q := by
+  let completion := oneWayCut_complete before resolved dd
+    declarativeProducerCapFixed declarativeProducerTargetFixed
+    declarativeConsumerTargetFixed executableProducerCapFixed
+    executableConsumerCapFixed executableProducerTargetFixed
+    executableConsumerTargetFixed solveCount origin
+  have ddBounded : declarativeDelta.BoundedBy q :=
+    dd.exact.boundedBy declarativeProducerCapBounded
+      declarativeProducerTargetBounded declarativeConsumerCapBounded
+      declarativeConsumerTargetBounded
+  have executableBounded : completion.executableDelta.BoundedBy q :=
+    completion.safe.exact.boundedBy executableProducerCapBounded
+      executableProducerTargetBounded executableConsumerCapBounded
+      executableConsumerTargetBounded
+  refine
+    { completion with
+      declarativeDeltaBounded := ddBounded
+      executableDeltaBounded := executableBounded
+      forwardBounded := ?_
+      reverseBounded := ?_ }
+  · rw [completion.forwardResidualEq]
+    exact ddBounded.seq forwardBounded
+  · rw [completion.reverseResidualEq]
+    exact executableBounded.seq reverseBounded
 
 /-! ## Why mutual instances alone were insufficient
 
