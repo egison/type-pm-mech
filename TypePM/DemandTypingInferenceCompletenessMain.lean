@@ -55,12 +55,27 @@ structure BoundedSynthsRunCompletion
   run : SynthsRunCompletion before operation q' declarative ledger targets
   rawTargetsBounded : ∀ target ∈ run.result.targets, target.BoundedBy q'
 
+/-! The executable uses one fuel unit not only for a syntax node but also for
+administrative traversals such as checking.  The public `inferenceFuel`
+already reserves eight units per syntax-measure unit.  These predicates make
+that reserve explicit in the global recursion instead of silently treating
+checking as a zero-cost edge. -/
+
+abbrev SynthBudgetAdequate (fuel : Nat) (expression : Expr) : Prop :=
+  8 * (exprTraversalFuel expression + 1) ≤ fuel
+
+abbrev CheckBudgetAdequate (fuel : Nat) (expression : Expr) : Prop :=
+  8 * (exprTraversalFuel expression + 1) + 1 ≤ fuel
+
+abbrev SynthsBudgetAdequate (fuel : Nat) (expressions : List Expr) : Prop :=
+  8 * (exprListTraversalFuel expressions + 1) ≤ fuel
+
 /-- A synthesis-completeness hypothesis which is stable under traversal:
 unlike a hypothesis specialized to the initial call, it may be instantiated
 at the state, supply, substitution, context, and path produced by any earlier
 sibling.  The global mutual recursion will discharge this interface with its
 own synthesis component. -/
-abbrev SynthCompletenessOracle (signature : FrozenSig) : Prop :=
+abbrev SynthCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat} {context : Context} {selfEnv : SelfEnv}
     {path : SyntaxPath} {expression : Expr} {target : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -69,13 +84,13 @@ abbrev SynthCompletenessOracle (signature : FrozenSig) : Prop :=
     (before : TraversalStateCorrespondence q S ledger state) →
     context.BoundedBy q →
     DDSynthOrigin signature raw ledger ledger' →
-    ExprAdequate fuel expression →
+    SynthBudgetAdequate fuel expression →
     Nonempty (BoundedSynthRunCompletion before
       (inferExprFuel fuel signature context selfEnv path expression state)
       q' S' ledger' target)
 
-/-- Traversal-stable checking counterpart of `SynthCompletenessOracle`. -/
-abbrev CheckCompletenessOracle (signature : FrozenSig) : Prop :=
+/-- Traversal-stable checking counterpart of `SynthCompletenessMotive`. -/
+abbrev CheckCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat} {context : Context} {selfEnv : SelfEnv}
     {path : SyntaxPath} {expression : Expr} {expected : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -84,7 +99,7 @@ abbrev CheckCompletenessOracle (signature : FrozenSig) : Prop :=
     (before : TraversalStateCorrespondence q S ledger state) →
     context.BoundedBy q → expected.BoundedBy q →
     DDCheckOrigin signature raw ledger ledger' →
-    ExprAdequate fuel expression →
+    CheckBudgetAdequate fuel expression →
     Nonempty (StateRunCompletion before
       (checkExprFuel fuel signature context selfEnv path expression expected
         state) q' S' ledger')
@@ -133,11 +148,11 @@ def boundedSynthsCons_complete
 
 /-- Actual origin-tree dispatcher for expression lists, parameterized only by
 the synthesis component of the later global mutual recursion.  In
-particular, the oracle is quantified over every intermediate state, so the
+particular, the motive is quantified over every intermediate state, so the
 tail is proved at the concrete state returned by the head rather than at the
 initial call site. -/
 theorem synthsOrigin_complete_nonempty_from_synth
-    {signature : FrozenSig} (synthComplete : SynthCompletenessOracle signature)
+    {signature : FrozenSig} (synthComplete : SynthCompletenessMotive signature)
     {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {expressions : List Expr} {targets : List Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -146,30 +161,38 @@ theorem synthsOrigin_complete_nonempty_from_synth
     (contextBounded : context.BoundedBy q)
     {raw : DDSynths signature q S context expressions targets q' S'}
     (origin : DDSynthsOrigin signature raw ledger ledger')
-    (adequate : ExprListAdequate fuel expressions) :
+    (adequate : SynthsBudgetAdequate fuel expressions) :
     Nonempty (BoundedSynthsRunCompletion before
       (inferExprsFuel fuel signature context selfEnv parent index expressions
         state) q' S' ledger' targets) := by
-  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
-  cases origin with
-  | nil => exact ⟨boundedSynthsNil_complete fuel signature context selfEnv
-      parent index before⟩
-  | @cons q S context expression expressions target targets q₁ S₁ q' S'
-      ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin =>
-      have childAdequate := exprList_cons (fuel := fuel) adequate
-      let headRun := Classical.choice
-        (synthComplete (selfEnv := selfEnv) (path := index :: parent)
-          before contextBounded headOrigin childAdequate.1)
-      have tailContextBounded : context.BoundedBy q₁ :=
-        contextBounded.mono headOrigin.erase.supplyExtends
-      let tailRun := Classical.choice
-        (synthsOrigin_complete_nonempty_from_synth
-          (selfEnv := selfEnv) (parent := parent) (index := index + 1)
-          synthComplete fuel
-          headRun.run.completion.state tailContextBounded tailOrigin
-          childAdequate.2)
-      exact ⟨boundedSynthsCons_complete before headRun tailRun
-        tailOrigin.erase.supplyExtends⟩
+  cases fuel with
+  | zero => simp [SynthsBudgetAdequate] at adequate
+  | succ fuel =>
+    cases origin with
+    | nil => exact ⟨boundedSynthsNil_complete fuel signature context selfEnv
+        parent index before⟩
+    | @cons q S context expression expressions target targets q₁ S₁ q' S'
+        ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin =>
+        have headAdequate : SynthBudgetAdequate fuel expression := by
+          simp only [SynthsBudgetAdequate, SynthBudgetAdequate,
+            exprListTraversalFuel] at adequate ⊢
+          omega
+        have tailAdequate : SynthsBudgetAdequate fuel expressions := by
+          simp only [SynthsBudgetAdequate, exprListTraversalFuel]
+            at adequate ⊢
+          omega
+        let headRun := Classical.choice
+          (synthComplete (selfEnv := selfEnv) (path := index :: parent)
+            before contextBounded headOrigin headAdequate)
+        have tailContextBounded : context.BoundedBy q₁ :=
+          contextBounded.mono headOrigin.erase.supplyExtends
+        let tailRun := Classical.choice
+          (synthsOrigin_complete_nonempty_from_synth
+            (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+            synthComplete fuel headRun.run.completion.state tailContextBounded
+            tailOrigin tailAdequate)
+        exact ⟨boundedSynthsCons_complete before headRun tailRun
+          tailOrigin.erase.supplyExtends⟩
 termination_by fuel
 
 def boundedSynthLit_complete
@@ -439,6 +462,49 @@ theorem checkOrigin_complete_nonempty
         (synthesized := synthOrigin.erase) closed fuel before
         contextBounded expectedBounded synth aligned
 
+/-- The checking component generated from a traversal-stable synthesis
+motive.  `CheckBudgetAdequate` pays exactly the extra unit consumed by
+`checkExprFuel` before synthesis starts. -/
+theorem checkOrigin_complete_nonempty_from_synth
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    (synthComplete : SynthCompletenessMotive signature)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {expression : Expr} {expected : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedBounded : expected.BoundedBy q)
+    {raw : DDCheck signature q S context expression expected q' S'}
+    (origin : DDCheckOrigin signature raw ledger ledger')
+    (adequate : CheckBudgetAdequate fuel expression) :
+    Nonempty (StateRunCompletion before
+      (checkExprFuel fuel signature context selfEnv path expression expected
+        state) q' S' ledger') := by
+  cases fuel with
+  | zero => simp [CheckBudgetAdequate] at adequate
+  | succ fuel =>
+      have synthAdequate : SynthBudgetAdequate fuel expression := by
+        simp only [CheckBudgetAdequate, SynthBudgetAdequate] at adequate ⊢
+        omega
+      cases origin with
+      | mk synthOrigin aligned =>
+          let synth := Classical.choice
+            (synthComplete (selfEnv := selfEnv) (path := path)
+              before contextBounded synthOrigin synthAdequate)
+          exact checkOrigin_complete_nonempty_of_synth
+            (synthesized := synthOrigin.erase) closed fuel before
+            contextBounded expectedBounded synth aligned
+
+theorem checkCompletenessMotive_of_synth
+    {signature : FrozenSig} (closed : signature.SchemesClosed)
+    (synthComplete : SynthCompletenessMotive signature) :
+    CheckCompletenessMotive signature := by
+  intro fuel context selfEnv path expression expected q q' S S' ledger
+    ledger' state raw before contextBounded expectedBounded origin adequate
+  exact checkOrigin_complete_nonempty_from_synth closed synthComplete fuel
+    before contextBounded expectedBounded origin adequate
+
 def checksOrigin_nil_complete
     {signature : FrozenSig}
     {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
@@ -471,10 +537,10 @@ def checksOrigin_cons_complete
   checkExprsFuel_cons_complete before head tail
 
 /-- Actual origin-tree dispatcher for checking lists.  The recursive head
-oracle is traversal-stable, and the tail is recursively reconstructed from
+motive is traversal-stable, and the tail is recursively reconstructed from
 the head's concrete completion state. -/
 theorem checksOrigin_complete_nonempty_from_check
-    {signature : FrozenSig} (checkComplete : CheckCompletenessOracle signature)
+    {signature : FrozenSig} (checkComplete : CheckCompletenessMotive signature)
     {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath} {index : Nat}
     {expressions : List Expr} {expecteds : List Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -484,33 +550,42 @@ theorem checksOrigin_complete_nonempty_from_check
     (expectedsBounded : ∀ expected ∈ expecteds, expected.BoundedBy q)
     {raw : DDChecks signature q S context expressions expecteds q' S'}
     (origin : DDChecksOrigin signature raw ledger ledger')
-    (adequate : ExprListAdequate fuel expressions) :
+    (adequate : SynthsBudgetAdequate fuel expressions) :
     Nonempty (StateRunCompletion before
       (checkExprsFuel fuel signature context selfEnv parent index expressions
         expecteds state) q' S' ledger') := by
-  obtain ⟨fuel, rfl⟩ := positive_of_lt adequate
-  cases origin with
-  | nil => exact ⟨checksOrigin_nil_complete fuel before⟩
-  | @cons q S context expression expressions expected expecteds q₁ S₁ q' S'
-      ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin =>
-      have childAdequate := exprList_cons (fuel := fuel) adequate
-      have expectedBounded := expectedsBounded expected (by simp)
-      let headRun := Classical.choice
-        (checkComplete (selfEnv := selfEnv) (path := index :: parent)
-          before contextBounded expectedBounded headOrigin childAdequate.1)
-      have tailContextBounded : context.BoundedBy q₁ :=
-        contextBounded.mono headOrigin.erase.supplyExtends
-      have tailExpectedsBounded :
-          ∀ item ∈ expecteds, item.BoundedBy q₁ := by
-        intro item membership
-        exact (expectedsBounded item (by simp [membership])).mono
-          headOrigin.erase.supplyExtends
-      let tailRun := Classical.choice
-        (checksOrigin_complete_nonempty_from_check
-          (selfEnv := selfEnv) (parent := parent) (index := index + 1)
-          checkComplete fuel headRun.completion tailContextBounded
-          tailExpectedsBounded tailOrigin childAdequate.2)
-      exact ⟨checksOrigin_cons_complete before headRun tailRun⟩
+  cases fuel with
+  | zero => simp [SynthsBudgetAdequate] at adequate
+  | succ fuel =>
+    cases origin with
+    | nil => exact ⟨checksOrigin_nil_complete fuel before⟩
+    | @cons q S context expression expressions expected expecteds q₁ S₁ q' S'
+        ledger ledger₁ ledger' headRaw tailRaw headOrigin tailOrigin =>
+        have headAdequate : CheckBudgetAdequate fuel expression := by
+          simp only [SynthsBudgetAdequate, CheckBudgetAdequate,
+            exprListTraversalFuel] at adequate ⊢
+          omega
+        have tailAdequate : SynthsBudgetAdequate fuel expressions := by
+          simp only [SynthsBudgetAdequate, exprListTraversalFuel]
+            at adequate ⊢
+          omega
+        have expectedBounded := expectedsBounded expected (by simp)
+        let headRun := Classical.choice
+          (checkComplete (selfEnv := selfEnv) (path := index :: parent)
+            before contextBounded expectedBounded headOrigin headAdequate)
+        have tailContextBounded : context.BoundedBy q₁ :=
+          contextBounded.mono headOrigin.erase.supplyExtends
+        have tailExpectedsBounded :
+            ∀ item ∈ expecteds, item.BoundedBy q₁ := by
+          intro item membership
+          exact (expectedsBounded item (by simp [membership])).mono
+            headOrigin.erase.supplyExtends
+        let tailRun := Classical.choice
+          (checksOrigin_complete_nonempty_from_check
+            (selfEnv := selfEnv) (parent := parent) (index := index + 1)
+            checkComplete fuel headRun.completion tailContextBounded
+            tailExpectedsBounded tailOrigin tailAdequate)
+        exact ⟨checksOrigin_cons_complete before headRun tailRun⟩
 termination_by fuel
 
 /-! ## Structural leaf certificates -/
