@@ -911,5 +911,200 @@ theorem auditedChecks_complete_paired
                 exact ⟨checksCons headRun tailRun⟩
 termination_by fuel
 
+theorem auditedSynthCtor_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {expressions : List Expr}
+    {scheme : CtorScheme} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (lookup : signature.findDataCtor name = some scheme)
+    {childrenRaw : DDChecks signature
+      (InferenceBase.instantiateCtorScheme q scheme).supply S
+      declarativeContext expressions
+      (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
+    {childrenOrigin : DDChecksOrigin signature childrenRaw
+      (DDLedger.markCtorInstance ledger q scheme) ledger₁}
+    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.ctor name expressions)) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.ctor name expressions) state) q' S'
+      (DDLedger.freezeExport ledger₁ S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2) := by
+  have childrenAdequate : MatcherChecksBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, MatcherChecksBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let instantiated := instantiateCtorInState_complete
+    (before.visit .exprCtor path) scheme
+  have instanceBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.dataCtors lookup).boundedBy)
+  have instanceExtension := SupplyExtends.instantiateCtorScheme q scheme
+  have childrenContextBounded : declarativeContext.BoundedBy
+      (InferenceBase.instantiateCtorScheme q scheme).supply :=
+    contextBounded.mono instanceExtension
+  have childrenContexts : ContextBisimulation
+      instantiated.correspondence.prevailing declarativeContext
+      executableContext :=
+    (contexts.transport (before.visitExtension .exprCtor path)).transport
+      instantiated.transition
+  have childBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel :=
+    synthBelow.mono (Nat.le_succ fuel)
+  have executableArgumentsBounded : ∀ expected ∈
+      (instantiateCtorInState (visit state .exprCtor path) scheme).1.1,
+      expected.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply := by
+    intro expected membership
+    apply instanceBounded.1 expected
+    simpa [Inference.instantiateCtorInState, visit, before.supply_eq] using
+      membership
+  let childrenRun := Classical.choice
+    (auditedChecks_complete_paired closed fuel childBelow
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      instantiated.correspondence childrenContexts childrenContextBounded
+      (executableContextBounded.mono instanceExtension)
+      instanceBounded.1 executableArgumentsBounded
+      instantiated.arguments childrenAudit childrenAdequate)
+  let rawRun := boundedSynthCtor_complete closed before lookup childrenRun.raw
+    childrenOrigin.erase.supplyExtends
+  let entered := visit state .exprCtor path
+  let instantiatedState := instantiateCtorInState entered scheme
+  let frozen := childrenRun.raw.result.freezeCapabilityExport
+    (freshCapImages q scheme.capBinders)
+    (InferenceBase.instantiateCtorScheme q scheme).value.2
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprCtor path)
+    (ValidatorRunExtension.visit terminal signature state .exprCtor path)
+  let instantiateValidation := PairedValidatorRunExtension.ofExact
+    instantiated.transition
+    (ValidatorRunExtension.instantiateCtorInState
+      (terminal := terminal) (signature := signature) entered scheme
+      (closed.dataCtors lookup))
+  let freezeTransition := childrenRun.raw.completion
+    |>.freezeCapabilityExportExtension
+      (freshCapImages q scheme.capBinders)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2
+  let freezeValidation := PairedValidatorRunExtension.ofExact freezeTransition
+    (ValidatorRunExtension.freezeCapabilityExport terminal signature _
+      (freshCapImages q scheme.capBinders)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2)
+  let finishTransition := freezeTransition.after.recordEventExtension
+    (.inferredExpr (.ctor name expressions) rawRun.run.result.target path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _
+      (.ctor name expressions) path _)
+  let validation :=
+    (visitValidation.trans instantiateValidation).trans
+      childrenRun.validation |>.trans freezeValidation |>.trans
+      finishValidation
+  refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+  exact validation
+
+theorem auditedSynthPrim_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {op : PrimOp} {expressions : List Expr}
+    {scheme : CtorScheme} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger₁ : CapabilityOriginLedger}
+    {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (lookup : signature.findPrimitive op = some scheme)
+    {childrenRaw : DDChecks signature
+      (InferenceBase.instantiateCtorScheme q scheme).supply S
+      declarativeContext expressions
+      (InferenceBase.instantiateCtorScheme q scheme).value.1 q' S'}
+    {childrenOrigin : DDChecksOrigin signature childrenRaw
+      (DDLedger.markCtorInstance ledger q scheme) ledger₁}
+    (childrenAudit : DDChecksTerminalAudit terminal signature childrenOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.prim op expressions)) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.prim op expressions) state) q' S'
+      (DDLedger.freezeExport ledger₁ S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2) := by
+  have childrenAdequate : MatcherChecksBudgetAdequate fuel expressions := by
+    simp only [SynthBudgetAdequate, MatcherChecksBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let instantiated := instantiateCtorInState_complete
+    (before.visit .exprPrim path) scheme
+  have instanceBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.primitives lookup).boundedBy)
+  have instanceExtension := SupplyExtends.instantiateCtorScheme q scheme
+  have childrenContextBounded : declarativeContext.BoundedBy
+      (InferenceBase.instantiateCtorScheme q scheme).supply :=
+    contextBounded.mono instanceExtension
+  have childrenContexts : ContextBisimulation
+      instantiated.correspondence.prevailing declarativeContext
+      executableContext :=
+    (contexts.transport (before.visitExtension .exprPrim path)).transport
+      instantiated.transition
+  have childBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel :=
+    synthBelow.mono (Nat.le_succ fuel)
+  have executableArgumentsBounded : ∀ expected ∈
+      (instantiateCtorInState (visit state .exprPrim path) scheme).1.1,
+      expected.BoundedBy (InferenceBase.instantiateCtorScheme q scheme).supply := by
+    intro expected membership
+    apply instanceBounded.1 expected
+    simpa [Inference.instantiateCtorInState, visit, before.supply_eq] using
+      membership
+  let childrenRun := Classical.choice
+    (auditedChecks_complete_paired closed fuel childBelow
+      (selfEnv := selfEnv) (parent := path) (index := 0)
+      instantiated.correspondence childrenContexts childrenContextBounded
+      (executableContextBounded.mono instanceExtension)
+      instanceBounded.1 executableArgumentsBounded
+      instantiated.arguments childrenAudit childrenAdequate)
+  let rawRun := boundedSynthPrim_complete closed before lookup childrenRun.raw
+    childrenOrigin.erase.supplyExtends
+  let entered := visit state .exprPrim path
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprPrim path)
+    (ValidatorRunExtension.visit terminal signature state .exprPrim path)
+  let instantiateValidation := PairedValidatorRunExtension.ofExact
+    instantiated.transition
+    (ValidatorRunExtension.instantiateCtorInState
+      (terminal := terminal) (signature := signature) entered scheme
+      (closed.primitives lookup))
+  let freezeTransition := childrenRun.raw.completion
+    |>.freezeCapabilityExportExtension
+      (freshCapImages q scheme.capBinders)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2
+  let freezeValidation := PairedValidatorRunExtension.ofExact freezeTransition
+    (ValidatorRunExtension.freezeCapabilityExport terminal signature _
+      (freshCapImages q scheme.capBinders)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2)
+  let finishTransition := freezeTransition.after.recordEventExtension
+    (.inferredExpr (.prim op expressions) rawRun.run.result.target path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _
+      (.prim op expressions) path _)
+  let validation :=
+    (visitValidation.trans instantiateValidation).trans
+      childrenRun.validation |>.trans freezeValidation |>.trans
+      finishValidation
+  refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+  exact validation
+
+
 end DemandTypingInferenceCompletenessGlobalCertified
 end TypePM
