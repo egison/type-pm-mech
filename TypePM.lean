@@ -90,6 +90,8 @@ import TypePM.DemandTypingOrigin
 import TypePM.DemandTypingOriginMetatheory
 import TypePM.DemandTypingInferenceSoundnessPublic
 import TypePM.DemandTypingInferenceSoundnessRegression
+import TypePM.DemandTypingInferenceCompletenessPublic
+import TypePM.DemandTypingInferenceCompletenessRegression
 import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
@@ -109,5 +111,7 @@ erasure, and the closed-program bridge to that internal judgment.
 boundary from successful executable inference to `DDTyping`.  `Soundness`
 exposes `DDTyping.safe`, which obtains signature closedness from the single
 public `FrozenSigWF` condition and packages state erasure with the concrete
-dynamic safety interface.
+dynamic safety interface.  `DemandTypingInferenceCompletenessPublic` exposes
+the premise-free acceptance-completeness boundary from `DDTyping` back to
+successful executable inference.
 -/
