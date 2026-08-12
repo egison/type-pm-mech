@@ -1,391 +1,175 @@
 # type-pm-mech — Egison core の型推論と安全性
 
-非 CAS の Egison core を Lean 4 で機械化するリポジトリである．型には matcher を生成する
-`Matcher κ τ` と，matcher を必要とする消費位置を表す `MatcherSlot κ τ` がある．
+非 CAS の Egison core を Lean 4 で機械化するリポジトリである．matcherを生成する型
+`Matcher κ τ`と，matcherを必要とする消費位置の型`MatcherSlot κ τ`を分け，coercionを
+消費側のdemandから決める．
 
-source program の型付け可能性を定義する judgment は `SourceTyping` だけである．実行時安全性の
-証明では，推論中の supply や substitution を消去した内部 invariant `TypingInvariant` を使う．
-両者の役割は次の一方向に整理する．
+source programの型付け可能性を定義するjudgmentは`SourceTyping`だけである．公開推論器`infer`は，
+well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する．closed programについては，
+このsource typingから評価とmatching machineの安全性まで接続済みである．
 
-```text
-SourceTyping + FrozenSigWF.schemesClosed
-              │ state erasure
-              ▼
-         TypingInvariant ──────────────┐
-                                    ├─→ SourceTyping.SafeResult ──→ runtime safetyの各性質
-FrozenSigWF ── core_safety ─→ CoreSafety
-```
+## 現在の到達点
 
-`TypingInvariant` は source acceptance を定義する第二の型システムではない．逆に
-`TypingInvariant e τ` から `SourceTyping e τ` や推論成功を導くことも意図しない．
-
-## SourceTyping
-
-[`TypePM/DemandTyping.lean`](TypePM/DemandTyping.lean) は，全 source form と pattern／arm／
-clause 層について demand-directed な型付けを定義する．式層の中心は synthesis と checking
-の二判断である．
+中心となる接続は次の三つである．
 
 ```text
-q; S; Ω; Γ ⊢ e ⇒ τraw      ⊣ q'; S'; Ω'    synthesis
-q; S; Ω; Γ ⊢ e ⇐ τexpected ⊣ q'; S'; Ω'    checking
+infer Σ Γ e = some r
+  ── soundness ──→ SourceTyping Σ Γ e r.resolvedTarget
+
+SourceTyping Σ Γ e τ + FrozenSigWF Σ
+  ── completeness ──→ (infer Σ Γ e).isSome = true
+
+SourceTyping Σ [] e τ + FrozenSigWF Σ
+  ── state erasure / safety ──→ TypingInvariant Σ [] e τ + CoreSafety
 ```
 
-`q = (qκ, qτ)` は capability metavariable と target metavariable の次の番号を持つ fresh
-supply，`S` はその cut までに得た paired substitution，`Ω` は capability variable の生成由来を
-記録する origin ledger である．各規則は子を左から右へ調べ，出力 `q'; S'; Ω'` を次の子へ
-渡す．公開 wrapper は canonical initial supply，恒等置換，空 ledger から始め，最後に
-`S' τraw` を公開する．Leanでは rawな synthesis derivation，それに構造を一致させた intrinsic
-Origin certificate，公開される終端 substitution での audit certificateを分けて
-表現する．これらを合わせた判断が公開 source typingである．
-
-`Ω(χ)` は次の三値を取る．未登録の変数は `rigid` として扱う．
-
-- `rigid`: signatureや入力contextに由来し，solveはその変数を固定する．
-- `renameOnly`: 既に外へ流れたproducerであり，非structuralな変数へのrenameだけを許す．
-- `structuralFlexible`: constructor内部やconsumer demandの局所変数であり，export前だけ構造化を許す．
-
-expression schemeとpattern-function schemeのcapability binderはinstance生成時から
-`renameOnly` である．constructor／primitive instanceと単発fresh consumerは
-`structuralFlexible` として生成し，使用後にexported payloadへ残る像のleafだけを
-`renameOnly` へfreezeする．matcher literalは，最終capabilityに現れる全demand-owned explicit ledger
-keyのstructural leafだけをfreezeする．これにはmatcher開始前に生成された `fixMatcher`
-placeholderのowned leafも含まれる．ordinary equalityとone-way matcher-to-slot solveはいずれも，
-そのcutの `Ω` に対してadmissibleなdeltaでなければならない．
+したがって一般contextについて，次の受理同値と決定可能性が得られている．
 
 ```text
-SourceTyping Σ Γ e τ  iff
-  ∃ τraw q' S' Ω',
-    initialSupply Σ Γ; id; ∅; Γ ⊢ e ⇒ τraw ⊣ q'; S'; Ω' ∧
-    TerminalAudit S' ∧
-    τ = S' τraw
+FrozenSigWF Σ →
+  ((∃ τ, SourceTyping Σ Γ e τ) ↔ (infer Σ Γ e).isSome = true)
 ```
 
-この定義は `infer` の成功や `TypingInvariant` の存在を前提にしない．
+主な公開定理は[`TypePM/PublicTheorems.lean`](TypePM/PublicTheorems.lean)から参照できる．
 
-## Synthesis，checking，coercion
+| 定理 | 主張 |
+|---|---|
+| `Inference.infer_success_sourceTyping` | `infer`が返した型には`SourceTyping` derivationがある |
+| `SourceTyping.infer_isSome` | `FrozenSigWF`の下で`SourceTyping`を持つprogramを`infer`が受理する |
+| `Inference.sourceTypable_iff_infer_isSome` | source typabilityと公開推論器の成功が同値である |
+| `Inference.sourceTypableDecidable` | source typabilityを公開推論器で決定できる |
+| `SourceTyping.target_unique_modulo_renaming` | 同じsourceのtargetはresidual二sortmetaのrenamingを法として一意である |
+| `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
 
-`DemandCheck` は式を一度 synthesize し，その直後の cut で expected type と一度だけ align する．
-ここで「一度だけ」とは導出全体で一回ではなく，各 checking cut につき一回という意味である．
+ここで証明済みなのはtargetのrenaming一意性までであり，型のinstance preorder上のprincipalityは
+まだ主張しない．一般のprogram terminationも主張しない．
 
-非恒等 coercion は，cut で解決した expected type の head が `MatcherSlot` の場合だけ起こる．
+## judgmentの役割
+
+| 層 | 役割 |
+|---|---|
+| `SourceTyping` | source acceptanceを定義する唯一の公開judgment |
+| `Reconstruction.ExprDeriv` | 成功した推論traceを再構成するproof-relevantな内部証明 |
+| `TypingInvariant` | supply，substitution，origin ledgerを消去した動的メタ理論用の内部invariant |
+| `ValueTy`／matching-state judgments | preservation，progress，matching safetyを記述するruntime側の型付け |
+
+向きは`SourceTyping → TypingInvariant → runtime safety`である．`TypingInvariant`を第二のsource
+type systemとして使ったり，その存在からsource acceptanceや推論成功を逆向きに導いたりしない．
+
+`SourceTyping`は，canonical initial stateから始まるdemand-directed derivation，capabilityの由来を
+追跡するOrigin certificate，終端substitutionで検査するterminal auditを束ねる．`infer`の成功や
+`TypingInvariant`の存在を定義のpremiseには持たない．詳細は[`docs/details.md`](docs/details.md)を参照．
+
+## demand-directed coercion
+
+checkingは式を先にsynthesizeし，そのcutで解決したexpected typeのheadを一度だけ調べる．非恒等
+coercionはexpected headが`MatcherSlot`の場合に限られる．
 
 | resolved source | resolved expected | alignment |
 |---|---|---|
 | `Matcher κp τp` | `MatcherSlot κc τc` | matcher-to-slot |
-| product of matchers | `MatcherSlot κc τc` | product lift，matcher-to-slot |
+| product of matchers | `MatcherSlot κc τc` | product liftの後にmatcher-to-slot |
 | product of slots | `MatcherSlot κc τc` | slot-tuple lift |
-| `MatcherSlot κp τp` | `MatcherSlot κc τc` | slot-to-slot equality |
+| `MatcherSlot κp τp` | `MatcherSlot κc τc` | ordinary equality |
 | その他 | その他 | ordinary equality |
 
-expected type が未解決変数なら ordinary equality だけを行う．coercion のために変数を slot
-へ推測せず，ordinary equality の失敗後に別 branch を試す rollback も行わない．各 solve は
-exact MGU または exact one-way solutionであり，constraint外のmetavariableを構造化しない．
-さらにdeltaはcutの `Ω` に適合するため，`renameOnly` producerを `Any` やconstructor capabilityへ
-後から強化するsolveは公開判断に入らない．
+expected typeが未解決変数ならordinary equalityだけを行う．coercionのために変数をslotへ推測せず，
+ordinary equalityの失敗後に別branchを試すrollbackも行わない．solverはconstraint外のmetaを
+構造化せず，capabilityのsubstitutionはOrigin ledgerが許す範囲に限られる．
 
-coercion の場所は `matchAll` や matcher literal に固定されない．たとえば
-`use : MatcherSlot κ τ → ρ` へ `m : Matcher κ τ` を渡す場合，関数適用が domain を決め，
-引数の checking cut で matcher producer と slot demand が対応付けられる．`matchAll` の
-matcher 引数と matcher clause の next-matcher も同じ `DemandCheck` を使う．
+この原則は`matchAll`専用ではない．たとえば`use : MatcherSlot κ τ → ρ`へ
+`m : Matcher κ τ`を渡す場合も，関数適用のargument checking cutで同じalignmentを使う．
 
-## TypingInvariant と安全性
+## 現在固定している境界
 
-[`TypePM/Source.lean`](TypePM/Source.lean) の `TypingInvariant` は，fresh supply，solver の実行順，
-origin ledger を持たない state-free invariant である．closure と matcher value はその証明を保持し，
-preservation はそれを `ValueTy` へ移す．
-matcher-to-slot coercion も実行器の matching／MGU 成功証拠を保持せず，終端 capability 間の
-`CapabilityDemand` だけを保持する．slot-to-slot solve は終端型の等しさへ消去される．実行用の
-raw solver certificate は reconstruction がこの意味的証拠へ射影するまでの境界にだけ残る．
+- matcher literalはactual clause evidence，shape，catch-all order，data-arm exhaustiveness，
+  binder線形性，coverageをすべて要求する．
+- value-flow schemeのcapability binderはvariableにだけinstance化し，consumer demandに合わせて
+  producer capabilityを後から構造化しない．
+- recursionはsingleton direct-selfの単相`fix`だけをcoreに含む．alias，mutual recursion，
+  higher-order originはfail closedとする．
+- `nestedCapProgram`とswapped版は拒否し，or-pattern，delegating matcher，let-polymorphic matcher
+  producerは受理する．これらは正負回帰で固定済みである．
+- 未解決lambda domainを複数箇所で共有すると，左から右のchecking順序が受理結果に影響し得る．
+  現在は回帰で挙動だけを固定しており，恒久的な言語境界にするかは未決定である．
 
-実行可能推論については次の経路が機械化済みである．
-
-```text
-infer Σ Γ e = some r
-  → Reconstruction.ExprDeriv Σ (ResolvedContext r.state.prevailing Γ)
-      e r.resolvedTarget
-  → TypingInvariant Σ (ResolvedContext r.state.prevailing Γ)
-      e r.resolvedTarget
-```
-
-中心となる定理は `infer_success_reconstruct` と `infer_success_typingInvariant` である．公開
-`infer` は停止する `inferRaw` と有限の fail-closed terminal validator の合成であり，caller
-が bridge certificate や `InferenceInputWF` を渡す必要はない．
-
-`FrozenSigWF` の下では，`TypingInvariant` を持つ式の評価，matching state の一段保存，局所
-progress，到達可能 state の保存，成功 branch の substitution typing を証明済みである．
-`FrozenSigWF` はこれらの動的整合性に加えて，signature中の全schemeがbinder外の
-metavariableを持たない `SchemesClosed` を含む．実行可能checker `frozenSigWFCheck` の成功から
-`frozenSigWFCheck_sound` が，signature構築時に固定する
-`armExhaustive = basicArmExhaustive` と合わせてこの単一のglobal条件を構成する．一般の program
-termination は主張しない．
-
-## 接続の現在地
-
-`SourceTyping → TypingInvariant` の state erasure は完成している．public `SourceTyping` は
-canonical initial supply，恒等置換，空 ledger から始まる raw derivation，構造が対応する
-Origin certificate，終端 substitution での audit certificateを保持する．全 raw demand-directed
-family で出力 substitution の idempotence を保存することと，各子の出力から根の終端までの
-chronological factorization を使い，全14 family の相互 erasure から closed-program の
-`TypingInvariant` を得る．`TypingInvariant` 自体の存在を `SourceTyping` の premise に置く循環はない．
-
-`infer → SourceTyping` の executable soundness は完成している．公開定理
-`Inference.infer_success_sourceTyping` は，成功した fuelled traversal を同じ cut 列を持つ raw demand-directed
-derivationへ相互再構成し，validator が与える一つの終端 certificate から terminal audit を構成して，
-報告された `resolvedTarget` の `SourceTyping` を返す．caller が `WBridgeWF` や history を渡す必要はない．
-
-`SourceTyping` からの公開動的安全性も完成している．低レベルの `SourceTyping.typingInvariant` は
-signature closednessを明示的に受け取るが，公開定理 `SourceTyping.safe` は
-`FrozenSigWF.schemesClosed`からその証拠を内部で供給する．したがってclosed programについて
-
-```text
-SourceTyping signature [] e τ →
-FrozenSigWF signature →
-SourceTyping.SafeResult signature e τ SF
-```
-
-が成立する．`SourceTyping.SafeResult` は同じ公開型の `TypingInvariant` と，preservation／progress／
-matching safetyを束ねた `CoreSafety` を保持する．`Inference.infer_closed_safe` はclosedな推論成功を
-`infer → SourceTyping → safety` の公開経路へ接続する．
-
-`SourceTyping → infer` の受理完全性も完成している．`SourceTyping` derivation と terminal audit を同時に再帰し，
-exact solve，fresh allocation，context normalization，producer protectionを同じ executable traversalへ
-再現する．各局所runが蓄積するvalidator event coverageをrootでterminal auditと合成し，有限の
-`wBridgeCheck`を通す．公開定理はM4と同じglobal signature条件だけを受け取る．
-
-```text
-SourceTyping.infer_isSome :
-  SourceTyping signature context e τ →
-  FrozenSigWF signature →
-  (infer signature context e).isSome = true
-```
-
-`RawSourceVisible`，`FreezeCompatible`，solver success，validator bridgeなどの実装向け条件は
-caller premiseに残らない．`FrozenSigWF`はterminal factsを実行側の終端stateへ輸送する際の
-scheme closednessとcanonical arm checkerを含み，M4とM5で共有する公開signature境界である．
-
-以上の二方向を合成した受理同値も完成している．一般contextでは
-`Inference.sourceTypable_iff_infer_isSome`，closed programでは
-`Inference.annotation_freeness`として，`FrozenSigWF`の下で「ある型について `SourceTyping` が成立する」ことと
-公開推論器の成功が同値になる．`inferType_success_sourceTyping`は`inferType`が実際に返した型の
-`SourceTyping` derivationを与え，`sourceTypableDecidable`は同じ同値からsource typabilityの決定可能性を構成する．
-任意に与えた`SourceTyping` derivationのtargetと返値型の構文的一致は一般には成立しないが，両者を含む任意の
-二つの`SourceTyping` targetは，全residual metavariable上の局所的な二sort変数renamingにより同じ決定的な
-実行targetへ写る．型のinstance preorder上のprincipalityはまだ主張しない．
-
-`nestedCapProgram` と swapped 版は demand-directed で型付かず，推論器も拒否する意図された負例である．
-一方，or-pattern，delegating matcher，let-polymorphic な matcher producer は維持すべき正例で
-あり，public Origin certificate を伴う回帰で固定済みである．
-
-未解決なlambda domainを共有する二つのuseはsource順序を観測しうる．`use`が先にdomainをslotへ
-確定するclosed probeは受理され，raw matcherを渡す通常適用を先に置いた逆順は拒否される．これは
-左から右のstate threadingとno-guess原則の現行帰結として正負回帰に固定するが，恒久的な言語境界
-としてはまだ分類しない．
+回帰ごとの対応と内部証明の構成は[`docs/details.md`](docs/details.md)，論文形式の規則とメタ理論は
+[`tex/main.tex`](tex/main.tex)に記載する．
 
 ## Roadmap
 
-旧roadmapのmilestone 0--6はすべて完了したため，個別の進捗記録としては残さず，今後の
-証明が依存する基盤として次に統合する．この基盤では `SourceTyping` が唯一のsource typingであり，
-`TypingInvariant`はstate erasure後の内部invariantであるという役割分担を維持する．
-
-### 完了済みの基盤
-
-| 基盤 | 公開済みの主張 |
-|---|---|
-| demand-directed typing | 全source formを覆う`SourceTyping`，slot-demand coercion，Origin ledger，terminal auditが定義されている |
-| state erasureと安全性 | closed programの`SourceTyping`から同じ型の`TypingInvariant`と`SourceTyping.SafeResult`を得る |
-| executable soundness | `infer`が成功して返した型には`SourceTyping` derivationがある |
-| acceptance completeness | `FrozenSigWF`の下で`SourceTyping` derivationを持つprogramを`infer`が受理する |
-| 受理同値 | 一般contextのsource typabilityと`infer`／`inferType`の成功が同値であり，source typabilityは決定可能である |
-| target一意性 | 同じsourceの任意の二つの`SourceTyping` targetは，全residual二sortmetaの局所renamingを法として一意である |
-
-この基盤は今後のmilestoneの前提であり，再実装対象ではない．特にprincipalityは
-`TypingInvariant`全体について述べず，必ず`SourceTyping`と公開推論器について述べる．DM断片との
-接続でも，`DM.Typing → TypingInvariant`だけをsource acceptanceの代用にしない．
-
-### 新しい依存関係
+完了済みのsoundness，completeness，受理同値，安全性，target一意性を基盤`F`とする．今後は
+principality系とDamas--Milner系を独立に進め，source-order依存について設計判断を行う．
 
 ```text
-[x] F. soundness・completeness・受理同値・target一意性
-    │
+[x] F. soundness / completeness / safety / target uniqueness
     ├──→ [ ] P1. 二sort instance preorder
-    │          └──→ [ ] P2. closed SourceTyping principality
+    │          └──→ [ ] P2. closed principality
     │                    └──→ [ ] P3. context相対principality
-    │
     ├──→ [ ] D1. 全DM.Typingのexecutable acceptance
     │          └──→ [ ] D2. DM断片でのconservativity
-    │
     └──→ [ ] O. source-order依存の設計判断
-                 ├── 現状を採用 ─→ 安定した言語境界として仕様化
-                 └── 規則を変更 ─→ Fと完了済みP／Dを再確立
-
-P2 + D1 ──→ DM derivationの型とinferType返値のinstance関係
-P3 + D2 ──→ open DM断片まで含むprincipal typeの一致
 ```
 
-`P1`--`P3`と`D1`は完了済み基盤から独立に着手できる．ただし`O`でcalculus自体を変更する場合は
-受理集合が変わるため，変更後の基盤に対してsoundness，completeness，受理同値，target一意性を
-再確立してからprincipalityとDM接続を最終化する．現行の順序依存を採用する場合，`O`は既存の
-正負回帰を恒久的な仕様境界として昇格するだけであり，他の枝を差し戻さない．
+| ID | 作業 | 依存 | 達成後に主張できること |
+|---|---|---|---|
+| P1 | capability／target metaを同時に扱うinstance preorderを定義し，renamingとの関係を証明する | F | targetをmetavariable名ではなく一般性で比較できる |
+| P2 | `inferType`が返すclosed targetのprincipalityを証明する | P1 | closed source programのprincipal typeを公開推論器が計算する |
+| P3 | contextとtargetの同時instance化を含む相対principalityを定式化する | P2 | open termでも，明示したcontext可変性の下でprincipal typeを計算する |
+| D1 | 任意の`DM.Typing` derivationから公開推論器の成功を導く | F | pattern-free let-polymorphismを推論器が取りこぼさない |
+| O | 現在のsource-order依存を採用するか，規則を変更するか決める | F | typabilityの順序依存を意図された仕様または明示した不変性定理として説明できる |
+| D2 | pattern-free・capability-inert・direct-self断片でDMとの双方向対応を証明する | D1；型比較にはP2／P3 | 二sort coreが指定したDM断片の保守的拡張である |
 
-### [ ] P1. 二sort instance preorderを定義する
+### P1--P3: principality
 
-capability metavariableとtarget metavariableを同時に扱う型のinstance関係を定義する．単なる
-「あるtotal substitutionで写る」ではなく，どの有限scopeを可変とし，その外を恒等に保つかを
-明記する．少なくとも反射性と推移性，substitution合成との整合性を証明し，既存の
-`TargetRenaming`が両方向のinstanceを与えることを接続する．
-
-open contextでは，exact MGUの向きにより入力context由来のmetaのどちらが公開型へ残るかが変わる．
-そのためP1では，closed target用のinstance関係と，contextとtargetを同時に比較する関係を区別する．
-「contextを構文的に固定し，そのmetaもrigidとする」強い一般context版を暗黙に採用しない．
-
-達成後に主張できること：
-
-- renaming一意性を「任意の二つの`SourceTyping` targetは互いのinstanceである」と読み替えられる．
-- `inferType`の返値と他の公開targetを，metavariable名ではなく一般性の順序で比較できる．
-- principalityの定理文を，solver内部のfactorizationを公開せずに定式化できる．
-
-### [ ] P2. closed `SourceTyping` のprincipalityを証明する
-
-P1のinstance preorderを使い，空contextで`inferType`が返すtargetが最も一般的であることを証明する．
-第一段階では返値中のresidual metavariableを暗黙に量化したprincipal monotypeとして述べる．必要なら
-その後，signature外のresidual metaをcanonical `Scheme`へcloseしたprincipal scheme corollaryを加える．
-
-目標となる主張は次である．
+最初に，substitutionが変更してよい有限scopeを明示した二sort instance preorderを定義する．P2では
+空contextに限定し，`inferType`の返値中のresidual metaを暗黙に量化したprincipal monotypeを扱う．
+目標は次の形である．
 
 ```text
-FrozenSigWF signature →
-inferType signature [] e = some principal →
-SourceTyping signature [] e principal ∧
-  ∀ target, SourceTyping signature [] e target →
-    TypeInstance principal target
+FrozenSigWF Σ → inferType Σ [] e = some principal →
+  SourceTyping Σ [] e principal ∧
+  ∀ target, SourceTyping Σ [] e target → TypeInstance principal target
 ```
 
-達成後に主張できること：
+P3でopen contextへ拡張する際は，context由来のmetaをすべてrigidにした強い形を採用しない．exact MGUの
+向きによって異なる入力metaがtargetへ残り得るため，contextとtargetの組を同じsubstitutionで比較する
+相対関係が必要である．
 
-- typableなclosed source programにはprincipal typeが存在する．
-- 公開推論器は単に何らかの型を返すだけでなく，`SourceTyping`に関する最も一般的な型を計算する．
-- 既存のannotation-freenessを「注釈なしでtypabilityを判定し，principal typeを返す」まで強化できる．
+### D1--D2: Damas--Milner断片
 
-### [ ] P3. context相対principalityを定式化して証明する
+現状は`DM.Typing → TypingInvariant`の埋込みとpolymorphic identityの受理例だけがある．D1では任意の
+DM derivationから埋込みcontext上のsource typabilityを構成し，完成済みの受理完全性へ接続する．DM
+derivationが選んだ型はprincipal targetの特殊化であり得るため，`inferType`が同じ型を構文的に返すとは
+要求しない．
 
-P2をopen contextへ拡張する．先に，context中のmetaを固定するのか，contextとtargetを同じsubstitutionで
-同時にinstance化するのかを決める．既存のexact-MGU orientation回帰により，入力metaをすべて固定した
-まま公開targetだけを比較する強い形は一般には成立しない．したがって有力な定式化は，
-`(context, target)`の組に対する同時instance関係，またはcontextのrigid部分を明示した相対関係である．
+D2では対象となるpattern-free fragmentを明示し，`SourceTyping`の存在を境界に逆方向も証明する．
+これをP2／P3と合成すると，coreの推論結果とDMのprincipal typeの対応を議論できる．
 
-達成後に主張できること：
+### O: source-order依存
 
-- `inferType signature context e`が，明示したcontext可変性の下でprincipalである．
-- open termとlibrary contextを含む推論結果の一般性を，MGUの任意の向きに依存せず比較できる．
-- closed版P2が空contextへの特殊化として回収される．
+現状を採用する場合は，no-guessとchronological state threadingの意図された帰結として仕様化する．
+変更する場合は，通常単一化の失敗をcoercionの根拠に戻さず，未解決headのconstraintまたはchecking
+obligationを遅延する設計を検討する．後者は受理集合を変えるため，基盤`F`と完了済みのP／D定理を
+新しいcalculusに対して再確立する必要がある．
 
-### [ ] D1. 全`DM.Typing` derivationのexecutable acceptanceを証明する
-
-現在の`DamasMilner`は，pattern-free・capability-inertなdirect-self DM derivationを
-`TypingInvariant`へ埋め込むが，任意の導出に対する公開推論器の受理は未証明である．任意の
-`DM.Typing context e target`から，埋込みcontext上で何らかの`SourceTyping` targetが存在することを示し，
-完了済みの`SourceTyping.infer_isSome`へ接続する．DM derivationが選んだtargetはprincipal targetの
-特殊化であり得るため，公開推論器が同じtargetを構文的に返すとは要求しない．
-
-目標となる受理主張は次の形である．
-
-```text
-DM.Typing context e target →
-FrozenSigWF signature →
-signature.ftv = [] →
-(infer signature context.emb e).isSome = true
-```
-
-実際のsignature条件は，DM fragmentが参照しないconstructor／primitive tableに不必要な制約を
-課さない最小の形に整理する．P1またはP2と合成すると，`inferType`の返値が埋め込んだDM targetより
-一般的であることも主張できる．
-
-達成後に主張できること：
-
-- direct-self DMで型付く全programを，terminal validatorを含む公開推論器が受理する．
-- 現在のpolymorphic-identity一例だけの`DMTerminalAcceptance`を，一般定理の回帰へ置き換えられる．
-- 二sort推論器が通常のpattern-free let-polymorphismを取りこぼさないことを示せる．
-
-### [ ] O. source-order依存を恒久的な言語境界として分類する
-
-未解決lambda domainを複数箇所で共有すると，左から右のchecking順序により受理結果が変わる．現行の
-正負回帰は挙動を固定するが，設計として採用したわけではない．次の二案から一つを選ぶ．
-
-1. 現状を採用する．no-guessとchronological state threadingの意図された帰結として仕様化し，
-   source permutationでtypabilityが保存されるとは主張しない．
-2. 規則を変更する．未解決headに対するconstraintまたはchecking obligationを遅延するなど，coercionの
-   根拠を「通常単一化の失敗」に戻さずに，対象とするsource permutationで受理結果を不変にする．
-
-達成後に主張できること：
-
-- 案1では，現在の順序依存が偶然の実装挙動ではなく，明示されたsource typingの境界であると言える．
-- 案2では，明示した独立部分式のクラスについて，順序を入れ替えてもtypabilityが変わらないと主張できる．
-- どちらの場合も，今後のprincipalityやDM theoremが依存する受理集合を曖昧にしない．
-
-案2はcalculus変更であり，`SourceTyping`，推論器，soundness，completeness，受理同値，target一意性，
-形式仕様と全正負回帰を同時に更新する．一般のevaluation順序やprogram terminationまで主張する課題ではない．
-
-### [ ] D2. DM断片に対するconservativityを証明する
-
-まずpattern-free，capability-inert，direct-self recursionという対象構文を明示するfragment predicateを
-定義する．D1の`DM.Typing → source typability`に加えて逆向きを証明し，内部`TypingInvariant`ではなく
-唯一のsource typingである`SourceTyping`の存在を境界に使う．
-
-目標となる主張は概ね次である．
-
-```text
-DMFragment e →
-((∃ target, DM.Typing context e target) ↔
-  (∃ target, SourceTyping signature context.emb e target))
-```
-
-達成後に主張できること：
-
-- 二sort Egison coreは，指定したpattern-free断片ではdirect-self DMの保守的拡張である．
-- core側で型付くDM fragmentのprogramには，対応するDM typing derivationが存在する．
-- P2／P3と合成すると，公開推論器のprincipal typeとDM側のprincipal typeが，埋込みとinstance関係を
-  通じて一致すると主張できる．
-
-一般のprogram terminationは，direct-self `fix`を含む現行coreではこのroadmapの目標にしない．
-
-## 機械化済みの主な性質
-
-- `DemandCheck` の非恒等 branch は slot-headed expected type に限られる．
-- matcher-headed expected type では ordinary equality しか起こらない．
-- demand-directed family の supply は単調に進み，substitution は chronological delta replay に分解できる．
-- exact solveと全14 raw demand-directed familyは substitution のidempotenceを保存する．
-- demand-directed が公開する型，pattern dual，bindings，hole ledger は終端 supply で有界である．
-- exact MGU は constraint 外の metavariable を推測しない．
-- matcher literal は shape，catch-all order，data-arm exhaustiveness，binder 線形性，coverage
-  evidence をすべて要求する．
-- `infer signature context expression = some result` から
-  `SourceTyping signature context expression result.resolvedTarget` を導く．
-- `FrozenSigWF`の下で，ある型に対する`SourceTyping`の存在と`infer`／`inferType`の成功が同値である．
-- `inferType`が返した型には`SourceTyping`導出があり，source typabilityは決定可能である．
-- 同じsourceの任意の二つの`SourceTyping` targetは，全residual二sort metavariableの
-  局所renamingを法として一意である．
-- closed signature上で `SourceTyping signature [] e τ` から `TypingInvariant signature [] e τ` を導く．
-- `FrozenSigWF` は全signature schemeのclosednessを含み，実行可能checkerがこの条件も検査する．
-- `SourceTyping signature [] e τ` と `FrozenSigWF signature` から，同じ型の内部invariantと
-  concrete safetyを束ねた `SourceTyping.SafeResult` を導く．
-- `infer` の成功から reconstruction certificate と `TypingInvariant` を再構成できる．
-- `FrozenSigWF` の下で concrete evaluation と matching machine の安全性が成り立つ．
-- `sorry`，`admit`，project-defined `axiom` はない．
+推奨する順序は，calculusに依存しないP1を先に行い，次にOを決定し，その後P2とD1を進め，最後に
+P3とD2へ進む形である．
 
 ## モジュール案内
 
-| 層 | 主な module | 役割 |
+| 層 | 主なmodule | 役割 |
 |---|---|---|
+| public index | `PublicTheorems` | 主要な公開定理の入口 |
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
-| source typing | `DemandTyping`, `DemandTypingOrigin`, `DemandTypingInferenceSoundness*`, `DemandTypingErasure`, `DemandTypingRegression*` | demand-directed raw規則，intrinsic Origin certificate，推論成功からpublic `SourceTyping`への再構成，state erasureと回帰 |
-| typing invariant | `Source`, `Reconstruction`, `CoherentSurface`, `CoherentTyping` | state-free invariant と再構成 |
-| inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，origin ledger，validator，成功時の再構成 |
-| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，`SourceTyping.safe`による公開安全性入口 |
-| fragments | `DamasMilner`, `DMTerminalAcceptance` | pattern-free DM 断片 |
+| source typing | `DemandTyping*` | raw規則，Origin，terminal audit，soundness／completeness，state erasure |
+| inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
+| internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
+| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
+| fragments | `DamasMilner`, `DMTerminalAcceptance` | pattern-free DM断片 |
 
-詳細な定義・定理・回帰の対応は [`docs/details.md`](docs/details.md)，論文形式の規則は
-[`tex/main.tex`](tex/main.tex) にある．Lean の public import surface は
-[`TypePM.lean`](TypePM.lean) である．
+全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
+[`docs/details.md`](docs/details.md)を参照．
 
 ## 検証
 
@@ -395,4 +179,4 @@ cd tex
 make
 ```
 
-TeX の出力は `tex/type-pm-mech.pdf` である．
+形式仕様の出力は`tex/type-pm-mech.pdf`である．`sorry`，`admit`，project-defined `axiom`は使わない．
