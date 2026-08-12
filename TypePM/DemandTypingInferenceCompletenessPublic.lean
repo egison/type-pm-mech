@@ -105,5 +105,17 @@ theorem infer_isSome_of_rootCertified
   rw [infer_eq_some_of_rootCertified signatureWF root]
   rfl
 
+/-- The structural dispatcher recurses over proposition-valued origin and
+audit trees, so its natural public output is only nonemptiness of a concrete
+root run.  Boolean acceptance is itself a proposition and may eliminate that
+proof-erased package without selecting or exposing an executable result. -/
+theorem infer_isSome_of_nonempty_rootCertified
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    (signatureWF : FrozenSigWF signature)
+    (root : Nonempty (RootCertifiedSynthesis signature context expression)) :
+    (infer signature context expression).isSome = true := by
+  rcases root with ⟨root⟩
+  exact infer_isSome_of_rootCertified signatureWF root
+
 end DemandTypingInferenceCompletenessPublic
 end TypePM
