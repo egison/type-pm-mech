@@ -464,6 +464,9 @@ structure TyResult (left right : Ty) where
   universal :
     ∀ U : TySubst, left.applyTarget U = right.applyTarget U →
       ∃ R : TySubst, U = TySubst.comp R subst
+  pairedUniversal :
+    ∀ U : Subst, U.apply left = U.apply right →
+      U = Subst.seq U (Subst.mk CapSubst.id subst)
 
 /-- Internal certificate returned by successful target-list unification. -/
 structure TyListResult (left right : List Ty) where
@@ -482,6 +485,9 @@ structure TyListResult (left right : List Ty) where
   universal :
     ∀ U : TySubst, Ty.applyTargetList U left = Ty.applyTargetList U right →
       ∃ R : TySubst, U = TySubst.comp R subst
+  pairedUniversal :
+    ∀ U : Subst, left.map U.apply = right.map U.apply →
+      U = Subst.seq U (Subst.mk CapSubst.id subst)
 
 private theorem inputRange_id (allowed : List TypePM.TyVar) :
     ∀ x y, y ∈ (TySubst.id x).ftv → y = x ∨ y ∈ allowed := by
@@ -748,9 +754,72 @@ private def solveCapList :
 end
 
 
+/-- Fuelled, symmetric target-sort unification kernel. -/
+private theorem subst_mk_congr
+    {cap₁ cap₂ : CapSubst} {target₁ target₂ : TySubst}
+    (caps : cap₁ = cap₂) (targets : target₁ = target₂) :
+    Subst.mk cap₁ target₁ = Subst.mk cap₂ target₂ := by
+  subst cap₂
+  subst target₂
+  rfl
+
+private theorem targetOnly_apply (T : TySubst) (target : Ty) :
+    (Subst.mk CapSubst.id T).apply target = target.applyTarget T := by
+  change (target.applyCapability CapSubst.id).applyTarget T = _
+  rw [Ty.applyCapability_id]
+
+private theorem apply_of_target_absorbs
+    {U : Subst} {T : TySubst}
+    (absorbs : U = Subst.seq U (Subst.mk CapSubst.id T))
+    (target : Ty) :
+    U.apply (target.applyTarget T) = U.apply target := by
+  rw [← targetOnly_apply]
+  rw [← Subst.seq_apply, ← absorbs]
+
+private theorem subst_applyList_eq_map (U : Subst) :
+    ∀ targets : List Ty,
+      Ty.applyTargetList U.target
+          (Ty.applyCapabilityList U.cap targets) =
+        targets.map U.apply
+  | [] => rfl
+  | target :: targets => by
+      simp only [Ty.applyCapabilityList, Ty.applyTargetList, List.map_cons,
+        Subst.apply, subst_applyList_eq_map U targets]
+
+private theorem map_apply_of_target_absorbs
+    {U : Subst} {T : TySubst}
+    (absorbs : U = Subst.seq U (Subst.mk CapSubst.id T)) :
+    ∀ targets : List Ty,
+      (targets.map (fun target => target.applyTarget T)).map U.apply =
+        targets.map U.apply
+  | [] => rfl
+  | target :: targets => by
+      simp only [List.map_cons, List.cons.injEq]
+      exact ⟨apply_of_target_absorbs absorbs target,
+        map_apply_of_target_absorbs absorbs targets⟩
+
+private theorem targetOnly_seq (later earlier : TySubst) :
+    Subst.seq (Subst.mk CapSubst.id later)
+        (Subst.mk CapSubst.id earlier) =
+      Subst.mk CapSubst.id (TySubst.comp later earlier) := by
+  apply subst_mk_congr
+  · funext candidate; rfl
+  · funext candidate
+    simp [Subst.seq, Subst.apply, TySubst.comp, Ty.applyCapability_id]
+
+private theorem subst_seq_assoc (latest middle earliest : Subst) :
+    Subst.seq latest (Subst.seq middle earliest) =
+      Subst.seq (Subst.seq latest middle) earliest := by
+  apply subst_mk_congr
+  · funext candidate
+    exact (Cap.apply_comp latest.cap middle.cap
+      (earliest.cap candidate)).symm
+  · funext candidate
+    exact (Subst.seq_apply latest middle
+      (earliest.target candidate)).symm
+
 mutual
 
-/-- Fuelled, symmetric target-sort unification kernel. -/
 private def solveTy :
     (fuel : Nat) → (left right : Ty) → Option (TyResult left right)
   | 0, _, _ => none
@@ -766,6 +835,9 @@ private def solveTy :
           capInputRange := capInputRange_id _
           sound := by subst right; rfl
           universal := fun U _ => ⟨U, funext fun _ => rfl⟩
+          pairedUniversal := by
+            intro U _
+            rfl
         }
       else
         match left, right with
@@ -797,6 +869,17 @@ private def solveTy :
                       using hunify
                   · simp [TySubst.comp, TySubst.single, Ty.applyTarget,
                       hcandidate]
+                pairedUniversal := by
+                  intro U hunify
+                  apply subst_mk_congr
+                  · funext candidate; rfl
+                  · funext candidate
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [Subst.seq, TySubst.single, Subst.apply,
+                        Ty.applyCapability, Ty.applyTarget] using hunify
+                    · simp [Subst.seq, TySubst.single, Subst.apply,
+                        Ty.applyCapability, Ty.applyTarget, hcandidate]
               }
         | left, .var varId =>
             if hoccurs : varId ∈ left.ftv then
@@ -824,6 +907,17 @@ private def solveTy :
                       using hunify.symm
                   · simp [TySubst.comp, TySubst.single, Ty.applyTarget,
                       hcandidate]
+                pairedUniversal := by
+                  intro U hunify
+                  apply subst_mk_congr
+                  · funext candidate; rfl
+                  · funext candidate
+                    by_cases hcandidate : varId = candidate
+                    · subst candidate
+                      simpa [Subst.seq, TySubst.single, Subst.apply,
+                        Ty.applyCapability, Ty.applyTarget] using hunify.symm
+                    · simp [Subst.seq, TySubst.single, Subst.apply,
+                        Ty.applyCapability, Ty.applyTarget, hcandidate]
               }
         | .data leftName leftFields, .data rightName rightFields =>
             if hname : leftName = rightName then
@@ -848,6 +942,15 @@ private def solveTy :
                       intro U hunify
                       simp only [Ty.applyTarget, Ty.data.injEq] at hunify
                       exact result.universal U hunify.2
+                    pairedUniversal := by
+                      intro U hunify
+                      simp only [Subst.apply, Ty.applyCapability,
+                        Ty.applyTarget, Ty.data.injEq] at hunify
+                      apply result.pairedUniversal U
+                      have fieldsEqual := hunify.2
+                      rw [subst_applyList_eq_map,
+                        subst_applyList_eq_map] at fieldsEqual
+                      exact fieldsEqual
                   }
             else
               none
@@ -873,6 +976,15 @@ private def solveTy :
                     intro U hunify
                     simp only [Ty.applyTarget, Ty.prod.injEq] at hunify
                     exact result.universal U hunify
+                  pairedUniversal := by
+                    intro U hunify
+                    simp only [Subst.apply, Ty.applyCapability,
+                      Ty.applyTarget, Ty.prod.injEq] at hunify
+                    apply result.pairedUniversal U
+                    have componentsEqual := hunify
+                    rw [subst_applyList_eq_map,
+                      subst_applyList_eq_map] at componentsEqual
+                    exact componentsEqual
                 }
         | .fn leftDomain leftCodomain, .fn rightDomain rightCodomain =>
             match solveTy fuel leftDomain rightDomain with
@@ -1064,6 +1176,35 @@ private def solveTy :
                         rw [hR₁, hR₂]
                         funext candidate
                         simp [TySubst.comp, Ty.applyTarget_comp]
+                      pairedUniversal := by
+                        intro U hunify
+                        simp only [Subst.apply, Ty.applyCapability,
+                          Ty.applyTarget, Ty.fn.injEq] at hunify
+                        obtain ⟨hdomain, hcodomain⟩ := hunify
+                        have domainAbsorbs :=
+                          domainResult.pairedUniversal U hdomain
+                        have hcodomain' :
+                            U.apply (leftCodomain.applyTarget
+                              domainResult.subst) =
+                            U.apply (rightCodomain.applyTarget
+                              domainResult.subst) := by
+                          rw [apply_of_target_absorbs domainAbsorbs,
+                            apply_of_target_absorbs domainAbsorbs]
+                          exact hcodomain
+                        have codomainAbsorbs :=
+                          codomainResult.pairedUniversal U hcodomain'
+                        let H := Subst.mk CapSubst.id domainResult.subst
+                        let C := Subst.mk CapSubst.id codomainResult.subst
+                        calc
+                          U = Subst.seq U H := domainAbsorbs
+                          _ = Subst.seq (Subst.seq U C) H := by
+                            rw [← codomainAbsorbs]
+                          _ = Subst.seq U (Subst.seq C H) :=
+                            (subst_seq_assoc U C H).symm
+                          _ = Subst.seq U (Subst.mk CapSubst.id
+                              (TySubst.comp codomainResult.subst
+                                domainResult.subst)) := by
+                            rw [targetOnly_seq]
                     }
         | .matcher leftCap leftTarget, .matcher rightCap rightTarget =>
             if hcap : leftCap = rightCap then
@@ -1093,6 +1234,11 @@ private def solveTy :
                       intro U hunify
                       simp only [Ty.applyTarget, Ty.matcher.injEq] at hunify
                       exact result.universal U hunify.2
+                    pairedUniversal := by
+                      intro U hunify
+                      simp only [Subst.apply, Ty.applyCapability,
+                        Ty.applyTarget, Ty.matcher.injEq] at hunify
+                      exact result.pairedUniversal U hunify.2
                   }
             else
               none
@@ -1124,6 +1270,11 @@ private def solveTy :
                       intro U hunify
                       simp only [Ty.applyTarget, Ty.slot.injEq] at hunify
                       exact result.universal U hunify.2
+                    pairedUniversal := by
+                      intro U hunify
+                      simp only [Subst.apply, Ty.applyCapability,
+                        Ty.applyTarget, Ty.slot.injEq] at hunify
+                      exact result.pairedUniversal U hunify.2
                   }
             else
               none
@@ -1145,6 +1296,7 @@ private def solveTyList :
         capInputRange := capInputRange_id _
         sound := rfl
         universal := fun U _ => ⟨U, funext fun _ => rfl⟩
+        pairedUniversal := by intro U _; rfl
       }
   | fuel + 1, leftHead :: leftTail, rightHead :: rightTail =>
       match solveTy fuel leftHead rightHead with
@@ -1324,6 +1476,35 @@ private def solveTyList :
                   rw [hR₁, hR₂]
                   funext candidate
                   simp [TySubst.comp, Ty.applyTarget_comp]
+                pairedUniversal := by
+                  intro U hunify
+                  simp only [List.map_cons, List.cons.injEq] at hunify
+                  obtain ⟨hhead, htail⟩ := hunify
+                  have headAbsorbs := headResult.pairedUniversal U hhead
+                  have htail' :
+                      (Ty.applyTargetList headResult.subst leftTail).map
+                          U.apply =
+                        (Ty.applyTargetList headResult.subst rightTail).map
+                          U.apply := by
+                    rw [Ty.applyTargetList_eq_map,
+                      Ty.applyTargetList_eq_map]
+                    rw [map_apply_of_target_absorbs headAbsorbs,
+                      map_apply_of_target_absorbs headAbsorbs]
+                    exact htail
+                  have tailAbsorbs :=
+                    tailResult.pairedUniversal U htail'
+                  let H := Subst.mk CapSubst.id headResult.subst
+                  let T := Subst.mk CapSubst.id tailResult.subst
+                  calc
+                    U = Subst.seq U H := headAbsorbs
+                    _ = Subst.seq (Subst.seq U T) H := by
+                      rw [← tailAbsorbs]
+                    _ = Subst.seq U (Subst.seq T H) :=
+                      (subst_seq_assoc U T H).symm
+                    _ = Subst.seq U (Subst.mk CapSubst.id
+                        (TySubst.comp tailResult.subst
+                          headResult.subst)) := by
+                      rw [targetOnly_seq]
               }
   | _ + 1, _, _ => none
 
@@ -2262,6 +2443,32 @@ theorem mguTy_sound
     (hsuccess : mguTy left right = some S) :
     left.applyTarget S = right.applyTarget S := by
   exact mguTyFuel_sound hsuccess
+
+/-- A successful target-only run is absorbed by every paired post solving
+the same target constraint.  Capability annotations were checked rigidly by
+the successful run; a later capability phase therefore acts uniformly on
+both sides and is retained in the residual post. -/
+theorem mguTyFuel_paired_absorbs
+    {fuel : Nat} {left right : Ty} {S : TySubst}
+    (hsuccess : mguTyFuel fuel left right = some S)
+    {U : Subst} (hunify : U.apply left = U.apply right) :
+    U = Subst.seq U (Subst.mk CapSubst.id S) := by
+  unfold mguTyFuel at hsuccess
+  cases hsolve : solveTy fuel left right with
+  | none => simp [hsolve] at hsuccess
+  | some result =>
+      have heq : result.subst = S := by
+        simpa [hsolve] using hsuccess
+      subst S
+      exact result.pairedUniversal U hunify
+
+/-- Public-wrapper form of `mguTyFuel_paired_absorbs`. -/
+theorem mguTy_paired_absorbs
+    {left right : Ty} {S : TySubst}
+    (hsuccess : mguTy left right = some S)
+    {U : Subst} (hunify : U.apply left = U.apply right) :
+    U = Subst.seq U (Subst.mk CapSubst.id S) :=
+  mguTyFuel_paired_absorbs hsuccess hunify
 
 /-- Finite-support certificate for the public target unifier. -/
 theorem mguTy_support
