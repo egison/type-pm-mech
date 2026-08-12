@@ -77,6 +77,7 @@ def SynthRunCompletion.finish
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := extension.transportTy run.target }
 
 /-- Finish a synthesized run at a fixed constructor-built result target. -/
@@ -114,6 +115,7 @@ def SynthRunCompletion.finishAs
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := extension.transportTy targetRelation }
   calc
     _ = (some run.result).bind (fun inner => some
@@ -159,6 +161,7 @@ def StateRunCompletion.finishExpr
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := extension.transportTy targetRelation }
   calc
     _ = (some run.result).bind (fun state =>
@@ -666,6 +669,7 @@ def inferExprFuel_matchAll_complete
       protected_origins := finished.protected_origins
       protected_below := finished.protected_below
       allocated_recorded := finished.allocated_recorded
+      protected_safe := finished.protected_safe
       target := finishExtension.transportTy resultRelation }
   simp only [inferExprFuel]
   let continueTarget : Option ExprResult → Option ExprResult := fun candidate =>

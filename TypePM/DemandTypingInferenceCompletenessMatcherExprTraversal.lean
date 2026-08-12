@@ -19,6 +19,7 @@ open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessMatcherTraversal
 open DemandTypingInferenceCompletenessProtected
+open DemandTypingInferenceCompletenessProtectedTrace
 
 private theorem structural_origin_mem_keys
     {ledger : CapabilityOriginLedger} {varId : CapVar}
@@ -277,7 +278,9 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelated
           exact relation.executable_ledger_below)) executableCapability
       allocated_recorded :=
         relation.allocated_recorded.protectMatcherCapability
-          executableCapability }
+          executableCapability
+      protected_safe := relation.protected_safe.protectMatcherCapability
+        relation.protected_origins executableCapability executableFixed }
 
 def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -511,6 +514,7 @@ def inferMatcherFuel_complete
       protected_origins := protectedRelation.protected_origins
       protected_below := protectedRelation.protected_below
       allocated_recorded := protectedRelation.allocated_recorded
+      protected_safe := protectedRelation.protected_safe
       target := finalTarget }
   simp only [inferMatcherFuel]
   rw [targetAllocation.target_eq, clausesRun.success]
@@ -572,6 +576,7 @@ structure FixMatcherPlaceholderCompletion
   protected_origins : ProtectedCapOrigins state
   protected_below : ProtectedCapsBelowSupply state
   allocated_recorded : AllocatedCapsRecorded state
+  protected_safe : CurrentProtectedProducerSafe state
 
 /-- Output-only traversal relation of a completed recursive-matcher
 placeholder allocation. -/
@@ -589,7 +594,8 @@ def FixMatcherPlaceholderCompletion.completion
     run.declarative_bounded, run.executable_bounded,
     run.forward_bounded, run.reverse_bounded,
     run.ledger_below, run.executable_ledger_below,
-    run.protected_origins, run.protected_below, run.allocated_recorded⟩
+    run.protected_origins, run.protected_below, run.allocated_recorded,
+    run.protected_safe⟩
 
 /-- Complete the matcher-bodied recursive-expression branch after the
 deterministic placeholder allocation, recursive matcher synthesis, and final
