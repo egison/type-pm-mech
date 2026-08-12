@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessTraversal
 import TypePM.DemandTypingInferenceCompletenessDataBisimulation
+import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
 
 /-!
 # Pattern traversal completeness packages
@@ -20,6 +21,7 @@ open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
+open DemandTypingInferenceCompletenessAlignmentTraversal
 
 /-! ## Compositional output relations -/
 
@@ -44,6 +46,36 @@ theorem MonoCtxBisimulation.append
   induction leftRelated with
   | nil => exact rightRelated
   | cons target tail induction => exact .cons target induction
+
+theorem MonoCtxBisimulation.targets
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : MonoCtx}
+    (related : MonoCtxBisimulation relation declarativeContext
+      executableContext) :
+    TyListBisimulation relation (declarativeContext.map fun entry => entry.2)
+      (executableContext.map fun entry => entry.2) := by
+  induction related with
+  | nil => exact .nil
+  | cons target tail induction => exact .cons target induction
+
+theorem MonoCtxBisimulation.exportPayload
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : MonoCtx} {target : Ty}
+    (related : MonoCtxBisimulation relation declarativeContext
+      executableContext) :
+    TyBisimulation relation
+      (capabilityExportPayload []
+        (target :: declarativeContext.map fun entry => entry.2))
+      (capabilityExportPayload []
+        (target :: executableContext.map fun entry => entry.2)) := by
+  unfold capabilityExportPayload
+  simp only [List.map_nil, List.nil_append]
+  apply tyListBisimulation_prod
+  exact .cons (relation.sameTarget target)
+    (DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.targets
+      related)
 
 theorem namesDisjoint_of_bisimulation
     {ledger : CapabilityOriginLedger} {declarative : Subst}
@@ -131,6 +163,271 @@ theorem DualListBisimulation.prodTargets
   induction related with
   | nil => exact .nil
   | cons head tail ih => exact .cons head.target ih
+
+/-! ## Paired export freezing -/
+
+/-- Export leaves selected from two related payloads correspond through the
+forward residual.  This is the heterogeneous-payload form needed when a
+recursive pattern traversal returns executable bindings that are merely
+bisimilar to the DD bindings. -/
+theorem StateBisimulation.forwardExportLeavesOfRelated
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    (capImages : List CapVar) {declarativePayload executablePayload : Ty}
+    (payload : TyBisimulation relation declarativePayload executablePayload) :
+    ∀ varId,
+      varId ∈ DDLedger.exportLeaves state.capabilityOrigins state.prevailing
+        capImages executablePayload →
+      ∃ image, relation.forward.cap varId = .var image ∧
+        image ∈ DDLedger.exportLeaves ledger declarative capImages
+          declarativePayload := by
+  classical
+  intro varId membership
+  unfold DDLedger.exportLeaves at membership ⊢
+  rcases List.mem_filter.mp membership with ⟨deduplicated, structural⟩
+  have filtered : varId ∈
+      (capImages.flatMap fun image => (state.prevailing.cap image).fcv).filter
+        (fun image => image ∈
+          (state.prevailing.apply executablePayload).fcv) := by
+    simpa using deduplicated
+  rcases List.mem_filter.mp filtered with ⟨imageLeaf, payloadLeaf⟩
+  have payloadLeafProp : varId ∈
+      (state.prevailing.apply executablePayload).fcv :=
+    of_decide_eq_true payloadLeaf
+  have structuralProp : state.capabilityOrigins.originOf varId =
+      .structuralFlexible := of_decide_eq_true structural
+  rcases List.mem_flatMap.mp imageLeaf with
+    ⟨binder, binderMem, binderLeaf⟩
+  let localMap :=
+    DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.localRenamingOn_image
+      relation executablePayload
+  let image := localMap.capImage varId
+  have forwardImage : relation.forward.cap varId = .var image :=
+    localMap.cap_forward payloadLeafProp
+  have reverseImage : relation.reverse.cap image = .var varId :=
+    localMap.cap_reverse payloadLeafProp
+  have imageInBinder : image ∈ (declarative.cap binder).fcv := by
+    have equation := congrArg (fun substitution : Subst =>
+      substitution.cap binder) relation.forwardEquation
+    change declarative.cap binder =
+      (state.prevailing.cap binder).apply relation.forward.cap at equation
+    rw [equation, Unification.Cap.fcv_apply]
+    apply List.mem_flatMap.mpr
+    refine ⟨varId, binderLeaf, ?_⟩
+    rw [forwardImage]
+    simp [Cap.fcv]
+  have imageInPayload : image ∈ (declarative.apply declarativePayload).fcv := by
+    have pure :=
+      DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.forward_apply_eq_pure
+        localMap (state.prevailing.apply executablePayload)
+        (fun _ member => member) (fun _ member => member)
+    have freeVars :=
+      DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.pure_apply_fcv
+        localMap (state.prevailing.apply executablePayload)
+    rw [payload.forward, pure, freeVars]
+    exact List.mem_map.mpr ⟨varId, payloadLeafProp, rfl⟩
+  have imageStructural : ledger.originOf image = .structuralFlexible := by
+    cases destinationOrigin : ledger.originOf image with
+    | structuralFlexible => rfl
+    | rigid =>
+        have reverseAt := relation.ledgerBisimulation.reverseBetween.cap image
+        simp only [destinationOrigin] at reverseAt
+        have equal : image = varId := by
+          rw [reverseImage] at reverseAt
+          exact Cap.var.inj reverseAt.1.symm
+        have rigidSource := reverseAt.2
+        rw [equal, structuralProp] at rigidSource
+        contradiction
+    | renameOnly =>
+        have reverseAt := relation.ledgerBisimulation.reverseBetween.cap image
+        simp only [destinationOrigin] at reverseAt
+        rcases reverseAt with ⟨actualImage, equation, safe⟩
+        rw [reverseImage] at equation
+        have equal : actualImage = varId := (Cap.var.inj equation).symm
+        subst actualImage
+        exact False.elim (safe structuralProp)
+  refine ⟨image, forwardImage, ?_⟩
+  apply List.mem_filter.mpr
+  refine ⟨?_, by exact decide_eq_true imageStructural⟩
+  simp only [List.mem_eraseDups]
+  apply List.mem_filter.mpr
+  exact ⟨List.mem_flatMap.mpr ⟨binder, binderMem, imageInBinder⟩,
+    decide_eq_true imageInPayload⟩
+
+/-- Reverse counterpart of `forwardExportLeavesOfRelated`. -/
+theorem StateBisimulation.reverseExportLeavesOfRelated
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    (capImages : List CapVar) {declarativePayload executablePayload : Ty}
+    (payload : TyBisimulation relation declarativePayload executablePayload) :
+    ∀ varId,
+      varId ∈ DDLedger.exportLeaves ledger declarative capImages
+        declarativePayload →
+      ∃ image, relation.reverse.cap varId = .var image ∧
+        image ∈ DDLedger.exportLeaves state.capabilityOrigins state.prevailing
+          capImages executablePayload := by
+  classical
+  intro varId membership
+  unfold DDLedger.exportLeaves at membership ⊢
+  rcases List.mem_filter.mp membership with ⟨deduplicated, structural⟩
+  have filtered : varId ∈
+      (capImages.flatMap fun image => (declarative.cap image).fcv).filter
+        (fun image => image ∈ (declarative.apply declarativePayload).fcv) := by
+    simpa using deduplicated
+  rcases List.mem_filter.mp filtered with ⟨imageLeaf, payloadLeaf⟩
+  have payloadLeafProp : varId ∈ (declarative.apply declarativePayload).fcv :=
+    of_decide_eq_true payloadLeaf
+  have structuralProp : ledger.originOf varId = .structuralFlexible :=
+    of_decide_eq_true structural
+  rcases List.mem_flatMap.mp imageLeaf with
+    ⟨binder, binderMem, binderLeaf⟩
+  let localMap :=
+    DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.reverseLocalRenamingOn_image
+      relation declarativePayload
+  let image := localMap.capImage varId
+  have reverseImage : relation.reverse.cap varId = .var image :=
+    localMap.cap_forward payloadLeafProp
+  have forwardImage : relation.forward.cap image = .var varId :=
+    localMap.cap_reverse payloadLeafProp
+  have imageInBinder : image ∈ (state.prevailing.cap binder).fcv := by
+    have equation := congrArg (fun substitution : Subst =>
+      substitution.cap binder) relation.reverseEquation
+    change state.prevailing.cap binder =
+      (declarative.cap binder).apply relation.reverse.cap at equation
+    rw [equation, Unification.Cap.fcv_apply]
+    apply List.mem_flatMap.mpr
+    refine ⟨varId, binderLeaf, ?_⟩
+    rw [reverseImage]
+    simp [Cap.fcv]
+  have imageInPayload : image ∈
+      (state.prevailing.apply executablePayload).fcv := by
+    have pure :=
+      DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.forward_apply_eq_pure
+        localMap (declarative.apply declarativePayload)
+        (fun _ member => member) (fun _ member => member)
+    have freeVars :=
+      DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.pure_apply_fcv
+        localMap (declarative.apply declarativePayload)
+    rw [payload.reverse, pure, freeVars]
+    exact List.mem_map.mpr ⟨varId, payloadLeafProp, rfl⟩
+  have imageStructural :
+      state.capabilityOrigins.originOf image = .structuralFlexible := by
+    cases destinationOrigin : state.capabilityOrigins.originOf image with
+    | structuralFlexible => rfl
+    | rigid =>
+        have forwardAt := relation.ledgerBisimulation.forwardBetween.cap image
+        simp only [destinationOrigin] at forwardAt
+        have equal : image = varId := by
+          rw [forwardImage] at forwardAt
+          exact Cap.var.inj forwardAt.1.symm
+        have rigidSource := forwardAt.2
+        rw [equal, structuralProp] at rigidSource
+        contradiction
+    | renameOnly =>
+        have forwardAt := relation.ledgerBisimulation.forwardBetween.cap image
+        simp only [destinationOrigin] at forwardAt
+        rcases forwardAt with ⟨declarativeImage, equation, safe⟩
+        rw [forwardImage] at equation
+        have equal : declarativeImage = varId := (Cap.var.inj equation).symm
+        subst declarativeImage
+        exact False.elim (safe structuralProp)
+  refine ⟨image, reverseImage, ?_⟩
+  apply List.mem_filter.mpr
+  refine ⟨?_, by exact decide_eq_true imageStructural⟩
+  simp only [List.mem_eraseDups]
+  apply List.mem_filter.mpr
+  exact ⟨List.mem_flatMap.mpr ⟨binder, binderMem, imageInBinder⟩,
+    decide_eq_true imageInPayload⟩
+
+/-- Selective freezing with distinct but related DD and executable payloads. -/
+def TraversalStateCorrespondence.freezeCapabilityExportRelated
+    {q : InferenceBase.FreshSupply} {declarative : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (relation : TraversalStateCorrespondence q declarative ledger state)
+    (capImages : List CapVar) {declarativePayload executablePayload : Ty}
+    (payload : TyBisimulation relation.prevailing declarativePayload
+      executablePayload) :
+    TraversalStateCorrespondence q declarative
+      (DDLedger.freezeExport ledger declarative capImages declarativePayload)
+      (state.freezeCapabilityExport capImages executablePayload) := by
+  let afterLedger := DDLedger.freezeExport ledger declarative capImages
+    declarativePayload
+  let afterState := state.freezeCapabilityExport capImages executablePayload
+  have ledgerTransport : LedgerBisimulation afterLedger
+      afterState.capabilityOrigins relation.prevailing.forward
+      relation.prevailing.reverse := by
+    rw [InferState.freezeCapabilityExport_capabilityOrigins_eq_freezeExport]
+    constructor
+    · unfold DDLedger.freezeExport
+      constructor
+      exact relation.prevailing.ledgerBisimulation.forwardBetween.cap.freezeSelected
+        (fun varId membership =>
+          DDLedger.exportLeaves_origin ledger declarative capImages
+            declarativePayload varId membership)
+        (DemandTypingInferenceCompletenessPatternTraversal.StateBisimulation.forwardExportLeavesOfRelated
+          relation.prevailing capImages payload)
+    · unfold DDLedger.freezeExport
+      constructor
+      exact relation.prevailing.ledgerBisimulation.reverseBetween.cap.freezeSelected
+        (fun varId membership =>
+          DDLedger.exportLeaves_origin state.capabilityOrigins state.prevailing
+            capImages executablePayload varId membership)
+        (DemandTypingInferenceCompletenessPatternTraversal.StateBisimulation.reverseExportLeavesOfRelated
+          relation.prevailing capImages payload)
+  let after : StateBisimulation afterLedger declarative afterState :=
+    { forward := relation.prevailing.forward
+      forwardEquation := by simpa [afterState] using
+        relation.prevailing.forwardEquation
+      declarativeIdempotent := relation.prevailing.declarativeIdempotent
+      reverse := relation.prevailing.reverse
+      reverseEquation := by simpa [afterState] using
+        relation.prevailing.reverseEquation
+      ledgerBisimulation := ledgerTransport
+      executableIdempotent := by
+        change state.prevailing.Idempotent
+        exact relation.prevailing.executableIdempotent }
+  exact
+    { supply_eq := by simpa [afterState] using relation.supply_eq
+      prevailing := after
+      declarative_bounded := relation.declarative_bounded
+      executable_bounded := by simpa [afterState] using
+        relation.executable_bounded
+      forward_bounded := relation.forward_bounded
+      reverse_bounded := relation.reverse_bounded
+      ledger_below := DDLedger.LedgerBelow.freezeExport declarative capImages
+        declarativePayload relation.ledger_below
+      executable_ledger_below := by
+        simpa [afterState,
+          InferState.freezeCapabilityExport_capabilityOrigins_eq_freezeExport]
+          using DDLedger.LedgerBelow.freezeExport state.prevailing capImages
+            executablePayload relation.executable_ledger_below
+      protected_origins := relation.protected_origins.freezeCapabilityExport
+        capImages executablePayload
+      protected_below :=
+        relation.protected_below.freezeCapabilityExport_of_ledgerBelow (by
+          rw [relation.supply_eq]
+          exact relation.executable_ledger_below) capImages executablePayload
+      allocated_recorded := relation.allocated_recorded.freezeCapabilityExport
+        capImages executablePayload }
+
+def TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
+    {q : InferenceBase.FreshSupply} {declarative : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (relation : TraversalStateCorrespondence q declarative ledger state)
+    (capImages : List CapVar) {declarativePayload executablePayload : Ty}
+    (payload : TyBisimulation relation.prevailing declarativePayload
+      executablePayload) :
+    BisimulationExtension relation.prevailing
+      (DDLedger.freezeExport ledger declarative capImages declarativePayload)
+      declarative (state.freezeCapabilityExport capImages executablePayload) where
+  after :=
+    (DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelated
+      relation capImages payload).prevailing
+  transportTy := by
+    intro declarativeTarget executableTarget related
+    exact ⟨related.forward, related.reverse⟩
 
 /-! ## One structural capability allocation -/
 
@@ -602,6 +899,112 @@ def dpatWild_complete
       allocated_recorded := final.allocated_recorded
       target := transition.after.sameTarget target
       bindings := .nil }
+
+noncomputable def dpatCtor_complete
+    (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath) (name : String)
+    (patterns : List DPat) {scheme : CtorScheme}
+    (lookup : signature.findDataCtor name = some scheme)
+    (closed : signature.SchemesClosed)
+    {q : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₂ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (expectedTarget : Ty) (expectedBounded : expectedTarget.BoundedBy q)
+    (aligned : DDAlignTypesWithLedger
+      (DDLedger.markCtorInstance ledger q scheme) S
+      (InferenceBase.instantiateCtorScheme q scheme).value.2
+      expectedTarget S₁)
+    {q' : InferenceBase.FreshSupply} {bindings : MonoCtx}
+    (children :
+      let instantiation := instantiateCtorInState_complete before scheme
+      ∀ alignment : StateRunCompletion instantiation.correspondence
+          (alignTypes (instantiateCtorInState state scheme).2
+            (freshOrigin .dataPattern path "dp-constructor-result")
+            (instantiateCtorInState state scheme).1.2 expectedTarget)
+          (InferenceBase.instantiateCtorScheme q scheme).supply S₁
+          (DDLedger.markCtorInstance ledger q scheme),
+        DPatsRunCompletion alignment.completion
+          (inferDPatsFuel fuel signature path 0 patterns
+            (instantiateCtorInState state scheme).1.1 alignment.result)
+          q' S' ledger₂
+          (InferenceBase.instantiateCtorScheme q scheme).value.1 bindings) :
+    DPatRunCompletion before
+      (inferDPatFuel (fuel + 1) signature path (.ctor name patterns)
+        expectedTarget state)
+      q' S'
+      (DDLedger.freezeExport ledger₂ S'
+        (freshCapImages q scheme.capBinders)
+        (capabilityExportPayload []
+          (expectedTarget :: bindings.map fun entry => entry.2)))
+      expectedTarget bindings := by
+  let instantiation := instantiateCtorInState_complete before scheme
+  let instBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.dataCtors lookup).boundedBy)
+  let supplyExtension := SupplyExtends.instantiateCtorScheme q scheme
+  let alignment := ddAlignTypesWithLedger_complete
+    (origin := freshOrigin .dataPattern path "dp-constructor-result")
+    instantiation.correspondence instantiation.target
+    (instantiation.transition.transportTy
+      (before.prevailing.sameTarget expectedTarget))
+    instBounded.2 (expectedBounded.mono supplyExtension)
+    (by simpa [Inference.instantiateCtorInState, before.supply_eq] using
+      instBounded.2)
+    (expectedBounded.mono supplyExtension) aligned
+  let childrenRun := children alignment
+  let capImages := freshCapImages q scheme.capBinders
+  let declarativePayload := capabilityExportPayload []
+    (expectedTarget :: bindings.map fun entry => entry.2)
+  let executableBindings := childrenRun.result.bindings
+  let executablePayload := capabilityExportPayload []
+    (expectedTarget :: executableBindings.map fun entry => entry.2)
+  let payloadRelated :=
+    DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.exportPayload
+      (target := expectedTarget) childrenRun.bindings
+  let frozen :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelated
+      childrenRun.completion capImages payloadRelated
+  let freezeExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
+      childrenRun.completion capImages payloadRelated
+  let visited := frozen.visit .dpatCtor path
+  let event := TraceEvent.inferredDPat (.ctor name patterns) expectedTarget
+    executableBindings path
+  let final := visited.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let visitExtension := frozen.visitExtension .dpatCtor path
+  let eventExtension := visitExtension.after.recordEventExtension event
+  let transition := (((instantiation.transition.seq alignment.transition).seq
+    childrenRun.transition).seq freezeExtension).seq
+      (visitExtension.seq eventExtension)
+  refine
+    { result := ⟨expectedTarget, executableBindings,
+        (visit (childrenRun.result.state.freezeCapabilityExport capImages
+          executablePayload)
+          .dpatCtor path).recordEvent event⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      target := transition.after.sameTarget expectedTarget
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          (freezeExtension.seq (visitExtension.seq eventExtension))
+          childrenRun.bindings }
+  simp only [inferDPatFuel]
+  rw [lookup]
+  simp only
+  simp only [alignment.success]
+  simp only [childrenRun.success]
+  simp [capImages, executablePayload, executableBindings, before.supply_eq,
+    event]
 
 def ppatWild_complete
     (fuel : Nat) (signature : FrozenSig) (path : SyntaxPath)
