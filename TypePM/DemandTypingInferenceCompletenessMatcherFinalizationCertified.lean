@@ -139,16 +139,8 @@ noncomputable def matcherFinalization_complete
     (binders : matcherBindersCheck clauses = true)
     (arms : armExhaustiveCheck signature clauses (S'.apply target) = true)
     (coverage : coverageCheck signature.toMatcherSig clauses capability = true)
-    (executableCapabilityBounded :
-      (capability.apply
-        (Subst.seq
-          (LocalRenamingOn.pureSubst
-            (StateBisimulation.reverseLocalRenamingOn_bundleImages
-              run.transition.after
-              (target :: Ty.matcher capability .unit ::
-                rawHoleLists.flatMap fun holes =>
-                  holes.map fun dual => Ty.matcher dual.cap .unit)))
-          S').cap).BoundedBy q') :
+    (rawHolesBounded : ∀ holes ∈ rawHoleLists, ∀ dual ∈ holes,
+      Dual.BoundedBy q' dual) :
     MatcherFinalizationCompletion run signature clauses capability := by
   let holeShells := rawHoleLists.flatMap fun holes =>
     holes.map fun dual => Ty.matcher dual.cap .unit
@@ -196,6 +188,42 @@ noncomputable def matcherFinalization_complete
     · rw [holesEq]
       exact movedCollected
     · exact movedInferred
+  have declarativeCapabilityBounded : capability.BoundedBy q' := by
+    intro varId membership
+    have evidenceMember := Shape.inferShape_fcv inferred membership
+    obtain ⟨resolvedHoles, resolvedHolesMem, inResolved⟩ :=
+      Inference.collectClauseEvidence_fcv collected varId evidenceMember
+    obtain ⟨holes, holesMem, rfl⟩ := List.mem_map.mp resolvedHolesMem
+    obtain ⟨resolvedCap, resolvedCapMem, inCapability⟩ :=
+      Cap.mem_fcvList_split inResolved
+    obtain ⟨resolvedDual, resolvedDualMem, resolvedCapEq⟩ :=
+      List.mem_map.mp resolvedCapMem
+    subst resolvedCap
+    obtain ⟨rawDual, rawDualMem, resolvedDualEq⟩ :=
+      List.mem_map.mp resolvedDualMem
+    subst resolvedDual
+    exact (run.declarative_bounded.applyCap
+      (rawHolesBounded holes holesMem rawDual rawDualMem).1) varId inCapability
+  have executableCapabilityBounded : executableCapability.BoundedBy q' := by
+    rw [executableCapabilityEq]
+    intro image imageMem
+    rw [Unification.Cap.fcv_apply] at imageMem
+    simp only [List.mem_flatMap] at imageMem
+    obtain ⟨varId, varMem, imageMem⟩ := imageMem
+    have below := declarativeCapabilityBounded varId varMem
+    have scope : varId ∈ (S'.apply (.matcher capability .unit)).fcv := by
+      simpa [Subst.apply_matcher, capabilityFixed, Ty.fcv] using varMem
+    have bundleScope : varId ∈ Ty.fcvList (operands.map S'.apply) :=
+      Ty.mem_fcvList_of_mem
+        (List.mem_map.mpr ⟨.matcher capability .unit, by simp [operands], rfl⟩)
+        scope
+    have reverseBound := run.reverse_bounded.capImagesBounded varId below
+    have imageEq : image = localMap.capImage varId := by
+      simpa [post, LocalRenamingOn.pureSubst, Cap.fcv] using imageMem
+    subst image
+    exact reverseBound _ (by
+      rw [localMap.cap_forward bundleScope]
+      simp [Cap.fcv])
   have capRelated : CapBisimulation run.transition.after capability
       executableCapability := by
     constructor
