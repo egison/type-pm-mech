@@ -80,6 +80,201 @@ theorem BisimulationExtension.transportOptionalCapList
         (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
           extension head) induction
 
+/-! ## Projection transport under the state residual renaming -/
+
+/-- Resolving corresponding child capabilities on both sides leaves the DD
+list equal to the pointwise forward image of the executable list. -/
+theorem CapListBisimulation.forwardResolved
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps) :
+    declarativeCaps.map (fun capability => capability.apply declarative.cap) =
+      (executableCaps.map
+        (fun capability => capability.apply state.prevailing.cap)).map
+          (fun capability => capability.apply relation.forward.cap) := by
+  induction related with
+  | nil => rfl
+  | cons head tail induction =>
+      simp only [List.map_cons]
+      rw [(Ty.matcher.inj head.forward).1, induction]
+
+/-- Reverse counterpart of `CapListBisimulation.forwardResolved`. -/
+theorem CapListBisimulation.reverseResolved
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps) :
+    executableCaps.map
+        (fun capability => capability.apply state.prevailing.cap) =
+      (declarativeCaps.map
+        (fun capability => capability.apply declarative.cap)).map
+          (fun capability => capability.apply relation.reverse.cap) := by
+  induction related with
+  | nil => rfl
+  | cons head tail induction =>
+      simp only [List.map_cons]
+      rw [(Ty.matcher.inj head.reverse).1, induction]
+
+/-- The reverse residual is a genuine variable renaming on the finite DD
+child-capability image used by constructor projection. -/
+theorem CapListBisimulation.executableResolved_eq_applyRen
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps) :
+    ∃ rename : CapVar → CapVar,
+      executableCaps.map
+          (fun capability => capability.apply state.prevailing.cap) =
+        Cap.applyRenList rename
+          (declarativeCaps.map
+            (fun capability => capability.apply declarative.cap)) := by
+  classical
+  let declarativeResolved := declarativeCaps.map
+    (fun capability => capability.apply declarative.cap)
+  let localMap :=
+    DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.reverseLocalRenamingOn_image
+      relation (.matcher (.prod declarativeCaps) .unit)
+  let rename := localMap.capImage
+  refine ⟨rename, ?_⟩
+  rw [related.reverseResolved]
+  have pure :=
+    DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.forward_apply_eq_pure
+      localMap (declarative.apply (.matcher (.prod declarativeCaps) .unit))
+      (fun _ membership => membership) (fun _ membership => membership)
+  have capabilities := Cap.prod.inj (Ty.matcher.inj pure).1
+  let variablePost : VariablePost
+      (DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.pureSubst
+        localMap) :=
+    { capVariable := fun varId => ⟨rename varId, rfl⟩ }
+  have capRenEq : variablePost.capRen = rename := by
+    funext varId
+    have point := variablePost.capEquation varId
+    change Cap.var (rename varId) =
+      Cap.var (variablePost.capRen varId) at point
+    exact (Cap.var.inj point).symm
+  have pureCaps := variablePost.applyCapList_eq_applyRenList
+    declarativeResolved
+  rw [capRenEq] at pureCaps
+  have resolvedEq : Cap.applyList declarative.cap declarativeCaps =
+      declarativeResolved := by
+    exact Cap.applyList_eq_map _ _
+  rw [resolvedEq] at capabilities
+  rw [pureCaps] at capabilities
+  rw [Cap.applyList_eq_map] at capabilities
+  simpa [declarativeResolved] using capabilities
+
+/-- The forward residual is a genuine variable renaming on the finite
+executable child-capability image. -/
+theorem CapListBisimulation.declarativeResolved_eq_applyRen
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps) :
+    ∃ rename : CapVar → CapVar,
+      declarativeCaps.map
+          (fun capability => capability.apply declarative.cap) =
+        Cap.applyRenList rename
+          (executableCaps.map
+            (fun capability => capability.apply state.prevailing.cap)) := by
+  classical
+  let executableResolved := executableCaps.map
+    (fun capability => capability.apply state.prevailing.cap)
+  let localMap :=
+    DemandTypingInferenceCompletenessLocalRenaming.StateBisimulation.localRenamingOn_image
+      relation (.matcher (.prod executableCaps) .unit)
+  let rename := localMap.capImage
+  refine ⟨rename, ?_⟩
+  rw [related.forwardResolved]
+  have pure :=
+    DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.forward_apply_eq_pure
+      localMap
+      (state.prevailing.apply (.matcher (.prod executableCaps) .unit))
+      (fun _ membership => membership) (fun _ membership => membership)
+  have capabilities := Cap.prod.inj (Ty.matcher.inj pure).1
+  let variablePost : VariablePost
+      (DemandTypingInferenceCompletenessGeneralizationEquivariance.LocalRenamingOn.pureSubst
+        localMap) :=
+    { capVariable := fun varId => ⟨rename varId, rfl⟩ }
+  have capRenEq : variablePost.capRen = rename := by
+    funext varId
+    have point := variablePost.capEquation varId
+    change Cap.var (rename varId) =
+      Cap.var (variablePost.capRen varId) at point
+    exact (Cap.var.inj point).symm
+  have pureCaps := variablePost.applyCapList_eq_applyRenList
+    executableResolved
+  rw [capRenEq] at pureCaps
+  have resolvedEq : Cap.applyList state.prevailing.cap executableCaps =
+      executableResolved := by
+    exact Cap.applyList_eq_map _ _
+  rw [resolvedEq] at capabilities
+  rw [pureCaps] at capabilities
+  rw [Cap.applyList_eq_map] at capabilities
+  simpa [executableResolved] using capabilities
+
+/-- A successful DD projection is also successful on the corresponding
+executable children, with the projected evidence changed only by renaming. -/
+theorem CapListBisimulation.projectSignature_success
+    {observable : Shape.Observability}
+    {projection : Projection.ProjectionSignature observable}
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps)
+    {projected : Shape.Evidence}
+    (success : Projection.projectSignature projection
+      ((declarativeCaps.map
+        (fun capability => capability.apply declarative.cap)).map Shape.ofCap) =
+        some projected) :
+    ∃ rename : CapVar → CapVar,
+      Projection.projectSignature projection
+          ((executableCaps.map
+            (fun capability => capability.apply state.prevailing.cap)).map
+              Shape.ofCap) =
+        some (projected.applyRen rename) := by
+  rcases related.executableResolved_eq_applyRen with ⟨rename, equation⟩
+  refine ⟨rename, ?_⟩
+  rw [equation, Shape.map_ofCap_applyRen]
+  exact Projection.projectSignature_rename_of_success rename projection success
+
+/-- A DD projection miss remains a miss on corresponding executable children.
+Otherwise executable success transports back along the forward residual and
+contradicts the DD result. -/
+theorem CapListBisimulation.projectSignature_miss
+    {observable : Shape.Observability}
+    {projection : Projection.ProjectionSignature observable}
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation relation declarativeCaps executableCaps)
+    (miss : Projection.projectSignature projection
+      ((declarativeCaps.map
+        (fun capability => capability.apply declarative.cap)).map Shape.ofCap) =
+        none) :
+    Projection.projectSignature projection
+      ((executableCaps.map
+        (fun capability => capability.apply state.prevailing.cap)).map
+          Shape.ofCap) = none := by
+  rcases related.declarativeResolved_eq_applyRen with ⟨rename, equation⟩
+  cases executableResult : Projection.projectSignature projection
+      ((executableCaps.map
+        (fun capability => capability.apply state.prevailing.cap)).map
+          Shape.ofCap) with
+  | none => rfl
+  | some projected =>
+      have renamed := Projection.projectSignature_rename_of_success rename
+        projection executableResult
+      rw [← Shape.map_ofCap_applyRen, ← equation] at renamed
+      rw [miss] at renamed
+      contradiction
+
 private def StateRunCompletion.refl
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
