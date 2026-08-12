@@ -163,6 +163,96 @@ def boundedSynthTuple_complete
   ⟨inferExprFuel_tuple_complete before children.run,
     Ty.BoundedBy.prodOfForall children.rawTargetsBounded⟩
 
+def boundedSynthCtor_complete
+    {fuel : Nat} {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {name : String} {expressions : List Expr} {scheme : CtorScheme}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (lookup : signature.findDataCtor name = some scheme)
+    (checks : StateRunCompletion
+      (instantiateCtorInState_complete (before.visit .exprCtor path)
+        scheme).correspondence
+      (checkExprsFuel fuel signature context selfEnv path 0 expressions
+        (instantiateCtorInState (visit state .exprCtor path) scheme).1.1
+        (instantiateCtorInState (visit state .exprCtor path) scheme).2)
+      q' S' ledger')
+    (supplyExtension : SupplyExtends
+      (InferenceBase.instantiateCtorScheme q scheme).supply q') :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.ctor name expressions) state) q' S'
+      (DDLedger.freezeExport ledger' S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2 := by
+  refine ⟨inferExprFuel_ctor_complete before lookup checks, ?_⟩
+  exact (instantiateCtorScheme_boundedBy
+    ((closed.dataCtors lookup).boundedBy)).2.mono supplyExtension
+
+def boundedSynthPrim_complete
+    {fuel : Nat} {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {op : PrimOp} {expressions : List Expr} {scheme : CtorScheme}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (lookup : signature.findPrimitive op = some scheme)
+    (checks : StateRunCompletion
+      (instantiateCtorInState_complete (before.visit .exprPrim path)
+        scheme).correspondence
+      (checkExprsFuel fuel signature context selfEnv path 0 expressions
+        (instantiateCtorInState (visit state .exprPrim path) scheme).1.1
+        (instantiateCtorInState (visit state .exprPrim path) scheme).2)
+      q' S' ledger')
+    (supplyExtension : SupplyExtends
+      (InferenceBase.instantiateCtorScheme q scheme).supply q') :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.prim op expressions) state) q' S'
+      (DDLedger.freezeExport ledger' S'
+        (freshCapImages q scheme.capBinders)
+        (InferenceBase.instantiateCtorScheme q scheme).value.2)
+      (InferenceBase.instantiateCtorScheme q scheme).value.2 := by
+  refine ⟨inferExprFuel_prim_complete before lookup checks, ?_⟩
+  exact (instantiateCtorScheme_boundedBy
+    ((closed.primitives lookup).boundedBy)).2.mono supplyExtension
+
+def boundedSynthLet_complete
+    {fuel : Nat} {signature : FrozenSig} (closed : signature.SchemesClosed)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {name : String} {value body : Expr} {valueTarget bodyTarget : Ty}
+    {q q₁ q' : InferenceBase.FreshSupply} {S S₁ S' : Subst}
+    {ledger ledger₁ ledger' : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (valueRun : BoundedSynthRunCompletion (before.visit .exprLet path)
+      (inferExprFuel fuel signature context selfEnv (0 :: path) value
+        (visit state .exprLet path)) q₁ S₁ ledger₁ valueTarget)
+    (bodyRun :
+      let executableScheme := signature.generalize
+        (context.applySubst valueRun.run.result.state.prevailing)
+        (valueRun.run.result.state.prevailing.apply valueRun.run.result.target)
+      let event := TraceEvent.letGeneralization
+        valueRun.run.result.state.trace.solves.length name context
+        valueRun.run.result.target
+        (context.applySubst valueRun.run.result.state.prevailing)
+        (valueRun.run.result.state.prevailing.apply valueRun.run.result.target)
+        executableScheme
+      BoundedSynthRunCompletion
+        (valueRun.run.completion.state.recordEvent event
+          (by simp [event, TraceEvent.allocatedCapVars]))
+        (inferExprFuel fuel signature ((name, executableScheme) :: context)
+          (selfEnv.erase name) (1 :: path) body
+          (valueRun.run.result.state.recordEvent event))
+        q' S' ledger' bodyTarget) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.letE name value body) state) q' S' ledger' bodyTarget :=
+  ⟨DemandTypingInferenceCompletenessExprTraversal.inferExprFuel_letE_complete
+    closed before valueRun.run bodyRun.run,
+    bodyRun.rawTargetBounded⟩
+
 /-- Compose the `DDCheckOrigin.mk` boundary once the recursive synthesis run
 has supplied its raw executable target and its syntactic bound.  Solver
 success and expected-coercion selection remain internal to the generic
