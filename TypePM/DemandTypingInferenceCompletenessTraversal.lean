@@ -2066,11 +2066,11 @@ def inferExprFuel_ctor_complete
       allocated_recorded := suffix.allocated_recorded
       target := suffix.target }
   simp only [inferExprFuel]
-  rw [lookup]
-  have enteredSupply : entered.supply = q := enteredRelation.supply_eq
-  simp only [instantiated, enteredSupply]
-  rw [checksComplete.success]
-  rfl
+  rw (occs := .pos [1]) [lookup]
+  simp only
+  rw (occs := .pos [1]) [checksComplete.success]
+  simp [suffix, StateRunCompletion.freezeAndFinishExpr,
+    enteredRelation.supply_eq, capImages, target]
 
 /-- Primitive synthesis has the identical traversal suffix and differs only
 in signature lookup and the node/expression tags. -/
@@ -2126,11 +2126,11 @@ def inferExprFuel_prim_complete
       allocated_recorded := suffix.allocated_recorded
       target := suffix.target }
   simp only [inferExprFuel]
-  rw [lookup]
-  have enteredSupply : entered.supply = q := enteredRelation.supply_eq
-  simp only [instantiated, enteredSupply]
-  rw [checksComplete.success]
-  rfl
+  rw (occs := .pos [1]) [lookup]
+  simp only
+  rw (occs := .pos [1]) [checksComplete.success]
+  simp [suffix, StateRunCompletion.freezeAndFinishExpr,
+    enteredRelation.supply_eq, capImages, target]
 
 end DemandTypingInferenceCompletenessTraversal
 end TypePM
