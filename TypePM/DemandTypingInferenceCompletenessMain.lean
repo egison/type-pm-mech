@@ -158,6 +158,17 @@ abbrev AuditedSynthCompletenessMotive
     (terminal : Subst) (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat}, AuditedSynthCompletenessAt terminal signature fuel
 
+/-- Strict ceilings compose, which is the termination interface used when a
+syntax family (patterns or matcher clauses) calls back into expression
+synthesis below its caller's fuel. -/
+theorem AuditedSynthCompletenessBelow.mono
+    {terminal : Subst} {signature : FrozenSig} {smaller larger : Nat}
+    (complete : AuditedSynthCompletenessBelow terminal signature larger)
+    (boundLe : smaller ≤ larger) :
+    AuditedSynthCompletenessBelow terminal signature smaller := by
+  intro fuel below
+  exact complete (Nat.lt_of_lt_of_le below boundLe)
+
 /-- Proof-relevant synthesis data stored by an audited checking node.  This
 package hides the constructor's dependent proof indices from later clients. -/
 structure AuditedCheckComponents
