@@ -28,6 +28,7 @@ open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessAlignmentTraversal
 open DemandTypingInferenceCompletenessAlignmentFamilies
+open DemandTypingInferenceCompletenessPatternCtorCapability
 
 /-- The expression budget used at the value-pattern boundary. -/
 abbrev PatternSynthBudgetAdequate (fuel : Nat) (expression : Expr) : Prop :=
@@ -81,6 +82,19 @@ abbrev PatternSynthCompletenessMotive
     Nonempty { run : SynthRunCompletion before
       (inferExprFuel fuel signature executableContext selfEnv path expression
         state) q' S' ledger' target // run.result.target.BoundedBy q' }
+
+/-- Taking capabilities pointwise from corresponding duals preserves the
+same state relation. -/
+theorem DualListBisimulation.capabilities
+    {ledger : CapabilityOriginLedger} {S : Subst} {state : InferState}
+    {relation : StateBisimulation ledger S state}
+    {declarative executable : List Dual}
+    (related : DualListBisimulation relation declarative executable) :
+    CapListBisimulation relation (declarative.map Dual.cap)
+      (executable.map Dual.cap) := by
+  induction related with
+  | nil => exact .nil
+  | cons head tail induction => exact .cons head.cap induction
 
 /-- Context correspondence is compositional under source-order append. -/
 theorem ContextBisimulation.append
@@ -696,6 +710,34 @@ structure BoundedPatternCtorCapRunCompletion
   run : PatternCtorCapRunCompletion before operation q' declarative ledger
     capability
   rawCapabilityBounded : run.result.1.BoundedBy q'
+
+/-- Traversal-stable completeness required from the isolated
+pattern-constructor capability solver.  This is deliberately a universally
+quantified internal motive, rather than a caller-supplied executable success
+premise.  The package includes the executable compatibility check needed by
+the enclosing `pctor` branch. -/
+abbrev PatternCtorCapCompletenessMotive (signature : FrozenSig) : Prop :=
+  ∀ {entry : PatternCtorScheme signature.observability}
+    {constraintOrigin : ConstraintOrigin}
+    {declarativeChildren executableChildren : List Cap}
+    {capability : Cap} {q q' : InferenceBase.FreshSupply}
+    {S S' : Subst} {ledger ledger' : CapabilityOriginLedger}
+    {state : InferState}
+    {raw : DDPatternCtorCap signature entry q S declarativeChildren capability
+      q' S'}
+    {rawOrigin : DDPatternCtorCapOrigin signature entry raw ledger ledger'},
+    (before : TraversalStateCorrespondence q S ledger state) →
+    CapListBisimulation before.prevailing declarativeChildren
+      executableChildren →
+    (∀ child ∈ declarativeChildren, child.BoundedBy q) →
+    (∀ child ∈ executableChildren, child.BoundedBy q) →
+    Nonempty { run : BoundedPatternCtorCapRunCompletion before
+      (solvePatternCtorCapability signature entry constraintOrigin
+        executableChildren state) q' S' ledger' capability //
+      capCompatibleCheck entry
+        (executableChildren.map fun child =>
+          child.apply run.run.result.2.prevailing.cap)
+        (run.run.result.1.apply run.run.result.2.prevailing.cap) = true }
 
 noncomputable def boundedPatternCtor_complete
     {fuel : Nat} {signature : FrozenSig}
