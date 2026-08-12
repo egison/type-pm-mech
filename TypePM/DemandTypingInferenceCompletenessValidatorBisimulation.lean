@@ -1,4 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessValidatorEquivariance
+import TypePM.DemandTypingInferenceCompletenessPatternMain
 import TypePM.Preservation
 
 /-!
@@ -20,6 +21,8 @@ open DemandTypingInferenceCompletenessLocalRenaming
 open DemandTypingInferenceCompletenessGeneralizationEquivariance
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessValidatorEquivariance
+open DemandTypingInferenceCompletenessDataBisimulation
+open DemandTypingInferenceCompletenessPatternCtorCapability
 
 /-- The reverse residual is a local renaming on all variables in a finite
 bundle of terminal-normalized DD operands. -/
@@ -90,6 +93,133 @@ theorem StateBisimulation.executable_cap_eq_pure_of_mem
   have equal := StateBisimulation.executable_apply_eq_pure_of_mem relation
     operands member
   exact (Ty.matcher.inj equal).1
+
+theorem DualListBisimulation.capabilities_append
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    {declarativeCapability executableCapability : Cap}
+    (duals : DualListBisimulation relation declarativeDuals executableDuals)
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability) :
+    CapListBisimulation relation
+      (declarativeDuals.map Dual.cap ++ [declarativeCapability])
+      (executableDuals.map Dual.cap ++ [executableCapability]) := by
+  induction duals with
+  | nil => exact .cons capability .nil
+  | cons head tail induction => exact .cons head.cap induction
+
+theorem DualListBisimulation.length_eq_local
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    (duals : DualListBisimulation relation declarativeDuals executableDuals) :
+    declarativeDuals.length = executableDuals.length := by
+  induction duals with
+  | nil => rfl
+  | cons _ _ induction => exact congrArg Nat.succ induction
+
+theorem Cap.applyRenList_append (rename : CapVar → CapVar) :
+    ∀ left right,
+      Cap.applyRenList rename (left ++ right) =
+        Cap.applyRenList rename left ++ Cap.applyRenList rename right
+  | [], _ => rfl
+  | _ :: _, _ => by
+      simp only [List.cons_append, Cap.applyRenList]
+      rw [Cap.applyRenList_append]
+
+theorem Cap.length_applyRenList (rename : CapVar → CapVar) :
+    ∀ capabilities,
+      (Cap.applyRenList rename capabilities).length = capabilities.length
+  | [] => rfl
+  | _ :: rest => by
+      simp only [Cap.applyRenList, List.length_cons, Nat.succ.injEq]
+      exact Cap.length_applyRenList rename rest
+
+/-- Terminal constructor facts transfer across paired DD/executable operands.
+This is the semantic core needed when a trace event stores executable raw
+operands while the terminal audit tree stores their DD counterparts. -/
+theorem DDTerminalAudit.PatternCtorFacts.compatible_bisimulation
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    {ledger : CapabilityOriginLedger}
+    (relation : StateBisimulation ledger terminal state)
+    {entry : PatternCtorScheme signature.observability}
+    {declarativeDuals executableDuals : List Dual}
+    {declarativeCapability executableCapability : Cap}
+    (dualsRelated : DualListBisimulation relation declarativeDuals
+      executableDuals)
+    (capabilityRelated : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry declarativeDuals
+      declarativeCapability) :
+    entry.CapCompatible
+      ((executableDuals.map Dual.cap).map
+        (fun capability => capability.apply state.prevailing.cap))
+      (executableCapability.apply state.prevailing.cap) := by
+  let allRelated := DualListBisimulation.capabilities_append dualsRelated
+    capabilityRelated
+  obtain ⟨rename, resolved⟩ :=
+    CapListBisimulation.executableResolved_eq_applyRen allRelated
+  let post : Subst :=
+    { cap := fun varId => .var (rename varId)
+      target := fun varId => .var varId }
+  have variablePost : VariablePost post :=
+    { capVariable := fun varId => ⟨rename varId, rfl⟩ }
+  have capRenEq : variablePost.capRen = rename := by
+    funext varId
+    have point := variablePost.capEquation varId
+    change Cap.var (rename varId) = Cap.var (variablePost.capRen varId) at point
+    exact (Cap.var.inj point).symm
+  have moved :=
+    DDTerminalAudit.PatternCtorFacts.transportVariablePost variablePost facts
+  simp only [List.map_append, List.map_singleton, List.map_map] at resolved
+  rw [Cap.applyRenList_append] at resolved
+  have dualLengths : executableDuals.length = declarativeDuals.length :=
+    (DualListBisimulation.length_eq_local dualsRelated).symm
+  have leftLengths : executableDuals.length =
+      (Cap.applyRenList rename
+        (declarativeDuals.map
+          ((fun capability => capability.apply terminal.cap) ∘ Dual.cap))).length := by
+    simp only [List.length_map, Cap.length_applyRenList]
+    exact dualLengths
+  have resolvedParts := List.append_inj resolved (by
+    simpa only [List.length_map] using leftLengths)
+  have resultEq : executableCapability.apply state.prevailing.cap =
+      (declarativeCapability.apply terminal.cap).applyRen rename := by
+    simpa [Cap.applyRenList] using (List.cons.inj resolvedParts.2).1
+  simp only [List.map_map]
+  rw [resolvedParts.1, resultEq]
+  have movedCompatible := moved.compatible
+  change entry.CapCompatible
+      ((declarativeDuals.map (Dual.applySubst (Subst.seq post terminal))).map
+        Dual.cap)
+      (declarativeCapability.apply (Subst.seq post terminal).cap)
+    at movedCompatible
+  rw [Dual.map_applySubst_seq, Dual.map_cap_applySubst]
+    at movedCompatible
+  rw [show (Subst.seq post terminal).cap =
+      CapSubst.comp post.cap terminal.cap from rfl,
+    Cap.apply_comp] at movedCompatible
+  change entry.CapCompatible
+      (Cap.applyList post.cap
+        ((declarativeDuals.map (Dual.applySubst terminal)).map Dual.cap))
+      ((declarativeCapability.apply terminal.cap).apply post.cap)
+    at movedCompatible
+  rw [variablePost.applyCapList_eq_applyRenList,
+    variablePost.applyCap_eq_applyRen] at movedCompatible
+  rw [capRenEq] at movedCompatible
+  have normalizedCaps :
+      declarativeDuals.map (Dual.cap ∘ Dual.applySubst terminal) =
+        declarativeDuals.map
+          ((fun capability => capability.apply terminal.cap) ∘ Dual.cap) := by
+    apply List.map_congr_left
+    intro dual _
+    rfl
+  simp only [List.map_map] at movedCompatible
+  rw [normalizedCaps] at movedCompatible
+  exact movedCompatible
 
 /-! ## Individual event elimination -/
 
