@@ -175,5 +175,67 @@ structure PairedValidatorRunExtension
   sensitive : PairedTerminalAuditHistoryExtension terminal signature transition
     stateExtension
 
+/-- Existing exact validator chronology embeds into paired chronology without
+changing any event proof. -/
+theorem PairedValidatorRunExtension.ofExact
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger ledger' : CapabilityOriginLedger}
+    {declarative declarative' : Subst} {initial final : InferState}
+    {before : StateBisimulation ledger declarative initial}
+    (transition : BisimulationExtension before ledger' declarative' final)
+    (exact : ValidatorRunExtension terminal signature initial final) :
+    PairedValidatorRunExtension terminal signature transition
+      exact.ordinary.history := by
+  refine ⟨exact.ordinary, ⟨?_⟩⟩
+  intro event membership previous
+  have covered := exact.sensitive.newEvents event membership previous
+  cases event <;> try trivial
+  all_goals exact .exact covered
+
+/-- Empty paired chronology. -/
+theorem PairedValidatorRunExtension.refl
+    (terminal : Subst) (signature : FrozenSig)
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state) :
+    PairedValidatorRunExtension terminal signature
+      (BisimulationExtension.refl relation)
+      (InferState.StateExtension.refl state) :=
+  PairedValidatorRunExtension.ofExact
+    (BisimulationExtension.refl relation)
+    (ValidatorRunExtension.refl terminal signature state)
+
+/-- Chronological paired traversals compose along their raw bisimulation
+transitions. -/
+theorem PairedValidatorRunExtension.trans
+    {terminal : Subst} {signature : FrozenSig}
+    {ledger₀ ledger₁ ledger₂ : CapabilityOriginLedger}
+    {declarative₀ declarative₁ declarative₂ : Subst}
+    {first middle last : InferState}
+    {before : StateBisimulation ledger₀ declarative₀ first}
+    {frontTransition : BisimulationExtension before ledger₁ declarative₁
+      middle}
+    {backTransition : BisimulationExtension frontTransition.after ledger₂
+      declarative₂ last}
+    {frontState : first.StateExtension middle}
+    {backState : middle.StateExtension last}
+    (front : PairedValidatorRunExtension terminal signature frontTransition
+      frontState)
+    (back : PairedValidatorRunExtension terminal signature backTransition
+      backState) :
+    PairedValidatorRunExtension terminal signature
+      (frontTransition.seq backTransition) (frontState.trans backState) := by
+  refine ⟨front.ordinary.trans back.ordinary, ⟨?_⟩⟩
+  intro event membership notFirst
+  by_cases inMiddle : event ∈ middle.trace.events
+  · have covered := front.sensitive.newEvents event inMiddle notFirst
+    cases event <;> try trivial
+    all_goals simpa only [BisimulationExtension.seq] using
+      (PairedTerminalAuditEventWitness.transport backTransition backState
+        covered)
+  · have covered := back.sensitive.newEvents event membership inMiddle
+    cases event <;> try trivial
+    all_goals simpa only [BisimulationExtension.seq] using covered
+
 end DemandTypingInferenceCompletenessPairedValidatorRun
 end TypePM
