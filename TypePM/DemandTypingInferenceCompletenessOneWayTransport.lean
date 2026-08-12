@@ -641,6 +641,7 @@ structure OneWayCutCompletion
     producerTarget consumerCap consumerTarget executableDelta
   success : solveProducerToSlotWithLedger state.capabilityOrigins solveCount
     origin producerCap producerTarget consumerCap consumerTarget = some step
+  stepDeltaEq : step.delta = executableDelta
   solverRelation : OneWaySolverCorrespondence executableDelta step
   transition : BisimulationExtension before ledger
     (Subst.seq declarativeDelta declarative) (state.recordSolve step)
@@ -918,6 +919,7 @@ noncomputable def oneWayCut_complete
       step := step
       safe := executableSafe
       success := stepSuccess
+      stepDeltaEq := stepDeltaEq
       solverRelation := solverRelation
       transition := transition
       forwardResidualEq := rfl
