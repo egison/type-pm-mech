@@ -1475,6 +1475,168 @@ theorem auditedSynthPrim_complete_paired
   refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
   exact validation
 
+/-! ## Global dispatcher -/
+
+/-- Constructor dispatch for every branch whose paired reconstruction is
+already closed.  Matcher literals and `matchAll` are supplied by the two
+cross-family helpers below this layer. -/
+theorem auditedSynth_complete_paired_except_matchers
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {fuel : Nat}
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature fuel)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDSynth signature q S declarativeContext expression target q' S'}
+    {origin : DDSynthOrigin signature raw ledger ledger'}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (audit : DDSynthTerminalAudit terminal signature origin)
+    (adequate : SynthBudgetAdequate fuel expression)
+    (matcherCase : ∀ {clauses : List Clause} {rawHoleLists : List (List Dual)}
+      {q' : InferenceBase.FreshSupply} {S' : Subst}
+      {evidence : List Shape.Evidence} {capability : Cap}
+      {ledger₁ : CapabilityOriginLedger}
+      {clausesRaw : DDClauses signature
+        { q with nextTy := q.nextTy + 1 } S declarativeContext clauses
+        (.var q.nextTy) rawHoleLists q' S'}
+      {clausesOrigin : DDClausesOrigin signature clausesRaw ledger ledger₁}
+      {collected : collectClauseEvidence signature.toMatcherSig clauses
+        (terminalHoleCaps S' rawHoleLists) = some evidence}
+      {inferred : Shape.inferShape signature.observability evidence =
+        some capability}
+      {clauseCaps : clauseCapsListCheck signature capability clauses
+        (terminalHoleCaps S' rawHoleLists) = true}
+      {catchAll : catchAllLastCheck clauses = true}
+      {binders : matcherBindersCheck clauses = true}
+      {arms : armExhaustiveCheck signature clauses
+        (S'.apply (.var q.nextTy)) = true}
+      {coverage : coverageCheck signature.toMatcherSig clauses capability = true},
+      DDSynthTerminalAudit terminal signature
+        (DDSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
+          catchAll binders arms coverage) →
+      Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+        before (inferExprFuel fuel signature executableContext selfEnv path
+          (.matcher clauses) state) q' S'
+        (DDLedger.freezeMatcherProducer ledger₁ capability)
+        (.matcher capability (.var q.nextTy))))
+    (matchAllCase : ∀ {targetExpr matcher : Expr} {pattern : Pattern}
+      {body : Expr} {bodyTy : Ty} {q' : InferenceBase.FreshSupply}
+      {S' : Subst} {ledger' : CapabilityOriginLedger}
+      {raw : DDSynth signature q S declarativeContext
+        (.matchAll targetExpr matcher pattern body) (.listT bodyTy) q' S'}
+      {origin : DDSynthOrigin signature raw ledger ledger'},
+      DDSynthTerminalAudit terminal signature origin →
+      Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+        before (inferExprFuel fuel signature executableContext selfEnv path
+          (.matchAll targetExpr matcher pattern body) state)
+        q' S' ledger' (.listT bodyTy))) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
+      before (inferExprFuel fuel signature executableContext selfEnv path
+        expression state) q' S' ledger' target) := by
+  cases audit with
+  | var =>
+      rename_i name scheme lookup
+      exact auditedSynthLeaf_complete_paired fuel before contexts contextBounded
+        executableContextBounded
+        (audit := DDSynthTerminalAudit.var (lookup := lookup))
+        (leaf := DDSynthLeafOrigin.var (q := q) (ledger := ledger) lookup)
+        adequate
+  | lit =>
+      exact auditedSynthLeaf_complete_paired fuel before contexts contextBounded
+        executableContextBounded .lit .lit adequate
+  | something =>
+      exact auditedSynthLeaf_complete_paired fuel before contexts contextBounded
+        executableContextBounded .something .something adequate
+  | lam bodyAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthLam_complete_paired inner synthBelow before contexts
+            contextBounded executableContextBounded bodyAudit adequate
+  | tuple childrenAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthTuple_complete_paired inner synthBelow before
+            contexts contextBounded executableContextBounded childrenAudit
+            adequate
+  | ctor childrenAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthCtor_complete_paired closed inner synthBelow before
+            contexts contextBounded executableContextBounded (by assumption) childrenAudit
+            adequate
+  | prim childrenAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthPrim_complete_paired closed inner synthBelow before
+            contexts contextBounded executableContextBounded (by assumption) childrenAudit
+            adequate
+  | app functionAudit argumentAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthApp_complete_paired closed inner synthBelow before
+            contexts contextBounded executableContextBounded (by assumption) functionAudit
+            argumentAudit adequate
+  | letE valueAudit bodyAudit facts =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthLet_complete_paired closed inner synthBelow before
+            contexts contextBounded executableContextBounded valueAudit
+            bodyAudit facts adequate
+  | fix bodyAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthFix_complete_paired closed inner synthBelow before
+            contexts contextBounded executableContextBounded (by assumption)
+            (by assumption) (by assumption) (by assumption) bodyAudit
+            adequate
+  | fixMatcher bodyAudit =>
+      cases fuel with
+      | zero => simp [SynthBudgetAdequate] at adequate
+      | succ inner =>
+          exact auditedSynthFixMatcher_complete_paired closed inner synthBelow
+            before contexts contextBounded executableContextBounded
+            (by assumption) (by assumption) (by assumption) (by assumption)
+            bodyAudit adequate
+  | matcher clausesAudit facts =>
+      rename_i clauses rawHoleLists evidence capability ledger₁ inferred
+        catchAll binders coverage collected clauseCaps arms clausesRaw
+        clausesOrigin
+      exact matcherCase
+        (clausesRaw := clausesRaw) (clausesOrigin := clausesOrigin)
+        (collected := collected) (inferred := inferred)
+        (clauseCaps := clauseCaps) (catchAll := catchAll)
+        (binders := binders) (arms := arms) (coverage := coverage)
+        (DDSynthTerminalAudit.matcher
+          (collected := collected) (inferred := inferred)
+          (clauseCaps := clauseCaps) (catchAll := catchAll)
+          (binders := binders) (arms := arms) (coverage := coverage)
+          clausesAudit facts)
+  | matchAll targetAudit patternAudit matcherAudit bodyAudit =>
+      rename_i targetExpr targetTarget q₁ S₁ ledger₁ pattern dual bindings q₂
+        S₂ ledger₂ S₃ matcherExpr q₃ S₄ ledger₃ body bodyTarget targetAligned
+        patternRaw patternOrigin matcherRaw matcherOrigin targetRaw bodyRaw
+        targetOrigin bodyOrigin
+      exact matchAllCase
+        (raw := DDSynth.matchAll targetRaw patternRaw targetAligned.erase
+          matcherRaw bodyRaw)
+        (origin := DDSynthOrigin.matchAll targetOrigin patternOrigin
+          targetAligned matcherOrigin bodyOrigin)
+        (DDSynthTerminalAudit.matchAll (targetAligned := targetAligned)
+          targetAudit patternAudit matcherAudit bodyAudit)
+
 
 end DemandTypingInferenceCompletenessGlobalCertified
 end TypePM
