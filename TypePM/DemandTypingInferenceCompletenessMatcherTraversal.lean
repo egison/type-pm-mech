@@ -19,7 +19,6 @@ open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessProtectedTrace
-open DemandTypingInferenceCompletenessProtectedTrace
 
 /-- Checking is synthesis followed by the executable expected-type cut. -/
 def checkExprFuel_complete
