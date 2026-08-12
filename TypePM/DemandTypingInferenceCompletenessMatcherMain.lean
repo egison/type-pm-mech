@@ -36,12 +36,12 @@ abbrev MatcherChecksBudgetAdequate
     (fuel : Nat) (expressions : List Expr) : Prop :=
   8 * (exprListTraversalFuel expressions + 1) ≤ fuel
 
-/-- Traversal-stable, terminal-audited checking component required by matcher
-arms.  Declarative and executable contexts may differ after pattern binding,
-but are related by the current state bisimulation. -/
-abbrev MatcherCheckCompletenessMotive
-    (terminal : Subst) (signature : FrozenSig) : Prop :=
-  ∀ {fuel : Nat} {declarativeContext executableContext : Context}
+/-- Traversal-stable, terminal-audited checking component at one fixed fuel.
+Declarative and executable contexts may differ after pattern binding, but are
+related by the current state bisimulation. -/
+abbrev MatcherCheckCompletenessAt
+    (terminal : Subst) (signature : FrozenSig) (fuel : Nat) : Prop :=
+  ∀ {declarativeContext executableContext : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
     {declarativeExpected executableExpected : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
@@ -60,18 +60,39 @@ abbrev MatcherCheckCompletenessMotive
       (checkExprFuel fuel signature executableContext selfEnv path expression
         executableExpected state) q' S' ledger')
 
+/-- Unrestricted checking motive used by closed global recursions. -/
+abbrev MatcherCheckCompletenessMotive
+    (terminal : Subst) (signature : FrozenSig) : Prop :=
+  ∀ {fuel : Nat}, MatcherCheckCompletenessAt terminal signature fuel
+
+/-- Strict fuel ceiling used while the global expression recursion is still
+being defined.  Matcher children may use every checking call strictly below
+their enclosing expression fuel, but cannot recurse at that outer fuel. -/
+abbrev MatcherCheckCompletenessBelow
+    (terminal : Subst) (signature : FrozenSig) (bound : Nat) : Prop :=
+  ∀ {fuel : Nat}, fuel < bound →
+    MatcherCheckCompletenessAt terminal signature fuel
+
+theorem MatcherCheckCompletenessBelow.lower
+    {terminal : Subst} {signature : FrozenSig} {bound : Nat}
+    (below : MatcherCheckCompletenessBelow terminal signature (bound + 1)) :
+    MatcherCheckCompletenessBelow terminal signature bound := by
+  intro fuel fuelLt
+  exact below (Nat.lt_trans fuelLt (Nat.lt_succ_self bound))
+
 /-- Reconstruct an audited left-to-right checking list from the single
 expression checking motive.  Each tail is run at the concrete state returned
 by its head. -/
-theorem checksOrigin_complete_nonempty_from_check
+theorem checksOrigin_complete_nonempty_from_below
     {terminal : Subst} {signature : FrozenSig}
-    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
     {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
     {index : Nat} {expressions : List Expr}
     {declarativeExpecteds executableExpecteds : List Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (fuel : Nat)
+    (checkBelow : MatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
     (contextBounded : context.BoundedBy q)
     (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
       expected.BoundedBy q)
@@ -115,7 +136,8 @@ theorem checksOrigin_complete_nonempty_from_check
               have executableExpectedBounded :=
                 executableExpectedsBounded executableExpected (by simp)
               let headRun := Classical.choice
-                (checkComplete (selfEnv := selfEnv) (path := index :: parent)
+                (checkBelow (Nat.lt_succ_self fuel)
+                  (selfEnv := selfEnv) (path := index :: parent)
                   before
                   (ContextBisimulation.same before.prevailing context)
                   expectedRelated contextBounded expectedBounded
@@ -133,15 +155,44 @@ theorem checksOrigin_complete_nonempty_from_check
                 exact (executableExpectedsBounded item (by simp [membership])).mono
                   headOrigin.erase.supplyExtends
               let tailRun := Classical.choice
-                (checksOrigin_complete_nonempty_from_check
+                (checksOrigin_complete_nonempty_from_below
                   (selfEnv := selfEnv) (parent := parent)
-                  (index := index + 1) checkComplete fuel headRun.completion
+                  (index := index + 1) fuel checkBelow.lower
+                  headRun.completion
                   tailContextBounded tailExpectedsBounded
                   tailExecutableExpectedsBounded
                   (headRun.transition.transportTyList tailRelated) tailAudit
                   tailAdequate)
               exact ⟨checkExprsFuel_cons_complete before headRun tailRun⟩
 termination_by fuel
+
+/-- Unrestricted wrapper retained for completed global motives. -/
+theorem checksOrigin_complete_nonempty_from_check
+    {terminal : Subst} {signature : FrozenSig}
+    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {expressions : List Expr}
+    {declarativeExpecteds executableExpecteds : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
+      expected.BoundedBy q)
+    (executableExpectedsBounded : ∀ expected ∈ executableExpecteds,
+      expected.BoundedBy q)
+    (expectedsRelated : TyListBisimulation before.prevailing
+      declarativeExpecteds executableExpecteds)
+    {raw : DDChecks signature q S context expressions declarativeExpecteds q' S'}
+    {origin : DDChecksOrigin signature raw ledger ledger'}
+    (audit : DDChecksTerminalAudit terminal signature origin)
+    (adequate : MatcherChecksBudgetAdequate fuel expressions) :
+    Nonempty (StateRunCompletion before
+      (checkExprsFuel fuel signature context selfEnv parent index expressions
+        executableExpecteds state) q' S' ledger') :=
+  checksOrigin_complete_nonempty_from_below fuel
+    (fun _ => checkComplete) before contextBounded expectedsBounded
+    executableExpectedsBounded expectedsRelated audit adequate
 
 /-! ## Matcher arms -/
 
@@ -207,11 +258,10 @@ abbrev MatcherArmsBudgetAdequate (fuel : Nat) (arms : List Arm) : Prop :=
 /-- Reconstruct an audited arm list.  Pattern output contexts are related,
 not identified: the body call receives the exact executable bindings returned
 by `inferDPatFuel`. -/
-theorem armsOrigin_complete_nonempty
+theorem armsOrigin_complete_nonempty_below
     {terminal : Subst} {signature : FrozenSig}
     (closed : signature.SchemesClosed)
     (dpatComplete : MatcherDPatCompletenessMotive signature)
-    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
     {context : Context} {selfEnv : SelfEnv}
     {ppBindings executablePPBindings : MonoCtx}
     {parent : SyntaxPath} {index : Nat} {arms : List Arm}
@@ -219,7 +269,9 @@ theorem armsOrigin_complete_nonempty
     {executableClauseTarget executableBodyTarget : Ty}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (fuel : Nat)
+    (checkBelow : MatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
     (ppRelated : MonoCtxBisimulation before.prevailing ppBindings
       executablePPBindings)
     (clauseTargetRelated : TyBisimulation before.prevailing
@@ -290,7 +342,7 @@ theorem armsOrigin_complete_nonempty
           have bodyExpectedBounded : declarativeBodyTarget.BoundedBy q₁ :=
             bodyTargetBounded.mono patternOrigin.erase.supplyExtends
           let bodyRun := Classical.choice
-            (checkComplete
+            (checkBelow (Nat.lt_succ_self fuel)
               (selfEnv := selfEnv.eraseMany
                 (executablePPBindings.names ++ dataRun.result.bindings.names))
               (path := 1 :: index :: parent) dataRun.completion
@@ -321,7 +373,8 @@ theorem armsOrigin_complete_nonempty
             BisimulationExtension.transportMonoCtx
               (dataRun.transition.seq bodyRun.transition) ppRelated
           let tailRun := Classical.choice
-            (armsOrigin_complete_nonempty closed dpatComplete checkComplete fuel
+            (armsOrigin_complete_nonempty_below closed dpatComplete fuel
+              checkBelow.lower
               (selfEnv := selfEnv) (parent := parent) (index := index + 1)
               bodyRun.completion ppAtBody
               ((dataRun.transition.seq bodyRun.transition).transportTy
@@ -339,6 +392,47 @@ theorem armsOrigin_complete_nonempty
             (bodyTarget := declarativeBodyTarget)
             before ppRelated dataRun disjoint bodyRun tailRun⟩
 termination_by fuel
+
+/-- Unrestricted wrapper retained for completed global motives. -/
+theorem armsOrigin_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
+    {context : Context} {selfEnv : SelfEnv}
+    {ppBindings executablePPBindings : MonoCtx}
+    {parent : SyntaxPath} {index : Nat} {arms : List Arm}
+    {declarativeClauseTarget declarativeBodyTarget : Ty}
+    {executableClauseTarget executableBodyTarget : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (ppRelated : MonoCtxBisimulation before.prevailing ppBindings
+      executablePPBindings)
+    (clauseTargetRelated : TyBisimulation before.prevailing
+      declarativeClauseTarget executableClauseTarget)
+    (bodyTargetRelated : TyBisimulation before.prevailing
+      declarativeBodyTarget executableBodyTarget)
+    (contextBounded : context.BoundedBy q)
+    (ppBounded : ppBindings.BoundedBy q)
+    (clauseTargetBounded : declarativeClauseTarget.BoundedBy q)
+    (bodyTargetBounded : declarativeBodyTarget.BoundedBy q)
+    (executableClauseTargetBounded : executableClauseTarget.BoundedBy q)
+    (executableBodyTargetBounded : executableBodyTarget.BoundedBy q)
+    {raw : DDArms signature q S context ppBindings arms
+      declarativeClauseTarget declarativeBodyTarget q' S'}
+    {origin : DDArmsOrigin signature raw ledger ledger'}
+    (audit : DDArmsTerminalAudit terminal signature origin)
+    (adequate : MatcherArmsBudgetAdequate fuel arms) :
+    Nonempty (StateRunCompletion before
+      (checkArmsFuel fuel signature context selfEnv executablePPBindings
+        parent index arms executableClauseTarget executableBodyTarget state)
+      q' S' ledger') :=
+  armsOrigin_complete_nonempty_below closed dpatComplete fuel
+    (fun _ => checkComplete) before ppRelated clauseTargetRelated
+    bodyTargetRelated contextBounded ppBounded clauseTargetBounded
+    bodyTargetBounded executableClauseTargetBounded executableBodyTargetBounded
+    audit adequate
 
 /-! ## Clause data transport -/
 
@@ -447,17 +541,18 @@ abbrev MatcherClauseBudgetAdequate (fuel : Nat) (clause : Clause) : Prop :=
 
 /-- Reconstruct one audited matcher clause from primitive-pattern, checking,
 and arm motives. -/
-theorem clauseOrigin_complete_nonempty
+theorem clauseOrigin_complete_nonempty_below
     {terminal : Subst} {signature : FrozenSig}
     (closed : signature.SchemesClosed)
     (ppatComplete : MatcherPPatCompletenessMotive signature)
     (dpatComplete : MatcherDPatCompletenessMotive signature)
-    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
     {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
     {clause : Clause} {declarativeTarget executableTarget : Ty}
     {holes : List Dual} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (fuel : Nat)
+    (checkBelow : MatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
     (targetRelated : TyBisimulation before.prevailing declarativeTarget
       executableTarget)
     (contextBounded : context.BoundedBy q)
@@ -516,9 +611,9 @@ theorem clauseOrigin_complete_nonempty
             exact Ty.BoundedBy.slotOf (holesBounded hole holeMembership).1
               (holesBounded hole holeMembership).2
           let nextRun := Classical.choice
-            (checksOrigin_complete_nonempty_from_check
+            (checksOrigin_complete_nonempty_from_below
               (selfEnv := selfEnv) (parent := 1 :: path) (index := 0)
-              checkComplete fuel primitiveRun.run.completion nextContextBounded
+              fuel checkBelow.lower primitiveRun.run.completion nextContextBounded
               nextExpectedsBounded (fun expected membership => by
                 obtain ⟨hole, holeMembership, rfl⟩ :=
                   List.mem_map.mp membership
@@ -563,7 +658,8 @@ theorem clauseOrigin_complete_nonempty
               exact (primitiveRun.rawHolesBounded hole holeMembership).2.mono
                 nextOrigin.erase.supplyExtends))
           let armsRun := Classical.choice
-            (armsOrigin_complete_nonempty closed dpatComplete checkComplete fuel
+            (armsOrigin_complete_nonempty_below closed dpatComplete fuel
+              checkBelow.lower
               (selfEnv := selfEnv) (parent := 2 :: path) (index := 0)
               nextRun.completion ppAtNext targetAtNext bodyTargetRelated
               armsContextBounded armsPPBounded armsTargetBounded
@@ -571,6 +667,35 @@ theorem clauseOrigin_complete_nonempty
               armsExecutableBodyBounded armsAudit armsAdequate)
           exact ⟨inferClauseFuel_complete before targetRelated primitiveRun.run
             decomposed nextRun armsRun⟩
+
+/-- Unrestricted wrapper retained for completed global motives. -/
+theorem clauseOrigin_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {clause : Clause} {declarativeTarget executableTarget : Ty}
+    {holes : List Dual} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClause signature q S context clause declarativeTarget holes q' S'}
+    {origin : DDClauseOrigin signature raw ledger ledger'}
+    (audit : DDClauseTerminalAudit terminal signature origin)
+    (adequate : MatcherClauseBudgetAdequate fuel clause) :
+    Nonempty (ClauseRunCompletion before
+      (inferClauseFuel fuel signature context selfEnv path clause
+        executableTarget state)
+      q' S' ledger' declarativeTarget holes) :=
+  clauseOrigin_complete_nonempty_below closed ppatComplete dpatComplete fuel
+    (fun _ => checkComplete) before targetRelated contextBounded targetBounded
+    executableTargetBounded audit adequate
 
 /-! ## Clause lists -/
 
@@ -580,19 +705,20 @@ abbrev MatcherClausesBudgetAdequate
 
 /-- Full origin-and-audit dispatcher for matcher clause lists.  The shared
 matcher target remains paired through every completed head transition. -/
-theorem clausesOrigin_complete_nonempty
+theorem clausesOrigin_complete_nonempty_below
     {terminal : Subst} {signature : FrozenSig}
     (closed : signature.SchemesClosed)
     (ppatComplete : MatcherPPatCompletenessMotive signature)
     (dpatComplete : MatcherDPatCompletenessMotive signature)
-    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
     {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
     {index : Nat} {clauses : List Clause}
     {declarativeTarget executableTarget : Ty}
     {holeLists : List (List Dual)}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {state : InferState}
-    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (fuel : Nat)
+    (checkBelow : MatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
     (targetRelated : TyBisimulation before.prevailing declarativeTarget
       executableTarget)
     (contextBounded : context.BoundedBy q)
@@ -633,9 +759,9 @@ theorem clausesOrigin_complete_nonempty
               clauseListTraversalFuel] at adequate ⊢
             omega
           let headRun := Classical.choice
-            (clauseOrigin_complete_nonempty closed ppatComplete dpatComplete
-              checkComplete (selfEnv := selfEnv) (path := index :: parent)
-              fuel before targetRelated contextBounded
+            (clauseOrigin_complete_nonempty_below closed ppatComplete
+              dpatComplete (selfEnv := selfEnv) (path := index :: parent)
+              fuel checkBelow.lower before targetRelated contextBounded
               targetBounded executableTargetBounded headAudit headAdequate)
           have tailContextBounded : context.BoundedBy q₁ :=
             contextBounded.mono headOrigin.erase.supplyExtends
@@ -644,15 +770,85 @@ theorem clausesOrigin_complete_nonempty
           have tailExecutableTargetBounded : executableTarget.BoundedBy q₁ :=
             executableTargetBounded.mono headOrigin.erase.supplyExtends
           let tailRun := Classical.choice
-            (clausesOrigin_complete_nonempty closed ppatComplete dpatComplete
-              checkComplete (selfEnv := selfEnv) (parent := parent)
-              (index := index + 1) fuel headRun.completion
+            (clausesOrigin_complete_nonempty_below closed ppatComplete
+              dpatComplete (selfEnv := selfEnv) (parent := parent)
+              (index := index + 1) fuel checkBelow.lower headRun.completion
               (headRun.transition.transportTy targetRelated)
               tailContextBounded tailTargetBounded
               tailExecutableTargetBounded tailAudit tailAdequate)
           exact ⟨inferClausesFuel_cons_complete before targetRelated headRun
             tailRun⟩
 termination_by fuel
+
+/-- Strict-ceiling matcher dispatcher used by the enclosing expression
+recursion.  Every checking call occurs below `bound`; no unrestricted
+self-hypothesis is manufactured inside the matcher traversal. -/
+theorem clausesOrigin_complete_nonempty_from_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    {bound : Nat}
+    (checkBelow : MatcherCheckCompletenessBelow terminal signature bound)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {holeLists : List (List Dual)}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (fuelLt : fuel < bound)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClauses signature q S context clauses declarativeTarget holeLists
+      q' S'}
+    {origin : DDClausesOrigin signature raw ledger ledger'}
+    (audit : DDClausesTerminalAudit terminal signature origin)
+    (adequate : MatcherClausesBudgetAdequate fuel clauses) :
+    Nonempty (ClausesRunCompletion before
+      (inferClausesFuel fuel signature context selfEnv parent index clauses
+        executableTarget state)
+      q' S' ledger' declarativeTarget holeLists) :=
+  clausesOrigin_complete_nonempty_below closed ppatComplete dpatComplete fuel
+    (fun {childFuel} childLt =>
+      checkBelow (Nat.lt_trans childLt fuelLt)) before
+    targetRelated contextBounded targetBounded executableTargetBounded audit
+    adequate
+
+/-- Unrestricted wrapper retained for completed global motives. -/
+theorem clausesOrigin_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    (checkComplete : MatcherCheckCompletenessMotive terminal signature)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {holeLists : List (List Dual)}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClauses signature q S context clauses declarativeTarget holeLists
+      q' S'}
+    {origin : DDClausesOrigin signature raw ledger ledger'}
+    (audit : DDClausesTerminalAudit terminal signature origin)
+    (adequate : MatcherClausesBudgetAdequate fuel clauses) :
+    Nonempty (ClausesRunCompletion before
+      (inferClausesFuel fuel signature context selfEnv parent index clauses
+        executableTarget state)
+      q' S' ledger' declarativeTarget holeLists) :=
+  clausesOrigin_complete_nonempty_below closed ppatComplete dpatComplete fuel
+    (fun _ => checkComplete) before targetRelated contextBounded targetBounded
+    executableTargetBounded audit adequate
 
 end DemandTypingInferenceCompletenessMatcherMain
 end TypePM
