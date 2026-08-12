@@ -43,6 +43,7 @@ def auditedConstants : List Name :=
    ``TypePM.DemandTypingTargetUniqueness.SourceTyping.target_unique_modulo_renaming,
    ``TypePM.SourceTyping.safe,
    ``TypePM.SourceTyping.typingInvariant,
+   ``TypePM.DM.sourceTyping_to_dm,
    ``TypePM.PrincipalityCounterexample.no_principal_type]
 
 /--

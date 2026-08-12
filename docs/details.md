@@ -499,6 +499,31 @@ chronological compositionと有限scope restriction，monotype／scheme／contex
 scheme openingのprincipality，coreの`instantiateScheme`との一致を与える．これらは
 全`DM.Typing`受理証明のvariable／let case用の基礎である．
 
+[`TypePM/DamasMilnerConservativity.lean`](../TypePM/DamasMilnerConservativity.lean)は，監査済み
+source judgmentからDMへのclosed-program方向を証明する．`eraseTy`は関数・積を一sortへ
+構造的に写し，dataをcomponentの積へ，基本型とskolemをDMの`Int`へ正規化し，
+matcher／slot wrapperとcapabilityを忘れる．`SchemeErases`は
+core schemeの全value-flow instanceをDM instanceに写し，`ContextErases`はlookupとfree-variable
+listの一致をcontext全体に保持する．`SchemeErases.generalize`は
+`FrozenSig.SchemesClosed.signatureTargets`でglobal target metavariableを排除し，`let`のcore
+generalizationをDM generalizationへ写す．
+
+`TypingInvariant.toDM`／`ExprsTy.toDM`は`InFragmentExpr`の証拠の下で内部導出を構造的に
+消去する．classifierがconstructor，primitive，pattern，matcherを排除し，direct-self
+`fix`だけを残す．coercion ruleが現れてもwrapperの消去で同じDM導出に戻る．公開定理
+
+```text
+DM.sourceTyping_to_dm :
+  FrozenSigWF signature → InFragmentExpr expression →
+  SourceTyping signature [] expression target →
+  ∃ dmTarget, DM.Typing [] expression dmTarget
+```
+
+はwitnessとして`eraseTy target`を使う．この定理はcallerに`TypingInvariant`を要求せず，
+`SourceTyping.typingInvariant signatureWF.schemesClosed`による監査済みclosed state erasureから
+得た導出だけを消去する．入力contextが空でないconverseや，任意のsource targetと
+DM principal targetの構文的一致は主張しない．後者の型比較はprincipalityと分離する．
+
 [`TypePM/DMTerminalAcceptance.lean`](../TypePM/DMTerminalAcceptance.lean) は terminal acceptance
 の具体例を固定する．全 `DM.Typing` に対する executable acceptance は未証明である．
 

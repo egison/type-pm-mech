@@ -42,6 +42,7 @@ FrozenSigWF Σ →
 | `Inference.inferType_principal` | `inferType`の返値は有限scope二sortinstance preorder上でprincipalである |
 | `Inference.infer_relative_principal` | open termのresolved contextとtargetを同じsubstitutionで相対比較できる |
 | `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
+| `DM.sourceTyping_to_dm` | closed・pattern-freeの`SourceTyping`を型消去して`DM.Typing`を得る |
 
 targetのrenaming一意性に加えて，target単体のinstance preorder上のprincipalityと，open contextで
 context／targetを同時に比較する相対principalityまで証明済みである．一般のprogram terminationは
@@ -112,7 +113,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
     │          └──→ [x] P2. closed principality
     │                    └──→ [x] P3. context相対principality
     ├──→ [ ] D1. 全DM.Typingのexecutable acceptance
-    │          └──→ [ ] D2. DM断片でのconservativity
+    │          └──→ [x] D2. DM断片でのconservativity
     └──→ [x] O. source-order依存を現行仕様として採用
 ```
 
@@ -123,7 +124,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 | P3 | contextとtargetの同時instance化を含む相対principalityを定式化する | P2 | open termでも，明示したcontext可変性の下でprincipal typeを計算する |
 | D1 | 任意の`DM.Typing` derivationから公開推論器の成功を導く | F | pattern-free let-polymorphismを推論器が取りこぼさない |
 | O | 現在のsource-order依存をno-guessとchronological state threadingの意図された帰結として仕様化する | F | typabilityの順序依存をsource judgmentの正負定理として説明できる |
-| D2 | pattern-free・capability-inert・direct-self断片でDMとの双方向対応を証明する | D1；型比較にはP2／P3 | 二sort coreが指定したDM断片の保守的拡張である |
+| D2 | closed・pattern-free・capability-inert・direct-self断片の`SourceTyping`をDMへ消去する | F；双方向化にはD1 | 公開source judgmentからDMへの保守性境界が得られる |
 
 ### P1--P3: principality
 
@@ -159,8 +160,22 @@ DM derivationから埋込みcontext上のsource typabilityを構成し，完成�
 derivationが選んだ型はprincipal targetの特殊化であり得るため，`inferType`が同じ型を構文的に返すとは
 要求しない．
 
-D2では対象となるpattern-free fragmentを明示し，`SourceTyping`の存在を境界に逆方向も証明する．
-これをP2／P3と合成すると，coreの推論結果とDMのprincipal typeの対応を議論できる．
+D2の逆方向は`DamasMilnerConservativity`で証明済みである．`eraseTy`は関数・積を一sortへ
+構造的に写し，基本型をDMの`Int`へ正規化し，matcher／slot wrapperとcapabilityを消去する．`ContextErases`はcore contextの
+各scheme useとDM contextを関係づけ，`SchemeErases.generalize`がclosed signatureの下でlet
+generalizationを保存する．`TypingInvariant.toDM`はpattern-free expressionの内部invariantを
+DM derivationへ構造的に消去する．公開定理`DM.sourceTyping_to_dm`は次を与える．
+
+```text
+FrozenSigWF Σ → InFragmentExpr e → SourceTyping Σ [] e τ →
+  ∃ τdm, DM.Typing [] e τdm
+```
+
+実際のwitnessは`eraseTy τ`である．ここで必要な`TypingInvariant`は仮定ではなく，
+`SourceTyping.typingInvariant`の監査済みclosed state erasureから得る．したがって第二のsource
+judgmentを介した逆向接続ではない．open contextのconverseはこの定理の主張に含めない．
+D1でDMからsource acceptanceへの方向を完成した後，両方向をP2／P3と合成することで，
+coreの推論結果とDMのprincipal typeの対応を議論できる．
 
 ### O: source-order依存
 
@@ -173,8 +188,7 @@ permutation invarianceは現行仕様に含めない．
 
 将来この境界を変更する場合も通常単一化の失敗をcoercionの根拠に戻してはならず，未解決headの
 constraintまたはchecking obligationを遅延する別calculusとして設計する必要がある．それは受理集合を
-変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapで残る作業はD1，
-続いてD2である．
+変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapで残る作業はD1である．
 
 ## モジュール案内
 
@@ -187,7 +201,7 @@ constraintまたはchecking obligationを遅延する別calculusとして設計�
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
-| fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，受理回帰 |
+| fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
 [`docs/details.md`](docs/details.md)を参照．

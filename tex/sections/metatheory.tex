@@ -32,6 +32,9 @@ $\mathsf{SourceTyping.safe}$
 target一意性
   & acceptance completeness，実行runの決定性，局所renaming
   & 二導出を同じ実行targetへ写し，MGUの向きを隠す \\
+closed DM保守性
+  & closed state erasure，type／context erasure，generalization保存
+  & 監査済みsource導出をpattern-free DM導出へ写す \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -247,6 +250,33 @@ $\mathsf{ResolvedContext}$／resolved targetと，任意derivationのterminal pa
 forward／reverse residualにより相互に$\preceq_{\mathsf{ctx}}$である．closed contextではcontext成分が
 空のままなので，上のtarget principalityへ戻る．
 
+\subsection{Damas--Milner断片へのclosed保守性}
+
+pattern-free・capability-inert・direct-self断片の逆方向は，公開の監査済み
+$\mathsf{SourceTyping}$を境界として機械化する．型消去$\lfloor\tau\rfloor$は関数・積を
+一sortに構造的に写し，dataをcomponentの積へ，基本型とskolemをDMの$\mathsf{Int}$へ
+正規化し，matcher／slot wrapperとcapabilityを忘れる．context関係
+$\mathsf{ContextErases}(\Gamma,\Delta)$は，core schemeの各value-flow instanceがDM schemeの
+instanceに消去できることと，free target variable列の一致を保存する．
+$\mathsf{SchemesClosed}$からglobal target variableが空であることを使うと，
+\texttt{let}のcore generalizationはDM generalizationに写る．
+
+$\mathsf{InFragmentExpr}(e)$の下で，$\mathsf{TypingInvariant}$の各構成子を構造的に
+$\mathsf{DM.Typing}$へ消去する．coercion構成子はmatcher／slot wrapperの消去で同じ
+DM導出に戻り，fragment classifierはconstructor，primitive，matcher，pattern-bodied recursionを
+排除する．公開定理は
+\[
+\begin{aligned}
+&\mathsf{FrozenSigWF}(\Sighat)\land\mathsf{InFragmentExpr}(e)\land
+  \mathsf{SourceTyping}(\Sighat,\emptyset,e,\tau)\\
+&\qquad\Longrightarrow
+  \mathsf{DM.Typing}(\emptyset,e,\lfloor\tau\rfloor)
+\end{aligned}
+\]
+である．左辺から内部invariantを得る段階はterminal auditによるclosed state erasureであり，
+$\mathsf{TypingInvariant}$の存在をcaller premiseにしない．この定理はopen contextのconverseや，
+消去前後のprincipal targetの構文的一致を主張しない．
+
 \subsection{機械化の範囲と非主張}
 
 全expression／pattern／arm／clauseのraw family，対応するOrigin family，solverとledgerの局所代数，
@@ -260,5 +290,5 @@ $\mathtt{axiom}$はない．
 pattern-free direct-self Damas--Milner断片から
 $\mathsf{TypingInvariant}$への埋込みと具体的な受理例に加え，pattern-free syntaxと
 capability-inert type imageの実行可能な特徴付け，一sort substitutionの有限scope代数，
-canonical scheme openingのprincipalityを機械化している．全$\mathsf{DM.Typing}$ derivationの
-executable acceptanceとconservativityは今後の課題である．
+canonical scheme openingのprincipality，closed audited source typingからDM typingへのcapability消去を
+機械化している．全$\mathsf{DM.Typing}$ derivationのexecutable acceptanceは今後の課題である．

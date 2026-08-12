@@ -33,6 +33,7 @@ import TypePM.Elaboration
 import TypePM.CanonicalCoercion
 import TypePM.DamasMilner
 import TypePM.DamasMilnerAcceptance
+import TypePM.DamasMilnerConservativity
 import TypePM.PrincipalityCounterexample
 import TypePM.ElaborationRegression
 import TypePM.SourceSubstitution
