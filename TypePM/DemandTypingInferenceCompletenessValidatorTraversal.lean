@@ -398,6 +398,120 @@ theorem terminalTyCandidate_eq_freshTySubst_of_bounded
     · simp [Ty.fcv]
   · simp [terminalTyCandidate, InferenceBase.freshTySubst, member]
 
+/-- On a type whose free variables are all quantified by one constructor
+binder batch, the validator's terminal candidates are exactly terminal replay
+after the canonical fresh opening.  Capability images may be structural here;
+the result deliberately does not assert a variable-shape invariant. -/
+theorem terminalCandidates_apply_of_scoped
+    {state : InferState} {supply : InferenceBase.FreshSupply}
+    {capBinders : List CapVar} {tyBinders : List TypePM.TyVar}
+    {target : Ty}
+    (capsScoped : ∀ varId, varId ∈ target.fcv → varId ∈ capBinders)
+    (tysScoped : ∀ varId, varId ∈ target.ftv → varId ∈ tyBinders) :
+    (Subst.mk (terminalCapCandidate state supply capBinders)
+        (terminalTyCandidate state supply tyBinders)).apply target =
+      state.prevailing.apply
+        ((Subst.mk (InferenceBase.freshCapSubst supply.nextCap capBinders)
+          (InferenceBase.freshTySubst supply.nextTy tyBinders)).apply target) := by
+  rw [← Subst.seq_apply]
+  apply Subst.apply_eq_of_free_agree
+  · intro varId membership
+    have member := capsScoped varId membership
+    simp [terminalCapCandidate, InferenceBase.freshCapSubst, member,
+      Subst.seq, CapSubst.comp, Cap.apply]
+  · intro varId membership
+    have member := tysScoped varId membership
+    simp [terminalTyCandidate, InferenceBase.freshTySubst, member,
+      Subst.seq]
+
+/-- Closedness says every capability leaf of each constructor argument and
+result is covered by the quantified binder batch. -/
+theorem CtorScheme.Closed.cap_scoped
+    {scheme : CtorScheme} (closed : scheme.Closed) :
+    (∀ target, target ∈ scheme.args → ∀ varId,
+      varId ∈ target.fcv → varId ∈ scheme.capBinders) ∧
+    (∀ varId, varId ∈ scheme.result.fcv →
+      varId ∈ scheme.capBinders) := by
+  constructor
+  · intro target targetMem varId varMem
+    by_cases member : varId ∈ scheme.capBinders
+    · exact member
+    · exfalso
+      have free : varId ∈ scheme.fcv := by
+        apply List.mem_filter.mpr
+        exact ⟨List.mem_append.mpr (Or.inl
+          (Ty.mem_fcvList_of_mem targetMem varMem)), by simpa using member⟩
+      rw [closed.1] at free
+      exact nomatch free
+  · intro varId varMem
+    by_cases member : varId ∈ scheme.capBinders
+    · exact member
+    · exfalso
+      have free : varId ∈ scheme.fcv := by
+        apply List.mem_filter.mpr
+        exact ⟨List.mem_append.mpr (Or.inr varMem), by simpa using member⟩
+      rw [closed.1] at free
+      exact nomatch free
+
+/-- Target-variable counterpart of `CtorScheme.Closed.cap_scoped`. -/
+theorem CtorScheme.Closed.ty_scoped
+    {scheme : CtorScheme} (closed : scheme.Closed) :
+    (∀ target, target ∈ scheme.args → ∀ varId,
+      varId ∈ target.ftv → varId ∈ scheme.tyBinders) ∧
+    (∀ varId, varId ∈ scheme.result.ftv →
+      varId ∈ scheme.tyBinders) := by
+  constructor
+  · intro target targetMem varId varMem
+    by_cases member : varId ∈ scheme.tyBinders
+    · exact member
+    · exfalso
+      have free : varId ∈ scheme.ftv := by
+        apply List.mem_filter.mpr
+        exact ⟨List.mem_append.mpr (Or.inl
+          (Ty.mem_ftvList_of_mem targetMem varMem)), by simpa using member⟩
+      rw [closed.2] at free
+      exact nomatch free
+  · intro varId varMem
+    by_cases member : varId ∈ scheme.tyBinders
+    · exact member
+    · exfalso
+      have free : varId ∈ scheme.ftv := by
+        apply List.mem_filter.mpr
+        exact ⟨List.mem_append.mpr (Or.inr varMem), by simpa using member⟩
+      rw [closed.2] at free
+      exact nomatch free
+
+/-- A constructor-instantiation event for a closed scheme has the canonical
+terminal witness at every later solver cut.  Unlike the emission-only lemma,
+this permits structural specialization of quantified capability images. -/
+theorem ctorInstanceEventCondition_atTerminal
+    {state : InferState} {solveCount : Nat}
+    {supply : InferenceBase.FreshSupply} {scheme : CtorScheme}
+    (closed : scheme.Closed)
+    (solveBound : solveCount ≤ state.trace.solves.length) :
+    CanonicalInstanceEventCondition state
+      (.ctorInstantiation solveCount supply scheme
+        (InferenceBase.instantiateCtorScheme supply scheme).value.1
+        (InferenceBase.instantiateCtorScheme supply scheme).value.2
+        (freshCapImages supply scheme.capBinders)) := by
+  simp only [CanonicalInstanceEventCondition]
+  refine ⟨solveBound, ?_, ?_⟩
+  · change scheme.args.map _ =
+      (scheme.args.map
+        (Subst.mk (InferenceBase.freshCapSubst supply.nextCap
+          scheme.capBinders)
+          (InferenceBase.freshTySubst supply.nextTy
+            scheme.tyBinders)).apply).map state.prevailing.apply
+    rw [List.map_map]
+    apply List.map_congr_left
+    intro target targetMem
+    exact terminalCandidates_apply_of_scoped
+      ((CtorScheme.Closed.cap_scoped closed).1 target targetMem)
+      ((CtorScheme.Closed.ty_scoped closed).1 target targetMem)
+  · exact terminalCandidates_apply_of_scoped
+      (CtorScheme.Closed.cap_scoped closed).2
+      (CtorScheme.Closed.ty_scoped closed).2
+
 /-- Constructor instantiation itself establishes the canonical instance
 clause at its emission cut.  Later suffix transport is the only remaining
 obligation for the surrounding completeness recursion. -/

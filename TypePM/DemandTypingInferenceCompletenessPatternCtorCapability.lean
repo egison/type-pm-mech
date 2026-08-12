@@ -1,0 +1,264 @@
+import TypePM.DemandTypingInferenceCompletenessAlignmentFamilies
+import TypePM.DemandTypingInferenceSoundnessFixMatcher
+
+/-!
+# Pattern-constructor capability completeness
+
+This module completes the remaining capability-only traversal used by user
+pattern constructors.  It first lifts `DDAlignCtorCapsWithLedger` to the
+stateful field-demand executor, then packages complete constructor-capability
+runs including their returned capability.
+-/
+
+namespace TypePM
+namespace DemandTypingInferenceCompletenessPatternCtorCapability
+
+open Inference
+open DemandTypingInferenceCompletenessTraversal
+open DemandTypingInferenceCompletenessStateMutual
+open DemandTypingInferenceCompletenessAlignmentTraversal
+open DemandTypingInferenceCompletenessDataBisimulation
+
+/-- Pointwise capability correspondence. -/
+inductive CapListBisimulation
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state) :
+    List Cap → List Cap → Prop where
+  | nil : CapListBisimulation relation [] []
+  | cons (head : CapBisimulation relation declarativeHead executableHead)
+      (tail : CapListBisimulation relation declarativeTail executableTail) :
+      CapListBisimulation relation (declarativeHead :: declarativeTail)
+        (executableHead :: executableTail)
+
+/-- Pointwise optional capability correspondence for field demands. -/
+inductive OptionalCapListBisimulation
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state) :
+    List (Option Cap) → List (Option Cap) → Prop where
+  | nil : OptionalCapListBisimulation relation [] []
+  | none (tail : OptionalCapListBisimulation relation declarativeTail
+      executableTail) : OptionalCapListBisimulation relation
+        (none :: declarativeTail) (none :: executableTail)
+  | some (head : CapBisimulation relation declarativeHead executableHead)
+      (tail : OptionalCapListBisimulation relation declarativeTail
+        executableTail) : OptionalCapListBisimulation relation
+          (some declarativeHead :: declarativeTail)
+          (some executableHead :: executableTail)
+
+theorem BisimulationExtension.transportCapList
+    {ledger ledger' : CapabilityOriginLedger}
+    {declarative declarative' : Subst} {state state' : InferState}
+    {before : StateBisimulation ledger declarative state}
+    (extension : BisimulationExtension before ledger' declarative' state')
+    {declarativeCaps executableCaps : List Cap}
+    (related : CapListBisimulation before declarativeCaps executableCaps) :
+    CapListBisimulation extension.after declarativeCaps executableCaps := by
+  induction related with
+  | nil => exact .nil
+  | cons head tail induction =>
+      exact .cons
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+          extension head) induction
+
+theorem BisimulationExtension.transportOptionalCapList
+    {ledger ledger' : CapabilityOriginLedger}
+    {declarative declarative' : Subst} {state state' : InferState}
+    {before : StateBisimulation ledger declarative state}
+    (extension : BisimulationExtension before ledger' declarative' state')
+    {declarativeCaps executableCaps : List (Option Cap)}
+    (related : OptionalCapListBisimulation before declarativeCaps
+      executableCaps) :
+    OptionalCapListBisimulation extension.after declarativeCaps
+      executableCaps := by
+  induction related with
+  | nil => exact .nil
+  | none tail induction => exact .none induction
+  | some head tail induction =>
+      exact .some
+        (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportCap
+          extension head) induction
+
+private def StateRunCompletion.refl
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    (relation : TraversalStateCorrespondence q S ledger initial) :
+    StateRunCompletion relation (some initial) q S ledger :=
+  { result := initial
+    success := rfl
+    supply_eq := relation.supply_eq
+    transition := BisimulationExtension.refl relation.prevailing
+    declarative_bounded := relation.declarative_bounded
+    executable_bounded := relation.executable_bounded
+    forward_bounded := relation.forward_bounded
+    reverse_bounded := relation.reverse_bounded
+    ledger_below := relation.ledger_below
+    executable_ledger_below := relation.executable_ledger_below
+    protected_origins := relation.protected_origins
+    protected_below := relation.protected_below
+    allocated_recorded := relation.allocated_recorded }
+
+/-- Generic completeness of the constructor-field capability solver. -/
+theorem ddAlignCtorCapsWithLedger_complete_nonempty
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeChildren executableChildren : List Cap}
+    {declarativeDemands executableDemands : List (Option Cap)}
+    {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (childrenRelated : CapListBisimulation relation.prevailing
+      declarativeChildren executableChildren)
+    (demandsRelated : OptionalCapListBisimulation relation.prevailing
+      declarativeDemands executableDemands)
+    (declarativeChildrenBounded : ∀ child ∈ declarativeChildren,
+      child.BoundedBy q)
+    (declarativeDemandsBounded : ∀ demand ∈ declarativeDemands,
+      ∀ capability, demand = some capability → capability.BoundedBy q)
+    (executableChildrenBounded : ∀ child ∈ executableChildren,
+      child.BoundedBy q)
+    (executableDemandsBounded : ∀ demand ∈ executableDemands,
+      ∀ capability, demand = some capability → capability.BoundedBy q)
+    (aligned : DDAlignCtorCapsWithLedger ledger S declarativeChildren
+      declarativeDemands S') :
+    Nonempty (StateRunCompletion relation
+      (alignPatternCtorCapabilities initial origin executableChildren
+        executableDemands) q S' ledger) := by
+  induction aligned generalizing initial executableChildren executableDemands with
+  | nil =>
+      cases childrenRelated
+      cases demandsRelated
+      exact ⟨StateRunCompletion.refl relation⟩
+  | skip tailAligned induction =>
+      cases childrenRelated with
+      | cons childHead childTail =>
+          cases demandsRelated with
+          | none demandTail =>
+              let tailExists := induction relation childTail demandTail
+                (fun child mem => declarativeChildrenBounded child
+                  (by simp [mem]))
+                (fun demand mem capability equation =>
+                  declarativeDemandsBounded demand (by simp [mem]) capability
+                    equation)
+                (fun child mem => executableChildrenBounded child
+                  (by simp [mem]))
+                (fun demand mem capability equation =>
+                  executableDemandsBounded demand (by simp [mem]) capability
+                    equation)
+              let tailRun := Classical.choice tailExists
+              exact ⟨StateRunCompletion.congrOperation tailRun (by rfl)⟩
+  | @solve S₀ child expected children demands capDelta S₁ capDD tailAligned
+      induction =>
+      cases childrenRelated with
+      | cons childHead childTail =>
+          rename_i executableChildRaw executableChildrenTail
+          cases demandsRelated with
+          | some expectedHead demandTail =>
+              rename_i executableExpectedRaw executableDemandsTail
+              let declarativeChild := child.apply S₀.cap
+              let declarativeExpected := expected.apply S₀.cap
+              let executableChild := Cap.apply initial.prevailing.cap
+                executableChildRaw
+              let executableExpected := Cap.apply initial.prevailing.cap
+                executableExpectedRaw
+              have resolved : ResolvedCapComponents
+                  relation.prevailing.forward relation.prevailing.reverse
+                  declarativeChild executableChild declarativeExpected
+                  executableExpected :=
+                ⟨(Ty.matcher.inj childHead.forward).1,
+                  (Ty.matcher.inj childHead.reverse).1,
+                  (Ty.matcher.inj expectedHead.forward).1,
+                  (Ty.matcher.inj expectedHead.reverse).1⟩
+              have declarativeChildFixed :
+                  declarativeChild.apply S₀.cap = declarativeChild :=
+                (Ty.matcher.inj (relation.prevailing.declarativeIdempotent
+                  (.matcher _ .unit))).1
+              have declarativeExpectedFixed :
+                  declarativeExpected.apply S₀.cap = declarativeExpected :=
+                (Ty.matcher.inj (relation.prevailing.declarativeIdempotent
+                  (.matcher _ .unit))).1
+              have executableChildFixed :
+                  executableChild.apply initial.prevailing.cap =
+                    executableChild :=
+                (Ty.matcher.inj (relation.prevailing.executableIdempotent
+                  (.matcher _ .unit))).1
+              have executableExpectedFixed :
+                  executableExpected.apply initial.prevailing.cap =
+                    executableExpected :=
+                (Ty.matcher.inj (relation.prevailing.executableIdempotent
+                  (.matcher _ .unit))).1
+              have declarativeChildBounded : declarativeChild.BoundedBy q :=
+                relation.declarative_bounded.applyCap
+                  (declarativeChildrenBounded _ (by simp))
+              have declarativeExpectedBounded :
+                  declarativeExpected.BoundedBy q :=
+                relation.declarative_bounded.applyCap
+                  (declarativeDemandsBounded _ (by simp) _ rfl)
+              have executableChildBounded : executableChild.BoundedBy q :=
+                relation.executable_bounded.applyCap
+                  (executableChildrenBounded _ (by simp))
+              have executableExpectedBounded : executableExpected.BoundedBy q :=
+                relation.executable_bounded.applyCap
+                  (executableDemandsBounded _ (by simp) _ rfl)
+              let headRun := runResolvedCapEq_complete (origin := origin)
+                relation resolved capDD declarativeChildFixed
+                declarativeExpectedFixed executableChildFixed
+                executableExpectedFixed declarativeChildBounded
+                declarativeExpectedBounded executableChildBounded
+                executableExpectedBounded
+              let tailExists := induction headRun.completion
+                (BisimulationExtension.transportCapList headRun.transition
+                  childTail)
+                (BisimulationExtension.transportOptionalCapList
+                  headRun.transition demandTail)
+                (fun child mem => declarativeChildrenBounded child
+                  (by simp [mem]))
+                (fun demand mem capability equation =>
+                  declarativeDemandsBounded demand (by simp [mem]) capability
+                    equation)
+                (fun child mem => executableChildrenBounded child
+                  (by simp [mem]))
+                (fun demand mem capability equation =>
+                  executableDemandsBounded demand (by simp [mem]) capability
+                    equation)
+              let tailRun := Classical.choice tailExists
+              exact ⟨StateRunCompletion.congrOperation
+                (StateRunCompletion.seq
+                  (secondOperation := fun state =>
+                    alignPatternCtorCapabilities state origin _ _)
+                  headRun tailRun) (by
+                    simp [alignPatternCtorCapabilities, executableChild,
+                      executableExpected])⟩
+
+/-- Noncomputable projection used by the fallback constructor branch. -/
+noncomputable def ddAlignCtorCapsWithLedger_complete
+    {q : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger : CapabilityOriginLedger} {initial : InferState}
+    {declarativeChildren executableChildren : List Cap}
+    {declarativeDemands executableDemands : List (Option Cap)}
+    {origin : ConstraintOrigin}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (childrenRelated : CapListBisimulation relation.prevailing
+      declarativeChildren executableChildren)
+    (demandsRelated : OptionalCapListBisimulation relation.prevailing
+      declarativeDemands executableDemands)
+    (declarativeChildrenBounded : ∀ child ∈ declarativeChildren,
+      child.BoundedBy q)
+    (declarativeDemandsBounded : ∀ demand ∈ declarativeDemands,
+      ∀ capability, demand = some capability → capability.BoundedBy q)
+    (executableChildrenBounded : ∀ child ∈ executableChildren,
+      child.BoundedBy q)
+    (executableDemandsBounded : ∀ demand ∈ executableDemands,
+      ∀ capability, demand = some capability → capability.BoundedBy q)
+    (aligned : DDAlignCtorCapsWithLedger ledger S declarativeChildren
+      declarativeDemands S') :
+    StateRunCompletion relation
+      (alignPatternCtorCapabilities initial origin executableChildren
+        executableDemands) q S' ledger :=
+  Classical.choice (ddAlignCtorCapsWithLedger_complete_nonempty relation
+    childrenRelated demandsRelated declarativeChildrenBounded
+    declarativeDemandsBounded executableChildrenBounded
+    executableDemandsBounded aligned)
+
+end DemandTypingInferenceCompletenessPatternCtorCapability
+end TypePM
