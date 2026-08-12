@@ -1799,9 +1799,10 @@ theorem auditedSynth_complete_paired_except_matchers
       {arms : armExhaustiveCheck signature clauses
         (S'.apply (.var q.nextTy)) = true}
       {coverage : coverageCheck signature.toMatcherSig clauses capability = true},
-      DDSynthTerminalAudit terminal signature
-        (DDSynthOrigin.matcher clausesOrigin collected inferred clauseCaps
-          catchAll binders arms coverage) →
+      DDClausesTerminalAudit terminal signature clausesOrigin →
+      DDTerminalAudit.MatcherFacts terminal signature clauses rawHoleLists
+        capability (.var q.nextTy) →
+      SynthBudgetAdequate fuel (.matcher clauses) →
       Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
         before (inferExprFuel fuel signature executableContext selfEnv path
           (.matcher clauses) state) q' S'
@@ -1814,6 +1815,8 @@ theorem auditedSynth_complete_paired_except_matchers
         (.matchAll targetExpr matcher pattern body) (.listT bodyTy) q' S'}
       {origin : DDSynthOrigin signature raw ledger ledger'},
       DDSynthTerminalAudit terminal signature origin →
+      SynthBudgetAdequate fuel
+        (.matchAll targetExpr matcher pattern body) →
       Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
         before (inferExprFuel fuel signature executableContext selfEnv path
           (.matchAll targetExpr matcher pattern body) state)
@@ -1904,11 +1907,7 @@ theorem auditedSynth_complete_paired_except_matchers
         (collected := collected) (inferred := inferred)
         (clauseCaps := clauseCaps) (catchAll := catchAll)
         (binders := binders) (arms := arms) (coverage := coverage)
-        (DDSynthTerminalAudit.matcher
-          (collected := collected) (inferred := inferred)
-          (clauseCaps := clauseCaps) (catchAll := catchAll)
-          (binders := binders) (arms := arms) (coverage := coverage)
-          clausesAudit facts)
+        clausesAudit facts adequate
   | matchAll targetAudit patternAudit matcherAudit bodyAudit =>
       rename_i targetExpr targetTarget q₁ S₁ ledger₁ pattern dual bindings q₂
         S₂ ledger₂ S₃ matcherExpr q₃ S₄ ledger₃ body bodyTarget targetAligned
@@ -1920,7 +1919,7 @@ theorem auditedSynth_complete_paired_except_matchers
         (origin := DDSynthOrigin.matchAll targetOrigin patternOrigin
           targetAligned matcherOrigin bodyOrigin)
         (DDSynthTerminalAudit.matchAll (targetAligned := targetAligned)
-          targetAudit patternAudit matcherAudit bodyAudit)
+          targetAudit patternAudit matcherAudit bodyAudit) adequate
 
 
 end DemandTypingInferenceCompletenessGlobalCertified
