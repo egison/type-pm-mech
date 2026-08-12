@@ -316,6 +316,9 @@ def TraversalStateCorrespondence.freezeCapabilityExportExtension
         relation.prevailing.reverse.apply
           (declarative.apply declarativeTarget)
       exact related.reverse
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨forward, reverse⟩
 
 /-- Extending the origin ledger with a canonical scheme-instance batch
 preserves an admissible post that is bounded at the incoming supply.  Old
@@ -619,6 +622,12 @@ def stateBisimulationRecordSourceExtension
         using related.forward,
       by simpa [InferState.prevailing, InferState.recordSource]
         using related.reverse⟩
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨by simpa [InferState.prevailing, InferState.recordSource]
+        using forward,
+      by simpa [InferState.prevailing, InferState.recordSource]
+        using reverse⟩
 
 def TraversalStateCorrespondence.recordSource
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -695,6 +704,9 @@ def stateBisimulationFreshTyExtension
     · change state.prevailing.apply executableTarget =
         before.reverse.apply (declarative.apply declarativeTarget)
       exact related.reverse
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨forward, reverse⟩
 
 def TraversalStateCorrespondence.afterVisitFreshTy
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -737,6 +749,10 @@ def bisimulationExtensionChain3
   after := third.after
   transportTy := fun related =>
     third.transportTy (second.transportTy (first.transportTy related))
+  transportScheme := fun forward reverse =>
+    let afterFirst := first.transportScheme forward reverse
+    let afterSecond := second.transportScheme afterFirst.1 afterFirst.2
+    third.transportScheme afterSecond.1 afterSecond.2
 
 def bisimulationExtensionChain4
     {ledger₀ ledger₁ ledger₂ ledger₃ ledger₄ :
@@ -752,6 +768,11 @@ def bisimulationExtensionChain4
   after := fourth.after
   transportTy := fun related => fourth.transportTy
     (third.transportTy (second.transportTy (first.transportTy related)))
+  transportScheme := fun forward reverse =>
+    let afterFirst := first.transportScheme forward reverse
+    let afterSecond := second.transportScheme afterFirst.1 afterFirst.2
+    let afterThird := third.transportScheme afterSecond.1 afterSecond.2
+    fourth.transportScheme afterThird.1 afterThird.2
 
 structure FreshTyCompletion
     (q : InferenceBase.FreshSupply) (declarative : Subst)
@@ -1031,7 +1052,13 @@ def instantiateSchemeInState_complete
             using related.forward,
           by simpa [after, operation, Inference.instantiateSchemeInState,
             InferState.prevailing, InferState.recordEvent]
-            using related.reverse⟩ }
+            using related.reverse⟩
+      transportScheme := by
+        intro _ _ forward reverse
+        exact ⟨by simpa [after, operation, Inference.instantiateSchemeInState,
+              InferState.prevailing, InferState.recordEvent] using forward,
+          by simpa [after, operation, Inference.instantiateSchemeInState,
+              InferState.prevailing, InferState.recordEvent] using reverse⟩ }
   have actualTarget : operation.1 =
       (InferenceBase.instantiateScheme q executableScheme).value := by
     simp [operation, Inference.instantiateSchemeInState, before.supply_eq]
@@ -1163,7 +1190,13 @@ def instantiateCtorInState_complete
             using related.forward,
           by simpa [after, operation, Inference.instantiateCtorInState,
             InferState.prevailing, InferState.recordEvent]
-            using related.reverse⟩ }
+            using related.reverse⟩
+      transportScheme := by
+        intro _ _ forward reverse
+        exact ⟨by simpa [after, operation, Inference.instantiateCtorInState,
+              InferState.prevailing, InferState.recordEvent] using forward,
+          by simpa [after, operation, Inference.instantiateCtorInState,
+              InferState.prevailing, InferState.recordEvent] using reverse⟩ }
   have actualValue : operation.1 =
       (InferenceBase.instantiateCtorScheme q scheme).value := by
     simp [operation, Inference.instantiateCtorInState, before.supply_eq]
@@ -1901,7 +1934,11 @@ def inferExprFuel_lam_complete
         intro declarativeTarget executableTarget related
         have carried := freshExtension.transportTy
           (visitExtension.transportTy related)
-        exact carried }
+        exact carried
+      transportScheme := by
+        intro _ _ forward reverse
+        have afterVisit := visitExtension.transportScheme forward reverse
+        exact freshExtension.transportScheme afterVisit.1 afterVisit.2 }
   let finishExtension := bodyComplete.transition.after.recordEventExtension
     (.inferredExpr (.lam name body)
       (.fn (.var q.nextTy) bodyResult.target) path)

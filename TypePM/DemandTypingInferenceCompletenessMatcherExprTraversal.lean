@@ -311,6 +311,9 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
           relation.prevailing.reverse.apply
             (declarative.apply declarativeTarget)
         exact related.reverse⟩
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨forward, reverse⟩
 
 /-! ## Completed matcher finalization -/
 

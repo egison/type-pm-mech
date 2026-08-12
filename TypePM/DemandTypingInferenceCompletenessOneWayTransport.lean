@@ -377,7 +377,7 @@ def StateBisimulation.oneWayCut_recordSolve
       executableIdempotent := by
         rw [InferState.prevailing_recordSolve, stepDelta]
         exact executableAfterIdempotent }
-  refine { after := after, transportTy := ?_ }
+  refine { after := after, transportTy := ?_, transportScheme := ?_ }
   intro declarativeTarget executableTarget related
   constructor
   · rw [InferState.prevailing_recordSolve, stepDelta]
@@ -414,6 +414,42 @@ def StateBisimulation.oneWayCut_recordSolve
           ((Subst.seq declarativeDelta declarative).apply
             declarativeTarget) := by
         simp only [Subst.seq_apply]
+  intro declarativeScheme executableScheme forward reverse
+  constructor
+  · rw [InferState.prevailing_recordSolve, stepDelta]
+    calc
+      declarativeScheme.applyMeta (Subst.seq declarativeDelta declarative) =
+          (declarativeScheme.applyMeta declarative).applyMeta
+            declarativeDelta := by rw [Scheme.applyMeta_seq]
+      _ = ((executableScheme.applyMeta state.prevailing).applyMeta
+            before.forward).applyMeta declarativeDelta := by rw [forward]
+      _ = (executableScheme.applyMeta state.prevailing).applyMeta
+            (Subst.seq declarativeDelta before.forward) := by
+              rw [Scheme.applyMeta_seq]
+      _ = (executableScheme.applyMeta state.prevailing).applyMeta
+            (Subst.seq deltaRelation.forwardAfter executableDelta) := by
+              rw [deltaRelation.forwardEquation]
+      _ = (executableScheme.applyMeta
+            (Subst.seq executableDelta state.prevailing)).applyMeta
+              deltaRelation.forwardAfter := by
+              simp only [Scheme.applyMeta_seq]
+  · rw [InferState.prevailing_recordSolve, stepDelta]
+    calc
+      executableScheme.applyMeta (Subst.seq executableDelta state.prevailing) =
+          (executableScheme.applyMeta state.prevailing).applyMeta
+            executableDelta := by rw [Scheme.applyMeta_seq]
+      _ = ((declarativeScheme.applyMeta declarative).applyMeta
+            before.reverse).applyMeta executableDelta := by rw [reverse]
+      _ = (declarativeScheme.applyMeta declarative).applyMeta
+            (Subst.seq executableDelta before.reverse) := by
+              rw [Scheme.applyMeta_seq]
+      _ = (declarativeScheme.applyMeta declarative).applyMeta
+            (Subst.seq deltaRelation.reverseAfter declarativeDelta) := by
+              rw [deltaRelation.reverseEquation]
+      _ = (declarativeScheme.applyMeta
+            (Subst.seq declarativeDelta declarative)).applyMeta
+              deltaRelation.reverseAfter := by
+              simp only [Scheme.applyMeta_seq]
 
 /-- Every emitted dedicated one-way step also carries an origin-safe exact
 one-way delta, not merely local soundness. -/

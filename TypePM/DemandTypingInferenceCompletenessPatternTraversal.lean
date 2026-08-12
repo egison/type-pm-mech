@@ -190,7 +190,13 @@ def instantiateDualInState_complete
         exact ⟨by simpa [after, operation, Inference.instantiateDualInState,
             InferState.prevailing, InferState.recordEvent] using related.forward,
           by simpa [after, operation, Inference.instantiateDualInState,
-            InferState.prevailing, InferState.recordEvent] using related.reverse⟩ }
+            InferState.prevailing, InferState.recordEvent] using related.reverse⟩
+      transportScheme := by
+        intro _ _ forward reverse
+        exact ⟨by simpa [after, operation, Inference.instantiateDualInState,
+              InferState.prevailing, InferState.recordEvent] using forward,
+          by simpa [after, operation, Inference.instantiateDualInState,
+              InferState.prevailing, InferState.recordEvent] using reverse⟩ }
   have actualValue : operation.1 =
       (InferenceBase.instantiateDualScheme q scheme).value := by
     simp [operation, Inference.instantiateDualInState, before.supply_eq]
@@ -638,6 +644,9 @@ def TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
   transportTy := by
     intro declarativeTarget executableTarget related
     exact ⟨related.forward, related.reverse⟩
+  transportScheme := by
+    intro _ _ forward reverse
+    exact ⟨forward, reverse⟩
 
 /-! ## One structural capability allocation -/
 
@@ -692,7 +701,8 @@ def TraversalStateCorrespondence.freshCapExtension
           executableIdempotent := by
             change state.prevailing.Idempotent
             exact before.prevailing.executableIdempotent }
-      transportTy := ?_ }
+      transportTy := ?_
+      transportScheme := ?_ }
   intro declarativeTarget executableTarget related
   exact ⟨by
       change declarative.apply declarativeTarget =
@@ -704,6 +714,8 @@ def TraversalStateCorrespondence.freshCapExtension
         before.prevailing.reverse.apply
           (declarative.apply declarativeTarget)
       exact related.reverse⟩
+  intro _ _ forward reverse
+  exact ⟨forward, reverse⟩
 
 def TraversalStateCorrespondence.freshCap
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -768,6 +780,10 @@ def FreshTargetsCompletion.extension
     intro declarativeTarget executableTarget related
     rw [run.prevailing_eq]
     exact run.transition.transportTy related
+  transportScheme := by
+    intro _ _ forward reverse
+    rw [run.prevailing_eq]
+    exact run.transition.transportScheme forward reverse
 
 /-- Executable tuple-field allocation is literally the pure supply-indexed
 DD allocation, including left-to-right order. -/
@@ -985,6 +1001,10 @@ def PatternCtorCapRunCompletion.extension
     intro declarativeTarget executableTarget related
     rw [run.prevailing_eq]
     exact run.transition.transportTy related
+  transportScheme := by
+    intro _ _ forward reverse
+    rw [run.prevailing_eq]
+    exact run.transition.transportScheme forward reverse
 
 def PatternRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
