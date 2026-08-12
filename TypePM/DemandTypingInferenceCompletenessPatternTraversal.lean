@@ -1519,6 +1519,270 @@ def ppatHole_complete
 
 /-! ## Solver-free user-pattern branches -/
 
+def patternVar_complete
+    (fuel : Nat) (signature : FrozenSig)
+    (declarativeContext executableContext : Context)
+    (declarativeParameters executableParameters : PatternCtx)
+    (selfEnv : SelfEnv) (path : SyntaxPath) (name : String)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeBindings executableBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (absent : name ∉ declarativeBindings.names) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path (.pvar name) state)
+      { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+      (DDLedger.markFreshCap ledger q)
+      ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩
+      (declarativeBindings ++ [(name, .var q.nextTy)]) := by
+  let capOrigin := freshOrigin .pattern path "pattern-variable-capability"
+  let targetOrigin := freshOrigin .pattern path "pattern-variable-target"
+  let freshCap := state.freshCap capOrigin
+  let capRelation :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+      before capOrigin
+  let freshTarget := freshCap.2.freshTy targetOrigin
+  let targetCompletion := capRelation.freshTy targetOrigin
+  have capabilityEq : freshCap.1 = .var ⟨q.nextCap⟩ := by
+    change Cap.var ⟨state.supply.nextCap⟩ = Cap.var ⟨q.nextCap⟩
+    rw [before.supply_eq]
+  have targetEq : freshTarget.1 = .var q.nextTy := by
+    simpa [freshTarget] using targetCompletion.target_eq
+  let executableResultBindings := executableBindings ++ [(name, freshTarget.1)]
+  let executableDual := Dual.mk freshCap.1 freshTarget.1
+  let freshEvent := TraceEvent.patternVarFresh executableContext
+    executableParameters executableBindings ⟨state.supply.nextCap⟩
+    freshCap.2.supply.nextTy
+  let afterFreshEvent := targetCompletion.state.recordEvent freshEvent (by
+    intro _ membership
+    simp [freshEvent, TraceEvent.allocatedCapVars] at membership)
+  let visited := afterFreshEvent.visit .patternVar path
+  let inferredEvent := TraceEvent.inferredPattern (.pvar name) executableDual
+    executableResultBindings path
+  let final := visited.recordEvent inferredEvent (by
+    intro _ membership
+    simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
+  let capExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+      before capOrigin
+  let targetExtension := capRelation.freshTyExtension targetOrigin
+  let freshEventExtension :=
+    targetCompletion.state.prevailing.recordEventExtension freshEvent
+  let visitExtension := afterFreshEvent.visitExtension .patternVar path
+  let inferredExtension := visitExtension.after.recordEventExtension inferredEvent
+  let suffix := freshEventExtension.seq
+    (visitExtension.seq inferredExtension)
+  let transition := (capExtension.seq targetExtension).seq suffix
+  have executableAbsent : name ∉ executableBindings.names := by
+    rw [← bindings.names_eq]
+    exact absent
+  refine
+    { result := ⟨executableDual, executableResultBindings,
+        ((freshTarget.2.recordEvent freshEvent |> fun current =>
+          visit current .patternVar path).recordEvent inferredEvent)⟩
+      success := ?_
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual := by
+        change DualBisimulation transition.after
+          ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ executableDual
+        dsimp [executableDual]
+        rw [capabilityEq, targetEq]
+        exact DualBisimulation.same transition.after
+          ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩
+      bindings := by
+        apply DemandTypingInferenceCompletenessPatternTraversal.MonoCtxBisimulation.append
+        · exact
+            DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+              transition bindings
+        · rw [targetEq]
+          exact .cons (transition.after.sameTarget (.var q.nextTy)) .nil }
+  simp [inferPatternFuel, executableAbsent, capOrigin, targetOrigin, freshCap,
+    freshTarget, executableDual, executableResultBindings, freshEvent,
+    inferredEvent]
+
+def patternWild_complete
+    (fuel : Nat) (signature : FrozenSig)
+    (declarativeContext executableContext : Context)
+    (declarativeParameters executableParameters : PatternCtx)
+    (selfEnv : SelfEnv) (path : SyntaxPath)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeBindings executableBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path .wild state)
+      { q with nextCap := q.nextCap + 1, nextTy := q.nextTy + 1 } S
+      (DDLedger.markFreshCap ledger q)
+      ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ declarativeBindings := by
+  let capOrigin := freshOrigin .pattern path "pattern-wild-capability"
+  let targetOrigin := freshOrigin .pattern path "pattern-wild-target"
+  let freshCap := state.freshCap capOrigin
+  let capRelation :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+      before capOrigin
+  let freshTarget := freshCap.2.freshTy targetOrigin
+  let targetCompletion := capRelation.freshTy targetOrigin
+  have capabilityEq : freshCap.1 = .var ⟨q.nextCap⟩ := by
+    change Cap.var ⟨state.supply.nextCap⟩ = Cap.var ⟨q.nextCap⟩
+    rw [before.supply_eq]
+  have targetEq : freshTarget.1 = .var q.nextTy := by
+    simpa [freshTarget] using targetCompletion.target_eq
+  let executableDual := Dual.mk freshCap.1 freshTarget.1
+  let freshEvent := TraceEvent.patternWildFresh executableContext
+    executableParameters executableBindings ⟨state.supply.nextCap⟩
+    freshCap.2.supply.nextTy
+  let afterFreshEvent := targetCompletion.state.recordEvent freshEvent (by
+    intro _ membership
+    simp [freshEvent, TraceEvent.allocatedCapVars] at membership)
+  let visited := afterFreshEvent.visit .patternWild path
+  let inferredEvent := TraceEvent.inferredPattern .wild executableDual
+    executableBindings path
+  let final := visited.recordEvent inferredEvent (by
+    intro _ membership
+    simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
+  let capExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+      before capOrigin
+  let targetExtension := capRelation.freshTyExtension targetOrigin
+  let freshEventExtension :=
+    targetCompletion.state.prevailing.recordEventExtension freshEvent
+  let visitExtension := afterFreshEvent.visitExtension .patternWild path
+  let inferredExtension := visitExtension.after.recordEventExtension inferredEvent
+  let suffix := freshEventExtension.seq
+    (visitExtension.seq inferredExtension)
+  let transition := (capExtension.seq targetExtension).seq suffix
+  refine
+    { result := ⟨executableDual, executableBindings,
+        ((freshTarget.2.recordEvent freshEvent |> fun current =>
+          visit current .patternWild path).recordEvent inferredEvent)⟩
+      success := by
+        simp [inferPatternFuel, capOrigin, targetOrigin, freshCap, freshTarget,
+          executableDual, freshEvent, inferredEvent]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual := by
+        change DualBisimulation transition.after
+          ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩ executableDual
+        dsimp [executableDual]
+        rw [capabilityEq, targetEq]
+        exact DualBisimulation.same transition.after
+          ⟨.var ⟨q.nextCap⟩, .var q.nextTy⟩
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          transition bindings }
+
+def patternValue_complete
+    (fuel : Nat) (signature : FrozenSig)
+    (declarativeContext executableContext : Context)
+    (declarativeParameters executableParameters : PatternCtx)
+    (selfEnv : SelfEnv) (path : SyntaxPath) (expression : Expr)
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeBindings executableBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    {target : Ty}
+    (expressionRun : SynthRunCompletion (before.visit .patternValue path)
+      (inferExprFuel fuel signature
+        (executableBindings.toContext ++ executableContext) selfEnv
+        (0 :: path) expression (visit state .patternValue path))
+      q₁ S₁ ledger₁ target) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.pval expression) state)
+      { q₁ with nextCap := q₁.nextCap + 1 } S₁
+      (DDLedger.markFreshCap ledger₁ q₁)
+      ⟨.var ⟨q₁.nextCap⟩, target⟩ declarativeBindings := by
+  let capOrigin := freshOrigin .pattern path "pattern-value-capability"
+  let expressionRelation := expressionRun.completion.state
+  let fresh := expressionRun.result.state.freshCap capOrigin
+  let freshRelation :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+      expressionRelation capOrigin
+  have capabilityEq : fresh.1 = .var ⟨q₁.nextCap⟩ := by
+    change Cap.var ⟨expressionRun.result.state.supply.nextCap⟩ =
+      Cap.var ⟨q₁.nextCap⟩
+    rw [expressionRun.supply_eq]
+  let executableDual := Dual.mk fresh.1 expressionRun.result.target
+  let freshEvent := TraceEvent.patternValueFresh executableContext
+    executableParameters executableBindings
+    ⟨expressionRun.result.state.supply.nextCap⟩ expressionRun.result.target
+  let afterFreshEvent := freshRelation.recordEvent freshEvent (by
+    intro _ membership
+    simp [freshEvent, TraceEvent.allocatedCapVars] at membership)
+  let inferredEvent := TraceEvent.inferredPattern (.pval expression)
+    executableDual executableBindings path
+  let final := afterFreshEvent.recordEvent inferredEvent (by
+    intro _ membership
+    simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
+  let visitExtension := before.visitExtension .patternValue path
+  let freshExtension :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+      expressionRelation capOrigin
+  let freshEventExtension := freshExtension.after.recordEventExtension freshEvent
+  let inferredExtension := freshEventExtension.after.recordEventExtension
+    inferredEvent
+  let suffix := freshExtension.seq
+    (freshEventExtension.seq inferredExtension)
+  let transition := visitExtension.seq (expressionRun.transition.seq suffix)
+  refine
+    { result := ⟨executableDual, executableBindings,
+        (fresh.2.recordEvent freshEvent).recordEvent inferredEvent⟩
+      success := by
+        simp [inferPatternFuel, expressionRun.success, capOrigin, fresh,
+          executableDual, freshEvent, inferredEvent]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual := by
+        change DualBisimulation transition.after
+          ⟨.var ⟨q₁.nextCap⟩, target⟩ executableDual
+        refine ⟨?_, ?_⟩
+        · dsimp [executableDual]
+          rw [capabilityEq]
+          exact CapBisimulation.same transition.after (.var ⟨q₁.nextCap⟩)
+        · exact
+            DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTy
+              suffix expressionRun.target
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          transition bindings }
+
 noncomputable def patternEmbed_complete
     (fuel : Nat) (signature : FrozenSig) (context : Context)
     (selfEnv : SelfEnv) (path : SyntaxPath) (name : String)
