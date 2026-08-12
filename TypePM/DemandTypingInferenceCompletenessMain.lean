@@ -1516,5 +1516,121 @@ termination_by fuel
 
 end
 
+/-! ## Bounded structural synthesis recursion
+
+This is the first closed component of the weighted global motive.  Besides
+successful traversal it proves the raw executable result boundedness needed
+by every later checking cut. -/
+
+mutual
+
+theorem synthStructuralOrigin_bounded_complete_nonempty
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    {raw : DDSynth signature q S context expression target q' S'}
+    {origin : DDSynthOrigin signature raw ledger ledger'}
+    (certificate : DDSynthStructuralOrigin signature origin)
+    (adequate : SynthBudgetAdequate fuel expression) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature context selfEnv path expression state)
+      q' S' ledger' target) := by
+  cases fuel with
+  | zero => simp [SynthBudgetAdequate] at adequate
+  | succ fuel =>
+    cases certificate with
+    | leaf leaf =>
+        cases leaf with
+        | var lookup =>
+            exact ⟨boundedSynthVar_complete before contextBounded lookup fuel⟩
+        | lit => exact ⟨boundedSynthLit_complete before fuel⟩
+        | something => exact ⟨boundedSynthSomething_complete before fuel⟩
+    | lam bodyCertificate =>
+        rename_i binderName body bodyTarget bodyRaw bodyOrigin
+        have bodyAdequate : SynthBudgetAdequate fuel body := by
+          simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+          omega
+        let bodyBefore := before.afterVisitFreshTy .exprLam path
+          (freshOrigin .expression path "lambda-domain")
+        have bodyContextBounded : Context.BoundedBy
+            { q with nextTy := q.nextTy + 1 }
+            ((binderName, Scheme.mono (.var q.nextTy)) :: context) :=
+          Context.BoundedBy.cons
+            (Scheme.BoundedBy.ofMono
+              (Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)))
+            (contextBounded.mono (SupplyExtends.bumpTy q 1))
+        let bodyRun := Classical.choice
+          (synthStructuralOrigin_bounded_complete_nonempty
+            (selfEnv := selfEnv.erase binderName) (path := 0 :: path)
+            fuel bodyBefore bodyContextBounded bodyCertificate bodyAdequate)
+        exact ⟨boundedSynthLam_complete before bodyRun
+          ((Ty.BoundedBy.varOf (Nat.lt_succ_self q.nextTy)).mono
+            bodyOrigin.erase.supplyExtends)⟩
+    | tuple children =>
+        rename_i expressions targets childrenRaw childrenOrigin
+        have childrenAdequate : SynthsBudgetAdequate fuel expressions := by
+          simp only [SynthBudgetAdequate, SynthsBudgetAdequate,
+            exprTraversalFuel] at adequate ⊢
+          omega
+        let childrenBefore := before.afterVisit .exprTuple path
+        let childrenRun := Classical.choice
+          (synthsStructuralOrigin_bounded_complete_nonempty
+            (parent := path) (index := 0) (selfEnv := selfEnv)
+            fuel childrenBefore contextBounded children childrenAdequate)
+        exact ⟨boundedSynthTuple_complete before childrenRun⟩
+termination_by fuel
+
+theorem synthsStructuralOrigin_bounded_complete_nonempty
+    {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {parent : SyntaxPath} {index : Nat}
+    {expressions : List Expr} {targets : List Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (contextBounded : context.BoundedBy q)
+    {raw : DDSynths signature q S context expressions targets q' S'}
+    {origin : DDSynthsOrigin signature raw ledger ledger'}
+    (certificate : DDSynthsStructuralOrigin signature origin)
+    (adequate : SynthsBudgetAdequate fuel expressions) :
+    Nonempty (BoundedSynthsRunCompletion before
+      (inferExprsFuel fuel signature context selfEnv parent index expressions
+        state) q' S' ledger' targets) := by
+  cases fuel with
+  | zero => simp [SynthsBudgetAdequate] at adequate
+  | succ fuel =>
+    cases certificate with
+    | nil => exact ⟨boundedSynthsNil_complete fuel signature context selfEnv
+        parent index before⟩
+    | cons head tail =>
+        rename_i expression target q₁ S₁ ledger₁ expressions targets
+          headRaw tailRaw headOrigin tailOrigin
+        have headAdequate : SynthBudgetAdequate fuel expression := by
+          simp only [SynthsBudgetAdequate, SynthBudgetAdequate,
+            exprListTraversalFuel] at adequate ⊢
+          omega
+        have tailAdequate : SynthsBudgetAdequate fuel expressions := by
+          simp only [SynthsBudgetAdequate, exprListTraversalFuel]
+            at adequate ⊢
+          omega
+        let headRun := Classical.choice
+          (synthStructuralOrigin_bounded_complete_nonempty
+            (path := index :: parent) (selfEnv := selfEnv) fuel before
+            contextBounded head headAdequate)
+        have tailContextBounded : context.BoundedBy _ :=
+          contextBounded.mono headOrigin.erase.supplyExtends
+        let tailRun := Classical.choice
+          (synthsStructuralOrigin_bounded_complete_nonempty
+            (parent := parent) (index := index + 1) (selfEnv := selfEnv)
+            fuel headRun.run.completion.state tailContextBounded tail
+            tailAdequate)
+        exact ⟨boundedSynthsCons_complete before headRun tailRun
+          tailOrigin.erase.supplyExtends⟩
+termination_by fuel
+
+end
+
 end DemandTypingInferenceCompletenessMain
 end TypePM
