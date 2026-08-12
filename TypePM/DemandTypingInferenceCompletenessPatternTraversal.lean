@@ -56,6 +56,82 @@ theorem namesDisjoint_of_bisimulation
   rw [← leftRelated.names_eq, ← rightRelated.names_eq]
   exact (namesDisjoint_eq_true _ _).mpr disjoint
 
+theorem PatternCtxBisimulation.find?_complete
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : PatternCtx}
+    (related : PatternCtxBisimulation relation declarativeContext
+      executableContext) {name : String} {dual : Dual}
+    (lookup : declarativeContext.find? name = some dual) :
+    ∃ executableDual,
+      executableContext.find? name = some executableDual ∧
+        DualBisimulation relation dual executableDual := by
+  induction related with
+  | nil => simp [PatternCtx.find?] at lookup
+  | @cons declarativeDual executableDual declarativeTail executableTail
+      entryName head tail induction =>
+      by_cases same : entryName = name
+      · subst entryName
+        simp [PatternCtx.find?] at lookup ⊢
+        subst declarativeDual
+        exact head
+      · have tailLookup : declarativeTail.find? name = some dual := by
+          simpa [PatternCtx.find?, same] using lookup
+        rcases induction tailLookup with ⟨found, foundLookup, foundRelated⟩
+        exact ⟨found, by simpa [PatternCtx.find?, same] using foundLookup,
+          foundRelated⟩
+
+theorem DualListBisimulation.prodCaps
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    (related : DualListBisimulation relation declarativeDuals
+      executableDuals) :
+    CapBisimulation relation (.prod (declarativeDuals.map Dual.cap))
+      (.prod (executableDuals.map Dual.cap)) := by
+  constructor
+  · change declarative.apply (.matcher (.prod _) .unit) =
+      relation.forward.apply
+        (state.prevailing.apply (.matcher (.prod _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.cap.forward
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        injection ih with tailEq
+        injection tailEq with tailListEq
+        simp only [List.map_cons, Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+  · change state.prevailing.apply (.matcher (.prod _) .unit) =
+      relation.reverse.apply
+        (declarative.apply (.matcher (.prod _) .unit))
+    simp only [Subst.apply_matcher, Subst.apply_unit, Cap.apply]
+    induction related with
+    | nil => rfl
+    | cons head tail ih =>
+        have pointwise := head.cap.reverse
+        change Ty.matcher _ Ty.unit = Ty.matcher _ Ty.unit at pointwise
+        injection pointwise with capEq
+        injection ih with tailEq
+        injection tailEq with tailListEq
+        simp only [List.map_cons, Cap.apply, Cap.applyList]
+        rw [capEq, tailListEq]
+
+theorem DualListBisimulation.prodTargets
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} {relation : StateBisimulation ledger declarative state}
+    {declarativeDuals executableDuals : List Dual}
+    (related : DualListBisimulation relation declarativeDuals
+      executableDuals) :
+    TyBisimulation relation (.prod (declarativeDuals.map Dual.target))
+      (.prod (executableDuals.map Dual.target)) := by
+  apply tyListBisimulation_prod
+  induction related with
+  | nil => exact .nil
+  | cons head tail ih => exact .cons head.target ih
+
 /-! ## One structural capability allocation -/
 
 def TraversalStateCorrespondence.freshCapExtension
@@ -156,6 +232,41 @@ def TraversalStateCorrespondence.freshCap
       CapabilityOriginLedger.setOrigins,
       before.supply_eq] using
         DDLedger.LedgerBelow.markFreshCap before.executable_ledger_below
+
+structure FreshTargetsCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (result : List Ty × InferState) (q' : InferenceBase.FreshSupply)
+    (targets : List Ty) : Type where
+  targets_eq : result.1 = targets
+  transition : BisimulationExtension before.prevailing ledger S result.2
+  state : TraversalStateCorrespondence q' S ledger result.2
+
+/-- Executable tuple-field allocation is literally the pure supply-indexed
+DD allocation, including left-to-right order. -/
+def freshTargets_complete
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (origin : ConstraintOrigin) (count : Nat) :
+    FreshTargetsCompletion before (Inference.freshTargets state origin count)
+      (freshTargetsSupply count q).2 (freshTargetsSupply count q).1 := by
+  induction count generalizing q state with
+  | zero =>
+      exact
+        { targets_eq := rfl
+          transition := .refl before.prevailing
+          state := before }
+  | succ count ih =>
+      let allocated := before.freshTy origin
+      let tail := ih allocated.state
+      refine
+        { targets_eq := ?_
+          transition := before.freshTyExtension origin |>.seq tail.transition
+          state := tail.state }
+      simp only [Inference.freshTargets, freshTargetsSupply]
+      rw [allocated.target_eq, tail.targets_eq]
 
 /-! ## Result packages -/
 
@@ -615,6 +726,131 @@ def ppatHole_complete
         exact .cons (DualBisimulation.same transition.after
           ⟨.var ⟨q.nextCap⟩, target⟩) .nil
       bindings := .nil }
+
+/-! ## Solver-free user-pattern branches -/
+
+noncomputable def patternEmbed_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (selfEnv : SelfEnv) (path : SyntaxPath) (name : String)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (declarativeParameters executableParameters : PatternCtx)
+    (parameters : PatternCtxBisimulation before.prevailing
+      declarativeParameters executableParameters)
+    (declarativeBindings executableBindings : MonoCtx)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    {dual : Dual} (lookup : declarativeParameters.find? name = some dual) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context executableParameters
+        executableBindings selfEnv path (.embed name) state)
+      q S ledger dual declarativeBindings := by
+  let witness :=
+    DemandTypingInferenceCompletenessPatternTraversal.PatternCtxBisimulation.find?_complete
+      parameters lookup
+  let executableDual := Classical.choose witness
+  have executableFacts := Classical.choose_spec witness
+  have executableLookup := executableFacts.1
+  have dualRelated := executableFacts.2
+  let event := TraceEvent.inferredPattern (.embed name) executableDual
+    executableBindings path
+  let final :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord
+      before .patternEmbed path event (by
+        intro _ membership
+        simp [event, TraceEvent.allocatedCapVars] at membership)
+  let transition :=
+    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension
+      before .patternEmbed path event
+  refine
+    { result := ⟨executableDual, executableBindings,
+        (visit state .patternEmbed path).recordEvent event⟩
+      success := by
+        simp only [inferPatternFuel]
+        rw [executableLookup]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDual
+          transition dualRelated
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          transition bindings }
+
+def patternTuple_complete
+    (fuel : Nat) (signature : FrozenSig) (context : Context)
+    (declarativeParameters executableParameters : PatternCtx)
+    (selfEnv : SelfEnv) (path : SyntaxPath) (patterns : List Pattern)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (executableBindings : MonoCtx)
+    {q' : InferenceBase.FreshSupply} {S' : Subst}
+    {ledger' : CapabilityOriginLedger} {duals : List Dual}
+    {bindings : MonoCtx}
+    (children : PatternsRunCompletion
+      (before.visit .patternTuple path)
+      (inferPatternsFuel fuel signature context executableParameters
+        executableBindings selfEnv path 0 patterns
+        (visit state .patternTuple path))
+      q' S' ledger' duals bindings) :
+    PatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature context executableParameters
+        executableBindings selfEnv path (.ptuple patterns) state)
+      q' S' ledger'
+      ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings := by
+  let executableDual := Dual.mk (.prod (children.result.duals.map Dual.cap))
+    (.prod (children.result.duals.map Dual.target))
+  let event := TraceEvent.inferredPattern (.ptuple patterns) executableDual
+    children.result.bindings path
+  let final := children.completion.recordEvent event (by
+    intro _ membership
+    simp [event, TraceEvent.allocatedCapVars] at membership)
+  let finishExtension := children.transition.after.recordEventExtension event
+  let transition := (before.visitExtension .patternTuple path).seq
+    (children.transition.seq finishExtension)
+  have caps : CapBisimulation finishExtension.after
+      (.prod (duals.map Dual.cap))
+      (.prod (children.result.duals.map Dual.cap)) := by
+    exact DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.prodCaps
+      (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+        finishExtension children.duals)
+  have targets : TyBisimulation finishExtension.after
+      (.prod (duals.map Dual.target))
+      (.prod (children.result.duals.map Dual.target)) := by
+    exact DemandTypingInferenceCompletenessPatternTraversal.DualListBisimulation.prodTargets
+      (DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+        finishExtension children.duals)
+  refine
+    { result := ⟨executableDual, children.result.bindings,
+        children.result.state.recordEvent event⟩
+      success := by simp [inferPatternFuel, children.success, executableDual,
+        event]
+      supply_eq := final.supply_eq
+      transition := transition
+      declarative_bounded := final.declarative_bounded
+      executable_bounded := final.executable_bounded
+      forward_bounded := final.forward_bounded
+      reverse_bounded := final.reverse_bounded
+      ledger_below := final.ledger_below
+      executable_ledger_below := final.executable_ledger_below
+      protected_origins := final.protected_origins
+      protected_below := final.protected_below
+      allocated_recorded := final.allocated_recorded
+      dual := ⟨caps, targets⟩
+      bindings :=
+        DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+          finishExtension children.bindings }
 
 /-! ## Empty and cons list packaging -/
 

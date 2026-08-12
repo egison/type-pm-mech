@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessTraversal
 import TypePM.DemandTypingInferenceCompletenessAlignmentTraversal
+import TypePM.DemandTypingInferenceCompletenessPatternTraversal
 
 /-!
 # Structural expression-branch completeness
@@ -17,6 +18,19 @@ open Inference
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessContextBisimulation
+open DemandTypingInferenceCompletenessPatternTraversal
+
+/-- Type constructors preserve the residual equations pointwise. -/
+def TyBisimulation.listT
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {executable : InferState}
+    {relation : StateBisimulation ledger declarative executable}
+    {declarativeTarget executableTarget : Ty}
+    (related : TyBisimulation relation declarativeTarget executableTarget) :
+    TyBisimulation relation (.listT declarativeTarget) (.listT executableTarget) := by
+  constructor
+  · simpa only [Subst.apply_listT] using congrArg Ty.listT related.forward
+  · simpa only [Subst.apply_listT] using congrArg Ty.listT related.reverse
 
 /-- Finish an expression after an already completed synthesized sub-run. -/
 def SynthRunCompletion.finish
@@ -64,6 +78,51 @@ def SynthRunCompletion.finish
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
       target := extension.transportTy run.target }
+
+/-- Finish a synthesized run at a fixed constructor-built result target. -/
+def SynthRunCompletion.finishAs
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option ExprResult} {q' : InferenceBase.FreshSupply}
+    {S' : Subst} {ledger' : CapabilityOriginLedger} {innerTarget : Ty}
+    (run : SynthRunCompletion before operation q' S' ledger' innerTarget)
+    (expression : Expr) (path : SyntaxPath)
+    (declarativeTarget executableTarget : Ty)
+    (targetRelation : TyBisimulation run.transition.after declarativeTarget
+      executableTarget) :
+    SynthRunCompletion before
+      (do
+        let inner ← operation
+        pure (Inference.finishExpr expression path executableTarget inner.state))
+      q' S' ledger' declarativeTarget := by
+  let event := TraceEvent.inferredExpr expression executableTarget path
+  let extension := run.transition.after.recordEventExtension event
+  let finalRelation := run.completion.state.recordEvent event
+    (by simp [event, TraceEvent.allocatedCapVars])
+  refine
+    { result := Inference.finishExpr expression path executableTarget run.result.state
+      success := ?_
+      supply_eq := run.supply_eq
+      transition := run.transition.seq extension
+      declarative_bounded := finalRelation.declarative_bounded
+      executable_bounded := finalRelation.executable_bounded
+      forward_bounded := finalRelation.forward_bounded
+      reverse_bounded := finalRelation.reverse_bounded
+      ledger_below := finalRelation.ledger_below
+      executable_ledger_below := finalRelation.executable_ledger_below
+      protected_origins := finalRelation.protected_origins
+      protected_below := finalRelation.protected_below
+      allocated_recorded := finalRelation.allocated_recorded
+      target := extension.transportTy targetRelation }
+  calc
+    _ = (some run.result).bind (fun inner => some
+        (Inference.finishExpr expression path executableTarget inner.state)) :=
+      congrArg (fun candidate : Option ExprResult => candidate.bind (fun inner =>
+        some (Inference.finishExpr expression path executableTarget inner.state)))
+        run.success
+    _ = some (Inference.finishExpr expression path executableTarget
+        run.result.state) := rfl
 
 /-- Finish an expression after an already completed state-only cut. -/
 def StateRunCompletion.finishExpr
@@ -240,10 +299,6 @@ def inferExprFuel_app_complete
                 (freshOrigin .expression path "application-result")).1))
         q₂ S₂ ledger₂)
     (argumentComplete :
-      let domainAllocation := functionComplete.completion.state.freshTy
-        (freshOrigin .expression path "application-domain")
-      let resultAllocation := domainAllocation.state.freshTy
-        (freshOrigin .expression path "application-result")
       SynthRunCompletion alignmentComplete.completion
         (inferExprFuel fuel signature context selfEnv (1 :: path) argument
           alignmentComplete.result) q₃ S₃ ledger₃ argumentTarget)
@@ -381,6 +436,378 @@ def inferExprFuel_app_complete
         | some state => some (Inference.finishExpr expression path
             executableResult state)
       exact congrArg continueExpected expectedComplete.success
+    _ = some finished.result := rfl
+
+/-- Ordinary (non-matcher-body) recursion is structural after reconstructing
+the canonical two-fresh placeholder, traversing the body, and completing the
+result alignment. -/
+def inferExprFuel_fix_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {self argument : String} {body : Expr} {bodyTarget : Ty}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {initial : InferState}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
+    (nonMatcher : NonMatcherBody body)
+    (bodyComplete :
+      let visited := relation.visit .exprFix path
+      let domainAllocation := visited.freshTy
+        (freshOrigin .recursiveBinder path "fix-domain")
+      let codomainAllocation := domainAllocation.state.freshTy
+        (freshOrigin .recursiveBinder path "fix-codomain")
+      let executablePlaceholder := Ty.fn (fixDomain initial path)
+        (fixCodomain initial path)
+      let placeholderEvent := TraceEvent.fixPlaceholder self argument
+        executablePlaceholder path
+      let directEvent := TraceEvent.directSelfAccepted self executablePlaceholder path
+      let bodyRelation := (codomainAllocation.state.recordEvent placeholderEvent
+        (by simp [placeholderEvent, TraceEvent.allocatedCapVars])).recordEvent
+          directEvent (by simp [directEvent, TraceEvent.allocatedCapVars])
+      let insideContext :=
+        (argument, Scheme.mono (fixDomain initial path)) ::
+          (self, Scheme.mono executablePlaceholder) :: context
+      let insideSelf := (self, executablePlaceholder) ::
+        (selfEnv.eraseMany [self, argument])
+      SynthRunCompletion bodyRelation
+        (inferExprFuel fuel signature insideContext insideSelf (0 :: path) body
+          (fixBodyEntryState initial path self argument)) q₁ S₁ ledger₁
+        bodyTarget)
+    (alignmentComplete : StateRunCompletion bodyComplete.completion.state
+      (alignTypes bodyComplete.result.state
+        (freshOrigin .recursiveBinder path "fix-result")
+        bodyComplete.result.target (fixCodomain initial path))
+      q₂ S₂ ledger₂) :
+    SynthRunCompletion relation
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.fix self argument body) initial)
+      q₂ S₂ ledger₂
+      (.fn (.var q.nextTy) (.var (q.nextTy + 1))) := by
+  let visited := relation.visit .exprFix path
+  let domainOrigin := freshOrigin .recursiveBinder path "fix-domain"
+  let codomainOrigin := freshOrigin .recursiveBinder path "fix-codomain"
+  let resultOrigin := freshOrigin .recursiveBinder path "fix-result"
+  let domainAllocation := visited.freshTy domainOrigin
+  let codomainAllocation := domainAllocation.state.freshTy codomainOrigin
+  let executablePlaceholder := Ty.fn (fixDomain initial path)
+    (fixCodomain initial path)
+  let declarativePlaceholder := Ty.fn (.var q.nextTy) (.var (q.nextTy + 1))
+  have placeholderAtAllocation : TyBisimulation
+      codomainAllocation.state.prevailing declarativePlaceholder
+      executablePlaceholder := by
+    have domainEq := domainAllocation.target_eq
+    have codomainEq := codomainAllocation.target_eq
+    change fixDomain initial path = .var q.nextTy at domainEq
+    change fixCodomain initial path = .var (q.nextTy + 1) at codomainEq
+    dsimp [declarativePlaceholder, executablePlaceholder]
+    rw [relation.supply_eq]
+    exact codomainAllocation.state.prevailing.sameTarget _
+  let placeholderEvent := TraceEvent.fixPlaceholder self argument
+    executablePlaceholder path
+  let directEvent := TraceEvent.directSelfAccepted self executablePlaceholder path
+  let placeholderExtension := codomainAllocation.state.prevailing.recordEventExtension
+    placeholderEvent
+  let directExtension := placeholderExtension.after.recordEventExtension directEvent
+  let placeholderAtBody := directExtension.transportTy
+    (placeholderExtension.transportTy placeholderAtAllocation)
+  let placeholderAfterBody := bodyComplete.transition.transportTy placeholderAtBody
+  let placeholderAfterAlignment := alignmentComplete.transition.transportTy
+    placeholderAfterBody
+  let expression := Expr.fix self argument body
+  let finished :=
+    DemandTypingInferenceCompletenessExprTraversal.StateRunCompletion.finishExpr
+      alignmentComplete expression path declarativePlaceholder
+      executablePlaceholder placeholderAfterAlignment
+  let domainExtension := visited.freshTyExtension domainOrigin
+  let codomainExtension := domainAllocation.state.freshTyExtension codomainOrigin
+  let prefixTransition :=
+    (((((((relation.visitExtension .exprFix path).seq domainExtension).seq
+      codomainExtension).seq placeholderExtension).seq directExtension).seq
+      bodyComplete.transition).seq alignmentComplete.transition)
+  let finishExtension := alignmentComplete.transition.after.recordEventExtension
+    (.inferredExpr expression executablePlaceholder path)
+  refine { finished with
+    transition := prefixTransition.seq finishExtension
+    success := ?_ }
+  simp only [inferExprFuel]
+  have gate : (self != argument && DirectSelf.check self body) = true :=
+    (DirectSelf.fix_gate_eq_true self argument body).2 ⟨distinct, direct⟩
+  rw [gate]
+  let continuePlaceholder : Option (Ty × Ty × InferState) → Option ExprResult :=
+    fun candidate =>
+      match candidate with
+      | none => none
+      | some (domain, codomain, state) =>
+          let placeholder := Ty.fn domain codomain
+          let state := (state.recordEvent
+            (.fixPlaceholder self argument placeholder path)).recordEvent
+            (.directSelfAccepted self placeholder path)
+          let shadowed := selfEnv.eraseMany [self, argument]
+          let insideSelf := (self, placeholder) :: shadowed
+          let insideContext :=
+            (argument, Scheme.mono domain) ::
+              (self, Scheme.mono placeholder) :: context
+          match inferExprFuel fuel signature insideContext insideSelf
+              (0 :: path) body state with
+          | none => none
+          | some bodyResult =>
+              match alignTypes bodyResult.state resultOrigin bodyResult.target
+                  codomain with
+              | none => none
+              | some state => some (Inference.finishExpr expression path
+                  placeholder state)
+  change continuePlaceholder
+    (buildFixPlaceholder signature path body (visit initial .exprFix path)) =
+      some finished.result
+  calc
+    _ = continuePlaceholder (some (fixDomain initial path,
+        fixCodomain initial path, fixFreshState initial path)) :=
+      congrArg continuePlaceholder
+        (buildFixPlaceholder_nonMatcher signature initial path body nonMatcher)
+    _ = (match inferExprFuel fuel signature
+          ((argument, Scheme.mono (fixDomain initial path)) ::
+            (self, Scheme.mono executablePlaceholder) :: context)
+          ((self, executablePlaceholder) :: selfEnv.eraseMany [self, argument])
+          (0 :: path) body (fixBodyEntryState initial path self argument) with
+        | none => none
+        | some bodyResult =>
+            match alignTypes bodyResult.state resultOrigin bodyResult.target
+                (fixCodomain initial path) with
+            | none => none
+            | some state => some (Inference.finishExpr expression path
+                executablePlaceholder state)) := rfl
+    _ = (match alignTypes bodyComplete.result.state resultOrigin
+          bodyComplete.result.target (fixCodomain initial path) with
+        | none => none
+        | some state => some (Inference.finishExpr expression path
+            executablePlaceholder state)) := by
+      let continueBody : Option ExprResult → Option ExprResult := fun candidate =>
+        match candidate with
+        | none => none
+        | some bodyResult =>
+            match alignTypes bodyResult.state resultOrigin bodyResult.target
+                (fixCodomain initial path) with
+            | none => none
+            | some state => some (Inference.finishExpr expression path
+                executablePlaceholder state)
+      exact congrArg continueBody bodyComplete.success
+    _ = some (Inference.finishExpr expression path executablePlaceholder
+          alignmentComplete.result) := by
+      let continueAlignment : Option InferState → Option ExprResult :=
+        fun candidate =>
+          match candidate with
+          | none => none
+          | some state => some (Inference.finishExpr expression path
+              executablePlaceholder state)
+      exact congrArg continueAlignment alignmentComplete.success
+    _ = some finished.result := rfl
+
+/-- `matchAll` is structural once its target and pattern syntheses, target
+alignment, matcher check, and body synthesis have completed in source order. -/
+def inferExprFuel_matchAll_complete
+    {fuel : Nat} {signature : FrozenSig} {context : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {target matcher : Expr} {pattern : Pattern} {body : Expr}
+    {targetTarget : Ty} {dual : Dual} {bindings : MonoCtx} {bodyTarget : Ty}
+    {q q₁ q₂ q₃ q₄ q₅ : InferenceBase.FreshSupply}
+    {S S₁ S₂ S₃ S₄ S₅ : Subst}
+    {ledger ledger₁ ledger₂ ledger₃ ledger₄ ledger₅ :
+      CapabilityOriginLedger}
+    {initial : InferState}
+    (relation : TraversalStateCorrespondence q S ledger initial)
+    (targetComplete : SynthRunCompletion (relation.visit .exprMatchAll path)
+      (inferExprFuel fuel signature context selfEnv (0 :: path) target
+        (visit initial .exprMatchAll path)) q₁ S₁ ledger₁ targetTarget)
+    (patternComplete : PatternRunCompletion targetComplete.completion.state
+      (inferPatternFuel fuel signature context [] [] selfEnv (2 :: path) pattern
+        targetComplete.result.state) q₂ S₂ ledger₂ dual bindings)
+    (targetAlignmentComplete : StateRunCompletion patternComplete.completion
+      (alignTypes patternComplete.result.state
+        (freshOrigin .pattern (2 :: path) "match-target")
+        patternComplete.result.dual.target targetComplete.result.target)
+      q₃ S₃ ledger₃)
+    (matcherComplete : StateRunCompletion targetAlignmentComplete.completion
+      (checkExprFuel fuel signature context selfEnv (1 :: path) matcher
+        (.slot patternComplete.result.dual.cap targetComplete.result.target)
+        targetAlignmentComplete.result) q₄ S₄ ledger₄)
+    (bodyComplete : SynthRunCompletion matcherComplete.completion
+      (inferExprFuel fuel signature
+        (patternComplete.result.bindings.toContext ++ context)
+        (selfEnv.eraseMany pattern.patVars) (3 :: path) body
+        matcherComplete.result) q₅ S₅ ledger₅ bodyTarget) :
+    SynthRunCompletion relation
+      (inferExprFuel (fuel + 1) signature context selfEnv path
+        (.matchAll target matcher pattern body) initial)
+      q₅ S₅ ledger₅ (.listT bodyTarget) := by
+  let expression := Expr.matchAll target matcher pattern body
+  let resultRelation :=
+    DemandTypingInferenceCompletenessExprTraversal.TyBisimulation.listT
+      bodyComplete.target
+  let finished :=
+    DemandTypingInferenceCompletenessExprTraversal.SynthRunCompletion.finishAs
+      bodyComplete expression path (.listT bodyTarget)
+      (.listT bodyComplete.result.target) resultRelation
+  let prefixTransition :=
+    (((((relation.visitExtension .exprMatchAll path).seq
+      targetComplete.transition).seq patternComplete.transition).seq
+      targetAlignmentComplete.transition).seq matcherComplete.transition).seq
+      bodyComplete.transition
+  let finishExtension := bodyComplete.transition.after.recordEventExtension
+    (.inferredExpr expression (.listT bodyComplete.result.target) path)
+  refine
+    { result := finished.result
+      success := ?_
+      supply_eq := finished.supply_eq
+      transition := prefixTransition.seq finishExtension
+      declarative_bounded := finished.declarative_bounded
+      executable_bounded := finished.executable_bounded
+      forward_bounded := finished.forward_bounded
+      reverse_bounded := finished.reverse_bounded
+      ledger_below := finished.ledger_below
+      executable_ledger_below := finished.executable_ledger_below
+      protected_origins := finished.protected_origins
+      protected_below := finished.protected_below
+      allocated_recorded := finished.allocated_recorded
+      target := finishExtension.transportTy resultRelation }
+  simp only [inferExprFuel]
+  let continueTarget : Option ExprResult → Option ExprResult := fun candidate =>
+    match candidate with
+    | none => none
+    | some targetResult =>
+        match inferPatternFuel fuel signature context [] [] selfEnv (2 :: path)
+            pattern targetResult.state with
+        | none => none
+        | some patternResult =>
+            match alignTypes patternResult.state
+                (freshOrigin .pattern (2 :: path) "match-target")
+                patternResult.dual.target targetResult.target with
+            | none => none
+            | some state =>
+                match checkExprFuel fuel signature context selfEnv (1 :: path)
+                    matcher (.slot patternResult.dual.cap targetResult.target)
+                    state with
+                | none => none
+                | some state =>
+                    let bodyContext := patternResult.bindings.toContext ++ context
+                    let bodyEnv := selfEnv.eraseMany pattern.patVars
+                    match inferExprFuel fuel signature bodyContext bodyEnv
+                        (3 :: path) body state with
+                    | none => none
+                    | some bodyResult => some (Inference.finishExpr expression path
+                        (.listT bodyResult.target) bodyResult.state)
+  change continueTarget (inferExprFuel fuel signature context selfEnv
+    (0 :: path) target (visit initial .exprMatchAll path)) = some finished.result
+  calc
+    _ = continueTarget (some targetComplete.result) :=
+      congrArg continueTarget targetComplete.success
+    _ = (match inferPatternFuel fuel signature context [] [] selfEnv
+          (2 :: path) pattern targetComplete.result.state with
+        | none => none
+        | some patternResult =>
+            match alignTypes patternResult.state
+                (freshOrigin .pattern (2 :: path) "match-target")
+                patternResult.dual.target targetComplete.result.target with
+            | none => none
+            | some state =>
+                match checkExprFuel fuel signature context selfEnv (1 :: path)
+                    matcher (.slot patternResult.dual.cap
+                      targetComplete.result.target) state with
+                | none => none
+                | some state =>
+                    match inferExprFuel fuel signature
+                        (patternResult.bindings.toContext ++ context)
+                        (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+                    | none => none
+                    | some bodyResult => some (Inference.finishExpr expression path
+                        (.listT bodyResult.target) bodyResult.state)) := rfl
+    _ = (match alignTypes patternComplete.result.state
+          (freshOrigin .pattern (2 :: path) "match-target")
+          patternComplete.result.dual.target targetComplete.result.target with
+        | none => none
+        | some state =>
+            match checkExprFuel fuel signature context selfEnv (1 :: path)
+                matcher (.slot patternComplete.result.dual.cap
+                  targetComplete.result.target) state with
+            | none => none
+            | some state =>
+                match inferExprFuel fuel signature
+                    (patternComplete.result.bindings.toContext ++ context)
+                    (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+                | none => none
+                | some bodyResult => some (Inference.finishExpr expression path
+                    (.listT bodyResult.target) bodyResult.state)) := by
+      let continuePattern : Option PatternResult → Option ExprResult := fun candidate =>
+        match candidate with
+        | none => none
+        | some patternResult =>
+            match alignTypes patternResult.state
+                (freshOrigin .pattern (2 :: path) "match-target")
+                patternResult.dual.target targetComplete.result.target with
+            | none => none
+            | some state =>
+                match checkExprFuel fuel signature context selfEnv (1 :: path)
+                    matcher (.slot patternResult.dual.cap
+                      targetComplete.result.target) state with
+                | none => none
+                | some state =>
+                    match inferExprFuel fuel signature
+                        (patternResult.bindings.toContext ++ context)
+                        (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+                    | none => none
+                    | some bodyResult => some (Inference.finishExpr expression path
+                        (.listT bodyResult.target) bodyResult.state)
+      exact congrArg continuePattern patternComplete.success
+    _ = (match checkExprFuel fuel signature context selfEnv (1 :: path) matcher
+          (.slot patternComplete.result.dual.cap targetComplete.result.target)
+          targetAlignmentComplete.result with
+        | none => none
+        | some state =>
+            match inferExprFuel fuel signature
+                (patternComplete.result.bindings.toContext ++ context)
+                (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+            | none => none
+            | some bodyResult => some (Inference.finishExpr expression path
+                (.listT bodyResult.target) bodyResult.state)) := by
+      let continueAlignment : Option InferState → Option ExprResult := fun candidate =>
+        match candidate with
+        | none => none
+        | some state =>
+            match checkExprFuel fuel signature context selfEnv (1 :: path) matcher
+                (.slot patternComplete.result.dual.cap
+                  targetComplete.result.target) state with
+            | none => none
+            | some state =>
+                match inferExprFuel fuel signature
+                    (patternComplete.result.bindings.toContext ++ context)
+                    (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+                | none => none
+                | some bodyResult => some (Inference.finishExpr expression path
+                    (.listT bodyResult.target) bodyResult.state)
+      exact congrArg continueAlignment targetAlignmentComplete.success
+    _ = (match inferExprFuel fuel signature
+          (patternComplete.result.bindings.toContext ++ context)
+          (selfEnv.eraseMany pattern.patVars) (3 :: path) body
+          matcherComplete.result with
+        | none => none
+        | some bodyResult => some (Inference.finishExpr expression path
+            (.listT bodyResult.target) bodyResult.state)) := by
+      let continueMatcher : Option InferState → Option ExprResult := fun candidate =>
+        match candidate with
+        | none => none
+        | some state =>
+            match inferExprFuel fuel signature
+                (patternComplete.result.bindings.toContext ++ context)
+                (selfEnv.eraseMany pattern.patVars) (3 :: path) body state with
+            | none => none
+            | some bodyResult => some (Inference.finishExpr expression path
+                (.listT bodyResult.target) bodyResult.state)
+      exact congrArg continueMatcher matcherComplete.success
+    _ = some (Inference.finishExpr expression path
+          (.listT bodyComplete.result.target) bodyComplete.result.state) := by
+      let continueBody : Option ExprResult → Option ExprResult := fun candidate =>
+        match candidate with
+        | none => none
+        | some bodyResult => some (Inference.finishExpr expression path
+            (.listT bodyResult.target) bodyResult.state)
+      exact congrArg continueBody bodyComplete.success
     _ = some finished.result := rfl
 
 end DemandTypingInferenceCompletenessExprTraversal
