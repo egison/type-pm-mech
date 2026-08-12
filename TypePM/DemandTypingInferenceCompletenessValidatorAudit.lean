@@ -80,6 +80,16 @@ def TerminalAuditEventCoverage
         TerminalAuditEventWitness terminal signature state event
     | _ => True
 
+/-- The three event forms whose terminal meaning is supplied by the
+proof-relevant audit tree.  Every other reconstruction event is ordinary for
+the audit/event correspondence, even when it contributes to one of the
+audit-independent validator folds. -/
+def TerminalAuditSensitiveEvent : TraceEvent -> Prop
+  | .patternCtorCompatibility _ _ _ _
+  | .matcherFinalization _ _ _ _ _ _ _ _
+  | .letGeneralization _ _ _ _ _ _ _ => True
+  | _ => False
+
 /-- Initial traces contain no sensitive events. -/
 theorem TerminalAuditEventCoverage.empty
     (terminal : Subst) (signature : FrozenSig)
@@ -141,6 +151,41 @@ theorem TerminalAuditEventCoverage.transportNoEvents
   have covered := coverage event previous
   cases event <;> try trivial
   all_goals exact covered.transport history
+
+/-- Transport coverage across an actual traversal suffix that emits no new
+terminal-sensitive event.  The premise is phrased extensionally on the final
+trace instead of exposing a chosen event suffix: if an event value was already
+present in the prefix, its existing witness transports; genuinely new values
+must be ordinary.  This is robust to duplicate ordinary events and is the
+direct adapter needed by successful raw traversal packages. -/
+theorem TerminalAuditEventCoverage.transportOrdinaryExtension
+    {terminal : Subst} {signature : FrozenSig} {earlier later : InferState}
+    (coverage : TerminalAuditEventCoverage terminal signature earlier)
+    (history : earlier.HistoryPrefix later)
+    (ordinaryNew : ∀ event,
+      event ∈ later.trace.events → event ∉ earlier.trace.events →
+        ¬ TerminalAuditSensitiveEvent event) :
+    TerminalAuditEventCoverage terminal signature later := by
+  intro event membership
+  by_cases previous : event ∈ earlier.trace.events
+  · have covered := coverage event previous
+    cases event <;> try trivial
+    all_goals exact covered.transport history
+  · have ordinary := ordinaryNew event membership previous
+    cases event <;> simp_all [TerminalAuditSensitiveEvent]
+
+/-- A successful history extension whose complete final trace contains no
+sensitive event is covered without any audit premise.  This is the base case
+for primitive-pattern and data-pattern traversals, which cannot emit any of
+the three terminal-sensitive events. -/
+theorem TerminalAuditEventCoverage.ofNoSensitiveEvents
+    {terminal : Subst} {signature : FrozenSig} {state : InferState}
+    (noneSensitive : ∀ event, event ∈ state.trace.events →
+      ¬ TerminalAuditSensitiveEvent event) :
+    TerminalAuditEventCoverage terminal signature state := by
+  intro event membership
+  have ordinary := noneSensitive event membership
+  cases event <;> simp_all [TerminalAuditSensitiveEvent]
 
 /-- Non-sensitive events extend coverage without a new audit fact. -/
 theorem TerminalAuditEventCoverage.recordOrdinaryEvent

@@ -46,6 +46,26 @@ private theorem enforceWBridgeResult_sound
     exact ⟨rfl, checked⟩
   · contradiction
 
+/-- A successful finite terminal audit is sufficient for the public result
+filter.  Completeness uses this direction only after reconstructing every
+validator condition from the DD derivation and the raw traversal. -/
+theorem enforceWBridgeResult_complete
+    {signature : FrozenSig} {result : ExprResult}
+    (checked : Reconstruction.wBridgeCheck signature result = true) :
+    enforceWBridgeResult signature result = some result := by
+  simp [enforceWBridgeResult, checked]
+
+/-- Compose raw traversal acceptance with terminal-validator acceptance.
+This is the final executable step of inference completeness; all semantic
+work remains in the two premises constructed internally by that proof. -/
+theorem infer_complete_of_raw_and_checked
+    {signature : FrozenSig} {context : Context} {expression : Expr}
+    {result : ExprResult}
+    (raw : inferRaw signature context expression = some result)
+    (checked : Reconstruction.wBridgeCheck signature result = true) :
+    infer signature context expression = some result := by
+  simp [infer, raw, enforceWBridgeResult_complete checked]
+
 /-- Public success contains both the raw W result and its successful audit. -/
 private theorem infer_success_raw_and_checked
     {signature : FrozenSig} {context : Context} {expression : Expr}
