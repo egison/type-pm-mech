@@ -1003,37 +1003,6 @@ structure CertifiedDPatRunCompletion
   validation : ValidatorRunExtension terminal signature initial
     run.result.state
 
-/-! ## Matcher-clause wrappers -/
-
-structure CertifiedClauseRunCompletion
-    (terminal : Subst) (signature : FrozenSig)
-    {q : InferenceBase.FreshSupply} {S : Subst}
-    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
-    (before : TraversalStateCorrespondence q S ledger₀ initial)
-    (operation : Option ClauseResult) (q' : InferenceBase.FreshSupply)
-    (declarative : Subst) (ledger : CapabilityOriginLedger)
-    (target : Ty) (holes : List Dual) : Type where
-  run : ClauseRunCompletion before operation q' declarative ledger target holes
-  validation : ValidatorRunExtension terminal signature initial
-    run.result.state
-
-structure CertifiedClausesRunCompletion
-    (terminal : Subst) (signature : FrozenSig)
-    {q : InferenceBase.FreshSupply} {S : Subst}
-    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
-    (before : TraversalStateCorrespondence q S ledger₀ initial)
-    (operation : Option ClausesResult) (q' : InferenceBase.FreshSupply)
-    (declarative : Subst) (ledger : CapabilityOriginLedger)
-    (target : Ty) (holeLists : List (List Dual)) : Type where
-  run : ClausesRunCompletion before operation q' declarative ledger target
-    holeLists
-  validation : ValidatorRunExtension terminal signature initial
-    run.result.state
-
-/-- A matcher literal returns the ordinary expression synthesis package; this
-name documents its role at the audited matcher dispatcher boundary. -/
-abbrev CertifiedMatcherRunCompletion := CertifiedSynthRunCompletion
-
 /-! ## Root projection -/
 
 /-- A certified root synthesis run beginning at an empty state supplies all

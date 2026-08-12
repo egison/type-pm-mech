@@ -9,7 +9,7 @@ import TypePM.DemandTypingInferenceCompletenessMatcherClauseCertified
 /-! # Paired certified global expression traversal
 
 This post-`Main` layer combines each raw bounded synthesis completion with
-the exact chronological validator extension built from the same child runs.
+the paired chronological validator extension built from the same child runs.
 Keeping it above both modules avoids an import cycle between raw traversal and
 paired terminal-sensitive validation. -/
 
