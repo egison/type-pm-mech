@@ -453,6 +453,89 @@ theorem ValidatorRunExtension.ofAlignDuals
       (ValidatorRunExtension.ofAlignTypes
         (terminal := terminal) (signature := signature) targetSuccess)) success
 
+/-- Pointwise dual-list alignment is the chronological composition of its
+certified head alignments. -/
+theorem ValidatorRunExtension.ofAlignDualLists
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {lefts rights : List Dual}
+    (success : alignDualLists state origin lefts rights = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  induction lefts generalizing state result rights with
+  | nil =>
+      cases rights with
+      | nil =>
+          simp only [alignDualLists, Option.some.injEq] at success
+          subst result
+          exact ValidatorRunExtension.refl terminal signature state
+      | cons _ _ => simp [alignDualLists] at success
+  | cons left lefts induction =>
+      cases rights with
+      | nil => simp [alignDualLists] at success
+      | cons right rights =>
+          simp only [alignDualLists] at success
+          rcases Option.bind_eq_some_iff.mp success with
+            ⟨middle, headSuccess, tailSuccess⟩
+          exact (ValidatorRunExtension.ofAlignDuals
+            (terminal := terminal) (signature := signature) headSuccess).trans
+              (induction tailSuccess)
+
+/-- Binding-context alignment differs only by its positional name guard; each
+successful payload step is an ordinary certified type alignment. -/
+theorem ValidatorRunExtension.ofAlignBindings
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {lefts rights : MonoCtx}
+    (success : alignBindings state origin lefts rights = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  induction lefts generalizing state result rights with
+  | nil =>
+      cases rights with
+      | nil =>
+          simp only [alignBindings, Option.some.injEq] at success
+          subst result
+          exact ValidatorRunExtension.refl terminal signature state
+      | cons _ _ => simp [alignBindings] at success
+  | cons left lefts induction =>
+      cases rights with
+      | nil => simp [alignBindings] at success
+      | cons right rights =>
+          simp only [alignBindings] at success
+          split at success
+          · rcases Option.bind_eq_some_iff.mp success with
+              ⟨middle, headSuccess, tailSuccess⟩
+            exact (ValidatorRunExtension.ofAlignTypes
+              (terminal := terminal) (signature := signature)
+              headSuccess).trans (induction tailSuccess)
+          · contradiction
+
+/-- Constructor target alignment is pointwise type alignment with no extra
+event beyond the events emitted by each element. -/
+theorem ValidatorRunExtension.ofAlignPatternTargets
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {targets : List Ty}
+    (success : alignPatternTargets state origin duals targets = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  induction duals generalizing state result targets with
+  | nil =>
+      cases targets with
+      | nil =>
+          simp only [alignPatternTargets, Option.some.injEq] at success
+          subst result
+          exact ValidatorRunExtension.refl terminal signature state
+      | cons _ _ => simp [alignPatternTargets] at success
+  | cons dual duals induction =>
+      cases targets with
+      | nil => simp [alignPatternTargets] at success
+      | cons target targets =>
+          simp only [alignPatternTargets] at success
+          rcases Option.bind_eq_some_iff.mp success with
+            ⟨middle, headSuccess, tailSuccess⟩
+          exact (ValidatorRunExtension.ofAlignTypes
+            (terminal := terminal) (signature := signature) headSuccess).trans
+              (induction tailSuccess)
+
 theorem ValidatorRunExtension.finishExpectedAlignment
     {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
     {expressionResult : ExprResult} {expected : Ty} {aligned : InferState}
