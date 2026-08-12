@@ -1,4 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessMatcherTraversal
+import TypePM.DemandTypingInferenceCompletenessCheckingAlignment
 import TypePM.DemandTypingInferenceCompletenessFuel
 
 /-!
@@ -25,6 +26,7 @@ open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessPatternTraversal
+open DemandTypingInferenceCompletenessCheckingAlignment
 
 /-! ## Structural leaf certificates -/
 
