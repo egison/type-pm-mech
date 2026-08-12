@@ -78,6 +78,36 @@ structure BoundedPairedCertifiedPatternRunCompletion
   validation : PairedValidatorRunExtension terminal signature
     bounded.run.transition history
 
+/-- Paired list traversal used by recursive user patterns. -/
+structure BoundedPairedCertifiedPatternsRunCompletion
+    (terminal : Subst) (signature : FrozenSig)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option PatternsResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (duals : List Dual) (bindings : MonoCtx) : Type where
+  bounded : BoundedPatternsRunCompletion before operation q' declarative
+    ledger duals bindings
+  history : initial.StateExtension bounded.run.result.state
+  validation : PairedValidatorRunExtension terminal signature
+    bounded.run.transition history
+
+/-- Paired expression callback required by value patterns. -/
+structure BoundedPairedCertifiedPatternSynthRunCompletion
+    (terminal : Subst) (signature : FrozenSig)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option ExprResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (target : Ty) : Type where
+  run : SynthRunCompletion before operation q' declarative ledger target
+  rawTargetBounded : run.result.target.BoundedBy q'
+  history : initial.StateExtension run.result.state
+  validation : PairedValidatorRunExtension terminal signature run.transition
+    history
+
 /-- Exact pattern validation is a special case of paired validation. -/
 def BoundedPairedCertifiedPatternRunCompletion.ofExact
     {terminal : Subst} {signature : FrozenSig}
@@ -91,6 +121,23 @@ def BoundedPairedCertifiedPatternRunCompletion.ofExact
       operation q' declarative ledger dual bindings) :
     BoundedPairedCertifiedPatternRunCompletion terminal signature before
       operation q' declarative ledger dual bindings where
+  bounded := exact.bounded
+  history := exact.validation.ordinary.history
+  validation := PairedValidatorRunExtension.ofExact
+    exact.bounded.run.transition exact.validation
+
+def BoundedPairedCertifiedPatternsRunCompletion.ofExact
+    {terminal : Subst} {signature : FrozenSig}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option PatternsResult} {q' : InferenceBase.FreshSupply}
+    {declarative : Subst} {ledger : CapabilityOriginLedger}
+    {duals : List Dual} {bindings : MonoCtx}
+    (exact : BoundedCertifiedPatternsRunCompletion terminal signature before
+      operation q' declarative ledger duals bindings) :
+    BoundedPairedCertifiedPatternsRunCompletion terminal signature before
+      operation q' declarative ledger duals bindings where
   bounded := exact.bounded
   history := exact.validation.ordinary.history
   validation := PairedValidatorRunExtension.ofExact
@@ -110,6 +157,29 @@ structure BoundedCertifiedPatternSynthRunCompletion
   rawTargetBounded : run.result.target.BoundedBy q'
   validation : ValidatorRunExtension terminal signature initial
     run.result.state
+
+/-- Paired synthesis available below a strict fuel ceiling, used only by the
+value-pattern branch of the user-pattern knot. -/
+structure CertifiedPatternSynthCompletenessBelow
+    (terminal : Subst) (signature : FrozenSig) (bound : Nat) : Prop where
+  complete : ∀ {fuel : Nat}, fuel < bound →
+    ∀ {declarativeContext executableContext : Context}
+      {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr}
+      {target : Ty} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+      {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+      {raw : DDSynth signature q S declarativeContext expression target q' S'}
+      {origin : DDSynthOrigin signature raw ledger ledger'},
+      (before : TraversalStateCorrespondence q S ledger state) →
+      SignatureVarsBelow q signature →
+      ContextBisimulation before.prevailing declarativeContext
+        executableContext →
+      declarativeContext.BoundedBy q → executableContext.BoundedBy q →
+      DDSynthTerminalAudit terminal signature origin →
+      PatternSynthBudgetAdequate fuel expression →
+      Nonempty (BoundedPairedCertifiedPatternSynthRunCompletion terminal
+        signature before
+        (inferExprFuel fuel signature executableContext selfEnv path expression
+          state) q' S' ledger' target)
 
 /-- Certified single-pattern completeness available below a strict fuel
 ceiling. -/
@@ -139,7 +209,7 @@ structure CertifiedPatternCompletenessBelow
       executableParameters.BoundedBy q → executableBindings.BoundedBy q →
       DDPatternTerminalAudit terminal signature origin →
       PatternBudgetAdequate fuel pattern →
-      Nonempty (BoundedCertifiedPatternRunCompletion terminal signature before
+      Nonempty (BoundedPairedCertifiedPatternRunCompletion terminal signature before
         (inferPatternFuel fuel signature executableContext executableParameters
           executableBindings selfEnv path pattern state)
         q' S' ledger' dual bindings')
@@ -171,7 +241,7 @@ structure CertifiedPatternsCompletenessBelow
       executableParameters.BoundedBy q → executableBindings.BoundedBy q →
       DDPatternsTerminalAudit terminal signature origin →
       PatternsBudgetAdequate fuel patterns →
-      Nonempty (BoundedCertifiedPatternsRunCompletion terminal signature before
+      Nonempty (BoundedPairedCertifiedPatternsRunCompletion terminal signature before
         (inferPatternsFuel fuel signature executableContext
           executableParameters executableBindings selfEnv path index patterns
           state)
@@ -182,6 +252,14 @@ def CertifiedPatternCompletenessBelow.mono
     (available : CertifiedPatternCompletenessBelow terminal signature larger)
     (boundLe : smaller ≤ larger) :
     CertifiedPatternCompletenessBelow terminal signature smaller :=
+  ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
+
+def CertifiedPatternSynthCompletenessBelow.mono
+    {terminal : Subst} {signature : FrozenSig} {smaller larger : Nat}
+    (available : CertifiedPatternSynthCompletenessBelow terminal signature
+      larger)
+    (boundLe : smaller ≤ larger) :
+    CertifiedPatternSynthCompletenessBelow terminal signature smaller :=
   ⟨fun below => available.complete (Nat.lt_of_lt_of_le below boundLe)⟩
 
 def CertifiedPatternsCompletenessBelow.mono
@@ -654,18 +732,38 @@ def certifiedPatternTuple_complete
     {S S' : Subst} {ledger ledger' : CapabilityOriginLedger}
     {state : InferState} {duals : List Dual} {bindings : MonoCtx}
     (before : TraversalStateCorrespondence q S ledger state)
-    (children : BoundedCertifiedPatternsRunCompletion terminal signature
+    (children : BoundedPairedCertifiedPatternsRunCompletion terminal signature
       (before.visit .patternTuple path)
       (inferPatternsFuel fuel signature context parameters executableBindings
         selfEnv path 0 patterns (visit state .patternTuple path))
       q' S' ledger' duals bindings) :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.ptuple patterns) state)
       q' S' ledger'
       ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings :=
-  ⟨boundedPatternTuple_complete before children.bounded,
-    tuple children.validation⟩
+by
+  let bounded := boundedPatternTuple_complete before children.bounded
+  let visitExtension := before.visitExtension .patternTuple path
+  let inferredEvent := TraceEvent.inferredPattern (.ptuple patterns)
+    bounded.run.result.dual bounded.run.result.bindings path
+  let inferredExtension := children.bounded.run.transition.after
+    |>.recordEventExtension inferredEvent
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature state .patternTuple path)
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature) inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.ptuple patterns) bounded.run.result.dual
+        bounded.run.result.bindings path))
+  let validation := visitValidation.trans
+    (children.validation.trans inferredValidation)
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-- A certified expression child, followed by one fresh capability and the
 common pattern result event, gives the complete value-pattern package. -/
@@ -685,13 +783,13 @@ def certifiedPatternValue_complete
     (executableParametersBounded : executableParameters.BoundedBy q)
     (executableBindingsBounded : executableBindings.BoundedBy q)
     (synthExtends : SupplyExtends q q₁)
-    (expressionRun : BoundedCertifiedPatternSynthRunCompletion terminal
+    (expressionRun : BoundedPairedCertifiedPatternSynthRunCompletion terminal
       signature (before.visit .patternValue path)
       (inferExprFuel fuel signature
         (executableBindings.toContext ++ executableContext) selfEnv
         (0 :: path) expression (visit state .patternValue path))
       q₁ S₁ ledger₁ target) :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature executableContext
         executableParameters executableBindings selfEnv path
         (.pval expression) state)
@@ -737,7 +835,7 @@ def certifiedPatternValue_complete
       (DDLedger.markFreshCap ledger₁ q₁)
       ⟨.var ⟨q₁.nextCap⟩, target⟩ declarativeBindings :=
     ⟨run, rawDualBounded, rawBindingsBounded⟩
-  refine ⟨bounded, ?_⟩
+  let visitExtension := before.visitExtension .patternValue path
   let allocation := expressionRun.run.result.state
   let afterFresh := (allocation.freshCap
     (freshOrigin .pattern path "pattern-value-capability")).2
@@ -762,12 +860,41 @@ def certifiedPatternValue_complete
       · simpa [allocation, expressionRun.run.supply_eq] using
           expressionRun.rawTargetBounded
     · simp [Inference.Reconstruction.TerminalAuditSensitiveEvent]
-  exact leaf ((ValidatorRunExtension.visit terminal signature state
-    .patternValue path).trans (expressionRun.validation.trans
-      ((ValidatorRunExtension.freshCap terminal signature
-        expressionRun.run.result.state
-        (freshOrigin .pattern path "pattern-value-capability")).trans
-          markedRun)))
+  let freshExtension :=
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCapExtension
+      expressionRun.run.completion.state
+      (freshOrigin .pattern path "pattern-value-capability")
+  let freshEvent := TraceEvent.patternValueFresh executableContext
+    executableParameters executableBindings
+    ⟨allocation.supply.nextCap⟩ expressionRun.run.result.target
+  let freshEventExtension := freshExtension.after.recordEventExtension
+    freshEvent
+  let inferredEvent := TraceEvent.inferredPattern (.pval expression)
+    bounded.run.result.dual bounded.run.result.bindings path
+  let inferredExtension := freshEventExtension.after.recordEventExtension
+    inferredEvent
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature state .patternValue path)
+  let freshValidation := PairedValidatorRunExtension.ofExact freshExtension
+    (ValidatorRunExtension.freshCap terminal signature
+      expressionRun.run.result.state
+      (freshOrigin .pattern path "pattern-value-capability"))
+  let markedValidation := PairedValidatorRunExtension.ofExact
+    freshEventExtension markedRun
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature) inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.pval expression) bounded.run.result.dual bounded.run.result.bindings
+        path))
+  let validation := visitValidation.trans
+    (expressionRun.validation.trans (freshValidation.trans
+      (markedValidation.trans inferredValidation)))
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-- Certified conjunction packaging reconstructs the same dual-alignment cut
 as the raw bounded completion and certifies that executable suffix. -/
@@ -780,12 +907,12 @@ noncomputable def certifiedPatternAnd_complete
     {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
     {leftDual rightDual : Dual} {leftBindings bindings' : MonoCtx}
     (before : TraversalStateCorrespondence q S ledger state)
-    (leftRun : BoundedCertifiedPatternRunCompletion terminal signature
+    (leftRun : BoundedPairedCertifiedPatternRunCompletion terminal signature
       (before.visit .patternAnd path)
       (inferPatternFuel fuel signature context parameters executableBindings
         selfEnv (0 :: path) left (visit state .patternAnd path))
       q₁ S₁ ledger₁ leftDual leftBindings)
-    (rightRun : BoundedCertifiedPatternRunCompletion terminal signature
+    (rightRun : BoundedPairedCertifiedPatternRunCompletion terminal signature
       leftRun.bounded.run.completion
       (inferPatternFuel fuel signature context parameters
         leftRun.bounded.run.result.bindings selfEnv (1 :: path) right
@@ -795,7 +922,7 @@ noncomputable def certifiedPatternAnd_complete
     (declarativeLeftBounded : leftDual.BoundedBy q₂)
     (declarativeRightBounded : rightDual.BoundedBy q₂)
     (aligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S') :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.pand left right) state)
       q₂ S' ledger₂ leftDual bindings' := by
@@ -808,11 +935,34 @@ noncomputable def certifiedPatternAnd_complete
     declarativeLeftBounded declarativeRightBounded
     (leftRun.bounded.rawDualBounded.mono rightExtends)
     rightRun.bounded.rawDualBounded aligned
-  refine ⟨boundedPatternAnd_complete before leftRun.bounded rightRun.bounded
-    rightExtends declarativeLeftBounded declarativeRightBounded aligned, ?_⟩
-  exact andPattern leftRun.validation rightRun.validation
+  let bounded := boundedPatternAnd_complete before leftRun.bounded
+    rightRun.bounded rightExtends declarativeLeftBounded
+    declarativeRightBounded aligned
+  let visitExtension := before.visitExtension .patternAnd path
+  let inferredEvent := TraceEvent.inferredPattern (.pand left right)
+    bounded.run.result.dual bounded.run.result.bindings path
+  let inferredExtension := alignment.transition.after.recordEventExtension
+    inferredEvent
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature state .patternAnd path)
+  let alignmentValidation := PairedValidatorRunExtension.ofExact
+    alignment.transition
     (ValidatorRunExtension.ofAlignDuals
       (terminal := terminal) (signature := signature) alignment.success)
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature) inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.pand left right) bounded.run.result.dual bounded.run.result.bindings
+        path))
+  let validation := visitValidation.trans
+    (leftRun.validation.trans (rightRun.validation.trans
+      (alignmentValidation.trans inferredValidation)))
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-- Certified disjunction additionally certifies the positional binding
 alignment after the shared dual-alignment cut. -/
@@ -825,12 +975,12 @@ noncomputable def certifiedPatternOr_complete
     {ledger ledger₁ ledger₂ : CapabilityOriginLedger} {state : InferState}
     {leftDual rightDual : Dual} {leftBindings rightBindings : MonoCtx}
     (before : TraversalStateCorrespondence q S ledger state)
-    (leftRun : BoundedCertifiedPatternRunCompletion terminal signature
+    (leftRun : BoundedPairedCertifiedPatternRunCompletion terminal signature
       (before.visit .patternOr path)
       (inferPatternFuel fuel signature context parameters executableBindings
         selfEnv (0 :: path) left (visit state .patternOr path))
       q₁ S₁ ledger₁ leftDual leftBindings)
-    (rightRun : BoundedCertifiedPatternRunCompletion terminal signature
+    (rightRun : BoundedPairedCertifiedPatternRunCompletion terminal signature
       leftRun.bounded.run.completion
       (inferPatternFuel fuel signature context parameters executableBindings
         selfEnv (1 :: path) right leftRun.bounded.run.result.state)
@@ -843,7 +993,7 @@ noncomputable def certifiedPatternOr_complete
     (dualsAligned : DDAlignDualWithLedger ledger₂ S₂ leftDual rightDual S₃)
     (bindingsAligned : DDAlignBindingsWithLedger ledger₂ S₃
       leftBindings rightBindings S') :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature context parameters
         executableBindings selfEnv path (.por left right) state)
       q₂ S' ledger₂ leftDual leftBindings := by
@@ -869,17 +1019,41 @@ noncomputable def certifiedPatternOr_complete
     declarativeLeftBindingsBounded declarativeRightBindingsBounded
     (leftRun.bounded.rawBindingsBounded.mono rightExtends)
     rightRun.bounded.rawBindingsBounded bindingsAligned
-  refine ⟨boundedPatternOr_complete before leftRun.bounded rightRun.bounded
-    rightExtends declarativeLeftDualBounded declarativeRightDualBounded
-    declarativeLeftBindingsBounded declarativeRightBindingsBounded dualsAligned
-    bindingsAligned, ?_⟩
-  exact orPattern leftRun.validation rightRun.validation
+  let bounded := boundedPatternOr_complete before leftRun.bounded
+    rightRun.bounded rightExtends declarativeLeftDualBounded
+    declarativeRightDualBounded declarativeLeftBindingsBounded
+    declarativeRightBindingsBounded dualsAligned bindingsAligned
+  let visitExtension := before.visitExtension .patternOr path
+  let alignmentTransition := dualAlignment.transition.seq
+    bindingAlignment.transition
+  let inferredEvent := TraceEvent.inferredPattern (.por left right)
+    bounded.run.result.dual bounded.run.result.bindings path
+  let inferredExtension := bindingAlignment.transition.after
+    |>.recordEventExtension inferredEvent
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature state .patternOr path)
+  let alignmentValidation := PairedValidatorRunExtension.ofExact
+    alignmentTransition
     ((ValidatorRunExtension.ofAlignDuals
       (terminal := terminal) (signature := signature)
       dualAlignment.success).trans
       (ValidatorRunExtension.ofAlignBindings
         (terminal := terminal) (signature := signature)
         bindingAlignment.success))
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature) inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.por left right) bounded.run.result.dual bounded.run.result.bindings
+        path))
+  let validation := visitValidation.trans
+    (leftRun.validation.trans (rightRun.validation.trans
+      (alignmentValidation.trans inferredValidation)))
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-- Certified pattern-function application shares the raw instantiation and
 dual-list alignment witnesses with its validator chronology. -/
@@ -902,7 +1076,7 @@ noncomputable def certifiedPatternApp_complete
         (executableContext.applySubst state.prevailing)
         (executableParameters.applySubst state.prevailing)
         (executableBindings.applySubst state.prevailing) scheme
-      BoundedCertifiedPatternsRunCompletion terminal signature
+      BoundedPairedCertifiedPatternsRunCompletion terminal signature
         (instantiation.correspondence.visit .patternApp path)
         (inferPatternsFuel fuel signature executableContext
           executableParameters executableBindings selfEnv path 0 patterns
@@ -918,7 +1092,7 @@ noncomputable def certifiedPatternApp_complete
     (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
     (aligned : DDAlignDualListWithLedger ledger₁ S₁ duals
       (InferenceBase.instantiateDualScheme q scheme).value.1 S') :
-    BoundedCertifiedPatternRunCompletion terminal signature before
+    BoundedPairedCertifiedPatternRunCompletion terminal signature before
       (inferPatternFuel (fuel + 1) signature executableContext
         executableParameters executableBindings selfEnv path
         (.papp name patterns) state)
@@ -967,17 +1141,50 @@ noncomputable def certifiedPatternApp_complete
         (executableBindings.applySubst state.prevailing) scheme).arguments)
     declarativeDualsBounded declarativeExpectedBounded
     children.bounded.rawDualsBounded executableExpectedBounded aligned
-  refine ⟨boundedPatternApp_complete
+  let bounded := boundedPatternApp_complete
     (declarativeContext := declarativeContext)
     (executableContext := executableContext)
     (declarativeParameters := declarativeParameters)
     (executableParameters := executableParameters)
     (declarativeBindings := declarativeBindings)
     (executableBindings := executableBindings) lookup closed before
-    children.bounded childrenExtends declarativeDualsBounded aligned, ?_⟩
-  exact app (closed.patternFuns lookup) children.validation
+    children.bounded childrenExtends declarativeDualsBounded aligned
+  let instantiation := instantiateDualInState_complete before signature
+    executableContext executableParameters executableBindings
+    (executableContext.applySubst state.prevailing)
+    (executableParameters.applySubst state.prevailing)
+    (executableBindings.applySubst state.prevailing) scheme
+  let visitExtension := instantiation.correspondence.visitExtension
+    .patternApp path
+  let inferredEvent := TraceEvent.inferredPattern (.papp name patterns)
+    bounded.run.result.dual bounded.run.result.bindings path
+  let inferredExtension := alignment.transition.after.recordEventExtension
+    inferredEvent
+  let instantiationValidation := PairedValidatorRunExtension.ofExact
+    instantiation.transition
+    (ValidatorRunExtension.instantiateDualInState
+      (terminal := terminal) (signature := signature)
+      (closed.patternFuns lookup))
+  let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
+    (ValidatorRunExtension.visit terminal signature _ .patternApp path)
+  let alignmentValidation := PairedValidatorRunExtension.ofExact
+    alignment.transition
     (ValidatorRunExtension.ofAlignDualLists
       (terminal := terminal) (signature := signature) alignment.success)
+  let inferredValidation := PairedValidatorRunExtension.ofExact
+    (terminal := terminal) (signature := signature) inferredExtension
+    (ValidatorRunExtension.recordNeutral
+      (terminal := terminal) (signature := signature)
+      (Inference.Reconstruction.ValidatorNeutralEvent.inferredPattern
+        (.papp name patterns) bounded.run.result.dual
+        bounded.run.result.bindings path))
+  let validation := instantiationValidation.trans
+    (visitValidation.trans (children.validation.trans
+      (alignmentValidation.trans inferredValidation)))
+  exact
+    { bounded := bounded
+      history := validation.ordinary.history
+      validation := validation }
 
 /-- Certified user pattern-constructor application.  Its raw completeness
 package and validator proof share the reconstructed target alignment and
@@ -998,7 +1205,7 @@ noncomputable def certifiedPatternCtor_complete
     (before : TraversalStateCorrespondence q S ledger state)
     (children :
       let instantiation := instantiateCtorInState_complete before entry.scheme
-      BoundedCertifiedPatternsRunCompletion terminal signature
+      BoundedPairedCertifiedPatternsRunCompletion terminal signature
         (instantiation.correspondence.visit .patternCtor path)
         (inferPatternsFuel fuel signature context parameters
           executableBindings selfEnv path 0 patterns
@@ -1155,8 +1362,7 @@ noncomputable def certifiedPatternCtor_complete
       (closed.patternCtors lookup))
   let visitValidation := PairedValidatorRunExtension.ofExact visitExtension
     (ValidatorRunExtension.visit terminal signature _ .patternCtor path)
-  let childrenValidation := PairedValidatorRunExtension.ofExact
-    children.bounded.run.transition children.validation
+  let childrenValidation := children.validation
   let targetValidation := PairedValidatorRunExtension.ofExact
     targetAlignment.transition
     (ValidatorRunExtension.ofAlignPatternTargets
@@ -1188,6 +1394,402 @@ noncomputable def certifiedPatternCtor_complete
     { bounded := bounded
       history := validation.ordinary.history
       validation := validation }
+
+/-! ## Paired single-pattern dispatch -/
+
+/-- Constructor-complete certified dispatch for one user pattern.  Recursive
+children retain paired constructor witnesses, while exact leaves embed into
+the same chronology. -/
+theorem certifiedPatternOrigin_complete_nonempty
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {pattern : Pattern}
+    {dual : Dual} {bindings' : MonoCtx}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : CertifiedPatternSynthCompletenessBelow terminal signature
+      fuel)
+    (patternsBelow : CertifiedPatternsCompletenessBelow terminal signature
+      fuel)
+    (capComplete : PatternCtorCapCompletenessPackage signature)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (parameters : PatternCtxBisimulation before.prevailing
+      declarativeParameters executableParameters)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (parametersBounded : declarativeParameters.BoundedBy q)
+    (bindingsBounded : declarativeBindings.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    {raw : DDPattern signature q S declarativeContext declarativeParameters
+      declarativeBindings pattern dual bindings' q' S'}
+    {origin : DDPatternOrigin signature raw ledger ledger'}
+    (audit : DDPatternTerminalAudit terminal signature origin)
+    (adequate : PatternBudgetAdequate fuel pattern) :
+    Nonempty (BoundedPairedCertifiedPatternRunCompletion terminal signature
+      before
+      (inferPatternFuel fuel signature executableContext executableParameters
+        executableBindings selfEnv path pattern state)
+      q' S' ledger' dual bindings') := by
+  cases audit with
+  | pvar =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          exact ⟨BoundedPairedCertifiedPatternRunCompletion.ofExact
+            (certifiedPatternPVarOrigin_complete
+              (declarativeContext := declarativeContext)
+              (declarativeParameters := declarativeParameters)
+              inner before signatureBelow bindings executableContextBounded
+              executableParametersBounded executableBindingsBounded
+              (by assumption))⟩
+  | wild =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          exact ⟨BoundedPairedCertifiedPatternRunCompletion.ofExact
+            (certifiedPatternWildOrigin_complete
+              (declarativeContext := declarativeContext)
+              (declarativeParameters := declarativeParameters)
+              inner before signatureBelow bindings executableContextBounded
+              executableParametersBounded executableBindingsBounded)⟩
+  | embed =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          exact ⟨BoundedPairedCertifiedPatternRunCompletion.ofExact
+            (certifiedPatternEmbedOrigin_complete inner before parameters
+              executableParametersBounded bindings executableBindingsBounded
+              (by assumption))⟩
+  | pval expressionAudit =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          rename_i expression target q₁ S₁ ledger₁ expressionRaw
+            expressionOrigin
+          let visitExtension := before.visitExtension .patternValue path
+          let expressionRun := Classical.choice
+            (synthBelow.complete (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := 0 :: path)
+              (before.visit .patternValue path)
+              (signatureBelow.mono (SupplyExtends.refl q))
+              (ContextBisimulation.append
+                (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                  visitExtension bindings |>.toContext)
+                (contexts.transport visitExtension))
+              (MonoCtx.BoundedBy.toContext bindingsBounded |>.append
+                contextBounded)
+              (MonoCtx.BoundedBy.toContext executableBindingsBounded |>.append
+                executableContextBounded)
+              expressionAudit (by
+                change 8 * (exprTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + exprTraversalFuel _) + 1) ≤
+                  inner + 1 at adequate
+                omega))
+          exact ⟨certifiedPatternValue_complete
+            (declarativeContext := declarativeContext)
+            (declarativeParameters := declarativeParameters)
+            before signatureBelow
+            bindings executableContextBounded executableParametersBounded
+            executableBindingsBounded expressionOrigin.erase.supplyExtends
+            expressionRun⟩
+  | ptuple childrenAudit =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          let extension := before.visitExtension .patternTuple path
+          let children := Classical.choice
+            (patternsBelow.complete (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := path) (index := 0)
+              (before.visit .patternTuple path) signatureBelow
+              (contexts.transport extension)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                extension parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                extension bindings)
+              contextBounded parametersBounded bindingsBounded
+              executableContextBounded executableParametersBounded
+              executableBindingsBounded childrenAudit (by
+                change 8 * (patternListTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternListTraversalFuel _) + 1) ≤
+                  inner + 1 at adequate
+                omega))
+          exact ⟨certifiedPatternTuple_complete before children⟩
+  | pctor childrenAudit facts =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          rename_i name patterns entry duals q₁ S₁ S₂ capability ledger₁
+            ledger₂ lookup targetsAligned childrenRaw compatible capRaw
+            capOrigin childrenOrigin
+          let instantiation := instantiateCtorInState_complete before
+            entry.scheme
+          let instExtends := SupplyExtends.instantiateCtorScheme q entry.scheme
+          let visitExtension := instantiation.correspondence.visitExtension
+            .patternCtor path
+          let totalInstantiation := instantiation.transition.seq visitExtension
+          let children := Classical.choice
+            (patternsBelow.complete (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := path) (index := 0)
+              (instantiation.correspondence.visit .patternCtor path)
+              (signatureBelow.mono instExtends)
+              (contexts.transport totalInstantiation)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                totalInstantiation parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                totalInstantiation bindings)
+              (contextBounded.mono instExtends)
+              (parametersBounded.mono instExtends)
+              (bindingsBounded.mono instExtends)
+              (executableContextBounded.mono instExtends)
+              (executableParametersBounded.mono instExtends)
+              (executableBindingsBounded.mono instExtends) childrenAudit (by
+                change 8 * (patternListTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternListTraversalFuel _) + 1) ≤
+                  inner + 1 at adequate
+                omega))
+          let childrenExtends := childrenOrigin.erase.supplyExtends
+          obtain ⟨_, declarativeDualsBounded, _⟩ :=
+            childrenOrigin.erase.boundedBy closed
+              instantiation.correspondence.declarative_bounded
+              (contextBounded.mono instExtends)
+              (parametersBounded.mono instExtends)
+              (bindingsBounded.mono instExtends)
+          let instBounded := instantiateCtorScheme_boundedBy (q := q)
+            ((closed.patternCtors lookup).boundedBy)
+          let declarativeTargetsBounded : ∀ target ∈
+              (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+              target.BoundedBy q₁ := fun target membership =>
+            (instBounded.1 target membership).mono childrenExtends
+          let executableTargetsBounded : ∀ target ∈
+              (instantiateCtorInState state entry.scheme).1.1,
+              target.BoundedBy q₁ := fun target membership => by
+            have argumentEq :
+                (instantiateCtorInState state entry.scheme).1.1 =
+                (InferenceBase.instantiateCtorScheme q
+                  entry.scheme).value.1 := by
+              simp [Inference.instantiateCtorInState, before.supply_eq]
+            rw [argumentEq] at membership
+            exact (instBounded.1 target membership).mono childrenExtends
+          let targetAlignment := ddAlignTargetListWithLedger_complete
+            (origin := freshOrigin .pattern path
+              "pattern-constructor-fields") children.bounded.run.completion
+            children.bounded.run.duals
+            (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+              (visitExtension.seq children.bounded.run.transition)
+              instantiation.arguments)
+            declarativeDualsBounded declarativeTargetsBounded
+            children.bounded.rawDualsBounded executableTargetsBounded
+            targetsAligned
+          have declarativeCapsBounded : ∀ child ∈ duals.map Dual.cap,
+              child.BoundedBy q₁ := by
+            intro child membership
+            obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp membership
+            exact (declarativeDualsBounded dual dualMem).1
+          have executableCapsBounded : ∀ child ∈
+              children.bounded.run.result.duals.map Dual.cap,
+              child.BoundedBy q₁ := by
+            intro child membership
+            obtain ⟨dual, dualMem, rfl⟩ := List.mem_map.mp membership
+            exact (children.bounded.rawDualsBounded dual dualMem).1
+          let dualsAtCap :=
+            _root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportDualList
+              targetAlignment.transition children.bounded.run.duals
+          let capPackage := Classical.choice
+            (capComplete.complete
+              (constraintOrigin := freshOrigin .pattern path
+                "pattern-constructor-capability")
+              (raw := capRaw) (rawOrigin := capOrigin)
+              targetAlignment.completion
+              (DemandTypingInferenceCompletenessPatternMain.DualListBisimulation.capabilities
+                dualsAtCap)
+              declarativeCapsBounded executableCapsBounded compatible)
+          exact ⟨certifiedPatternCtor_complete lookup closed before children
+            childrenExtends declarativeDualsBounded targetsAligned
+            capPackage.val capOrigin.erase.supplyExtends capPackage.property
+            facts⟩
+  | pand leftAudit rightAudit =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          let visitExtension := before.visitExtension .patternAnd path
+          let leftOrigin := patternAuditOrigin leftAudit
+          let left := Classical.choice
+            (certifiedPatternOrigin_complete_nonempty closed inner
+              (selfEnv := selfEnv) (path := 0 :: path)
+              (raw := leftOrigin.erase) (origin := leftOrigin)
+              (synthBelow := synthBelow.mono (Nat.le_succ inner))
+              (patternsBelow := patternsBelow.mono (Nat.le_succ inner))
+              (capComplete := capComplete) (before.visit .patternAnd path)
+              signatureBelow (contexts.transport visitExtension)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                visitExtension parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                visitExtension bindings)
+              contextBounded parametersBounded bindingsBounded
+              executableContextBounded executableParametersBounded
+              executableBindingsBounded leftAudit (by
+                change 8 * (patternTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternTraversalFuel _ +
+                  patternTraversalFuel _) + 1) ≤ inner + 1 at adequate
+                omega))
+          let leftExtends := leftOrigin.erase.supplyExtends
+          obtain ⟨_, leftDualBounded, leftBindingsBounded⟩ :=
+            leftOrigin.erase.boundedBy closed before.declarative_bounded
+              contextBounded parametersBounded bindingsBounded
+          let rightOrigin := patternAuditOrigin rightAudit
+          let right := Classical.choice
+            (certifiedPatternOrigin_complete_nonempty closed inner
+              (selfEnv := selfEnv) (path := 1 :: path)
+              (raw := rightOrigin.erase) (origin := rightOrigin)
+              (synthBelow := synthBelow.mono (Nat.le_succ inner))
+              (patternsBelow := patternsBelow.mono (Nat.le_succ inner))
+              (capComplete := capComplete) left.bounded.run.completion
+              (signatureBelow.mono leftExtends)
+              (contexts.transport
+                (visitExtension.seq left.bounded.run.transition))
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                (visitExtension.seq left.bounded.run.transition) parameters)
+              left.bounded.run.bindings (contextBounded.mono leftExtends)
+              (parametersBounded.mono leftExtends) leftBindingsBounded
+              (executableContextBounded.mono leftExtends)
+              (executableParametersBounded.mono leftExtends)
+              left.bounded.rawBindingsBounded rightAudit (by
+                change 8 * (patternTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternTraversalFuel _ +
+                  patternTraversalFuel _) + 1) ≤ inner + 1 at adequate
+                omega))
+          let rightExtends := rightOrigin.erase.supplyExtends
+          obtain ⟨_, rightDualBounded, _⟩ := rightOrigin.erase.boundedBy
+            closed left.bounded.run.declarative_bounded
+            (contextBounded.mono leftExtends)
+            (parametersBounded.mono leftExtends) leftBindingsBounded
+          exact ⟨certifiedPatternAnd_complete before left right rightExtends
+            (leftDualBounded.mono rightExtends) rightDualBounded
+            (by assumption)⟩
+  | por leftAudit rightAudit =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          let visitExtension := before.visitExtension .patternOr path
+          let leftOrigin := patternAuditOrigin leftAudit
+          let left := Classical.choice
+            (certifiedPatternOrigin_complete_nonempty closed inner
+              (selfEnv := selfEnv) (path := 0 :: path)
+              (raw := leftOrigin.erase) (origin := leftOrigin)
+              (synthBelow := synthBelow.mono (Nat.le_succ inner))
+              (patternsBelow := patternsBelow.mono (Nat.le_succ inner))
+              (capComplete := capComplete) (before.visit .patternOr path)
+              signatureBelow (contexts.transport visitExtension)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                visitExtension parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                visitExtension bindings)
+              contextBounded parametersBounded bindingsBounded
+              executableContextBounded executableParametersBounded
+              executableBindingsBounded leftAudit (by
+                change 8 * (patternTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternTraversalFuel _ +
+                  patternTraversalFuel _) + 1) ≤ inner + 1 at adequate
+                omega))
+          let leftExtends := leftOrigin.erase.supplyExtends
+          obtain ⟨_, leftDualBounded, leftBindingsBounded⟩ :=
+            leftOrigin.erase.boundedBy closed before.declarative_bounded
+              contextBounded parametersBounded bindingsBounded
+          let afterLeft := visitExtension.seq left.bounded.run.transition
+          let rightOrigin := patternAuditOrigin rightAudit
+          let right := Classical.choice
+            (certifiedPatternOrigin_complete_nonempty closed inner
+              (selfEnv := selfEnv) (path := 1 :: path)
+              (raw := rightOrigin.erase) (origin := rightOrigin)
+              (synthBelow := synthBelow.mono (Nat.le_succ inner))
+              (patternsBelow := patternsBelow.mono (Nat.le_succ inner))
+              (capComplete := capComplete) left.bounded.run.completion
+              (signatureBelow.mono leftExtends)
+              (contexts.transport afterLeft)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                afterLeft parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                afterLeft bindings)
+              (contextBounded.mono leftExtends)
+              (parametersBounded.mono leftExtends)
+              (bindingsBounded.mono leftExtends)
+              (executableContextBounded.mono leftExtends)
+              (executableParametersBounded.mono leftExtends)
+              (executableBindingsBounded.mono leftExtends) rightAudit (by
+                change 8 * (patternTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternTraversalFuel _ +
+                  patternTraversalFuel _) + 1) ≤ inner + 1 at adequate
+                omega))
+          let rightExtends := rightOrigin.erase.supplyExtends
+          obtain ⟨_, rightDualBounded, rightBindingsBounded⟩ :=
+            rightOrigin.erase.boundedBy closed
+              left.bounded.run.declarative_bounded
+              (contextBounded.mono leftExtends)
+              (parametersBounded.mono leftExtends)
+              (bindingsBounded.mono leftExtends)
+          exact ⟨certifiedPatternOr_complete before left right rightExtends
+            (leftDualBounded.mono rightExtends) rightDualBounded
+            (leftBindingsBounded.mono rightExtends) rightBindingsBounded
+            (by assumption) (by assumption)⟩
+  | papp childrenAudit =>
+      cases fuel with
+      | zero => simp [PatternBudgetAdequate, patternTraversalFuel] at adequate
+      | succ inner =>
+          rename_i scheme patterns duals S₁ name lookup childrenRaw aligned
+            childrenOrigin
+          let instantiation := instantiateDualInState_complete before signature
+            executableContext executableParameters executableBindings
+            (executableContext.applySubst state.prevailing)
+            (executableParameters.applySubst state.prevailing)
+            (executableBindings.applySubst state.prevailing) scheme
+          let instExtends := SupplyExtends.instantiateDualScheme q scheme
+          let visitExtension := instantiation.correspondence.visitExtension
+            .patternApp path
+          let totalInstantiation := instantiation.transition.seq visitExtension
+          let children := Classical.choice
+            (patternsBelow.complete (Nat.lt_succ_self inner)
+              (selfEnv := selfEnv) (path := path) (index := 0)
+              (instantiation.correspondence.visit .patternApp path)
+              (signatureBelow.mono instExtends)
+              (contexts.transport totalInstantiation)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportPatternCtx
+                totalInstantiation parameters)
+              (_root_.TypePM.DemandTypingInferenceCompletenessDataBisimulation.BisimulationExtension.transportMonoCtx
+                totalInstantiation bindings)
+              (contextBounded.mono instExtends)
+              (parametersBounded.mono instExtends)
+              (bindingsBounded.mono instExtends)
+              (executableContextBounded.mono instExtends)
+              (executableParametersBounded.mono instExtends)
+              (executableBindingsBounded.mono instExtends) childrenAudit (by
+                change 8 * (patternListTraversalFuel _ + 1) ≤ inner
+                change 8 * ((1 + patternListTraversalFuel _) + 1) ≤
+                  inner + 1 at adequate
+                omega))
+          let childrenExtends := childrenOrigin.erase.supplyExtends
+          obtain ⟨_, declarativeDualsBounded, _⟩ :=
+            childrenOrigin.erase.boundedBy closed
+              instantiation.correspondence.declarative_bounded
+              (contextBounded.mono instExtends)
+              (parametersBounded.mono instExtends)
+              (bindingsBounded.mono instExtends)
+          exact ⟨certifiedPatternApp_complete
+            (declarativeContext := declarativeContext)
+            (declarativeParameters := declarativeParameters)
+            (declarativeBindings := declarativeBindings)
+            lookup closed before children childrenExtends
+            declarativeDualsBounded aligned⟩
+termination_by fuel
 
 /-! ## Certified list dispatch -/
 
@@ -1225,7 +1827,7 @@ theorem certifiedPatternsOrigin_complete_nonempty
     {origin : DDPatternsOrigin signature raw ledger ledger'}
     (audit : DDPatternsTerminalAudit terminal signature origin)
     (adequate : PatternsBudgetAdequate fuel patterns) :
-    Nonempty (BoundedCertifiedPatternsRunCompletion terminal signature before
+    Nonempty (BoundedPairedCertifiedPatternsRunCompletion terminal signature before
       (inferPatternsFuel fuel signature executableContext executableParameters
         executableBindings selfEnv path index patterns state)
       q' S' ledger' duals bindings') := by
@@ -1239,7 +1841,8 @@ theorem certifiedPatternsOrigin_complete_nonempty
             (parameters := executableParameters) (selfEnv := selfEnv)
             (path := path) (index := index) inner before
             declarativeBindings bindings executableBindingsBounded
-          exact ⟨⟨bounded, patternsNil terminal signature state⟩⟩
+          exact ⟨BoundedPairedCertifiedPatternsRunCompletion.ofExact
+            ⟨bounded, patternsNil terminal signature state⟩⟩
       | cons headAudit tailAudit =>
           rename_i pattern dual bindings₁ q₁ S₁ ledger₁ patterns duals
             headRaw tailRaw headOrigin tailOrigin
@@ -1278,8 +1881,55 @@ theorem certifiedPatternsOrigin_complete_nonempty
               head.bounded.rawBindingsBounded tailAudit tailAdequate)
           let bounded := boundedPatternsCons_complete before head.bounded
             tail.bounded tailOrigin.erase.supplyExtends
-          exact ⟨⟨bounded, patternsCons head.validation tail.validation⟩⟩
+          let validation := head.validation.trans tail.validation
+          exact ⟨⟨bounded, validation.ordinary.history, validation⟩⟩
 termination_by fuel
+
+/-- The paired single/list interfaces close by strong induction on the shared
+fuel ceiling.  This is the sole pattern-family package needed by the global
+certified synthesis recursion. -/
+theorem certifiedPatternFamilies_complete_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (bound : Nat)
+    (synthBelow : CertifiedPatternSynthCompletenessBelow terminal signature
+      bound)
+    (capComplete : PatternCtorCapCompletenessPackage signature) :
+    CertifiedPatternCompletenessBelow terminal signature bound ∧
+      CertifiedPatternsCompletenessBelow terminal signature bound := by
+  induction bound using Nat.strongRecOn with
+  | ind bound induction =>
+      constructor
+      · refine ⟨?_⟩
+        intro fuel below declarativeContext executableContext
+          declarativeParameters executableParameters declarativeBindings
+          executableBindings selfEnv path pattern dual bindings' q q' S S'
+          ledger ledger' state raw origin before signatureBelow contexts
+          parameters bindings contextBounded parametersBounded bindingsBounded
+          executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+        let smaller := induction fuel below
+          (synthBelow.mono (Nat.le_of_lt below))
+        exact certifiedPatternOrigin_complete_nonempty closed fuel
+          (synthBelow := synthBelow.mono (Nat.le_of_lt below))
+          (patternsBelow := smaller.2) (capComplete := capComplete) before
+          signatureBelow contexts parameters bindings contextBounded
+          parametersBounded bindingsBounded executableContextBounded
+          executableParametersBounded executableBindingsBounded audit adequate
+      · refine ⟨?_⟩
+        intro fuel below declarativeContext executableContext
+          declarativeParameters executableParameters declarativeBindings
+          executableBindings selfEnv path index patterns duals bindings' q q'
+          S S' ledger ledger' state raw origin before signatureBelow contexts
+          parameters bindings contextBounded parametersBounded bindingsBounded
+          executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+        let smaller := induction fuel below
+          (synthBelow.mono (Nat.le_of_lt below))
+        exact certifiedPatternsOrigin_complete_nonempty closed fuel smaller.1
+          before signatureBelow contexts parameters bindings contextBounded
+          parametersBounded bindingsBounded executableContextBounded
+          executableParametersBounded executableBindingsBounded audit adequate
 
 end DemandTypingInferenceCompletenessPatternCertified
 end TypePM
