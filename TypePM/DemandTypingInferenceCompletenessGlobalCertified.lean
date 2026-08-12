@@ -363,6 +363,212 @@ theorem auditedSynths_complete_paired
           exact validation
 termination_by fuel
 
+theorem auditedSynthApp_complete_paired
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {function argument : Expr} {functionTarget : Ty}
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ : Subst}
+    {ledger ledger₁ ledger₃ : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (synthBelow : PairedAuditedSynthCompletenessBelow terminal signature (fuel + 1))
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
+    {functionRaw : DDSynth signature q S declarativeContext function
+      functionTarget q₁ S₁}
+    {functionOrigin : DDSynthOrigin signature functionRaw ledger ledger₁}
+    (aligned : DDAlignTypesWithLedger ledger₁ S₁ functionTarget
+      (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) S₂)
+    {argumentRaw : DDCheck signature
+      { q₁ with nextTy := q₁.nextTy + 2 } S₂ declarativeContext argument
+      (.var q₁.nextTy) q₂ S₃}
+    {argumentOrigin : DDCheckOrigin signature argumentRaw ledger₁ ledger₃}
+    (functionAudit : DDSynthTerminalAudit terminal signature functionOrigin)
+    (argumentAudit : DDCheckTerminalAudit terminal signature argumentOrigin)
+    (adequate : SynthBudgetAdequate (fuel + 1) (.app function argument)) :
+    Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.app function argument) state) q₂ S₃ ledger₃
+      (.var (q₁.nextTy + 1))) := by
+  have functionAdequate : SynthBudgetAdequate fuel function := by
+    simp only [SynthBudgetAdequate, exprTraversalFuel] at adequate ⊢
+    omega
+  have argumentCheckAdequate : MatcherCheckBudgetAdequate fuel argument := by
+    simp only [SynthBudgetAdequate, MatcherCheckBudgetAdequate,
+      exprTraversalFuel] at adequate ⊢
+    omega
+  let functionBefore := before.afterVisit .exprApp path
+  have functionContexts : ContextBisimulation functionBefore.prevailing
+      declarativeContext executableContext :=
+    contexts.transport (before.visitExtension .exprApp path)
+  let functionRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv) (path := 0 :: path)
+      functionBefore functionContexts contextBounded executableContextBounded
+      functionAudit
+      functionAdequate)
+  let domainOrigin := freshOrigin .expression path "application-domain"
+  let resultOrigin := freshOrigin .expression path "application-result"
+  let functionAlignOrigin := freshOrigin .expression path
+    "application-function"
+  let domainAllocation := functionRun.raw.run.completion.state.freshTy domainOrigin
+  let resultAllocation := domainAllocation.state.freshTy resultOrigin
+  have arrowBounded : Ty.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 }
+      (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) :=
+    Ty.BoundedBy.fnOf
+      (Ty.BoundedBy.varOf (by simp))
+      (Ty.BoundedBy.varOf (by simp))
+  have functionDeclarativeBounded : functionTarget.BoundedBy q₁ :=
+    (functionRaw.boundedBy closed before.declarative_bounded
+      contextBounded).2
+  have executableArrowEq :
+      (Ty.fn (functionRun.raw.run.result.state.freshTy domainOrigin).1
+        ((functionRun.raw.run.result.state.freshTy domainOrigin).2.freshTy
+          resultOrigin).1) =
+      (Ty.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1))) := by
+    rw [domainAllocation.target_eq, resultAllocation.target_eq]
+  have functionRelatedAtAllocation : TyBisimulation
+      resultAllocation.state.prevailing functionTarget
+      functionRun.raw.run.result.target :=
+    (domainAllocation.state.freshTyExtension resultOrigin).transportTy
+      ((functionRun.raw.run.completion.state.freshTyExtension
+        domainOrigin).transportTy functionRun.raw.run.target)
+  have arrowRelatedAtAllocation : TyBisimulation
+      resultAllocation.state.prevailing
+      (.fn (.var q₁.nextTy) (.var (q₁.nextTy + 1)))
+      (.fn (functionRun.raw.run.result.state.freshTy domainOrigin).1
+        ((functionRun.raw.run.result.state.freshTy domainOrigin).2.freshTy
+          resultOrigin).1) := by
+    rw [executableArrowEq]
+    exact resultAllocation.state.prevailing.sameTarget _
+  have executableArrowBounded : Ty.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 }
+      (.fn (functionRun.raw.run.result.state.freshTy domainOrigin).1
+        ((functionRun.raw.run.result.state.freshTy domainOrigin).2.freshTy
+          resultOrigin).1) := by
+    rw [executableArrowEq]
+    exact arrowBounded
+  let functionAlignment :=
+    DemandTypingInferenceCompletenessAlignmentTraversal.ddAlignTypesWithLedger_complete
+    (origin := functionAlignOrigin) resultAllocation.state
+    functionRelatedAtAllocation arrowRelatedAtAllocation
+    (functionDeclarativeBounded.mono
+      ((SupplyExtends.bumpTy q₁ 1).trans
+        (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1)))
+    arrowBounded
+    (functionRun.raw.rawTargetBounded.mono
+      ((SupplyExtends.bumpTy q₁ 1).trans
+        (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1)))
+    executableArrowBounded aligned
+  let components := AuditedCheckComponents.ofAudit argumentAudit
+  have argumentContextBounded : declarativeContext.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 } :=
+    (contextBounded.mono functionOrigin.erase.supplyExtends).mono
+      ((SupplyExtends.bumpTy q₁ 1).trans
+        (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1))
+  have argumentExecutableContextBounded : executableContext.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 } :=
+    executableContextBounded.mono
+      (functionOrigin.erase.supplyExtends.trans
+        ((SupplyExtends.bumpTy q₁ 1).trans
+          (SupplyExtends.bumpTy { q₁ with nextTy := q₁.nextTy + 1 } 1)))
+  have argumentContexts : ContextBisimulation
+      functionAlignment.completion.prevailing declarativeContext
+      executableContext :=
+    (((functionContexts.transport functionRun.raw.run.transition).transport
+      (functionRun.raw.run.completion.state.freshTyExtension domainOrigin)).transport
+      (domainAllocation.state.freshTyExtension resultOrigin)).transport
+      functionAlignment.transition
+  have argumentSynthAdequate : SynthBudgetAdequate fuel argument := by
+    simp only [SynthBudgetAdequate, MatcherCheckBudgetAdequate]
+      at argumentCheckAdequate ⊢
+    omega
+  let argumentRun := Classical.choice
+    (synthBelow (Nat.lt_succ_self fuel)
+      (selfEnv := selfEnv) (path := 1 :: path)
+      functionAlignment.completion argumentContexts argumentContextBounded
+      argumentExecutableContextBounded components.synthAudit
+      argumentSynthAdequate)
+  have expectedBounded : Ty.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 } (.var q₁.nextTy) :=
+    Ty.BoundedBy.varOf (by simp)
+  let executableDomain := (functionRun.raw.run.result.state.freshTy domainOrigin).1
+  have expectedRelated : TyBisimulation
+      functionAlignment.completion.prevailing (.var q₁.nextTy)
+      executableDomain := by
+    have atAllocation : TyBisimulation resultAllocation.state.prevailing
+        (.var q₁.nextTy) executableDomain := by
+      change TyBisimulation resultAllocation.state.prevailing
+        (.var q₁.nextTy)
+        (functionRun.raw.run.result.state.freshTy domainOrigin).1
+      rw [domainAllocation.target_eq]
+      exact resultAllocation.state.prevailing.sameTarget _
+    exact functionAlignment.transition.transportTy atAllocation
+  have executableExpectedBounded : executableDomain.BoundedBy
+      { q₁ with nextTy := q₁.nextTy + 2 } := by
+    simpa [executableDomain, domainAllocation.target_eq] using expectedBounded
+  have declarativeArgumentRawBounded :=
+    (components.synthesized.boundedBy closed
+      functionAlignment.completion.declarative_bounded
+      argumentContextBounded).2
+  let expectedAlignment := ddAlignWithLedger_complete (path := 1 :: path)
+    argumentRun.raw.run.completion.state argumentRun.raw.run.target
+    (argumentRun.raw.run.transition.transportTy expectedRelated)
+    declarativeArgumentRawBounded
+    (expectedBounded.mono components.synthesized.supplyExtends)
+    argumentRun.raw.rawTargetBounded
+    (executableExpectedBounded.mono components.synthesized.supplyExtends)
+    components.aligned
+  let rawRun := boundedSynthApp_complete before functionRun.raw
+    functionAlignment argumentRun.raw expectedAlignment
+    (by
+      change Ty.BoundedBy q₂
+        ((functionRun.raw.run.result.state.freshTy domainOrigin).2.freshTy
+          resultOrigin).1
+      rw [resultAllocation.target_eq]
+      exact Ty.BoundedBy.varOf (by
+        have extension := components.synthesized.supplyExtends
+        have belowStart : q₁.nextTy + 1 <
+            ({ q₁ with nextTy := q₁.nextTy + 2 } :
+              InferenceBase.FreshSupply).nextTy := by simp
+        exact Nat.lt_of_lt_of_le belowStart extension.2))
+  let visitValidation := PairedValidatorRunExtension.ofExact
+    (before.visitExtension .exprApp path)
+    (ValidatorRunExtension.visit terminal signature state .exprApp path)
+  let domainValidation := PairedValidatorRunExtension.ofExact
+    (functionRun.raw.run.completion.state.freshTyExtension domainOrigin)
+    (ValidatorRunExtension.freshTy terminal signature _ domainOrigin)
+  let resultValidation := PairedValidatorRunExtension.ofExact
+    (domainAllocation.state.freshTyExtension resultOrigin)
+    (ValidatorRunExtension.freshTy terminal signature _ resultOrigin)
+  let functionAlignmentValidation := PairedValidatorRunExtension.ofExact
+    functionAlignment.transition
+    (ValidatorRunExtension.ofAlignTypes
+      (terminal := terminal) (signature := signature)
+      functionAlignment.success)
+  let expectedAlignmentValidation := PairedValidatorRunExtension.ofExact
+    expectedAlignment.transition
+    (ValidatorRunExtension.ofAlignExprResultAtExpected
+      (terminal := terminal) (signature := signature)
+      expectedAlignment.success)
+  let finishTransition := expectedAlignment.transition.after.recordEventExtension
+    (.inferredExpr (.app function argument) rawRun.run.result.target path)
+  let finishValidation := PairedValidatorRunExtension.ofExact finishTransition
+    (ValidatorRunExtension.finishExpr terminal signature _
+      (.app function argument) path _)
+  let validation :=
+    (visitValidation.trans functionRun.validation).trans domainValidation |>.trans
+      resultValidation |>.trans functionAlignmentValidation |>.trans
+      argumentRun.validation |>.trans expectedAlignmentValidation |>.trans
+      finishValidation
+  refine ⟨⟨rawRun, validation.ordinary.history, ?_⟩⟩
+  exact validation
+
+
 /-- Tuple synthesis surrounds the paired child list by exact visit and result
 events. -/
 theorem auditedSynthTuple_complete_paired
