@@ -572,5 +572,50 @@ theorem patternsOrigin_complete_nonempty
             tailOrigin.erase.supplyExtends⟩
 termination_by fuel
 
+/-- The strict-ceiling pattern and pattern-list interfaces close together by
+strong induction on the ceiling.  At a concrete call fuel, both dispatchers
+see only the already-constructed package for strictly smaller fuel. -/
+theorem patternFamilies_complete_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (bound : Nat)
+    (synthBelow : PatternSynthCompletenessBelow terminal signature bound)
+    (capComplete : PatternCtorCapCompletenessPackage signature) :
+    PatternCompletenessBelow terminal signature bound ∧
+      PatternsCompletenessBelow terminal signature bound := by
+  induction bound using Nat.strongRecOn with
+  | ind bound induction =>
+      constructor
+      · refine ⟨?_⟩
+        intro fuel below declarativeContext executableContext
+          declarativeParameters executableParameters declarativeBindings
+          executableBindings selfEnv path pattern dual bindings' q q' S S'
+          ledger ledger' state raw origin before contexts parameters bindings
+          contextBounded parametersBounded bindingsBounded
+          executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+        let smaller := induction fuel below
+          (synthBelow.mono (Nat.le_of_lt below))
+        exact patternOrigin_complete_nonempty closed fuel
+          (synthBelow := synthBelow.mono (Nat.le_of_lt below))
+          (patternsBelow := smaller.2) (capComplete := capComplete) before
+          contexts parameters bindings contextBounded parametersBounded
+          bindingsBounded executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+      · refine ⟨?_⟩
+        intro fuel below declarativeContext executableContext
+          declarativeParameters executableParameters declarativeBindings
+          executableBindings selfEnv path index patterns duals bindings' q q'
+          S S' ledger ledger' state raw origin before contexts parameters
+          bindings contextBounded parametersBounded bindingsBounded
+          executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+        let smaller := induction fuel below
+          (synthBelow.mono (Nat.le_of_lt below))
+        exact patternsOrigin_complete_nonempty closed fuel smaller.1 before
+          contexts parameters bindings contextBounded parametersBounded
+          bindingsBounded executableContextBounded executableParametersBounded
+          executableBindingsBounded audit adequate
+
 end DemandTypingInferenceCompletenessPatternDispatcher
 end TypePM
