@@ -53,6 +53,84 @@ context／targetを同時に比較する相対principalityまで証明済みで�
 主張しない．Damas--Milner側の結果はexecutable acceptanceであり，DM derivationが選ぶtargetと
 `inferType`返値の構文的一致は主張しない．
 
+### 証明済みのメタ理論
+
+| 領域 | 現在の到達点 |
+|---|---|
+| 基盤 | soundness，completeness，受理同値，決定可能性，安全性，target一意性を公開定理として接続済み |
+| principality | 二sort instance preorder，closed target principality，open context／target相対principalityを証明済み |
+| Damas--Milner | 任意の`DM.Typing`のexecutable acceptanceと，closed source fragmentからDMへの型消去を証明済み |
+| source order | no-guessとchronological state threadingによる順序依存を意図された仕様として正負回帰で固定済み |
+
+### Principality
+
+`TypeInstance`はsource typeのfree capability／target metaだけを変更できる有限supportのpaired
+substitutionでinstance関係を定める．`ScopedTypeInstance`は二つのscopeを明示する．restrictionが
+型への作用を保つことと，chronological compositionを元scopeへ再restrictionすることにより，反射性と
+推移性を証明済みである．局所二sort renamingは両方向の`TypeInstance`を与える．
+
+`Inference.inferType_principal`は一般contextで次を与え，`inferType_closed_principal`が空contextへの
+特殊化を公開する．
+
+```text
+FrozenSigWF Σ → inferType Σ [] e = some principal →
+  SourceTyping Σ [] e principal ∧
+  ∀ target, SourceTyping Σ [] e target → TypeInstance principal target
+```
+
+open contextではcontext由来のmetaをすべてrigidにした強い形を採らない．`ContextTargetInstance`は
+normalized contextとtargetのfree metaの和を有限scopeとし，同じpaired substitutionを両方へ作用させる．
+`SourceTyping.TerminalPair`は第二のsource judgmentではなく，既存のaudited derivationからその終端
+substitutionで正規化したcontextと公開targetを取り出すviewである．`Inference.infer_relative_principal`は
+成功runの`ResolvedContext`／`resolvedTarget`と，任意の`SourceTyping` derivationのterminal pairが
+相互に`ContextTargetInstance`であることを証明する．closed specializationはcontext成分が空なので
+`TypeInstance` principalityへ戻る．
+
+### Damas--Milner acceptanceとconservativity
+
+`DamasMilner`はpattern-free expression classifierとcapability-inert type decoderを持ち，埋込みの
+像と単射性を証明する．`DamasMilnerAcceptance`は一sort substitutionの合成／restriction，monotype／
+contextの一般性，canonical scheme openingのprincipalityとcore instantiationとの一致を証明する．
+公開定理`DM.Typing.inferenceSucceeds`は次を与える．
+
+```text
+FrozenSigWF Σ → DM.Typing Γ e τ →
+  Inference.inferenceSucceeds Σ Γ.emb e = true
+```
+
+証明はDM derivationをconstructorごとにAlgorithm Wの監査済みrunへ再生し，公開推論器のterminal
+acceptanceへ接続する．結論はacceptanceだけである．DM derivationが選んだ`τ`は推論器のprincipal
+targetの特殊化であり得るため，`inferType`の返値と`τ.emb`の構文的一致は主張しない．
+
+逆方向の`DamasMilnerConservativity`では，`eraseTy`が関数・積を一sortへ構造的に写し，基本型を
+DMの`Int`へ正規化して，matcher／slot wrapperとcapabilityを消去する．`ContextErases`はcore contextの
+各scheme useとDM contextを関係づけ，`SchemeErases.generalize`がclosed signatureの下でlet
+generalizationを保存する．`TypingInvariant.toDM`はpattern-free expressionの内部invariantを
+DM derivationへ構造的に消去する．公開定理`DM.sourceTyping_to_dm`は次を与える．
+
+```text
+FrozenSigWF Σ → InFragmentExpr e → SourceTyping Σ [] e τ →
+  ∃ τdm, DM.Typing [] e τdm
+```
+
+実際のwitnessは`eraseTy τ`である．必要な`TypingInvariant`は仮定ではなく，
+`SourceTyping.typingInvariant`の監査済みclosed state erasureから得る．open contextのconverseは
+主張しない．二つの定理を合わせると，指定したclosed fragmentではsourceからDMへの保守的な射影と，
+得られたDM derivationの実行可能受理が成立する．型の比較はprincipality層に分離される．
+
+### Source-order依存
+
+checking cutはその時点のprevailing substitutionを適用したexpected headだけを観測し，未解決変数を
+slotへ先読みして構造化しない．listはsource順にstateを渡すため，既知のslot demandが先に現れる
+programは受理されても，同じ要素を逆順にしたprogramは拒否され得る．
+`AcceptanceGapRegression.source_order_affects_source_typability`はこの差を`SourceTyping`の存在と
+非存在の組として固定する．pre-scan，子の並べ替え，checking obligationの遅延，source-order
+permutation invarianceは現行仕様に含めない．
+
+将来この境界を変更する場合も通常単一化の失敗をcoercionの根拠に戻してはならず，未解決headの
+constraintまたはchecking obligationを遅延する別calculusとして設計する必要がある．それは受理集合を
+変えるため，基盤とそのcalculusに依存するメタ定理を再確立する必要がある．
+
 ## judgmentの役割
 
 | 層 | 役割 |
@@ -105,103 +183,6 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 
 回帰ごとの対応と内部証明の構成は[`docs/details.md`](docs/details.md)，論文形式の規則とメタ理論は
 [`tex/main.tex`](tex/main.tex)に記載する．
-
-## Roadmap
-
-完了済みのsoundness，completeness，受理同値，安全性，target一意性を基盤`F`とする．principality系は
-完了し，Damas--Milner系も完了した．source-order依存は現行のno-guess calculusの意図された
-仕様として採用済みであり，以下のroadmap項目はすべて完了している．
-
-```text
-[x] F. soundness / completeness / safety / target uniqueness
-    ├──→ [x] P1. 二sort instance preorder
-    │          └──→ [x] P2. closed principality
-    │                    └──→ [x] P3. context相対principality
-    ├──→ [x] D1. 全DM.Typingのexecutable acceptance
-    │          └──→ [x] D2. DM断片でのconservativity
-    └──→ [x] O. source-order依存を現行仕様として採用
-```
-
-| ID | 状態 | 依存 | 現在の達成内容 |
-|---|---|---|---|
-| P1 | 完了 | F | capability／target metaを同時に扱うinstance preorderと，renamingとの関係を証明した |
-| P2 | 完了 | P1 | `inferType`が返すclosed targetのprincipalityを証明した |
-| P3 | 完了 | P2 | contextとtargetの同時instance化を含むopen-term相対principalityを証明した |
-| D1 | 完了 | F | 任意の`DM.Typing` derivationに対する公開推論器のexecutable acceptanceを証明した |
-| O | 完了 | F | source-order依存をno-guessとchronological state threadingの意図された仕様として固定した |
-| D2 | 完了 | F；D1と合成 | closed・pattern-free・capability-inert・direct-self断片の`SourceTyping`をDMへ消去した |
-
-### P1--P3: principality
-
-`TypeInstance`はsource typeのfree capability／target metaだけを変更できる有限supportのpaired
-substitutionでinstance関係を定める．`ScopedTypeInstance`は二つのscopeを明示する．restrictionが
-型への作用を保つことと，chronological compositionを元scopeへ再restrictionすることにより，反射性と
-推移性を証明済みである．局所二sort renamingは両方向の`TypeInstance`を与える．
-
-`Inference.inferType_principal`は一般contextで次を与え，`inferType_closed_principal`が空contextへの
-特殊化を公開する．したがってP2のclosed principal monotypeは次の形で機械化済みである．
-
-```text
-FrozenSigWF Σ → inferType Σ [] e = some principal →
-  SourceTyping Σ [] e principal ∧
-  ∀ target, SourceTyping Σ [] e target → TypeInstance principal target
-```
-
-open contextではcontext由来のmetaをすべてrigidにした強い形を採らない．`ContextTargetInstance`は
-normalized contextとtargetのfree metaの和を有限scopeとし，同じpaired substitutionを両方へ作用させる．
-`SourceTyping.TerminalPair`は第二のsource judgmentではなく，既存のaudited derivationからその終端
-substitutionで正規化したcontextと公開targetを取り出すviewである．`Inference.infer_relative_principal`は
-成功runの`ResolvedContext`／`resolvedTarget`と，任意の`SourceTyping` derivationのterminal pairが
-相互に`ContextTargetInstance`であることを証明する．closed specializationはcontext成分が空なので
-`TypeInstance` principalityへ戻る．
-
-### D1--D2: Damas--Milner断片
-
-`DamasMilner`はpattern-free expression classifierとcapability-inert type decoderを持ち，埋込みの
-像と単射性を証明する．`DamasMilnerAcceptance`は一sort substitutionの合成／restriction，monotype／
-contextの一般性，canonical scheme openingのprincipalityとcore instantiationとの一致を証明済みである．
-これを基礎に，D1の公開定理`DM.Typing.inferenceSucceeds`は次を与える．
-
-```text
-FrozenSigWF Σ → DM.Typing Γ e τ →
-  Inference.inferenceSucceeds Σ Γ.emb e = true
-```
-
-証明はDM derivationをconstructorごとにAlgorithm Wの監査済みrunへ再生し，公開推論器のterminal
-acceptanceへ接続する．結論はacceptanceだけである．DM derivationが選んだ`τ`は推論器のprincipal
-targetの特殊化であり得るため，`inferType`の返値と`τ.emb`の構文的一致は主張しない．
-
-D2の逆方向は`DamasMilnerConservativity`で証明済みである．`eraseTy`は関数・積を一sortへ
-構造的に写し，基本型をDMの`Int`へ正規化し，matcher／slot wrapperとcapabilityを消去する．`ContextErases`はcore contextの
-各scheme useとDM contextを関係づけ，`SchemeErases.generalize`がclosed signatureの下でlet
-generalizationを保存する．`TypingInvariant.toDM`はpattern-free expressionの内部invariantを
-DM derivationへ構造的に消去する．公開定理`DM.sourceTyping_to_dm`は次を与える．
-
-```text
-FrozenSigWF Σ → InFragmentExpr e → SourceTyping Σ [] e τ →
-  ∃ τdm, DM.Typing [] e τdm
-```
-
-実際のwitnessは`eraseTy τ`である．ここで必要な`TypingInvariant`は仮定ではなく，
-`SourceTyping.typingInvariant`の監査済みclosed state erasureから得る．したがって第二のsource
-judgmentを介した逆向接続ではない．open contextのconverseはこの定理の主張に含めない．
-D1は任意のDM typingからsource inference acceptanceを与え，D2は指定したclosed source fragmentを
-DMへ消去する．従って両者を合わせると，そのfragmentではsourceからDMへの保守的な射影と，得られた
-DM derivationの実行可能受理が成立する．ただしDM targetとsource推論返値の型比較はP2／P3の
-principality層に分離され，D1／D2自体の結論には含めない．
-
-### O: source-order依存
-
-現行挙動を採用した．checking cutはその時点のprevailing substitutionを適用したexpected headだけを
-観測し，未解決変数をslotへ先読みして構造化しない．listはsource順にstateを渡すため，既知のslot
-demandが先に現れるprogramは受理されても，同じ要素を逆順にしたprogramは拒否され得る．
-`AcceptanceGapRegression.source_order_affects_source_typability`はこの差を`SourceTyping`の存在と
-非存在の組として固定する．pre-scan，子の並べ替え，checking obligationの遅延，source-order
-permutation invarianceは現行仕様に含めない．
-
-将来この境界を変更する場合も通常単一化の失敗をcoercionの根拠に戻してはならず，未解決headの
-constraintまたはchecking obligationを遅延する別calculusとして設計する必要がある．それは受理集合を
-変えるため，基盤`F`とそのcalculusに依存するP／D定理を再確立する．現行roadmapに未完了項目はない．
 
 ## モジュール案内
 
