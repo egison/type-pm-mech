@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessPrimitivePatternCertified
 import TypePM.DemandTypingInferenceCompletenessMatcherDPat
+import TypePM.DemandTypingInferenceCompletenessMatcherPPat
 
 /-!
 # Validator-certified matcher-clause composition
@@ -419,6 +420,286 @@ def inferClausesFuel_cons_complete_certified
       q' S' ledger' declarativeTarget (holes :: holeLists) :=
   ⟨inferClausesFuel_cons_complete before targetRelated head.run tail.run,
     head.validation.trans tail.validation⟩
+
+/-! ## Audited clause dispatch -/
+
+mutual
+
+/-- Certified reconstruction of one matcher clause under a strict checking
+ceiling. -/
+theorem clauseOrigin_complete_certified_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    {context : Context} {selfEnv : SelfEnv} {path : SyntaxPath}
+    {clause : Clause} {declarativeTarget executableTarget : Ty}
+    {holes : List Dual} {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (checkBelow : CertifiedMatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClause signature q S context clause declarativeTarget holes q' S'}
+    {origin : DDClauseOrigin signature raw ledger ledger'}
+    (audit : DDClauseTerminalAudit terminal signature origin)
+    (adequate : MatcherClauseBudgetAdequate fuel clause) :
+    Nonempty (CertifiedClauseRunCompletion terminal signature before
+      (inferClauseFuel fuel signature context selfEnv path clause
+        executableTarget state)
+      q' S' ledger' declarativeTarget holes) := by
+  cases fuel with
+  | zero => simp [MatcherClauseBudgetAdequate] at adequate
+  | succ fuel =>
+      cases audit with
+      | mk nextAudit armsAudit =>
+          rename_i q₁ S₁ nextMatchers q₂ S₂ ledger₁ ledger₂ ppBindings
+            arms primitivePattern next decomposed nextRaw nextOrigin ppRaw
+            armsRaw ppOrigin armsOrigin
+          have primitiveAdequate : PPatAdequate fuel primitivePattern := by
+            simp only [MatcherClauseBudgetAdequate, clauseTraversalFuel,
+              PPatAdequate] at adequate ⊢
+            omega
+          have nextAdequate : MatcherChecksBudgetAdequate fuel nextMatchers := by
+            have measure := exprListTraversalFuel_decomposeME decomposed
+            have primitivePositive : 0 < ppatTraversalFuel primitivePattern := by
+              cases primitivePattern <;> simp only [ppatTraversalFuel] <;> omega
+            have armsPositive : 0 < armListTraversalFuel arms := by
+              cases arms <;> simp only [armListTraversalFuel] <;> omega
+            simp only [MatcherClauseBudgetAdequate, MatcherChecksBudgetAdequate,
+              clauseTraversalFuel] at adequate ⊢
+            omega
+          have armsAdequate : MatcherArmsBudgetAdequate fuel arms := by
+            simp only [MatcherClauseBudgetAdequate, MatcherArmsBudgetAdequate,
+              clauseTraversalFuel] at adequate ⊢
+            omega
+          let visited := before.visit .clause path
+          let primitiveRaw := Classical.choice
+            (ppatComplete (path := 0 :: path) ppRaw ppOrigin visited
+              ((before.visitExtension .clause path).transportTy targetRelated)
+              targetBounded executableTargetBounded primitiveAdequate)
+          have visitedSignatureBelow : SignatureVarsBelow
+              (visit state .clause path).supply signature := by
+            simpa [Inference.visit, before.supply_eq] using signatureBelow
+          have executableTargetVisitedBounded :
+              executableTarget.BoundedBy (visit state .clause path).supply := by
+            simpa [Inference.visit, before.supply_eq] using
+              executableTargetBounded
+          let primitiveValidation := inferPPatFuel_validation
+            (terminal := terminal) closed visitedSignatureBelow
+            executableTargetVisitedBounded primitiveRaw.run.success
+          let primitiveRun : BoundedCertifiedPPatRunCompletion terminal
+              signature visited
+              (inferPPatFuel fuel signature (0 :: path) primitivePattern
+                executableTarget (visit state .clause path))
+              q₁ S₁ ledger₁ declarativeTarget
+              (match ppRaw with
+                | _ => holes)
+              ppBindings :=
+            certifyBoundedPPatRun primitiveRaw primitiveValidation
+          obtain ⟨_, holesBounded, ppBindingsBounded⟩ :=
+            ppOrigin.erase.boundedBy closed before.declarative_bounded
+              targetBounded
+          have nextContextBounded : context.BoundedBy q₁ :=
+            contextBounded.mono ppOrigin.erase.supplyExtends
+          have nextExpectedsBounded : ∀ expected : Ty, expected ∈
+              (holes.map fun hole => Ty.slot hole.cap hole.target) →
+              Ty.BoundedBy q₁ expected := by
+            intro expected membership
+            obtain ⟨hole, holeMembership, rfl⟩ := List.mem_map.mp membership
+            exact Ty.BoundedBy.slotOf (holesBounded hole holeMembership).1
+              (holesBounded hole holeMembership).2
+          let nextRun := Classical.choice
+            (checksOrigin_complete_certified_below
+              (selfEnv := selfEnv) (parent := 1 :: path) (index := 0)
+              fuel checkBelow.lower primitiveRun.certified.run.completion
+              (signatureBelow.mono ppOrigin.erase.supplyExtends)
+              nextContextBounded nextExpectedsBounded
+              (fun expected membership => by
+                obtain ⟨hole, holeMembership, rfl⟩ :=
+                  List.mem_map.mp membership
+                exact Ty.BoundedBy.slotOf
+                  (primitiveRun.rawHolesBounded hole holeMembership).1
+                  (primitiveRun.rawHolesBounded hole holeMembership).2)
+              (DualListBisimulation.slots primitiveRun.certified.run.holes)
+              nextAudit nextAdequate)
+          let targetAtNext :=
+            (primitiveRun.certified.run.transition.seq
+              nextRun.run.transition).transportTy
+              ((before.visitExtension .clause path).transportTy targetRelated)
+          let ppAtNext := BisimulationExtension.transportMonoCtx
+            nextRun.run.transition primitiveRun.certified.run.bindings
+          let holesAtNext := BisimulationExtension.transportDualList
+            nextRun.run.transition primitiveRun.certified.run.holes
+          have armsContextBounded : context.BoundedBy q₂ :=
+            contextBounded.mono
+              (ppOrigin.erase.supplyExtends.trans nextOrigin.erase.supplyExtends)
+          have armsPPBounded : ppBindings.BoundedBy q₂ :=
+            ppBindingsBounded.mono nextOrigin.erase.supplyExtends
+          have armsTargetBounded : declarativeTarget.BoundedBy q₂ :=
+            targetBounded.mono
+              (ppOrigin.erase.supplyExtends.trans nextOrigin.erase.supplyExtends)
+          let declarativeBodyTarget := Ty.listT (prodTy (holes.map Dual.target))
+          let executableBodyTarget := Ty.listT
+            (prodTy (primitiveRun.certified.run.result.holes.map Dual.target))
+          have bodyTargetRelated : TyBisimulation nextRun.run.transition.after
+              declarativeBodyTarget executableBodyTarget :=
+            DemandTypingInferenceCompletenessExprTraversal.TyBisimulation.listT
+              (DualListBisimulation.prodTargets holesAtNext)
+          have armsBodyBounded : declarativeBodyTarget.BoundedBy q₂ := by
+            exact listT_boundedBy (prodTy_boundedBy (fun target membership => by
+              obtain ⟨hole, holeMembership, rfl⟩ := List.mem_map.mp membership
+              exact (holesBounded hole holeMembership).2.mono
+                nextOrigin.erase.supplyExtends))
+          have armsExecutableTargetBounded : executableTarget.BoundedBy q₂ :=
+            executableTargetBounded.mono
+              (ppOrigin.erase.supplyExtends.trans nextOrigin.erase.supplyExtends)
+          have armsExecutableBodyBounded : executableBodyTarget.BoundedBy q₂ := by
+            exact listT_boundedBy (prodTy_boundedBy (fun target membership => by
+              obtain ⟨hole, holeMembership, rfl⟩ := List.mem_map.mp membership
+              exact (primitiveRun.rawHolesBounded hole holeMembership).2.mono
+                nextOrigin.erase.supplyExtends))
+          let armsRun := Classical.choice
+            (armsOrigin_complete_certified_below closed dpatComplete fuel
+              checkBelow.lower
+              (selfEnv := selfEnv) (parent := 2 :: path) (index := 0)
+              nextRun.run.completion
+              (signatureBelow.mono
+                (ppOrigin.erase.supplyExtends.trans
+                  nextOrigin.erase.supplyExtends))
+              ppAtNext targetAtNext bodyTargetRelated armsContextBounded
+              armsPPBounded
+              (primitiveRun.rawBindingsBounded.mono
+                nextOrigin.erase.supplyExtends)
+              armsTargetBounded armsBodyBounded armsExecutableTargetBounded
+              armsExecutableBodyBounded armsAudit armsAdequate)
+          exact ⟨inferClauseFuel_complete_certified before targetRelated
+            primitiveRun.certified decomposed nextRun armsRun⟩
+termination_by fuel
+
+/-- Certified reconstruction of a matcher-clause list. -/
+theorem clausesOrigin_complete_certified_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {holeLists : List (List Dual)}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat)
+    (checkBelow : CertifiedMatcherCheckCompletenessBelow terminal signature fuel)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClauses signature q S context clauses declarativeTarget holeLists
+      q' S'}
+    {origin : DDClausesOrigin signature raw ledger ledger'}
+    (audit : DDClausesTerminalAudit terminal signature origin)
+    (adequate : MatcherClausesBudgetAdequate fuel clauses) :
+    Nonempty (CertifiedClausesRunCompletion terminal signature before
+      (inferClausesFuel fuel signature context selfEnv parent index clauses
+        executableTarget state)
+      q' S' ledger' declarativeTarget holeLists) := by
+  cases fuel with
+  | zero => simp [MatcherClausesBudgetAdequate] at adequate
+  | succ fuel =>
+      cases audit with
+      | nil =>
+          exact ⟨inferClausesFuel_nil_complete_certified terminal fuel signature
+            context selfEnv parent index before targetRelated⟩
+      | cons headAudit tailAudit =>
+          rename_i clause holes q₁ S₁ ledger₁ clauses holeLists headRaw
+            tailRaw headOrigin tailOrigin
+          have headAdequate : MatcherClauseBudgetAdequate fuel clause := by
+            have tailPositive : 0 < clauseListTraversalFuel clauses := by
+              cases clauses <;> simp only [clauseListTraversalFuel] <;> omega
+            simp only [MatcherClausesBudgetAdequate,
+              MatcherClauseBudgetAdequate, clauseListTraversalFuel]
+              at adequate ⊢
+            omega
+          have tailAdequate : MatcherClausesBudgetAdequate fuel clauses := by
+            have headPositive : 0 < clauseTraversalFuel clause := by
+              cases clause
+              simp only [clauseTraversalFuel]
+              omega
+            simp only [MatcherClausesBudgetAdequate,
+              clauseListTraversalFuel] at adequate ⊢
+            omega
+          let headRun := Classical.choice
+            (clauseOrigin_complete_certified_below closed ppatComplete
+              dpatComplete (selfEnv := selfEnv) (path := index :: parent)
+              fuel checkBelow.lower before signatureBelow targetRelated
+              contextBounded targetBounded executableTargetBounded headAudit
+              headAdequate)
+          have tailContextBounded : context.BoundedBy q₁ :=
+            contextBounded.mono headOrigin.erase.supplyExtends
+          have tailTargetBounded : declarativeTarget.BoundedBy q₁ :=
+            targetBounded.mono headOrigin.erase.supplyExtends
+          have tailExecutableTargetBounded : executableTarget.BoundedBy q₁ :=
+            executableTargetBounded.mono headOrigin.erase.supplyExtends
+          let tailRun := Classical.choice
+            (clausesOrigin_complete_certified_below closed ppatComplete
+              dpatComplete (selfEnv := selfEnv) (parent := parent)
+              (index := index + 1) fuel checkBelow.lower
+              headRun.run.completion
+              (signatureBelow.mono headOrigin.erase.supplyExtends)
+              (headRun.run.transition.transportTy targetRelated)
+              tailContextBounded tailTargetBounded tailExecutableTargetBounded
+              tailAudit tailAdequate)
+          exact ⟨inferClausesFuel_cons_complete_certified before targetRelated
+            headRun tailRun⟩
+termination_by fuel
+
+end
+
+/-- Strict-ceiling entry point consumed by global matcher synthesis. -/
+theorem clausesOrigin_complete_certified_from_below
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed)
+    (ppatComplete : MatcherPPatCompletenessMotive signature)
+    (dpatComplete : MatcherDPatCompletenessMotive signature)
+    {bound : Nat}
+    (checkBelow : CertifiedMatcherCheckCompletenessBelow terminal signature bound)
+    {context : Context} {selfEnv : SelfEnv} {parent : SyntaxPath}
+    {index : Nat} {clauses : List Clause}
+    {declarativeTarget executableTarget : Ty}
+    {holeLists : List (List Dual)}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (fuelLt : fuel < bound)
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (targetRelated : TyBisimulation before.prevailing declarativeTarget
+      executableTarget)
+    (contextBounded : context.BoundedBy q)
+    (targetBounded : declarativeTarget.BoundedBy q)
+    (executableTargetBounded : executableTarget.BoundedBy q)
+    {raw : DDClauses signature q S context clauses declarativeTarget holeLists
+      q' S'}
+    {origin : DDClausesOrigin signature raw ledger ledger'}
+    (audit : DDClausesTerminalAudit terminal signature origin)
+    (adequate : MatcherClausesBudgetAdequate fuel clauses) :
+    Nonempty (CertifiedClausesRunCompletion terminal signature before
+      (inferClausesFuel fuel signature context selfEnv parent index clauses
+        executableTarget state)
+      q' S' ledger' declarativeTarget holeLists) :=
+  clausesOrigin_complete_certified_below closed ppatComplete dpatComplete fuel
+    (fun {childFuel} childLt =>
+      checkBelow (Nat.lt_trans childLt fuelLt)) before signatureBelow
+    targetRelated contextBounded targetBounded executableTargetBounded audit
+    adequate
 
 end DemandTypingInferenceCompletenessMatcherClauseCertified
 end TypePM
