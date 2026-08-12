@@ -1,4 +1,5 @@
-import TypePM.DemandTypingInferenceCompletenessMatcherTraversal
+import TypePM.DemandTypingInferenceCompletenessMatcherMain
+import TypePM.DemandTypingInferenceCompletenessPatternMain
 import TypePM.DemandTypingInferenceCompletenessCheckingAlignment
 import TypePM.DemandTypingInferenceCompletenessFuel
 
@@ -28,6 +29,8 @@ open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessCheckingAlignment
 open DemandTypingInferenceCompletenessMatcherTraversal
+open DemandTypingInferenceCompletenessMatcherMain
+open DemandTypingInferenceCompletenessPatternMain
 
 /-! ## Global recursion packages -/
 
@@ -109,7 +112,7 @@ abbrev PairedSynthCompletenessAt
     (before : TraversalStateCorrespondence q S ledger state) →
     ContextBisimulation before.prevailing declarativeContext
       executableContext →
-    declarativeContext.BoundedBy q → executableContext.BoundedBy q →
+    declarativeContext.BoundedBy q →
     DDSynthOrigin signature raw ledger ledger' →
     SynthBudgetAdequate fuel expression →
     Nonempty (BoundedSynthRunCompletion before
@@ -122,6 +125,38 @@ abbrev PairedSynthCompletenessBelow
 
 abbrev PairedSynthCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat}, PairedSynthCompletenessAt signature fuel
+
+/-! Terminal-audited motives used by the final global recursion.  These match
+the already established pattern and matcher dispatch modules; the bounded
+result refinement is retained only on synthesis, where checking alignment
+needs the raw executable target's syntactic bound. -/
+
+abbrev AuditedSynthCompletenessAt
+    (terminal : Subst) (signature : FrozenSig) (fuel : Nat) : Prop :=
+  ∀ {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDSynth signature q S declarativeContext expression target q' S'}
+    {origin : DDSynthOrigin signature raw ledger ledger'},
+    (before : TraversalStateCorrespondence q S ledger state) →
+    ContextBisimulation before.prevailing declarativeContext
+      executableContext →
+    declarativeContext.BoundedBy q →
+    DDSynthTerminalAudit terminal signature origin →
+    SynthBudgetAdequate fuel expression →
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature executableContext selfEnv path expression
+        state) q' S' ledger' target)
+
+abbrev AuditedSynthCompletenessBelow
+    (terminal : Subst) (signature : FrozenSig) (bound : Nat) : Prop :=
+  ∀ {fuel : Nat}, fuel < bound →
+    AuditedSynthCompletenessAt terminal signature fuel
+
+abbrev AuditedSynthCompletenessMotive
+    (terminal : Subst) (signature : FrozenSig) : Prop :=
+  ∀ {fuel : Nat}, AuditedSynthCompletenessAt terminal signature fuel
 
 /-- Traversal-stable checking counterpart of `SynthCompletenessMotive`. -/
 abbrev CheckCompletenessAt (signature : FrozenSig) (fuel : Nat) : Prop :=
@@ -364,7 +399,7 @@ noncomputable def boundedSynthVarPaired_complete
     (before : TraversalStateCorrespondence q S ledger state)
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
-    (executableContextBounded : executableContext.BoundedBy q)
+    (declarativeContextBounded : declarativeContext.BoundedBy q)
     (lookup : (declarativeContext.applySubst S).find? name = some scheme)
     (fuel : Nat) :
     BoundedSynthRunCompletion before
@@ -385,7 +420,12 @@ noncomputable def boundedSynthVarPaired_complete
         executableLookup] at impossible
   | some executableScheme =>
       have normalizedBounded : normalized.BoundedBy q :=
-        executableContextBounded.applySubst before.executable_bounded
+        by
+          change Context.BoundedBy q
+            (Context.applySubst state.prevailing executableContext)
+          rw [contexts.reverse]
+          exact (declarativeContextBounded.applySubst
+            before.declarative_bounded).applySubst before.reverse_bounded
       have schemeBounded := normalizedBounded.find? executableLookup
       have instantiatedBounded :=
         Scheme.freshInstantiate_value_boundedBy (supply := q) schemeBounded
@@ -1318,6 +1358,40 @@ termination_by fuel
 
 end
 
+mutual
+
+inductive DDSynthStructuralOrigin (signature : FrozenSig) :
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
+    {expression : Expr} -> {target : Ty} ->
+    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
+    {raw : DDSynth signature q S context expression target q' S'} ->
+    {ledger ledger' : CapabilityOriginLedger} ->
+    DDSynthOrigin signature raw ledger ledger' -> Prop where
+  | leaf (certificate : DDSynthLeafOrigin signature origin) :
+      DDSynthStructuralOrigin signature origin
+  | lam
+      (body : DDSynthStructuralOrigin signature bodyOrigin) :
+      DDSynthStructuralOrigin signature (DDSynthOrigin.lam bodyOrigin)
+  | tuple
+      (children : DDSynthsStructuralOrigin signature childrenOrigin) :
+      DDSynthStructuralOrigin signature (DDSynthOrigin.tuple childrenOrigin)
+
+inductive DDSynthsStructuralOrigin (signature : FrozenSig) :
+    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
+    {expressions : List Expr} -> {targets : List Ty} ->
+    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
+    {raw : DDSynths signature q S context expressions targets q' S'} ->
+    {ledger ledger' : CapabilityOriginLedger} ->
+    DDSynthsOrigin signature raw ledger ledger' -> Prop where
+  | nil : DDSynthsStructuralOrigin signature DDSynthsOrigin.nil
+  | cons
+      (head : DDSynthStructuralOrigin signature headOrigin)
+      (tail : DDSynthsStructuralOrigin signature tailOrigin) :
+      DDSynthsStructuralOrigin signature
+        (DDSynthsOrigin.cons headOrigin tailOrigin)
+
+end
+
 noncomputable def dpatOrigin_complete
     {signature : FrozenSig} (closed : signature.SchemesClosed)
     {path : SyntaxPath} {pattern : DPat} {target : Ty}
@@ -1496,40 +1570,6 @@ remain entirely inside synthesis: leaves, lambdas, tuples, and expression
 lists.  Application and matching enter the checking and user-pattern
 families, so they are connected by the later global mutual recursion.
 -/
-
-mutual
-
-inductive DDSynthStructuralOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
-    {expression : Expr} -> {target : Ty} ->
-    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDSynth signature q S context expression target q' S'} ->
-    {ledger ledger' : CapabilityOriginLedger} ->
-    DDSynthOrigin signature raw ledger ledger' -> Prop where
-  | leaf (certificate : DDSynthLeafOrigin signature origin) :
-      DDSynthStructuralOrigin signature origin
-  | lam
-      (body : DDSynthStructuralOrigin signature bodyOrigin) :
-      DDSynthStructuralOrigin signature (DDSynthOrigin.lam bodyOrigin)
-  | tuple
-      (children : DDSynthsStructuralOrigin signature childrenOrigin) :
-      DDSynthStructuralOrigin signature (DDSynthOrigin.tuple childrenOrigin)
-
-inductive DDSynthsStructuralOrigin (signature : FrozenSig) :
-    {q : InferenceBase.FreshSupply} -> {S : Subst} -> {context : Context} ->
-    {expressions : List Expr} -> {targets : List Ty} ->
-    {q' : InferenceBase.FreshSupply} -> {S' : Subst} ->
-    {raw : DDSynths signature q S context expressions targets q' S'} ->
-    {ledger ledger' : CapabilityOriginLedger} ->
-    DDSynthsOrigin signature raw ledger ledger' -> Prop where
-  | nil : DDSynthsStructuralOrigin signature DDSynthsOrigin.nil
-  | cons
-      (head : DDSynthStructuralOrigin signature headOrigin)
-      (tail : DDSynthsStructuralOrigin signature tailOrigin) :
-      DDSynthsStructuralOrigin signature
-        (DDSynthsOrigin.cons headOrigin tailOrigin)
-
-end
 
 mutual
 
