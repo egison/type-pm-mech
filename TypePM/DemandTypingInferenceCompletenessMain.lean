@@ -1,4 +1,5 @@
 import TypePM.DemandTypingInferenceCompletenessMatcherMain
+import TypePM.DemandTypingInferenceCompletenessMatcherExprTraversal
 import TypePM.DemandTypingInferenceCompletenessPatternMain
 import TypePM.DemandTypingInferenceCompletenessCheckingAlignment
 import TypePM.DemandTypingInferenceCompletenessFuel
@@ -208,8 +209,9 @@ theorem auditedCheckCompletenessAt_of_synthBelow
     MatcherCheckCompletenessAt terminal signature fuel := by
   intro declarativeContext executableContext selfEnv path expression
     declarativeExpected executableExpected q q' S S' ledger ledger' state raw
-    origin before contexts expectedRelated contextBounded expectedBounded
-    executableExpectedBounded audit adequate
+    origin before contexts expectedRelated contextBounded
+    executableContextBounded expectedBounded executableExpectedBounded audit
+    adequate
   cases fuel with
   | zero => simp [MatcherCheckBudgetAdequate] at adequate
   | succ fuel =>
@@ -256,7 +258,7 @@ theorem patternSynthCompletenessBelow_of_audited
     PatternSynthCompletenessBelow terminal signature bound := by
   intro fuel fuelLt declarativeContext executableContext selfEnv path
     expression target q q' S S' ledger ledger' state raw origin before
-    contexts contextBounded audit adequate
+    contexts contextBounded executableContextBounded audit adequate
   let run := Classical.choice
     (complete fuelLt (selfEnv := selfEnv) (path := path) (origin := origin)
       before contexts contextBounded audit adequate)
@@ -1886,6 +1888,7 @@ theorem auditedSynthLeaf_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (_executableContextBounded : executableContext.BoundedBy q)
     {raw : DDSynth signature q S declarativeContext expression target q' S'}
     {origin : DDSynthOrigin signature raw ledger ledger'}
     (audit : DDSynthTerminalAudit terminal signature origin)
@@ -1919,6 +1922,7 @@ theorem auditedSynthLam_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 1 } S
       ((name, Scheme.mono (.var q.nextTy)) :: declarativeContext)
       body bodyTarget q' S'}
@@ -1972,6 +1976,7 @@ theorem auditedSynths_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     {raw : DDSynths signature q S declarativeContext expressions targets q' S'}
     {origin : DDSynthsOrigin signature raw ledger ledger'}
     (audit : DDSynthsTerminalAudit terminal signature origin)
@@ -2006,13 +2011,15 @@ theorem auditedSynths_complete_nonempty
             contexts.transport headRun.run.transition
           have tailContextBounded : declarativeContext.BoundedBy q₁ :=
             contextBounded.mono headOrigin.erase.supplyExtends
+          have tailExecutableContextBounded : executableContext.BoundedBy q₁ :=
+            executableContextBounded.mono headOrigin.erase.supplyExtends
           have belowTail : AuditedSynthCompletenessBelow terminal signature
               inner := synthBelow.mono (Nat.le_succ inner)
           let tailRun := Classical.choice
             (auditedSynths_complete_nonempty
               (selfEnv := selfEnv) (parent := parent) (index := index + 1)
               inner belowTail headRun.run.completion.state tailContexts
-              tailContextBounded tailAudit tailAdequate)
+              tailContextBounded tailExecutableContextBounded tailAudit tailAdequate)
           exact ⟨boundedSynthsCons_complete before headRun tailRun
             tailOrigin.erase.supplyExtends⟩
 termination_by fuel
@@ -2031,6 +2038,7 @@ theorem auditedSynthTuple_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     {childrenRaw : DDSynths signature q S declarativeContext expressions
       targets q' S'}
     {childrenOrigin : DDSynthsOrigin signature childrenRaw ledger ledger'}
@@ -2053,7 +2061,7 @@ theorem auditedSynthTuple_complete_nonempty
     (auditedSynths_complete_nonempty
       (selfEnv := selfEnv) (parent := path) (index := 0)
       fuel childrenBelow childrenBefore childrenContexts contextBounded
-      childrenAudit childrenAdequate)
+      executableContextBounded childrenAudit childrenAdequate)
   exact ⟨boundedSynthTuple_complete before childrenRun⟩
 
 /-- Context-bisimulation-aware checking-list reconstruction used by
@@ -2075,6 +2083,7 @@ theorem auditedChecks_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     (expectedsBounded : ∀ expected ∈ declarativeExpecteds,
       expected.BoundedBy q)
     (executableExpectedsBounded : ∀ expected ∈ executableExpecteds,
@@ -2122,6 +2131,7 @@ theorem auditedChecks_complete_nonempty
                   (auditedCheckCompletenessAt_of_synthBelow closed childBelow
                     (selfEnv := selfEnv) (path := index :: parent)
                     before contexts expectedRelated contextBounded
+                    executableContextBounded
                     (expectedsBounded expected (by simp))
                     (executableExpectedsBounded executableExpected (by simp))
                     headAudit headAdequate)
@@ -2146,7 +2156,10 @@ theorem auditedChecks_complete_nonempty
                   (auditedChecks_complete_nonempty closed inner childBelow
                     (selfEnv := selfEnv) (parent := parent)
                     (index := index + 1) headRun.completion tailContexts
-                    tailContextBounded tailExpectedsBounded
+                    tailContextBounded
+                    (executableContextBounded.mono
+                      headOrigin.erase.supplyExtends)
+                    tailExpectedsBounded
                     tailExecutableExpectedsBounded
                     (headRun.transition.transportTyList tailRelated)
                     tailAudit tailAdequate)
@@ -2170,6 +2183,7 @@ theorem auditedSynthCtor_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     (lookup : signature.findDataCtor name = some scheme)
     {childrenRaw : DDChecks signature
       (InferenceBase.instantiateCtorScheme q scheme).supply S
@@ -2216,6 +2230,7 @@ theorem auditedSynthCtor_complete_nonempty
     (auditedChecks_complete_nonempty closed fuel childBelow
       (selfEnv := selfEnv) (parent := path) (index := 0)
       instantiated.correspondence childrenContexts childrenContextBounded
+      (executableContextBounded.mono instanceExtension)
       instanceBounded.1 executableArgumentsBounded
       instantiated.arguments childrenAudit childrenAdequate)
   exact ⟨boundedSynthCtor_complete closed before lookup childrenRun
@@ -2238,6 +2253,7 @@ theorem auditedSynthPrim_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     (lookup : signature.findPrimitive op = some scheme)
     {childrenRaw : DDChecks signature
       (InferenceBase.instantiateCtorScheme q scheme).supply S
@@ -2284,6 +2300,7 @@ theorem auditedSynthPrim_complete_nonempty
     (auditedChecks_complete_nonempty closed fuel childBelow
       (selfEnv := selfEnv) (parent := path) (index := 0)
       instantiated.correspondence childrenContexts childrenContextBounded
+      (executableContextBounded.mono instanceExtension)
       instanceBounded.1 executableArgumentsBounded
       instantiated.arguments childrenAudit childrenAdequate)
   exact ⟨boundedSynthPrim_complete closed before lookup childrenRun
@@ -2305,6 +2322,7 @@ theorem auditedSynthApp_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     {functionRaw : DDSynth signature q S declarativeContext function
       functionTarget q₁ S₁}
     {functionOrigin : DDSynthOrigin signature functionRaw ledger ledger₁}
@@ -2474,6 +2492,7 @@ theorem auditedSynthLet_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     {valueRaw : DDSynth signature q S declarativeContext value valueTarget
       q₁ S₁}
     {valueOrigin : DDSynthOrigin signature valueRaw ledger ledger₁}
@@ -2538,6 +2557,13 @@ theorem auditedSynthLet_complete_nonempty
         (valueRun.run.completion.state.declarative_bounded.apply
           valueTargetBounded))
       (contextBounded.mono valueOrigin.erase.supplyExtends)
+  have bodyExecutableContextBounded : Context.BoundedBy q₁
+      ((name, executableScheme) :: executableContext) :=
+    Context.BoundedBy.cons
+      (FrozenSig.generalize_boundedBy
+        (valueRun.run.completion.state.executable_bounded.apply
+          valueRun.rawTargetBounded))
+      (executableContextBounded.mono valueOrigin.erase.supplyExtends)
   let bodyRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := selfEnv.erase name) (path := 1 :: path)
@@ -2561,6 +2587,7 @@ theorem auditedSynthFix_complete_nonempty
     (contexts : ContextBisimulation before.prevailing declarativeContext
       executableContext)
     (contextBounded : declarativeContext.BoundedBy q)
+    (executableContextBounded : executableContext.BoundedBy q)
     (distinct : self ≠ argument) (direct : DirectSelf.Holds self body)
     (nonMatcher : NonMatcherBody body)
     {bodyRaw : DDSynth signature { q with nextTy := q.nextTy + 2 } S
@@ -2647,6 +2674,26 @@ theorem auditedSynthFix_complete_nonempty
           (Ty.BoundedBy.varOf (by simp))
           (Ty.BoundedBy.varOf (by simp))))
         (contextBounded.mono (SupplyExtends.bumpTy q 2)))
+  have bodyExecutableContextBounded : Context.BoundedBy
+      { q with nextTy := q.nextTy + 2 }
+      ((argument, Scheme.mono (fixDomain state path)) ::
+        (self, Scheme.mono executablePlaceholder) :: executableContext) := by
+    have domainBounded : (fixDomain state path).BoundedBy
+        { q with nextTy := q.nextTy + 2 } := by
+      change ((visit state .exprFix path |>.freshTy domainOrigin).1).BoundedBy _
+      rw [domainAllocation.target_eq]
+      exact Ty.BoundedBy.varOf (by simp)
+    have placeholderBounded : executablePlaceholder.BoundedBy
+        { q with nextTy := q.nextTy + 2 } := by
+      change (Ty.fn (visit state .exprFix path |>.freshTy domainOrigin).1
+        ((visit state .exprFix path |>.freshTy domainOrigin).2.freshTy
+          codomainOrigin).1).BoundedBy _
+      rw [domainAllocation.target_eq, codomainAllocation.target_eq]
+      exact Ty.BoundedBy.fnOf (Ty.BoundedBy.varOf (by simp))
+        (Ty.BoundedBy.varOf (by simp))
+    exact Context.BoundedBy.cons (Scheme.BoundedBy.ofMono domainBounded)
+      (Context.BoundedBy.cons (Scheme.BoundedBy.ofMono placeholderBounded)
+        (executableContextBounded.mono (SupplyExtends.bumpTy q 2)))
   let bodyRun := Classical.choice
     (synthBelow (Nat.lt_succ_self fuel)
       (selfEnv := (self, executablePlaceholder) ::
@@ -2696,6 +2743,79 @@ theorem auditedSynthFix_complete_nonempty
         ((Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends)
         ((Ty.BoundedBy.varOf (by simp)).mono bodyOrigin.erase.supplyExtends)
     exact placeholderBounded⟩⟩
+
+/-- Final assembly of a matcher literal once the clause dispatcher and its
+paired local finalization bridge have been reconstructed.  Keeping this
+constructor independent isolates the remaining equivariance proof which
+builds `MatcherFinalizationCompletion` from DD finalization evidence. -/
+theorem auditedSynthMatcher_complete_of_finalization
+    {signature : FrozenSig} {declarativeContext executableContext : Context}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {clauses : List Clause}
+    {rawHoleLists : List (List Dual)} {capability : Cap}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (fuel : Nat) (before : TraversalStateCorrespondence q S ledger state)
+    (clausesRun : ClausesRunCompletion
+      ((before.visit .exprMatcher path).freshTy
+        (freshOrigin .matcherClause path "matcher-target")).state
+      (inferClausesFuel fuel signature executableContext selfEnv path 0 clauses
+        (.var q.nextTy)
+        ((visit state .exprMatcher path).freshTy
+          (freshOrigin .matcherClause path "matcher-target")).2)
+      q' S' ledger₁ (.var q.nextTy) rawHoleLists)
+    (finalization :
+      DemandTypingInferenceCompletenessMatcherExprTraversal.MatcherFinalizationCompletion
+        clausesRun signature clauses capability)
+    (targetBounded : Ty.BoundedBy q' (.var q.nextTy)) :
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 2) signature executableContext selfEnv path
+        (.matcher clauses) state) q' S'
+      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (.matcher capability (.var q.nextTy))) := by
+  let rawRun :=
+    DemandTypingInferenceCompletenessMatcherExprTraversal.inferMatcherFuel_complete
+      (before.visit .exprMatcher path) clausesRun finalization
+  let finished :=
+    DemandTypingInferenceCompletenessExprTraversal.SynthRunCompletion.finish
+      rawRun (.matcher clauses) path
+  let boundedFinished : BoundedSynthRunCompletion (before.visit .exprMatcher path)
+      (do
+        let inner ← inferMatcherFuel (fuel + 1) signature executableContext
+          selfEnv path clauses (visit state .exprMatcher path)
+        pure (finishExpr (.matcher clauses) path inner.target inner.state)) q' S'
+      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (.matcher capability (.var q.nextTy)) :=
+    ⟨finished, by
+      change Ty.BoundedBy q'
+        (.matcher finalization.executableCapability (.var q.nextTy))
+      exact Ty.BoundedBy.matcherOf finalization.executableCapabilityBounded
+        targetBounded⟩
+  let normalized : BoundedSynthRunCompletion (before.visit .exprMatcher path)
+      (inferExprFuel (fuel + 2) signature executableContext selfEnv path
+        (.matcher clauses) state) q' S'
+      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (.matcher capability (.var q.nextTy)) := by
+    have operationEq :
+        (do
+          let inner ← inferMatcherFuel (fuel + 1) signature executableContext
+            selfEnv path clauses (visit state .exprMatcher path)
+          pure (finishExpr (.matcher clauses) path inner.target inner.state)) =
+        inferExprFuel (fuel + 2) signature executableContext selfEnv path
+          (.matcher clauses) state := by
+      simp only [inferExprFuel]
+      cases inferMatcherFuel (fuel + 1) signature executableContext selfEnv path
+          clauses (visit state .exprMatcher path) <;> rfl
+    rw [← operationEq]
+    exact boundedFinished
+  let outerRun : SynthRunCompletion before
+      (inferExprFuel (fuel + 2) signature executableContext selfEnv path
+        (.matcher clauses) state) q' S'
+      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (.matcher capability (.var q.nextTy)) :=
+    { normalized.run with
+      transition := (before.visitExtension .exprMatcher path).seq
+        normalized.run.transition }
+  exact ⟨⟨outerRun, normalized.rawTargetBounded⟩⟩
 
 end DemandTypingInferenceCompletenessMain
 end TypePM
