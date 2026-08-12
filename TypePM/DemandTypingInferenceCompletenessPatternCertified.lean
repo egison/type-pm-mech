@@ -943,6 +943,126 @@ noncomputable def certifiedPatternApp_complete
     (ValidatorRunExtension.ofAlignDualLists
       (terminal := terminal) (signature := signature) alignment.success)
 
+/-- Certified user pattern-constructor application.  Its raw completeness
+package and validator proof share the reconstructed target alignment and
+capability-solver run, so the sensitive compatibility event is certified at
+the exact post-freeze cut. -/
+noncomputable def certifiedPatternCtor_complete
+    {terminal : Subst} {fuel : Nat} {signature : FrozenSig}
+    {context : Context} {parameters : PatternCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath}
+    {name : String} {patterns : List Pattern}
+    {entry : PatternCtorScheme signature.observability}
+    (lookup : signature.findPatternCtor name = some entry)
+    (closed : signature.SchemesClosed)
+    {q q₁ q₂ : InferenceBase.FreshSupply} {S S₁ S₂ S₃ : Subst}
+    {ledger ledger₁ ledger₂ : CapabilityOriginLedger}
+    {state : InferState} {executableBindings : MonoCtx}
+    {duals : List Dual} {bindings' : MonoCtx} {capability : Cap}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (children :
+      let instantiation := instantiateCtorInState_complete before entry.scheme
+      BoundedCertifiedPatternsRunCompletion terminal signature
+        (instantiation.correspondence.visit .patternCtor path)
+        (inferPatternsFuel fuel signature context parameters
+          executableBindings selfEnv path 0 patterns
+          (visit (instantiateCtorInState state entry.scheme).2
+            .patternCtor path))
+        q₁ S₁ ledger₁ duals bindings')
+    (childrenExtends : SupplyExtends
+      (InferenceBase.instantiateCtorScheme q entry.scheme).supply q₁)
+    (declarativeDualsBounded : ∀ dual ∈ duals, dual.BoundedBy q₁)
+    (targetsAligned : DDAlignTargetListWithLedger ledger₁ S₁ duals
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 S₂)
+    (capRun :
+      let instBounded := instantiateCtorScheme_boundedBy (q := q)
+        ((closed.patternCtors lookup).boundedBy)
+      let declarativeTargetsBounded : ∀ target ∈
+          (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+          target.BoundedBy q₁ := fun target membership =>
+        (instBounded.1 target membership).mono childrenExtends
+      let executableTargetsBounded : ∀ target ∈
+          (instantiateCtorInState state entry.scheme).1.1,
+          target.BoundedBy q₁ := fun target membership =>
+        (by
+          have argumentEq : (instantiateCtorInState state entry.scheme).1.1 =
+              (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 := by
+            simp [Inference.instantiateCtorInState, before.supply_eq]
+          rw [argumentEq] at membership
+          have atInst : target.BoundedBy
+              (InferenceBase.instantiateCtorScheme q entry.scheme).supply := by
+            exact instBounded.1 target membership
+          exact atInst.mono childrenExtends)
+      let targetAlignment := ddAlignTargetListWithLedger_complete
+        (origin := freshOrigin .pattern path "pattern-constructor-fields")
+        children.bounded.run.completion children.bounded.run.duals
+        (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+          ((instantiateCtorInState_complete before entry.scheme).correspondence.visitExtension
+            .patternCtor path |>.seq children.bounded.run.transition)
+          (instantiateCtorInState_complete before entry.scheme).arguments)
+        declarativeDualsBounded declarativeTargetsBounded
+        children.bounded.rawDualsBounded executableTargetsBounded
+        targetsAligned
+      BoundedPatternCtorCapRunCompletion targetAlignment.completion
+        (solvePatternCtorCapability signature entry
+          (freshOrigin .pattern path "pattern-constructor-capability")
+          (children.bounded.run.result.duals.map Dual.cap)
+          targetAlignment.result)
+        q₂ S₃ ledger₂ capability)
+    (childrenToCapExtends : SupplyExtends q₁ q₂)
+    (compatible : capCompatibleCheck entry
+      ((children.bounded.run.result.duals.map Dual.cap).map fun child =>
+        child.apply capRun.run.result.2.prevailing.cap)
+      (capRun.run.result.1.apply capRun.run.result.2.prevailing.cap) = true)
+    (facts : DDTerminalAudit.PatternCtorFacts terminal entry
+      children.bounded.run.result.duals capRun.run.result.1) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature context parameters
+        executableBindings selfEnv path (.pctor name patterns) state)
+      q₂ S₃
+      (DDLedger.freezeExport ledger₂ S₃
+        (freshCapImages q entry.scheme.capBinders)
+        (capabilityExportPayload [capability]
+          ((InferenceBase.instantiateCtorScheme q entry.scheme).value.2 ::
+            bindings'.map fun binding => binding.2)))
+      ⟨capability,
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.2⟩
+      bindings' := by
+  let instBounded := instantiateCtorScheme_boundedBy (q := q)
+    ((closed.patternCtors lookup).boundedBy)
+  have declarativeTargetsBounded : ∀ target ∈
+      (InferenceBase.instantiateCtorScheme q entry.scheme).value.1,
+      target.BoundedBy q₁ := by
+    intro target membership
+    exact (instBounded.1 target membership).mono childrenExtends
+  have executableTargetsBounded : ∀ target ∈
+      (instantiateCtorInState state entry.scheme).1.1,
+      target.BoundedBy q₁ := by
+    intro target membership
+    have argumentEq : (instantiateCtorInState state entry.scheme).1.1 =
+        (InferenceBase.instantiateCtorScheme q entry.scheme).value.1 := by
+      simp [Inference.instantiateCtorInState, before.supply_eq]
+    rw [argumentEq] at membership
+    exact (instBounded.1 _ membership).mono childrenExtends
+  let targetAlignment := ddAlignTargetListWithLedger_complete
+    (origin := freshOrigin .pattern path "pattern-constructor-fields")
+    children.bounded.run.completion children.bounded.run.duals
+    (DemandTypingInferenceCompletenessStateMutual.BisimulationExtension.transportTyList
+      ((instantiateCtorInState_complete before entry.scheme).correspondence.visitExtension
+        .patternCtor path |>.seq children.bounded.run.transition)
+      (instantiateCtorInState_complete before entry.scheme).arguments)
+    declarativeDualsBounded declarativeTargetsBounded
+    children.bounded.rawDualsBounded executableTargetsBounded targetsAligned
+  refine ⟨boundedPatternCtor_complete lookup closed before children.bounded
+    childrenExtends declarativeDualsBounded targetsAligned capRun
+    childrenToCapExtends compatible, ?_⟩
+  exact ctor lookup (closed.patternCtors lookup) children.validation
+    (ValidatorRunExtension.ofAlignPatternTargets
+      (terminal := terminal) (signature := signature) targetAlignment.success)
+    (ValidatorRunExtension.ofSolvePatternCtorCapability
+      (terminal := terminal) (signature := signature) capRun.run.success)
+    facts
+
 /-! ## Certified list dispatch -/
 
 /-- Pattern-list traversal preserves the exact validator chronology supplied
