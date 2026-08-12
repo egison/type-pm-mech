@@ -592,6 +592,44 @@ theorem freshPatternCtorAssignments_complete_exact
           allocated.2.supply :=
   freshPatternCtorAssignments_supplyExact origin variables initial
 
+/-! ## Capability-subroutine run package -/
+
+/-- Result package for the pattern-constructor capability subroutine.  It is
+kept below the general pattern traversal because the reverse-completeness
+proof constructs this package directly. -/
+structure PatternCtorCapRunCompletion
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option (Cap × InferState))
+    (q' : InferenceBase.FreshSupply) (declarative : Subst)
+    (ledger : CapabilityOriginLedger) (capability : Cap) : Type where
+  result : Cap × InferState
+  success : operation = some result
+  transition : BisimulationExtension before.prevailing ledger declarative
+    result.2
+  correspondence : TraversalStateCorrespondence q' declarative ledger result.2
+  prevailing_eq : correspondence.prevailing = transition.after
+  capability : CapBisimulation transition.after capability result.1
+
+def PatternCtorCapRunCompletion.extension
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger₀ ledger : CapabilityOriginLedger} {initial : InferState}
+    {before : TraversalStateCorrespondence q S ledger₀ initial}
+    {operation : Option (Cap × InferState)} {capability : Cap}
+    (run : PatternCtorCapRunCompletion before operation q' S' ledger
+      capability) :
+    BisimulationExtension before.prevailing ledger S' run.result.2 where
+  after := run.correspondence.prevailing
+  transportTy := by
+    intro declarativeTarget executableTarget related
+    rw [run.prevailing_eq]
+    exact run.transition.transportTy related
+  transportScheme := by
+    intro _ _ forward reverse
+    rw [run.prevailing_eq]
+    exact run.transition.transportScheme forward reverse
+
 private def StateRunCompletion.refl
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {initial : InferState}
