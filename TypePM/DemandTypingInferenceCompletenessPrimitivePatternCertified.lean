@@ -106,5 +106,220 @@ theorem freshTargetsValidation
         (freshTargetsValidation terminal signature (state.freshTy origin).2
           origin count)
 
+/-! ## Complete data-pattern chronology -/
+
+mutual
+
+theorem inferDPatFuel_validation
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed) :
+    ∀ {fuel path pattern target state result},
+      SignatureVarsBelow state.supply signature →
+      target.BoundedBy state.supply →
+      inferDPatFuel fuel signature path pattern target state = some result →
+      ValidatorRunExtension terminal signature state result.state
+  | 0, path, pattern, target, state, result, signatureBelow, targetBounded,
+      success => by simp [inferDPatFuel] at success
+  | fuel + 1, path, .var name, target, state, result, signatureBelow,
+      targetBounded, success => by
+      simp only [inferDPatFuel, Option.some.injEq] at success
+      subst result
+      exact finishDPat (.var name) target [(name, target)] path
+  | fuel + 1, path, .wild, target, state, result, signatureBelow,
+      targetBounded, success => by
+      simp only [inferDPatFuel, Option.some.injEq] at success
+      subst result
+      exact finishDPat .wild target [] path
+  | fuel + 1, path, .ctor name patterns, target, state, result,
+      signatureBelow, targetBounded, success => by
+      simp only [inferDPatFuel] at success
+      cases lookup : signature.findDataCtor name with
+      | none => simp [lookup] at success
+      | some scheme =>
+          simp only [lookup] at success
+          cases alignedEq : alignTypes (instantiateCtorInState state scheme).2
+              (freshOrigin .dataPattern path "dp-constructor-result")
+              (instantiateCtorInState state scheme).1.2 target with
+          | none =>
+              have alignedCoreEq :
+                  alignTypes (instantiateCtorInState state scheme).2
+                    (freshOrigin .dataPattern path "dp-constructor-result")
+                    (InferenceBase.instantiateCtorScheme state.supply scheme).value.2
+                    target = none := by
+                simpa [Inference.instantiateCtorInState] using alignedEq
+              simp [alignedCoreEq] at success
+          | some aligned =>
+              have alignedCoreEq :
+                  alignTypes (instantiateCtorInState state scheme).2
+                    (freshOrigin .dataPattern path "dp-constructor-result")
+                    (InferenceBase.instantiateCtorScheme state.supply scheme).value.2
+                    target = some aligned := by
+                simpa [Inference.instantiateCtorInState] using alignedEq
+              cases childrenEq : inferDPatsFuel fuel signature path 0 patterns
+                  (instantiateCtorInState state scheme).1.1 aligned with
+              | none =>
+                  have childrenCoreEq :
+                      inferDPatsFuel fuel signature path 0 patterns
+                        (InferenceBase.instantiateCtorScheme state.supply scheme).value.1
+                        aligned = none := by
+                    simpa [Inference.instantiateCtorInState] using childrenEq
+                  simp [alignedCoreEq, childrenCoreEq] at success
+              | some children =>
+                  have childrenCoreEq :
+                      inferDPatsFuel fuel signature path 0 patterns
+                        (InferenceBase.instantiateCtorScheme state.supply scheme).value.1
+                        aligned = some children := by
+                    simpa [Inference.instantiateCtorInState] using childrenEq
+                  simp [alignedCoreEq, childrenCoreEq] at success
+                  subst result
+                  have instantiateRun :=
+                    ValidatorRunExtension.instantiateCtorInState
+                      (terminal := terminal) (signature := signature) state scheme
+                      (closed.dataCtors lookup)
+                  have alignRun := ValidatorRunExtension.ofAlignTypes
+                    (terminal := terminal) (signature := signature) alignedEq
+                  have initialExtends :=
+                    Inference.instantiateCtorInState_stateExtension state scheme
+                  have alignmentExtends :=
+                    Inference.alignTypes_stateExtension alignedEq
+                  have instBounded := instantiateCtorScheme_boundedBy
+                    (q := state.supply) ((closed.dataCtors lookup).boundedBy)
+                  have childrenRun := inferDPatsFuel_validation
+                    (terminal := terminal) closed
+                    (signatureBelow.mono
+                      ⟨Nat.le_trans initialExtends.supplyCap
+                          alignmentExtends.supplyCap,
+                        Nat.le_trans initialExtends.supplyTy
+                          alignmentExtends.supplyTy⟩)
+                    (fun item membership =>
+                      (instBounded.1 item (by
+                        simpa [Inference.instantiateCtorInState] using membership)
+                      ).mono
+                        ⟨alignmentExtends.supplyCap,
+                          alignmentExtends.supplyTy⟩)
+                    childrenEq
+                  let images := freshCapImages state.supply scheme.capBinders
+                  let payload := capabilityExportPayload []
+                    (target :: children.bindings.map fun entry => entry.2)
+                  exact instantiateRun.trans (alignRun.trans
+                    (childrenRun.trans
+                      ((ValidatorRunExtension.freezeCapabilityExport terminal
+                        signature children.state images payload).trans
+                        (finishDPat (.ctor name patterns) target
+                          children.bindings path))))
+  | fuel + 1, path, .tuple patterns, target, state, result, signatureBelow,
+      targetBounded, success => by
+      simp only [inferDPatFuel] at success
+      cases alignedEq : alignTypes
+          (freshTargets state
+            (freshOrigin .dataPattern path "dp-tuple-field") patterns.length).2
+          (freshOrigin .dataPattern path "dp-tuple-result")
+          (.prod (freshTargets state
+            (freshOrigin .dataPattern path "dp-tuple-field") patterns.length).1)
+          target with
+      | none => simp [alignedEq] at success
+      | some aligned =>
+          cases childrenEq : inferDPatsFuel fuel signature path 0 patterns
+              (freshTargets state
+                (freshOrigin .dataPattern path "dp-tuple-field") patterns.length).1
+              aligned with
+          | none => simp [alignedEq, childrenEq] at success
+          | some children =>
+              simp [alignedEq, childrenEq] at success
+              subst result
+              have allocationRun := freshTargetsValidation terminal signature
+                state (freshOrigin .dataPattern path "dp-tuple-field")
+                  patterns.length
+              have allocationExtends := Inference.freshTargets_stateExtension
+                (state := state)
+                (result := (freshTargets state
+                  (freshOrigin .dataPattern path "dp-tuple-field")
+                  patterns.length).2)
+                (targets := (freshTargets state
+                  (freshOrigin .dataPattern path "dp-tuple-field")
+                  patterns.length).1)
+                (origin := freshOrigin .dataPattern path "dp-tuple-field")
+                (count := patterns.length) rfl
+              have alignmentRun := ValidatorRunExtension.ofAlignTypes
+                (terminal := terminal) (signature := signature) alignedEq
+              have alignmentExtends := Inference.alignTypes_stateExtension alignedEq
+              have targetsBounded := freshTargetsSupply_boundedBy
+                patterns.length state.supply
+              have allocatedEq := Inference.freshTargets_eq_freshTargetsSupply
+                patterns.length state
+                  (freshOrigin .dataPattern path "dp-tuple-field")
+              have childrenRun := inferDPatsFuel_validation
+                (terminal := terminal) closed
+                (signatureBelow.mono
+                  ⟨Nat.le_trans allocationExtends.supplyCap
+                      alignmentExtends.supplyCap,
+                    Nat.le_trans allocationExtends.supplyTy
+                      alignmentExtends.supplyTy⟩)
+                (fun item membership => by
+                  have twinMembership : item ∈
+                      (freshTargetsSupply patterns.length state.supply).1 := by
+                    rw [← allocatedEq.1]
+                    exact membership
+                  have allocatedBound := targetsBounded item twinMembership
+                  have supplyEq := allocatedEq.2.1
+                  rw [← supplyEq] at allocatedBound
+                  exact allocatedBound.mono
+                    ⟨alignmentExtends.supplyCap, alignmentExtends.supplyTy⟩)
+                childrenEq
+              exact allocationRun.trans (alignmentRun.trans
+                (childrenRun.trans
+                  (finishDPat (.tuple patterns) target children.bindings path)))
+
+theorem inferDPatsFuel_validation
+    {terminal : Subst} {signature : FrozenSig}
+    (closed : signature.SchemesClosed) :
+    ∀ {fuel parent index patterns targets state result},
+      SignatureVarsBelow state.supply signature →
+      (∀ target ∈ targets, target.BoundedBy state.supply) →
+      inferDPatsFuel fuel signature parent index patterns targets state =
+        some result →
+      ValidatorRunExtension terminal signature state result.state
+  | 0, parent, index, patterns, targets, state, result, signatureBelow,
+      targetsBounded, success => by simp [inferDPatsFuel] at success
+  | fuel + 1, parent, index, [], [], state, result, signatureBelow,
+      targetsBounded, success => by
+      simp only [inferDPatsFuel, Option.some.injEq] at success
+      subst result
+      exact ValidatorRunExtension.refl terminal signature state
+  | fuel + 1, parent, index, [], _ :: _, state, result, signatureBelow,
+      targetsBounded, success => by simp [inferDPatsFuel] at success
+  | fuel + 1, parent, index, _ :: _, [], state, result, signatureBelow,
+      targetsBounded, success => by simp [inferDPatsFuel] at success
+  | fuel + 1, parent, index, pattern :: patterns, target :: targets, state,
+      result, signatureBelow, targetsBounded, success => by
+      simp only [inferDPatsFuel] at success
+      cases headEq : inferDPatFuel fuel signature (index :: parent) pattern
+          target state with
+      | none => simp [headEq] at success
+      | some head =>
+          cases tailEq : inferDPatsFuel fuel signature parent (index + 1)
+              patterns targets head.state with
+          | none => simp [headEq, tailEq] at success
+          | some tail =>
+              by_cases distinct : namesDisjoint head.bindings.names
+                  tail.bindings.names = true
+              · simp [headEq, tailEq, distinct] at success
+                subst result
+                have headRun := inferDPatFuel_validation
+                  (terminal := terminal) closed signatureBelow
+                  (targetsBounded target (by simp)) headEq
+                have extension := Inference.inferDPatFuel_stateExtension headEq
+                have tailRun := inferDPatsFuel_validation
+                  (terminal := terminal) closed
+                  (signatureBelow.mono
+                    ⟨extension.supplyCap, extension.supplyTy⟩)
+                  (fun item membership =>
+                    (targetsBounded item (by simp [membership])).mono
+                      ⟨extension.supplyCap, extension.supplyTy⟩) tailEq
+                exact headRun.trans tailRun
+              · simp [headEq, tailEq, distinct] at success
+
+end
+
 end DemandTypingInferenceCompletenessPrimitivePatternCertified
 end TypePM
