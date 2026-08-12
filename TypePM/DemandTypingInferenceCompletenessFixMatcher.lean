@@ -1,5 +1,6 @@
 import TypePM.DemandTypingInferenceCompletenessMatcherExprTraversal
 import TypePM.DemandTypingInferenceCompletenessPatternCtorCapability
+import TypePM.DemandTypingInferenceCompletenessCertifiedRun
 
 /-! # Recursive-matcher placeholder completeness -/
 
@@ -8,6 +9,7 @@ namespace DemandTypingInferenceCompletenessFixMatcher
 
 open Inference
 open DemandTypingInferenceCompletenessPatternCtorCapability
+open DemandTypingInferenceCompletenessCertifiedRun
 
 /-- The executable recursive-matcher placeholder exists whenever its pure
 supply twin succeeds.  The already-proved forward correspondence then pins
@@ -97,6 +99,7 @@ where
               simp [capState, targetState, final, InferState.freshCap,
                 InferState.freshTy, InferenceBase.freshCapMeta,
                 InferenceBase.freshTyMeta]
+
         | cons first rest =>
             simp only [Option.some.injEq, Prod.mk.injEq] at pureTail
             rcases pureTail with ⟨rfl, rfl, rfl⟩
@@ -111,6 +114,66 @@ where
             · rw [← supplyEq]
               simp [targetState, final, InferState.freshTy,
                 InferenceBase.freshTyMeta]
+
+/-- Placeholder allocation emits only ordinary allocation events. -/
+theorem ValidatorRunExtension.ofBuildFixPlaceholderMatcher
+    {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
+    {clauses : List Clause} {initial final : InferState}
+    {domain codomain : Ty}
+    (success : buildFixPlaceholder signature path (.matcher clauses) initial =
+      some (domain, codomain, final)) :
+    ValidatorRunExtension terminal signature initial final := by
+  unfold buildFixPlaceholder at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨pair, recursiveSuccess, rest⟩
+  rcases pair with ⟨capability, middle⟩
+  unfold recursiveMatcherTemplate at recursiveSuccess
+  rcases Option.bind_eq_some_iff.mp recursiveSuccess with
+    ⟨evidence, _, freshSuccess⟩
+  have recursiveRun : ValidatorRunExtension terminal signature initial middle := by
+    cases evidence with
+    | unseen =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at freshSuccess
+        rcases freshSuccess with ⟨rfl, rfl⟩
+        exact ValidatorRunExtension.refl terminal signature initial
+    | known leaf => exact ValidatorRunExtension.ofFreshenSkeleton freshSuccess
+    | con name children => exact ValidatorRunExtension.ofFreshenSkeleton freshSuccess
+    | prod components => exact ValidatorRunExtension.ofFreshenSkeleton freshSuccess
+  generalize fcvEq : capability.fcv = variables at rest
+  cases variables with
+  | nil =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      rcases rest with ⟨rfl, rfl, rfl⟩
+      let capOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-capability"
+      let targetOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-target"
+      let producerOrigin := freshOrigin .recursiveBinder path
+        "fix-producer-target"
+      let capState := (middle.freshCap
+        capOrigin).2
+      let targetState := (capState.freshTy targetOrigin).2
+      simpa [fcvEq, capOrigin, targetOrigin, producerOrigin, capState, targetState] using
+        recursiveRun.trans
+        ((ValidatorRunExtension.freshCap terminal signature middle capOrigin).trans
+          ((ValidatorRunExtension.freshTy terminal signature capState
+            targetOrigin).trans
+            (ValidatorRunExtension.freshTy terminal signature targetState
+              producerOrigin)))
+  | cons first tail =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at rest
+      rcases rest with ⟨rfl, rfl, rfl⟩
+      let targetOrigin := freshOrigin .recursiveBinder path
+        "fix-argument-target"
+      let producerOrigin := freshOrigin .recursiveBinder path
+        "fix-producer-target"
+      let targetState := (middle.freshTy targetOrigin).2
+      simpa [fcvEq, targetOrigin, producerOrigin, targetState] using
+        recursiveRun.trans
+        ((ValidatorRunExtension.freshTy terminal signature middle
+          targetOrigin).trans
+          (ValidatorRunExtension.freshTy terminal signature targetState
+            producerOrigin))
 
 end DemandTypingInferenceCompletenessFixMatcher
 end TypePM
