@@ -24,6 +24,21 @@ open DemandTypingInferenceCompletenessPatternMain
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessLocalRenaming
 open DemandTypingInferenceCompletenessGeneralizationEquivariance
+open DemandTypingInferenceCompletenessContext
+
+private theorem Cap.mem_fcvList_of_mem_local
+    {capability : Cap} {capabilities : List Cap} {varId : CapVar}
+    (capabilityMem : capability ∈ capabilities)
+    (varMem : varId ∈ capability.fcv) :
+    varId ∈ Cap.fcvList capabilities := by
+  induction capabilities with
+  | nil => contradiction
+  | cons head tail induction =>
+      simp only [List.mem_cons] at capabilityMem
+      simp only [Cap.fcvList, List.mem_append]
+      rcases capabilityMem with rfl | inTail
+      · exact Or.inl varMem
+      · exact Or.inr (induction inTail)
 
 /-- The canonical reverse renaming extracted from bounded constructor children
 fixes every capability identifier which may be freshly allocated at `q`. -/
@@ -279,6 +294,142 @@ theorem freshenSkeletonMaskedSupply_fcv_origin
                         (SupplyExtends.freshenSkeleton headEq).1 fresh)
 
 end
+
+/-! ## Freshened projection transport -/
+
+/-- Freshening a projected skeleton preserves the capability relation: old
+leaves use the scoped child renaming, while newly allocated leaves are fixed
+above the common supply cut. -/
+theorem freshenedProjection_capBisimulation
+    {signature : FrozenSig}
+    {entry : PatternCtorScheme signature.observability}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    {declarativeChildren : List Cap} {projected : Shape.Evidence}
+    {capability : Cap} {q' : InferenceBase.FreshSupply}
+    (childrenBounded : ∀ child ∈ declarativeChildren, child.BoundedBy q)
+    (projection : Projection.projectSignature entry.projection
+      ((declarativeChildren.map fun child => child.apply S.cap).map
+        Shape.ofCap) = some projected)
+    (freshened : freshenSkeletonSupply signature.observability projected q =
+      some (capability, q')) :
+    let bundle := Ty.matcher (.prod declarativeChildren) .unit
+    let localMap := StateBisimulation.reverseLocalRenamingOn_image
+      before.prevailing bundle
+    CapBisimulation before.prevailing capability
+      (capability.applyRen localMap.capImage) := by
+  dsimp only
+  let bundle := Ty.matcher (.prod declarativeChildren) .unit
+  let localMap := StateBisimulation.reverseLocalRenamingOn_image
+    before.prevailing bundle
+  let rename := localMap.capImage
+  have origin := freshenSkeletonSupply_fcv_origin freshened
+  have oldScope : ∀ varId ∈ capability.fcv,
+      varId.id < q.nextCap → varId ∈ (S.apply bundle).fcv := by
+    intro varId membership below
+    rcases origin varId membership with source | fresh
+    · have projectedSource := Projection.projectSignature_fcv projection source
+      rw [Shape.fcvList_map_ofCap] at projectedSource
+      obtain ⟨resolved, resolvedMem, varMem⟩ :=
+        Cap.mem_fcvList_split projectedSource
+      obtain ⟨child, childMem, rfl⟩ := List.mem_map.mp resolvedMem
+      have joined : varId ∈ Cap.fcvList
+          (declarativeChildren.map fun child => child.apply S.cap) :=
+        Cap.mem_fcvList_of_mem_local
+          (List.mem_map.mpr ⟨child, childMem, rfl⟩) varMem
+      simp only [bundle, Subst.apply_matcher, Subst.apply_unit, Ty.fcv,
+        List.mem_append, List.not_mem_nil, or_false]
+      change varId ∈ Cap.fcvList (Cap.applyList S.cap declarativeChildren)
+      rw [Cap.applyList_eq_map]
+      exact joined
+    · exact False.elim ((Nat.not_le_of_lt below) fresh)
+  have renameFresh : RenamingFreshAbove rename q :=
+    reverseChildRenaming_freshAbove before childrenBounded
+  have declarativeFixed : capability.apply S.cap = capability := by
+    apply Cap.apply_eq_self_of_fcv_fixed
+    intro varId membership
+    by_cases below : varId.id < q.nextCap
+    · exact before.prevailing.declarativeIdempotent.image_cap_fixed bundle
+        varId (oldScope varId membership below)
+    · exact before.declarative_bounded.capFixedAbove varId
+        (Nat.le_of_not_lt below)
+  have reverseRenamed : capability.apply before.prevailing.reverse.cap =
+      capability.applyRen rename := by
+    let post : Subst :=
+      { cap := fun varId => .var (rename varId)
+        target := fun varId => .var varId }
+    let variablePost : VariablePost post :=
+      { capVariable := fun varId => ⟨rename varId, rfl⟩ }
+    have capRenEq : variablePost.capRen = rename := by
+      funext varId
+      have point := variablePost.capEquation varId
+      change Cap.var (rename varId) = Cap.var (variablePost.capRen varId) at point
+      exact (Cap.var.inj point).symm
+    rw [← capRenEq, ← variablePost.applyCap_eq_applyRen]
+    apply Cap.apply_eq_of_fcv_agree
+    intro varId membership
+    by_cases below : varId.id < q.nextCap
+    · exact localMap.cap_forward (oldScope varId membership below)
+    · change before.prevailing.reverse.cap varId = .var (rename varId)
+      rw [DemandTypingInferenceCompletenessContext.StateBisimulation.reverse_capFixedAbove
+        before.prevailing
+        before.declarative_bounded before.executable_bounded varId
+        (Nat.le_of_not_lt below), renameFresh varId (Nat.le_of_not_lt below)]
+  have executableImage : state.prevailing.apply (.matcher capability .unit) =
+      .matcher (capability.applyRen rename) .unit := by
+    calc
+      state.prevailing.apply (.matcher capability .unit) =
+          before.prevailing.reverse.apply (S.apply
+            (.matcher capability .unit)) := by
+        rw [before.prevailing.reverseEquation, Subst.seq_apply]
+      _ = .matcher (capability.apply before.prevailing.reverse.cap) .unit := by
+        simp [declarativeFixed]
+      _ = .matcher (capability.applyRen rename) .unit := by
+        rw [reverseRenamed]
+  have executableFixed :
+      (capability.applyRen rename).apply state.prevailing.cap =
+        capability.applyRen rename := by
+    have idempotent := before.prevailing.executableIdempotent
+      (.matcher capability .unit)
+    rw [executableImage] at idempotent
+    exact (Ty.matcher.inj idempotent).1
+  constructor
+  · simp only [Subst.apply_matcher, Subst.apply_unit, Ty.matcher.injEq,
+      and_true]
+    change capability.apply S.cap =
+      ((capability.applyRen rename).apply state.prevailing.cap).apply
+        before.prevailing.forward.cap
+    rw [declarativeFixed, executableFixed]
+    let post : Subst :=
+      { cap := fun varId => .var (rename varId)
+        target := fun varId => .var varId }
+    let variablePost : VariablePost post :=
+      { capVariable := fun varId => ⟨rename varId, rfl⟩ }
+    have capRenEq : variablePost.capRen = rename := by
+      funext varId
+      have point := variablePost.capEquation varId
+      change Cap.var (rename varId) = Cap.var (variablePost.capRen varId) at point
+      exact (Cap.var.inj point).symm
+    rw [← capRenEq, ← variablePost.applyCap_eq_applyRen]
+    rw [← Cap.apply_comp]
+    symm
+    apply Cap.apply_eq_self_of_fcv_fixed
+    intro varId membership
+    change before.prevailing.forward.cap (rename varId) = .var varId
+    by_cases below : varId.id < q.nextCap
+    · exact localMap.cap_reverse (oldScope varId membership below)
+    · rw [renameFresh varId (Nat.le_of_not_lt below)]
+      exact DemandTypingInferenceCompletenessContext.StateBisimulation.forward_capFixedAbove
+        before.prevailing
+        before.declarative_bounded before.executable_bounded varId
+        (Nat.le_of_not_lt below)
+  · simp only [Subst.apply_matcher, Subst.apply_unit, Ty.matcher.injEq,
+      and_true]
+    change (capability.applyRen rename).apply state.prevailing.cap =
+      (capability.apply S.cap).apply before.prevailing.reverse.cap
+    rw [executableFixed, declarativeFixed]
+    exact reverseRenamed.symm
 
 end DemandTypingInferenceCompletenessPatternCtorCapComplete
 end TypePM
