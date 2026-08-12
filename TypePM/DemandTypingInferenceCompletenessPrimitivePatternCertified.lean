@@ -464,6 +464,26 @@ theorem inferPPatsFuel_cons_validation
 
 /-! ## Packaging adapters -/
 
+/-- Package a bounded raw primitive-pattern completion once the branch-local
+chronology has been assembled from the constructors above. -/
+def certifyBoundedPPatRun
+    {terminal : Subst} {signature : FrozenSig}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {before : TraversalStateCorrespondence q S ledger state}
+    {operation : Option PPatResult} {target : Ty}
+    {holes : List Dual} {bindings : MonoCtx}
+    (raw : BoundedPPatRunCompletion before operation q' S' ledger' target
+      holes bindings)
+    (validation : ValidatorRunExtension terminal signature state
+      raw.run.result.state) :
+    BoundedCertifiedPPatRunCompletion terminal signature before operation
+      q' S' ledger' target holes bindings :=
+  { certified := ⟨raw.run, validation⟩
+    rawTargetBounded := raw.rawTargetBounded
+    rawHolesBounded := raw.rawHolesBounded
+    rawBindingsBounded := raw.rawBindingsBounded }
+
 /-- Attach the independently reconstructed DPat validator chronology to any
 bounded raw matcher-arm completion. -/
 def certifyBoundedDPatRun
