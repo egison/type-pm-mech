@@ -3,6 +3,7 @@ import TypePM.DemandTypingInferenceCompletenessSolver
 import TypePM.DemandTypingInferenceCompletenessContext
 import TypePM.DemandTypingInferenceCompletenessContextBisimulation
 import TypePM.DemandTypingInferenceCompletenessProtected
+import TypePM.DemandTypingInferenceCompletenessProtectedPreservation
 import TypePM.DemandTypingInferenceCompletenessIdempotence
 import TypePM.DemandTypingOriginMetatheory
 
@@ -28,6 +29,8 @@ open DemandTypingInferenceCompletenessStateMutual
 open DemandTypingInferenceCompletenessLedgerBisimulation
 open DemandTypingInferenceCompletenessSolver
 open DemandTypingInferenceCompletenessProtected
+open DemandTypingInferenceCompletenessProtectedTrace
+open DemandTypingInferenceCompletenessProtectedPreservation
 open DemandTypingInferenceCompletenessContext
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessLocalRenaming
@@ -230,6 +233,9 @@ structure TraversalStateCorrespondence
   protected_origins : ProtectedCapOrigins executable
   protected_below : ProtectedCapsBelowSupply executable
   allocated_recorded : AllocatedCapsRecorded executable
+  protected_safe :
+    DemandTypingInferenceCompletenessProtectedTrace.CurrentProtectedProducerSafe
+      executable
 
 /-- Export freezing is a state-neutral transition for prevailing types while
 the two ledgers freeze their corresponding structural representatives. -/
@@ -286,7 +292,9 @@ def TraversalStateCorrespondence.freezeCapabilityExport
           rw [relation.supply_eq]
           exact relation.executable_ledger_below) capImages exportedPayload
       allocated_recorded := relation.allocated_recorded.freezeCapabilityExport
-        capImages exportedPayload }
+        capImages exportedPayload
+      protected_safe := relation.protected_safe.freezeCapabilityExport
+        relation.prevailing.executableIdempotent capImages exportedPayload }
 
 def TraversalStateCorrespondence.freezeCapabilityExportExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
@@ -584,7 +592,8 @@ def TraversalStateCorrespondence.recordEvent
       relation.ledger_below, relation.executable_ledger_below,
       relation.protected_origins.recordEvent event,
       relation.protected_below.recordEvent_of_allocated event,
-      relation.allocated_recorded.recordEvent event eventRecorded⟩
+      relation.allocated_recorded.recordEvent event eventRecorded,
+      relation.protected_safe.recordEvent event⟩
 
 /-- Provenance-source recording is state-neutral for the typing relation. -/
 def stateBisimulationRecordSourceExtension
@@ -627,7 +636,8 @@ def TraversalStateCorrespondence.recordSource
       relation.ledger_below, relation.executable_ledger_below,
       relation.protected_origins.recordSource source,
       relation.protected_below.recordSource source,
-      relation.allocated_recorded.recordSource source⟩
+      relation.allocated_recorded.recordSource source,
+      relation.protected_safe.recordSource source⟩
 
 /-- Visiting one syntax node is trace-only. -/
 def TraversalStateCorrespondence.visit
@@ -708,7 +718,9 @@ def TraversalStateCorrespondence.afterVisitFreshTy
         entered.executable_ledger_below.mono extension,
         entered.protected_origins.freshTy origin,
         entered.protected_below.freshTy origin,
-        entered.allocated_recorded.freshTy origin⟩
+        entered.allocated_recorded.freshTy origin,
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.freshTy
+          entered.protected_safe origin⟩
     change { state.supply with nextTy := state.supply.nextTy + 1 } =
       { q with nextTy := q.nextTy + 1 }
     exact congrArg (fun supply : InferenceBase.FreshSupply =>
@@ -774,7 +786,9 @@ def TraversalStateCorrespondence.freshTy
         relation.executable_ledger_below.mono extension,
         relation.protected_origins.freshTy origin,
         relation.protected_below.freshTy origin,
-        relation.allocated_recorded.freshTy origin⟩
+        relation.allocated_recorded.freshTy origin,
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.freshTy
+          relation.protected_safe origin⟩
     change { state.supply with nextTy := state.supply.nextTy + 1 } =
       { q with nextTy := q.nextTy + 1 }
     exact congrArg (fun supply : InferenceBase.FreshSupply =>
@@ -797,13 +811,16 @@ def TraversalStateCorrespondence.refl
       state.capabilityOrigins)
     (protectedOrigins : ProtectedCapOrigins state)
     (protectedBelow : ProtectedCapsBelowSupply state)
-    (allocatedRecorded : AllocatedCapsRecorded state) :
+    (allocatedRecorded : AllocatedCapsRecorded state)
+    (protectedSafe :
+      DemandTypingInferenceCompletenessProtectedTrace.CurrentProtectedProducerSafe
+        state) :
     TraversalStateCorrespondence state.supply state.prevailing
       state.capabilityOrigins state :=
   let prevailing := StateBisimulation.refl state idempotent
   ⟨rfl, prevailing, bounded, bounded,
     Subst.boundedBy_id _, Subst.boundedBy_id _, ledgerBelow, ledgerBelow,
-    protectedOrigins, protectedBelow, allocatedRecorded⟩
+    protectedOrigins, protectedBelow, allocatedRecorded, protectedSafe⟩
 
 /-- Output relation for one raw synthesized type.  The two raw types need not
 be syntactically equal (context instantiation may see differently oriented
@@ -939,6 +956,7 @@ structure SchemeInstantiationCompletion
   protected_origins : ProtectedCapOrigins result.2
   protected_below : ProtectedCapsBelowSupply result.2
   allocated_recorded : AllocatedCapsRecorded result.2
+  protected_safe : CurrentProtectedProducerSafe result.2
   target : TyBisimulation transition.after target result.1
 
 /-- Corresponding normalized schemes instantiate in lockstep.  The fresh
@@ -1043,6 +1061,12 @@ def instantiateSchemeInState_complete
         signature rawContext normalizedContext name executableScheme
       allocated_recorded := before.allocated_recorded.instantiateSchemeInState
         signature rawContext normalizedContext name executableScheme
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.instantiateSchemeInState
+          before.protected_safe (by
+            rw [before.supply_eq]
+            exact before.executable_bounded) signature rawContext
+          normalizedContext name executableScheme
       target := ?_ }
   · simpa [operation, Inference.instantiateSchemeInState,
       before.supply_eq] using schemeSupplyEq
@@ -1079,6 +1103,7 @@ structure CtorInstantiationCompletion
   protected_origins : ProtectedCapOrigins result.2
   protected_below : ProtectedCapsBelowSupply result.2
   allocated_recorded : AllocatedCapsRecorded result.2
+  protected_safe : CurrentProtectedProducerSafe result.2
   arguments : TyListBisimulation transition.after arguments result.1.1
   target : TyBisimulation transition.after target result.1.2
 
@@ -1169,6 +1194,12 @@ def instantiateCtorInState_complete
       protected_below := before.protected_below.instantiateCtorInState scheme
       allocated_recorded := before.allocated_recorded.instantiateCtorInState
         scheme
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.instantiateCtorInState
+          before.protected_safe (by
+            rw [before.supply_eq]
+            exact before.executable_bounded)
+          before.protected_below scheme
       arguments := ?_
       target := ?_ }
   · change initial.prevailing.BoundedBy
@@ -1194,7 +1225,7 @@ def CtorInstantiationCompletion.correspondence
     completion.forward_bounded, completion.reverse_bounded,
     completion.ledger_below, completion.executable_ledger_below,
     completion.protected_origins, completion.protected_below,
-    completion.allocated_recorded⟩
+    completion.allocated_recorded, completion.protected_safe⟩
 
 /-- A successful executable expression run paired with its typed output
 correspondence.  The package lives in `Type` because the state bisimulation
@@ -1221,6 +1252,7 @@ structure SynthRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   target : TyBisimulation transition.after target result.target
 
 /-- List counterpart of `SynthRunCompletion`. -/
@@ -1246,6 +1278,7 @@ structure SynthsRunCompletion
   protected_origins : ProtectedCapOrigins result.state
   protected_below : ProtectedCapsBelowSupply result.state
   allocated_recorded : AllocatedCapsRecorded result.state
+  protected_safe : CurrentProtectedProducerSafe result.state
   targets : TyListBisimulation transition.after targets result.targets
 
 /-- Repackage a run's proof-relevant transition as the output-only relation. -/
@@ -1261,7 +1294,8 @@ def SynthRunCompletion.completion
       run.declarative_bounded, run.executable_bounded,
       run.forward_bounded, run.reverse_bounded, run.ledger_below,
       run.executable_ledger_below,
-      run.protected_origins, run.protected_below, run.allocated_recorded⟩,
+      run.protected_origins, run.protected_below, run.allocated_recorded,
+      run.protected_safe⟩,
     run.target⟩
 
 def SynthsRunCompletion.completion
@@ -1277,7 +1311,8 @@ def SynthsRunCompletion.completion
       run.declarative_bounded, run.executable_bounded,
       run.forward_bounded, run.reverse_bounded, run.ledger_below,
       run.executable_ledger_below,
-      run.protected_origins, run.protected_below, run.allocated_recorded⟩,
+      run.protected_origins, run.protected_below, run.allocated_recorded,
+      run.protected_safe⟩,
     run.targets⟩
 
 /-- State-only run package used by alignment cuts. -/
@@ -1302,6 +1337,7 @@ structure StateRunCompletion
   protected_origins : ProtectedCapOrigins result
   protected_below : ProtectedCapsBelowSupply result
   allocated_recorded : AllocatedCapsRecorded result
+  protected_safe : CurrentProtectedProducerSafe result
 
 def StateRunCompletion.completion
     {q : InferenceBase.FreshSupply} {S : Subst}
@@ -1315,7 +1351,8 @@ def StateRunCompletion.completion
     run.declarative_bounded, run.executable_bounded,
     run.forward_bounded, run.reverse_bounded, run.ledger_below,
     run.executable_ledger_below,
-    run.protected_origins, run.protected_below, run.allocated_recorded⟩
+    run.protected_origins, run.protected_below, run.allocated_recorded,
+    run.protected_safe⟩
 
 /-- Shared constructor/primitive suffix: once argument checking has produced
 its state run, selectively freeze the surviving instance leaves, record the
@@ -1361,6 +1398,7 @@ def StateRunCompletion.freezeAndFinishExpr
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := finishExtension.after.sameTarget target }
   rw [run.success]
   rfl
@@ -1421,7 +1459,13 @@ noncomputable def runResolvedTargetEq_complete_of_step
       executable_ledger_below := relation.executable_ledger_below
       protected_origins := relation.protected_origins.recordSolve step
       protected_below := relation.protected_below.recordSolve step
-      allocated_recorded := relation.allocated_recorded.recordSolve step }
+      allocated_recorded := relation.allocated_recorded.recordSolve step
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.runResolvedConstraint
+          relation.protected_safe (by
+        unfold runResolvedConstraint
+        rw [stepSuccess]
+        rfl) }
   · unfold runResolvedConstraint
     rw [stepSuccess]
     rfl
@@ -1541,7 +1585,8 @@ noncomputable def alignTypes_ordinary_complete
       protected_origins := core.protected_origins.recordEvent _
       protected_below := core.protected_below.recordEvent_of_allocated _
       allocated_recorded := core.allocated_recorded.recordEvent _
-        (by simp [TraceEvent.allocatedCapVars]) }
+        (by simp [TraceEvent.allocatedCapVars])
+      protected_safe := core.protected_safe.recordEvent _ }
   · have coreEq : alignTypesCore initial origin executableLeft
         executableRight =
         runResolvedConstraint initial origin
@@ -1602,6 +1647,7 @@ def inferExprFuel_lit_complete
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := ?_ }
   · simp [inferExprFuel, result, entered, finishExpr, visit]
   exact (visitExtension.seq finishExtension).after.sameTarget .int
@@ -1677,7 +1723,8 @@ noncomputable def inferExprFuel_var_complete
           instantiationComplete.executable_ledger_below,
           instantiationComplete.protected_origins,
           instantiationComplete.protected_below,
-          instantiationComplete.allocated_recorded⟩
+          instantiationComplete.allocated_recorded,
+          instantiationComplete.protected_safe⟩
       let visitExtension := relation.visitExtension .exprVar path
       cases selfLookup : selfEnv.find? name with
       | none =>
@@ -1706,6 +1753,7 @@ noncomputable def inferExprFuel_var_complete
               protected_origins := finalRelation.protected_origins
               protected_below := finalRelation.protected_below
               allocated_recorded := finalRelation.allocated_recorded
+              protected_safe := finalRelation.protected_safe
               target := finishExtension.transportTy
                 instantiationComplete.target }
           simp [inferExprFuel, entered, normalizedExecutable, instantiated,
@@ -1745,6 +1793,7 @@ noncomputable def inferExprFuel_var_complete
               protected_origins := finalRelation.protected_origins
               protected_below := finalRelation.protected_below
               allocated_recorded := finalRelation.allocated_recorded
+              protected_safe := finalRelation.protected_safe
               target := finishExtension.transportTy
                 (selfSourceExtension.transportTy
                   (selfEventExtension.transportTy
@@ -1802,6 +1851,7 @@ def inferExprFuel_something_complete
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := ?_ }
   · simp only [inferExprFuel]
     rw [show allocated.1 = .var q.nextTy by
@@ -1874,6 +1924,7 @@ def inferExprFuel_lam_complete
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := ?_ }
   · simp only [inferExprFuel]
     rw [show allocated.1 = .var q.nextTy by exact allocatedRelation.target_eq]
@@ -1917,6 +1968,7 @@ def inferExprsFuel_nil_complete
       protected_origins := relation.protected_origins
       protected_below := relation.protected_below
       allocated_recorded := relation.allocated_recorded
+      protected_safe := relation.protected_safe
       targets := .nil }
   simp [inferExprsFuel]
 
@@ -1959,6 +2011,7 @@ def inferExprsFuel_cons_complete
       protected_origins := tailComplete.protected_origins
       protected_below := tailComplete.protected_below
       allocated_recorded := tailComplete.allocated_recorded
+      protected_safe := tailComplete.protected_safe
       targets := ?_ }
   · simp [inferExprsFuel, headSuccess, tailSuccess, head, tail]
   · exact .cons (tailComplete.transition.transportTy headComplete.target)
@@ -2004,6 +2057,7 @@ def inferExprFuel_tuple_complete
       protected_origins := finalRelation.protected_origins
       protected_below := finalRelation.protected_below
       allocated_recorded := finalRelation.allocated_recorded
+      protected_safe := finalRelation.protected_safe
       target := ?_ }
   · simp [inferExprFuel, childrenSuccess, result, children]
   · exact finishExtension.transportTy
@@ -2064,6 +2118,7 @@ def inferExprFuel_ctor_complete
       protected_origins := suffix.protected_origins
       protected_below := suffix.protected_below
       allocated_recorded := suffix.allocated_recorded
+      protected_safe := suffix.protected_safe
       target := suffix.target }
   simp only [inferExprFuel]
   rw (occs := .pos [1]) [lookup]
@@ -2124,6 +2179,7 @@ def inferExprFuel_prim_complete
       protected_origins := suffix.protected_origins
       protected_below := suffix.protected_below
       allocated_recorded := suffix.allocated_recorded
+      protected_safe := suffix.protected_safe
       target := suffix.target }
   simp only [inferExprFuel]
   rw (occs := .pos [1]) [lookup]

@@ -17,6 +17,7 @@ open Inference
 open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessIdempotence
+open DemandTypingInferenceCompletenessProtectedTrace
 
 /-- Canonical DD/executable correspondence at the public inference entry. -/
 def initialTraversalState
@@ -35,6 +36,11 @@ def initialTraversalState
     (initialState_protectedCapOrigins signature context)
     (initialState_protectedCapsBelowSupply signature context)
     (initialState_allocatedCapsRecorded signature context)
+    (by
+      change CurrentProtectedProducerSafe
+        (InferState.empty (initialSupply signature context))
+      exact CurrentProtectedProducerSafe.empty
+        (initialSupply signature context))
   simpa [state, initialState, InferState.empty, InferState.prevailing,
     replay, replayFrom] using relation
 

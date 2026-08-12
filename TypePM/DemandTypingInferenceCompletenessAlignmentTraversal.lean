@@ -195,7 +195,8 @@ def StateRunCompletion.seq
       executable_ledger_below := second.executable_ledger_below
       protected_origins := second.protected_origins
       protected_below := second.protected_below
-      allocated_recorded := second.allocated_recorded }
+      allocated_recorded := second.allocated_recorded
+      protected_safe := second.protected_safe }
   calc
     (do
       let middle ← firstOperation
@@ -315,7 +316,20 @@ noncomputable def runResolvedCapEq_complete
       executable_ledger_below := relation.executable_ledger_below
       protected_origins := relation.protected_origins.recordSolve step
       protected_below := relation.protected_below.recordSolve step
-      allocated_recorded := relation.allocated_recorded.recordSolve step }
+      allocated_recorded := relation.allocated_recorded.recordSolve step
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.runResolvedConstraint
+          relation.protected_safe (origin := origin)
+            (constraint := .capEq executableLeft executableRight) (by
+              unfold runResolvedConstraint
+              change (do
+                let emitted ← solveCapEqWithLedger
+                  initial.capabilityOrigins initial.trace.solves.length origin
+                  executableLeft executableRight
+                pure (initial.recordSolve emitted)) =
+                  some (initial.recordSolve step)
+              rw [solverSuccess]
+              rfl) }
   · unfold runResolvedConstraint
     change (do
       let emitted ← solveCapEqWithLedger initial.capabilityOrigins
@@ -612,7 +626,8 @@ def StateRunCompletion.finishAlignTypes
       protected_origins := core.protected_origins.recordEvent event
       protected_below := core.protected_below.recordEvent_of_allocated event
       allocated_recorded := core.allocated_recorded.recordEvent event (by
-        simp [event, TraceEvent.allocatedCapVars]) }
+        simp [event, TraceEvent.allocatedCapVars])
+      protected_safe := core.protected_safe.recordEvent event }
   unfold alignTypes
   let finishState := fun aligned : InferState =>
     some (aligned.recordEvent (.typeAlignment initial.trace.solves.length
@@ -1213,7 +1228,22 @@ noncomputable def runResolvedOneWay_complete
       executable_ledger_below := relation.executable_ledger_below
       protected_origins := relation.protected_origins.recordSolve cut.step
       protected_below := relation.protected_below.recordSolve cut.step
-      allocated_recorded := relation.allocated_recorded.recordSolve cut.step }
+      allocated_recorded := relation.allocated_recorded.recordSolve cut.step
+      protected_safe :=
+        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.runResolvedConstraint
+          relation.protected_safe (origin := origin)
+            (constraint := .producerToSlot executableProducerCap
+              executableProducerTarget executableConsumerCap
+              executableConsumerTarget) (by
+            unfold runResolvedConstraint
+            simp only
+            rw [show solveResolvedWithLedger initial.capabilityOrigins
+                initial.trace.solves.length origin
+                (.producerToSlot executableProducerCap
+                  executableProducerTarget executableConsumerCap
+                  executableConsumerTarget) = some cut.step by
+              exact cut.success]
+            simpa [protectedCheck]) }
   · unfold runResolvedConstraint
     change (do
       let step ← solveProducerToSlotWithLedger initial.capabilityOrigins
