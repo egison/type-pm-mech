@@ -170,6 +170,143 @@ forward residual. -/
       DDLedger.markSchemeInstance ledger supply scheme := by
   simp [DDLedger.markSchemeInstance]
 
+/-- Canonical fresh instantiation commutes with an ambient residual that is
+bounded at the incoming supply.  Boundedness is exactly what prevents the
+residual from rewriting the fresh images allocated for bound positions. -/
+theorem instantiateScheme_applyMeta_bounded
+    (supply : InferenceBase.FreshSupply) (scheme : Scheme)
+    (substitution : Subst) (bounded : substitution.BoundedBy supply) :
+    (InferenceBase.instantiateScheme supply
+      (scheme.applyMeta substitution)).value =
+      substitution.apply
+        (InferenceBase.instantiateScheme supply scheme).value := by
+  cases scheme with
+  | mk capArity tyArity body =>
+      simp only [InferenceBase.instantiateScheme,
+        Scheme.freshInstantiate_value, Scheme.openValue, Scheme.instantiate,
+        Scheme.FreshOpening.toValueOpening, Scheme.applyMeta]
+      let capImage : Fin capArity → CapVar := fun index =>
+        ⟨supply.nextCap + index.val⟩
+      let tyImage : Fin tyArity → Ty := fun index =>
+        .var (supply.nextTy + index.val)
+      have capFixed : ∀ index,
+          substitution.cap (capImage index) = .var (capImage index) := by
+        intro index
+        exact bounded.capFixedAbove _ (by
+          dsimp [capImage]
+          omega)
+      have targetFixed : ∀ index,
+          substitution.apply (tyImage index) = tyImage index := by
+        intro index
+        change substitution.target (supply.nextTy + index.val) =
+          .var (supply.nextTy + index.val)
+        exact bounded.targetFixedAbove _ (by omega)
+      have transported := PolyTy.instantiate_applyMeta substitution
+        capImage capImage tyImage capFixed body
+      simpa [capImage, tyImage, Scheme.canonicalFreshOpening, targetFixed]
+        using transported
+
+/-- Canonical instances of two normalized schemes form the exact target
+bisimulation needed by the variable branch.  The four boundedness premises
+fix newly allocated binder images; the scheme equations describe transport
+of the already-normalized free metas in both directions. -/
+theorem canonicalInstantiation_tyBisimulation
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState} (relation : StateBisimulation ledger declarative state)
+    (supply : InferenceBase.FreshSupply)
+    (declarativeScheme executableScheme : Scheme)
+    (declarativeBounded : declarative.BoundedBy supply)
+    (executableBounded : state.prevailing.BoundedBy supply)
+    (forwardBounded : relation.forward.BoundedBy supply)
+    (reverseBounded : relation.reverse.BoundedBy supply)
+    (forwardScheme : declarativeScheme =
+      executableScheme.applyMeta relation.forward)
+    (reverseScheme : executableScheme =
+      declarativeScheme.applyMeta relation.reverse)
+    (declarativeNormalized :
+      declarativeScheme.applyMeta declarative = declarativeScheme)
+    (executableNormalized :
+      executableScheme.applyMeta state.prevailing = executableScheme) :
+    TyBisimulation relation
+      (InferenceBase.instantiateScheme supply declarativeScheme).value
+      (InferenceBase.instantiateScheme supply executableScheme).value := by
+  have declarativeFixed : declarative.apply
+        (InferenceBase.instantiateScheme supply declarativeScheme).value =
+      (InferenceBase.instantiateScheme supply declarativeScheme).value := by
+    have transported := instantiateScheme_applyMeta_bounded supply
+      declarativeScheme declarative declarativeBounded
+    rw [declarativeNormalized] at transported
+    exact transported.symm
+  have executableFixed : state.prevailing.apply
+        (InferenceBase.instantiateScheme supply executableScheme).value =
+      (InferenceBase.instantiateScheme supply executableScheme).value := by
+    have transported := instantiateScheme_applyMeta_bounded supply
+      executableScheme state.prevailing executableBounded
+    rw [executableNormalized] at transported
+    exact transported.symm
+  have forwardInstance :
+      (InferenceBase.instantiateScheme supply declarativeScheme).value =
+        relation.forward.apply
+          (InferenceBase.instantiateScheme supply executableScheme).value := by
+    rw [forwardScheme]
+    exact instantiateScheme_applyMeta_bounded supply executableScheme
+      relation.forward forwardBounded
+  have reverseInstance :
+      (InferenceBase.instantiateScheme supply executableScheme).value =
+        relation.reverse.apply
+          (InferenceBase.instantiateScheme supply declarativeScheme).value := by
+    rw [reverseScheme]
+    exact instantiateScheme_applyMeta_bounded supply declarativeScheme
+      relation.reverse reverseBounded
+  constructor
+  · rw [declarativeFixed, executableFixed]
+    exact forwardInstance
+  · rw [executableFixed, declarativeFixed]
+    exact reverseInstance
+
+/-! ## Executable solve-result boundedness -/
+
+/-- The proof-carrying paired solver result is bounded whenever both resolved
+operands are bounded at the solve cut. -/
+theorem PairedUnification.PairedResult.boundedBy
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    (result : PairedUnification.PairedResult ledger left right)
+    {supply : InferenceBase.FreshSupply}
+    (leftBounded : left.BoundedBy supply)
+    (rightBounded : right.BoundedBy supply) :
+    result.subst.BoundedBy supply :=
+  result.exactPairedMGU.boundedBy leftBounded rightBounded
+
+/-- Capability-only executable results have the analogous paired
+boundedness, with identity target action. -/
+theorem PairedUnification.OrientedCapResult.boundedByPair
+    {ledger : CapabilityOriginLedger} {left right : Cap}
+    (result : PairedUnification.OrientedCapResult ledger left right)
+    {supply : InferenceBase.FreshSupply}
+    (leftBounded : left.BoundedBy supply)
+    (rightBounded : right.BoundedBy supply) :
+    (Subst.mk result.subst TySubst.id).BoundedBy supply :=
+  result.exactCapMGU.boundedBy_pair leftBounded rightBounded
+
+/-- A paired result over prevailing-resolved bounded operands is bounded at
+the same cut.  This is the form needed by traversal state transitions. -/
+theorem PairedUnification.PairedResult.boundedByResolved
+    {ledger : CapabilityOriginLedger} {left right : Ty}
+    (result : PairedUnification.PairedResult ledger left right)
+    {supply : InferenceBase.FreshSupply} {prevailing : Subst}
+    (prevailingBounded : prevailing.BoundedBy supply)
+    {rawLeft rawRight : Ty}
+    (leftEq : left = prevailing.apply rawLeft)
+    (rightEq : right = prevailing.apply rawRight)
+    (rawLeftBounded : rawLeft.BoundedBy supply)
+    (rawRightBounded : rawRight.BoundedBy supply) :
+    result.subst.BoundedBy supply := by
+  subst left
+  subst right
+  exact result.exactPairedMGU.boundedBy
+    (prevailingBounded.apply rawLeftBounded)
+    (prevailingBounded.apply rawRightBounded)
+
 /-- A completed value traversal already supplies the forward equation between
 the two normalized value types used at the `let` generalization cut. -/
 theorem normalizedLetTarget_forward
