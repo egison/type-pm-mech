@@ -24,6 +24,161 @@ open DemandTypingInferenceCompletenessPairedValidatorRun
 open DemandTypingInferenceCompletenessPairedValidationMain
 open DemandTypingInferenceCompletenessMatcherTraversal
 
+/-! ## Exact expected-type alignment validation -/
+
+/-- Every successful raw slot alignment is validator-complete. -/
+theorem ValidatorRunExtension.ofAlignAtSlot
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {inferred expected : Ty}
+    (success : alignAtSlot state origin inferred expected = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold alignAtSlot at success
+  simp only at success
+  split at success
+  · exact ValidatorRunExtension.ofRunResolvedConstraint success
+  · rcases Option.bind_eq_some_iff.mp success with
+      ⟨middle, firstSuccess, remaining⟩
+    have first := ValidatorRunExtension.ofRunResolvedConstraint
+      (terminal := terminal) (signature := signature) firstSuccess
+    split at remaining
+    · exact first.trans
+        (ValidatorRunExtension.ofRunResolvedConstraint remaining)
+    · contradiction
+  · exact ValidatorRunExtension.ofAlignTypes success
+
+/-- The product-matcher coercion branch consists of one resolved constraint. -/
+theorem ValidatorRunExtension.ofAlignResolvedProductMatcherAtSlot
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedProductMatcherAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  exact ValidatorRunExtension.ofRunResolvedConstraint success
+
+/-- The slot-tuple coercion branch consists of its capability and target
+constraints in executable order. -/
+theorem ValidatorRunExtension.ofAlignResolvedSlotTupleAtSlot
+    {terminal : Subst} {signature : FrozenSig}
+    {state result : InferState} {origin : ConstraintOrigin}
+    {duals : List Dual} {consumerCap : Cap} {consumerTarget : Ty}
+    (success : alignResolvedSlotTupleAtSlot state origin duals consumerCap
+      consumerTarget = some result) :
+    ValidatorRunExtension terminal signature state result := by
+  unfold alignResolvedSlotTupleAtSlot at success
+  rcases Option.bind_eq_some_iff.mp success with
+    ⟨step, stepSuccess, remaining⟩
+  have firstSuccess : runResolvedConstraint state origin
+      (.capEq (.prod (duals.map Dual.cap)) consumerCap) =
+      some (state.recordSolve step) := by
+    unfold runResolvedConstraint
+    rw [stepSuccess]
+    rfl
+  exact (ValidatorRunExtension.ofRunResolvedConstraint
+    (terminal := terminal) (signature := signature) firstSuccess).trans
+      (ValidatorRunExtension.ofRunResolvedConstraint remaining)
+
+/-- A successful expected-type cut carries its complete validator chronology.
+This removes branch inspection from checking and application callers. -/
+theorem ValidatorRunExtension.ofAlignExprResultAtExpected
+    {terminal : Subst} {signature : FrozenSig} {path : SyntaxPath}
+    {expressionResult : ExprResult} {expected : Ty} {result : InferState}
+    (success : alignExprResultAtExpected path expressionResult expected =
+      some result) :
+    ValidatorRunExtension terminal signature expressionResult.state result := by
+  have original := success
+  unfold alignExprResultAtExpected at success
+  cases planEq : expectedCoercionPlan expressionResult.state
+      expressionResult.target expected with
+  | productMatcherLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedProductMatcherAtSlot
+          expressionResult.state (freshOrigin .expression path "expected-type")
+          duals consumerCap consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          have finished : alignExprResultAtExpected path expressionResult
+              expected = some (aligned.recordEvent (.slotAlignment
+                expressionResult.state.trace.solves.length
+                aligned.trace.solves.length
+                (match expectedCoercionPlan expressionResult.state
+                    expressionResult.target expected with
+                  | .productMatcherLift duals => productMatcherTarget duals
+                  | .slotTupleLift duals => slotTupleTarget duals
+                  | .raw => expressionResult.state.prevailing.apply
+                      expressionResult.target)
+                (expressionResult.state.prevailing.apply expected))) := by
+            simpa [planEq, requestedEq] using original
+          simpa [planEq, requestedEq] using
+            (ValidatorRunExtension.finishExpectedAlignment
+            (terminal := terminal) (signature := signature)
+            (path := path) (expected := expected)
+            (ValidatorRunExtension.ofAlignResolvedProductMatcherAtSlot
+              (terminal := terminal) (signature := signature) alignmentEq)
+            finished)
+  | slotTupleLift duals =>
+      cases requestedEq : expressionResult.state.prevailing.apply expected <;>
+        simp [planEq, requestedEq] at success
+      rename_i consumerCap consumerTarget
+      cases alignmentEq : alignResolvedSlotTupleAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type") duals consumerCap
+          consumerTarget with
+      | none => simp [alignmentEq] at success
+      | some aligned =>
+          simp only [alignmentEq, Option.some.injEq] at success
+          subst result
+          have finished : alignExprResultAtExpected path expressionResult
+              expected = some (aligned.recordEvent (.slotAlignment
+                expressionResult.state.trace.solves.length
+                aligned.trace.solves.length
+                (match expectedCoercionPlan expressionResult.state
+                    expressionResult.target expected with
+                  | .productMatcherLift duals => productMatcherTarget duals
+                  | .slotTupleLift duals => slotTupleTarget duals
+                  | .raw => expressionResult.state.prevailing.apply
+                      expressionResult.target)
+                (expressionResult.state.prevailing.apply expected))) := by
+            simpa [planEq, requestedEq] using original
+          simpa [planEq, requestedEq] using
+            (ValidatorRunExtension.finishExpectedAlignment
+            (terminal := terminal) (signature := signature)
+            (path := path) (expected := expected)
+            (ValidatorRunExtension.ofAlignResolvedSlotTupleAtSlot
+              (terminal := terminal) (signature := signature) alignmentEq)
+            finished)
+  | raw =>
+      cases alignmentEq : alignAtSlot expressionResult.state
+          (freshOrigin .expression path "expected-type")
+          expressionResult.target expected with
+      | none => simp [planEq, alignmentEq] at success
+      | some aligned =>
+          simp only [planEq, alignmentEq, Option.some.injEq] at success
+          subst result
+          have finished : alignExprResultAtExpected path expressionResult
+              expected = some (aligned.recordEvent (.slotAlignment
+                expressionResult.state.trace.solves.length
+                aligned.trace.solves.length
+                (match expectedCoercionPlan expressionResult.state
+                    expressionResult.target expected with
+                  | .productMatcherLift duals => productMatcherTarget duals
+                  | .slotTupleLift duals => slotTupleTarget duals
+                  | .raw => expressionResult.state.prevailing.apply
+                      expressionResult.target)
+                (expressionResult.state.prevailing.apply expected))) := by
+            simpa [planEq] using original
+          simpa [planEq] using
+            (ValidatorRunExtension.finishExpectedAlignment
+            (terminal := terminal) (signature := signature)
+            (path := path) (expected := expected)
+            (ValidatorRunExtension.ofAlignAtSlot
+              (terminal := terminal) (signature := signature) alignmentEq)
+            finished)
+
 /-- State-only completion with paired sensitive-event chronology. -/
 structure PairedCertifiedStateRunCompletion
     (terminal : Subst) (signature : FrozenSig)
