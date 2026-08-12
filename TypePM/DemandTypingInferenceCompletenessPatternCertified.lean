@@ -24,6 +24,7 @@ open DemandTypingInferenceCompletenessTraversal
 open DemandTypingInferenceCompletenessContextBisimulation
 open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessAlignmentFamilies
+open DemandTypingInferenceCompletenessPatternTraversal
 open DemandTypingInferenceCompletenessPatternMain
 open DemandTypingInferenceCompletenessPatternDispatcher
 open DemandTypingInferenceCompletenessCertifiedRun
@@ -58,6 +59,21 @@ structure BoundedCertifiedPatternsRunCompletion
     ledger duals bindings
   validation : ValidatorRunExtension terminal signature initial
     bounded.run.result.state
+
+/-- The value-pattern callback needs the raw synthesized target bound together
+with the child's validator chronology. -/
+structure BoundedCertifiedPatternSynthRunCompletion
+    (terminal : Subst) (signature : FrozenSig)
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger₀ : CapabilityOriginLedger} {initial : InferState}
+    (before : TraversalStateCorrespondence q S ledger₀ initial)
+    (operation : Option ExprResult) (q' : InferenceBase.FreshSupply)
+    (declarative : Subst) (ledger : CapabilityOriginLedger)
+    (target : Ty) : Type where
+  run : SynthRunCompletion before operation q' declarative ledger target
+  rawTargetBounded : run.result.target.BoundedBy q'
+  validation : ValidatorRunExtension terminal signature initial
+    run.result.state
 
 /-- Certified single-pattern completeness available below a strict fuel
 ceiling. -/
@@ -614,6 +630,108 @@ def certifiedPatternTuple_complete
       ⟨.prod (duals.map Dual.cap), .prod (duals.map Dual.target)⟩ bindings :=
   ⟨boundedPatternTuple_complete before children.bounded,
     tuple children.validation⟩
+
+/-- A certified expression child, followed by one fresh capability and the
+common pattern result event, gives the complete value-pattern package. -/
+def certifiedPatternValue_complete
+    {terminal : Subst} {signature : FrozenSig} {fuel : Nat}
+    {declarativeContext executableContext : Context}
+    {declarativeParameters executableParameters : PatternCtx}
+    {declarativeBindings executableBindings : MonoCtx}
+    {selfEnv : SelfEnv} {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q₁ : InferenceBase.FreshSupply} {S S₁ : Subst}
+    {ledger ledger₁ : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (signatureBelow : SignatureVarsBelow q signature)
+    (bindings : MonoCtxBisimulation before.prevailing declarativeBindings
+      executableBindings)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (executableParametersBounded : executableParameters.BoundedBy q)
+    (executableBindingsBounded : executableBindings.BoundedBy q)
+    (synthExtends : SupplyExtends q q₁)
+    (expressionRun : BoundedCertifiedPatternSynthRunCompletion terminal
+      signature (before.visit .patternValue path)
+      (inferExprFuel fuel signature
+        (executableBindings.toContext ++ executableContext) selfEnv
+        (0 :: path) expression (visit state .patternValue path))
+      q₁ S₁ ledger₁ target) :
+    BoundedCertifiedPatternRunCompletion terminal signature before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.pval expression) state)
+      { q₁ with nextCap := q₁.nextCap + 1 } S₁
+      (DDLedger.markFreshCap ledger₁ q₁)
+      ⟨.var ⟨q₁.nextCap⟩, target⟩ declarativeBindings := by
+  let run := patternValue_complete fuel signature declarativeContext
+    executableContext declarativeParameters executableParameters selfEnv path
+    expression before declarativeBindings executableBindings bindings
+    expressionRun.run
+  have rawDualBounded : run.result.dual.BoundedBy
+      { q₁ with nextCap := q₁.nextCap + 1 } := by
+    have dualEq :
+        ⟨.var ⟨expressionRun.run.result.state.supply.nextCap⟩,
+          expressionRun.run.result.target⟩ = run.result.dual := by
+      have mapped := congrArg (Option.map PatternResult.dual) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [expressionRun.run.success] at mapped
+      simpa [InferState.freshCap, InferenceBase.freshCapMeta] using mapped
+    rw [← dualEq]
+    constructor
+    · apply Cap.BoundedBy.varOf
+      change expressionRun.run.result.state.supply.nextCap < q₁.nextCap + 1
+      rw [expressionRun.run.supply_eq]
+      omega
+    · exact expressionRun.rawTargetBounded.mono
+        (SupplyExtends.bumpCap q₁ 1)
+  have rawBindingsBounded : run.result.bindings.BoundedBy
+      { q₁ with nextCap := q₁.nextCap + 1 } := by
+    have bindingsEq : executableBindings = run.result.bindings := by
+      have mapped := congrArg (Option.map PatternResult.bindings) run.success
+      simp only [inferPatternFuel] at mapped
+      rw [expressionRun.run.success] at mapped
+      simpa using mapped
+    rw [← bindingsEq]
+    exact executableBindingsBounded.mono
+      (synthExtends.trans (SupplyExtends.bumpCap q₁ 1))
+  let bounded : BoundedPatternRunCompletion before
+      (inferPatternFuel (fuel + 1) signature executableContext
+        executableParameters executableBindings selfEnv path
+        (.pval expression) state)
+      { q₁ with nextCap := q₁.nextCap + 1 } S₁
+      (DDLedger.markFreshCap ledger₁ q₁)
+      ⟨.var ⟨q₁.nextCap⟩, target⟩ declarativeBindings :=
+    ⟨run, rawDualBounded, rawBindingsBounded⟩
+  refine ⟨bounded, ?_⟩
+  let allocation := expressionRun.run.result.state
+  let afterFresh := (allocation.freshCap
+    (freshOrigin .pattern path "pattern-value-capability")).2
+  have markedRun : ValidatorRunExtension terminal signature afterFresh
+      (afterFresh.recordEvent (.patternValueFresh executableContext
+        executableParameters executableBindings
+        ⟨allocation.supply.nextCap⟩ expressionRun.run.result.target)) := by
+    apply ValidatorRunExtension.recordOrdinaryEvent
+    · intro future extension safe
+      apply Inference.Reconstruction.patternValue_ordinaryValidatorEventCondition
+      · simpa [allocation, expressionRun.run.supply_eq] using
+          (signatureBelow.mono synthExtends).caps
+      · simpa [allocation, expressionRun.run.supply_eq] using
+          contextBounded_capVarsBelow
+            (executableContextBounded.mono synthExtends)
+      · simpa [allocation, expressionRun.run.supply_eq] using
+          patternCtxBounded_capVarsBelow
+            (executableParametersBounded.mono synthExtends)
+      · simpa [allocation, expressionRun.run.supply_eq] using
+          monoCtxBounded_capVarsBelow
+            (executableBindingsBounded.mono synthExtends)
+      · simpa [allocation, expressionRun.run.supply_eq] using
+          expressionRun.rawTargetBounded
+    · simp [Inference.Reconstruction.TerminalAuditSensitiveEvent]
+  exact leaf ((ValidatorRunExtension.visit terminal signature state
+    .patternValue path).trans (expressionRun.validation.trans
+      ((ValidatorRunExtension.freshCap terminal signature
+        expressionRun.run.result.state
+        (freshOrigin .pattern path "pattern-value-capability")).trans
+          markedRun)))
 
 /-- Certified conjunction packaging reconstructs the same dual-alignment cut
 as the raw bounded completion and certifies that executable suffix. -/
