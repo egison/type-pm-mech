@@ -648,115 +648,6 @@ def TraversalStateCorrespondence.freezeCapabilityExportRelatedExtension
     intro _ _ forward reverse
     exact ⟨forward, reverse⟩
 
-/-! ## One structural capability allocation -/
-
-def TraversalStateCorrespondence.freshCapExtension
-    {q : InferenceBase.FreshSupply} {declarative : Subst}
-    {ledger : CapabilityOriginLedger} {state : InferState}
-    (before : TraversalStateCorrespondence q declarative ledger state)
-    (origin : ConstraintOrigin) :
-    BisimulationExtension before.prevailing (DDLedger.markFreshCap ledger q)
-      declarative (state.freshCap origin).2 := by
-  let q' : InferenceBase.FreshSupply :=
-    { q with nextCap := q.nextCap + 1 }
-  let afterState := (state.freshCap origin).2
-  let afterLedger := DDLedger.markFreshCap ledger q
-  have forwardBetween : AdmissiblePostBetween
-      afterState.capabilityOrigins afterLedger before.prevailing.forward := by
-    have extended := admissiblePostBetween_setFreshStructural_of_bounded
-      before.prevailing.ledgerBisimulation.forwardBetween
-      before.forward_bounded before.executable_ledger_below
-      (fresh := [⟨q.nextCap⟩]) (fun varId membership => by
-        simp only [List.mem_singleton] at membership
-        subst varId
-        exact Nat.le_refl _)
-    simpa [afterState, afterLedger, DDLedger.markFreshCap,
-      CapabilityOriginLedger.markStructuralFlexible,
-      CapabilityOriginLedger.setOrigins, InferState.freshCap,
-      InferState.recordEvent, before.supply_eq] using extended
-  have reverseBetween : AdmissiblePostBetween
-      afterLedger afterState.capabilityOrigins before.prevailing.reverse := by
-    have extended := admissiblePostBetween_setFreshStructural_of_bounded
-      before.prevailing.ledgerBisimulation.reverseBetween
-      before.reverse_bounded before.ledger_below
-      (fresh := [⟨q.nextCap⟩]) (fun varId membership => by
-        simp only [List.mem_singleton] at membership
-        subst varId
-        exact Nat.le_refl _)
-    simpa [afterState, afterLedger, DDLedger.markFreshCap,
-      CapabilityOriginLedger.markStructuralFlexible,
-      CapabilityOriginLedger.setOrigins, InferState.freshCap,
-      InferState.recordEvent, before.supply_eq] using extended
-  refine
-    { after :=
-        { forward := before.prevailing.forward
-          forwardEquation := before.prevailing.forwardEquation
-          declarativeIdempotent := before.prevailing.declarativeIdempotent
-          reverse := before.prevailing.reverse
-          reverseEquation := by
-            change state.prevailing =
-              Subst.seq before.prevailing.reverse declarative
-            exact before.prevailing.reverseEquation
-          ledgerBisimulation := ⟨forwardBetween, reverseBetween⟩
-          executableIdempotent := by
-            change state.prevailing.Idempotent
-            exact before.prevailing.executableIdempotent }
-      transportTy := ?_
-      transportScheme := ?_ }
-  intro declarativeTarget executableTarget related
-  exact ⟨by
-      change declarative.apply declarativeTarget =
-        before.prevailing.forward.apply
-          (state.prevailing.apply executableTarget)
-      exact related.forward,
-    by
-      change state.prevailing.apply executableTarget =
-        before.prevailing.reverse.apply
-          (declarative.apply declarativeTarget)
-      exact related.reverse⟩
-  intro _ _ forward reverse
-  exact ⟨forward, reverse⟩
-
-def TraversalStateCorrespondence.freshCap
-    {q : InferenceBase.FreshSupply} {declarative : Subst}
-    {ledger : CapabilityOriginLedger} {state : InferState}
-    (before : TraversalStateCorrespondence q declarative ledger state)
-    (origin : ConstraintOrigin) :
-    TraversalStateCorrespondence
-      { q with nextCap := q.nextCap + 1 } declarative
-      (DDLedger.markFreshCap ledger q) (state.freshCap origin).2 := by
-  let extension :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
-      before origin
-  let supplyExtension := SupplyExtends.bumpCap q 1
-  refine
-    { supply_eq := ?_
-      prevailing := extension.after
-      declarative_bounded := before.declarative_bounded.mono supplyExtension
-      executable_bounded := before.executable_bounded.mono supplyExtension
-      forward_bounded := before.forward_bounded.mono supplyExtension
-      reverse_bounded := before.reverse_bounded.mono supplyExtension
-      ledger_below := DDLedger.LedgerBelow.markFreshCap before.ledger_below
-      executable_ledger_below := ?_
-      protected_origins := before.protected_origins.freshCap
-        before.protected_below origin
-      protected_below := before.protected_below.freshCap origin
-      allocated_recorded := before.allocated_recorded.freshCap origin
-      protected_safe :=
-        DemandTypingInferenceCompletenessProtectedPreservation.CurrentProtectedProducerSafe.freshCap
-          before.protected_safe
-        (before.supply_eq ▸ before.executable_bounded)
-        before.protected_below origin }
-  · change { state.supply with nextCap := state.supply.nextCap + 1 } =
-      { q with nextCap := q.nextCap + 1 }
-    exact congrArg (fun supply : InferenceBase.FreshSupply =>
-      { supply with nextCap := supply.nextCap + 1 }) before.supply_eq
-  · simpa [InferState.freshCap, InferState.recordEvent,
-      DDLedger.markFreshCap, CapabilityOriginLedger.markStructuralFlexible,
-      CapabilityOriginLedger.setOrigins,
-      before.supply_eq] using
-        DDLedger.LedgerBelow.markFreshCap before.executable_ledger_below
-
 structure FreshTargetsCompletion
     {q : InferenceBase.FreshSupply} {S : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
@@ -1700,7 +1591,7 @@ def ppatHole_complete
   let holes := [Dual.mk fresh.1 target]
   let event := TraceEvent.inferredPPat .hole target holes [] path
   let allocated :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
       before origin
   let final :=
     DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecord
@@ -1708,7 +1599,7 @@ def ppatHole_complete
         intro _ membership
         simp [event, TraceEvent.allocatedCapVars] at membership)
   let transition :=
-    (DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+    (DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCapExtension
       before origin).seq
       (DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.visitThenRecordExtension
         allocated .ppatHole path event)
@@ -1764,7 +1655,7 @@ def patternVar_complete
   let targetOrigin := freshOrigin .pattern path "pattern-variable-target"
   let freshCap := state.freshCap capOrigin
   let capRelation :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
       before capOrigin
   let freshTarget := freshCap.2.freshTy targetOrigin
   let targetCompletion := capRelation.freshTy targetOrigin
@@ -1788,7 +1679,7 @@ def patternVar_complete
     intro _ membership
     simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
   let capExtension :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCapExtension
       before capOrigin
   let targetExtension := capRelation.freshTyExtension targetOrigin
   let freshEventExtension :=
@@ -1857,7 +1748,7 @@ def patternWild_complete
   let targetOrigin := freshOrigin .pattern path "pattern-wild-target"
   let freshCap := state.freshCap capOrigin
   let capRelation :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
       before capOrigin
   let freshTarget := freshCap.2.freshTy targetOrigin
   let targetCompletion := capRelation.freshTy targetOrigin
@@ -1880,7 +1771,7 @@ def patternWild_complete
     intro _ membership
     simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
   let capExtension :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCapExtension
       before capOrigin
   let targetExtension := capRelation.freshTyExtension targetOrigin
   let freshEventExtension :=
@@ -1948,7 +1839,7 @@ def patternValue_complete
   let expressionRelation := expressionRun.completion.state
   let fresh := expressionRun.result.state.freshCap capOrigin
   let freshRelation :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCap
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCap
       expressionRelation capOrigin
   have capabilityEq : fresh.1 = .var ⟨q₁.nextCap⟩ := by
     change Cap.var ⟨expressionRun.result.state.supply.nextCap⟩ =
@@ -1968,7 +1859,7 @@ def patternValue_complete
     simp [inferredEvent, TraceEvent.allocatedCapVars] at membership)
   let visitExtension := before.visitExtension .patternValue path
   let freshExtension :=
-    DemandTypingInferenceCompletenessPatternTraversal.TraversalStateCorrespondence.freshCapExtension
+    DemandTypingInferenceCompletenessPatternCtorCapability.TraversalStateCorrespondence.freshCapExtension
       expressionRelation capOrigin
   let freshEventExtension := freshExtension.after.recordEventExtension freshEvent
   let inferredExtension := freshEventExtension.after.recordEventExtension
