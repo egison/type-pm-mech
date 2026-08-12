@@ -95,6 +95,34 @@ abbrev SynthCompletenessBelow (signature : FrozenSig) (bound : Nat) : Prop :=
 abbrev SynthCompletenessMotive (signature : FrozenSig) : Prop :=
   ∀ {fuel : Nat}, SynthCompletenessAt signature fuel
 
+/-- Full motive used across `let` and pattern binders.  The DD and executable
+contexts need not be syntactically identical after generalization; their
+normalized schemes are instead related by the current residual
+substitutions. -/
+abbrev PairedSynthCompletenessAt
+    (signature : FrozenSig) (fuel : Nat) : Prop :=
+  ∀ {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {expression : Expr} {target : Ty}
+    {q q' : InferenceBase.FreshSupply} {S S' : Subst}
+    {ledger ledger' : CapabilityOriginLedger} {state : InferState}
+    {raw : DDSynth signature q S declarativeContext expression target q' S'},
+    (before : TraversalStateCorrespondence q S ledger state) →
+    ContextBisimulation before.prevailing declarativeContext
+      executableContext →
+    declarativeContext.BoundedBy q → executableContext.BoundedBy q →
+    DDSynthOrigin signature raw ledger ledger' →
+    SynthBudgetAdequate fuel expression →
+    Nonempty (BoundedSynthRunCompletion before
+      (inferExprFuel fuel signature executableContext selfEnv path expression
+        state) q' S' ledger' target)
+
+abbrev PairedSynthCompletenessBelow
+    (signature : FrozenSig) (bound : Nat) : Prop :=
+  ∀ {fuel : Nat}, fuel < bound → PairedSynthCompletenessAt signature fuel
+
+abbrev PairedSynthCompletenessMotive (signature : FrozenSig) : Prop :=
+  ∀ {fuel : Nat}, PairedSynthCompletenessAt signature fuel
+
 /-- Traversal-stable checking counterpart of `SynthCompletenessMotive`. -/
 abbrev CheckCompletenessAt (signature : FrozenSig) (fuel : Nat) : Prop :=
   ∀ {context : Context} {selfEnv : SelfEnv}
@@ -325,6 +353,63 @@ noncomputable def boundedSynthVar_complete
           simpa [visit, before.supply_eq] using this.symm
       rw [targetEq]
       rw [← supplyEq]
+      exact instantiatedBounded
+
+noncomputable def boundedSynthVarPaired_complete
+    {signature : FrozenSig}
+    {declarativeContext executableContext : Context} {selfEnv : SelfEnv}
+    {path : SyntaxPath} {name : String} {scheme : Scheme}
+    {q : InferenceBase.FreshSupply} {S : Subst}
+    {ledger : CapabilityOriginLedger} {state : InferState}
+    (before : TraversalStateCorrespondence q S ledger state)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
+    (executableContextBounded : executableContext.BoundedBy q)
+    (lookup : (declarativeContext.applySubst S).find? name = some scheme)
+    (fuel : Nat) :
+    BoundedSynthRunCompletion before
+      (inferExprFuel (fuel + 1) signature executableContext selfEnv path
+        (.var name) state)
+      (InferenceBase.instantiateScheme q scheme).supply S
+      (DDLedger.markSchemeInstance ledger q scheme)
+      (InferenceBase.instantiateScheme q scheme).value := by
+  let run := inferExprFuel_var_complete (signature := signature)
+    (selfEnv := selfEnv) (path := path) before contexts lookup fuel
+  refine ⟨run, ?_⟩
+  let normalized := executableContext.applySubst state.prevailing
+  cases executableLookup : normalized.find? name with
+  | none =>
+      have impossible := congrArg (fun ctx : Context => ctx.find? name)
+        contexts.forward
+      simp [lookup, Context.find?_applySubst, normalized,
+        executableLookup] at impossible
+  | some executableScheme =>
+      have normalizedBounded : normalized.BoundedBy q :=
+        executableContextBounded.applySubst before.executable_bounded
+      have schemeBounded := normalizedBounded.find? executableLookup
+      have instantiatedBounded :=
+        Scheme.freshInstantiate_value_boundedBy (supply := q) schemeBounded
+      have schemeDirections := contexts.lookup lookup executableLookup
+      have supplyEq :
+          (InferenceBase.instantiateScheme q executableScheme).supply =
+            (InferenceBase.instantiateScheme q scheme).supply := by
+        rw [schemeDirections.1]
+        cases executableScheme
+        rfl
+      have targetEq : run.result.target =
+          (InferenceBase.instantiateScheme q executableScheme).value := by
+        have success := run.success
+        simp only [inferExprFuel] at success
+        rw [show (Context.applySubst (visit state .exprVar path).prevailing
+          executableContext).find? name = some executableScheme by
+            change normalized.find? name = some executableScheme
+            exact executableLookup] at success
+        cases selfLookup : selfEnv.find? name <;>
+          simp [selfLookup, finishExpr, instantiateSchemeInState] at success
+        all_goals
+          have := congrArg ExprResult.target success
+          simpa [visit, before.supply_eq] using this.symm
+      rw [targetEq, ← supplyEq]
       exact instantiatedBounded
 
 def boundedSynthSomething_complete
