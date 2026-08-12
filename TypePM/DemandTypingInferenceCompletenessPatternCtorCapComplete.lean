@@ -115,5 +115,170 @@ theorem projectSignature_success_scoped
       entry.projection success
   · exact reverseChildRenaming_freshAbove before childrenBounded
 
+/-! ## Support of pure skeleton freshening -/
+
+mutual
+
+/-- Every variable returned by pure skeleton freshening either came from the
+input evidence or was allocated in the fresh interval beginning at `q`. -/
+theorem freshenSkeletonSupply_fcv_origin
+    {observable : Shape.Observability} :
+    ∀ {evidence : Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capability : Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonSupply observable evidence q = some (capability, q') →
+      ∀ varId ∈ capability.fcv,
+        varId ∈ evidence.fcv ∨ q.nextCap ≤ varId.id
+  | .unseen, q, capability, q', success => by
+      simp only [freshenSkeletonSupply, Option.some.injEq, Prod.mk.injEq]
+        at success
+      rcases success with ⟨rfl, rfl⟩
+      intro varId membership
+      simp only [Cap.fcv, List.mem_singleton] at membership
+      subst varId
+      exact Or.inr (Nat.le_refl _)
+  | .known leaf, q, capability, q', success => by
+      simp only [freshenSkeletonSupply, Option.some.injEq, Prod.mk.injEq]
+        at success
+      rcases success with ⟨rfl, rfl⟩
+      intro varId membership
+      rw [Shape.Leaf.fcv_toCap] at membership
+      exact Or.inl membership
+  | .con name children, q, capability, q', success => by
+      simp only [freshenSkeletonSupply] at success
+      cases maskEq : observable name with
+      | none => simp [maskEq] at success
+      | some mask =>
+          cases childrenEq : freshenSkeletonMaskedSupply observable mask
+              children q with
+          | none => simp [maskEq, childrenEq] at success
+          | some result =>
+              rcases result with ⟨capabilities, q₁⟩
+              simp [maskEq, childrenEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              intro varId membership
+              simp only [Cap.fcv] at membership
+              rcases freshenSkeletonMaskedSupply_fcv_origin childrenEq varId
+                  membership with source | fresh
+              · exact Or.inl source
+              · exact Or.inr fresh
+  | .prod components, q, capability, q', success => by
+      simp only [freshenSkeletonSupply] at success
+      cases componentsEq : freshenSkeletonListSupply observable components q with
+      | none => simp [componentsEq] at success
+      | some result =>
+          rcases result with ⟨capabilities, q₁⟩
+          simp [componentsEq] at success
+          rcases success with ⟨rfl, rfl⟩
+          intro varId membership
+          simp only [Cap.fcv] at membership
+          exact freshenSkeletonListSupply_fcv_origin componentsEq varId membership
+
+/-- List support counterpart. -/
+theorem freshenSkeletonListSupply_fcv_origin
+    {observable : Shape.Observability} :
+    ∀ {evidences : List Shape.Evidence} {q : InferenceBase.FreshSupply}
+      {capabilities : List Cap} {q' : InferenceBase.FreshSupply},
+      freshenSkeletonListSupply observable evidences q =
+          some (capabilities, q') →
+      ∀ varId ∈ Cap.fcvList capabilities,
+        varId ∈ Shape.Evidence.fcvList evidences ∨ q.nextCap ≤ varId.id
+  | [], q, capabilities, q', success => by
+      simp only [freshenSkeletonListSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      intro varId membership
+      exact nomatch membership
+  | evidence :: rest, q, capabilities, q', success => by
+      simp only [freshenSkeletonListSupply] at success
+      cases headEq : freshenSkeletonSupply observable evidence q with
+      | none => simp [headEq] at success
+      | some headResult =>
+          rcases headResult with ⟨head, middleSupply⟩
+          cases tailEq : freshenSkeletonListSupply observable rest middleSupply with
+          | none => simp [headEq, tailEq] at success
+          | some tailResult =>
+              rcases tailResult with ⟨tail, tailSupply⟩
+              simp [headEq, tailEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              intro varId membership
+              simp only [Cap.fcvList, List.mem_append,
+                Shape.Evidence.fcvList] at membership ⊢
+              rcases membership with inHead | inTail
+              · rcases freshenSkeletonSupply_fcv_origin headEq varId inHead with
+                  source | fresh
+                · exact Or.inl (Or.inl source)
+                · exact Or.inr fresh
+              · rcases freshenSkeletonListSupply_fcv_origin tailEq varId inTail
+                  with source | fresh
+                · exact Or.inl (Or.inr source)
+                · exact Or.inr (Nat.le_trans
+                    (SupplyExtends.freshenSkeleton headEq).1 fresh)
+
+/-- Masked-list support counterpart; skipped components contribute `Any`. -/
+theorem freshenSkeletonMaskedSupply_fcv_origin
+    {observable : Shape.Observability} :
+    ∀ {mask : List Bool} {evidences : List Shape.Evidence}
+      {q : InferenceBase.FreshSupply} {capabilities : List Cap}
+      {q' : InferenceBase.FreshSupply},
+      freshenSkeletonMaskedSupply observable mask evidences q =
+          some (capabilities, q') →
+      ∀ varId ∈ Cap.fcvList capabilities,
+        varId ∈ Shape.Evidence.fcvList evidences ∨ q.nextCap ≤ varId.id
+  | [], [], q, capabilities, q', success => by
+      simp only [freshenSkeletonMaskedSupply, Option.some.injEq,
+        Prod.mk.injEq] at success
+      rcases success with ⟨rfl, rfl⟩
+      intro varId membership
+      exact nomatch membership
+  | [], _ :: _, _, _, _, success => by
+      simp [freshenSkeletonMaskedSupply] at success
+  | _ :: _, [], _, _, _, success => by
+      simp [freshenSkeletonMaskedSupply] at success
+  | isObservable :: mask, evidence :: rest, q, capabilities, q', success => by
+      cases isObservable with
+      | false =>
+          simp only [freshenSkeletonMaskedSupply] at success
+          cases tailEq : freshenSkeletonMaskedSupply observable mask rest q with
+          | none => simp [tailEq] at success
+          | some tailResult =>
+              rcases tailResult with ⟨tail, tailSupply⟩
+              simp [tailEq] at success
+              rcases success with ⟨rfl, rfl⟩
+              intro varId membership
+              simp only [Cap.fcvList, Cap.fcv, List.not_mem_nil,
+                false_or, Shape.Evidence.fcvList, List.mem_append] at membership ⊢
+              rcases freshenSkeletonMaskedSupply_fcv_origin tailEq varId
+                  membership with source | fresh
+              · exact Or.inl (Or.inr source)
+              · exact Or.inr fresh
+      | true =>
+          simp only [freshenSkeletonMaskedSupply, ↓reduceIte] at success
+          cases headEq : freshenSkeletonSupply observable evidence q with
+          | none => simp [headEq] at success
+          | some headResult =>
+              rcases headResult with ⟨head, middleSupply⟩
+              cases tailEq : freshenSkeletonMaskedSupply observable mask rest
+                  middleSupply with
+              | none => simp [headEq, tailEq] at success
+              | some tailResult =>
+                  rcases tailResult with ⟨tail, tailSupply⟩
+                  simp [headEq, tailEq] at success
+                  rcases success with ⟨rfl, rfl⟩
+                  intro varId membership
+                  simp only [Cap.fcvList, List.mem_append,
+                    Shape.Evidence.fcvList] at membership ⊢
+                  rcases membership with inHead | inTail
+                  · rcases freshenSkeletonSupply_fcv_origin headEq varId inHead
+                      with source | fresh
+                    · exact Or.inl (Or.inl source)
+                    · exact Or.inr fresh
+                  · rcases freshenSkeletonMaskedSupply_fcv_origin tailEq varId
+                      inTail with source | fresh
+                    · exact Or.inl (Or.inr source)
+                    · exact Or.inr (Nat.le_trans
+                        (SupplyExtends.freshenSkeleton headEq).1 fresh)
+
+end
+
 end DemandTypingInferenceCompletenessPatternCtorCapComplete
 end TypePM
