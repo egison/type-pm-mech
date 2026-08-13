@@ -130,6 +130,42 @@ $\mathsf{structuralFlexible}$ になる．export は外へ残る像の structura
 $\mathsf{renameOnly}$ へ移す．matcher finalization は最終 capability に現れる全 demand-owned
 explicit ledger key を調べるため，matcher 開始前の owned placeholder も freeze の対象となる．
 
+\paragraph{三状態の対比．}
+この三状態が分類するのは solver metavariable であり，capability 構文中の rigid skolem
+$\hat s$ ではない．capability delta $C$ が ledger に対して admissible であるための条件は
+次である．
+\[
+\begin{aligned}
+ \Omega(\chi)=\mathsf{rigid}
+   &\Longrightarrow C\chi=\chi,\\
+ \Omega(\chi)=\mathsf{renameOnly}
+   &\Longrightarrow \exists\chi'.\ C\chi=\chi'\ \land{}\\[-0.4em]
+   &\hspace{8.5em}\Omega(\chi')\ne\mathsf{structuralFlexible},\\
+ \Omega(\chi)=\mathsf{structuralFlexible}
+   &\Longrightarrow C\chi\text{ は ledger からは制限されない．}
+\end{aligned}
+\]
+最後の場合にも occurs check など通常の unification 条件は課される．rigid な $\chi_r$ 自身を
+束縛して $\chi_r=\Any$ や，異なる $\chi'$ との $\chi_r=\chi'$ を解くことはできない．
+rename-only な $\chi_n$ は
+$\chi_n=\chi_r$ を rename で解けるが，$\chi_n=\Any$ や $\chi_n=K(\Any)$ は解けない．
+structural-flexible な $\chi_f$ は，構造的に compatible である限りこれらを解ける．
+$\chi_n=\chi_f$ の安全な向きは $\chi_f\mapsto\chi_n$ であり，逆向きではない．
+
+rename-only の像を非 structural variable に限る条件は，逐次 substitution に対する閉性のために
+必要である．もし $\chi_n\mapsto\chi_f$ を許せば，後続の admissible な
+$\chi_f\mapsto K(\Any)$ により，export 済み producer $\chi_n$ を間接的に構造化できる．
+完全な rigid ではこの抜け道とともに，独立に fresh 化された instance 間の無害な alpha-renaming
+まで拒否する．完全な flexible では producer strengthening を許す．したがって
+$\mathsf{renameOnly}$ は rigid と structural-flexible の間に必要な第三の状態である．
+
+権限の lifecycle は単調である．signature／入力 context の variable は rigid，既に producer value
+を表す value-flow instance は rename-only，局所特殊化のための constructor／primitive／consumer
+variable は structural-flexible として始まる．export または matcher finalization で外へ出る
+structural leaf は rename-only に freeze され，以後 structural-flexible へ戻らない．ledger は
+solver の解を制限するだけであり，ordinary equality と slot-directed coercion のどちらを選ぶかは
+expected head が別に決める．
+
 \subsection{判断の一覧}
 
 \begin{center}

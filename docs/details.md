@@ -69,6 +69,17 @@ placeholderなどdemand-directed内部の局所変数は `structuralFlexible` �
 capabilityに現れる全demand-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
 生成された `fixMatcher` placeholderのowned leafも対象になる．
 
+三状態はsolver metavariableの権限であり，capability構文中のrigid skolemとは別である．admissibleな
+capability substitutionは，`rigid` keyを恒等に保ち，`renameOnly` keyを非`structuralFlexible`な
+variableへだけ写し，`structuralFlexible` keyには通常のoccurs checkの範囲で構造的な像を許す．例えば
+`renameOnly`な`χn`と`structuralFlexible`な`χf`の等式は`χf := χn`へ向け，逆向きにはしない．逆向きを
+許すと，後続の`χf := K Any`との合成でexport済み`χn`を間接的に構造化できるためである．完全なrigidは
+無害なalpha-renamingも拒否し，完全なflexibleはproducer strengtheningを許すので，`renameOnly`が
+必要な中間状態になる．権限はsignature／入力contextの`rigid`，value-flow instanceの`renameOnly`，
+局所instanceの`structuralFlexible`として生成元ごとに決まり，exportで
+`structuralFlexible -> renameOnly`へ一方向にfreezeされる．ledgerはsolverの解を制限するが，coercion
+branchの選択には使わない．
+
 lambda は fresh domain を生成する．application は fresh domain／codomain pair を用意し，function
 synthesis，function typeとのordinary alignment，argument checkingの順でstateを渡す．`let` はvalueの
 終端型を prevailing context に対して一般化し，body lookup ごとに fresh instance を作る．さらに
