@@ -69,15 +69,18 @@ placeholderなどdemand-directed内部の局所変数は `structuralFlexible` �
 capabilityに現れる全demand-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
 生成された `fixMatcher` placeholderのowned leafも対象になる．
 
-三状態はsolver metavariableの権限であり，capability構文中のrigid skolemとは別である．admissibleな
-capability substitutionは，`rigid` keyを恒等に保ち，`renameOnly` keyを非`structuralFlexible`な
-variableへだけ写し，`structuralFlexible` keyには通常のoccurs checkの範囲で構造的な像を許す．例えば
-`renameOnly`な`χn`と`structuralFlexible`な`χf`の等式は`χf := χn`へ向け，逆向きにはしない．逆向きを
-許すと，後続の`χf := K Any`との合成でexport済み`χn`を間接的に構造化できるためである．完全なrigidは
-無害なalpha-renamingも拒否し，完全なflexibleはproducer strengtheningを許すので，`renameOnly`が
-必要な中間状態になる．権限はsignature／入力contextの`rigid`，value-flow instanceの`renameOnly`，
-局所instanceの`structuralFlexible`として生成元ごとに決まり，exportで
-`structuralFlexible -> renameOnly`へ一方向にfreezeされる．ledgerはsolverの解を制限するが，coercion
+三状態の差は次の型推論例に現れ，それぞれの受理・拒否境界は機械化されている．
+`Pack : ∀κ α. Matcher κ α -> Packed`へ`something`を渡す
+programでは，constructor-localな`κ`を`structuralFlexible`として`Any`へ特殊化するため受理できる．
+独立なconstructor instanceが返す`makeF : Matcher κ1 Int -> Int`と`makeM : Matcher κ2 Int`の適用は，
+exportで`renameOnly`になった`κ2 := κ1`だけを必要とするため受理できる．一方，context lookupから得た
+`producer : ∀κ. Matcher κ Int`を`Matcher (List Any) Int`要求へ渡すprogramは，rename-onlyな像を
+`List Any`へ構造化できないため拒否し，最初からそのconcrete capabilityを持つcontrolだけを受理する．
+入力contextに自由な`κr`を持つ`r : Matcher κr Int`は未登録すなわち`rigid`であり，`Matcher Any Int`
+要求から`κr := Any`へcallerの仮定を書き換えない．したがって`structuralFlexible`は局所特殊化，
+`renameOnly`はexport済みproducerのalpha-renamingと非strengthening，`rigid`は外部仮定の固定を担う．
+`renameOnly`な`κn`と`structuralFlexible`な`κf`の等式は`κf := κn`へ向け，逆向きにはしない．exportは
+`structuralFlexible -> renameOnly`へ一方向にfreezeする．ledgerはsolverの解を制限するが，coercion
 branchの選択には使わない．
 
 lambda は fresh domain を生成する．application は fresh domain／codomain pair を用意し，function

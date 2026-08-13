@@ -130,41 +130,42 @@ $\mathsf{structuralFlexible}$ になる．export は外へ残る像の structura
 $\mathsf{renameOnly}$ へ移す．matcher finalization は最終 capability に現れる全 demand-owned
 explicit ledger key を調べるため，matcher 開始前の owned placeholder も freeze の対象となる．
 
-\paragraph{三状態の対比．}
-この三状態が分類するのは solver metavariable であり，capability 構文中の rigid skolem
-$\hat s$ ではない．capability delta $C$ が ledger に対して admissible であるための条件は
-次である．
-\[
-\begin{aligned}
- \Omega(\chi)=\mathsf{rigid}
-   &\Longrightarrow C\chi=\chi,\\
- \Omega(\chi)=\mathsf{renameOnly}
-   &\Longrightarrow \exists\chi'.\ C\chi=\chi'\ \land{}\\[-0.4em]
-   &\hspace{8.5em}\Omega(\chi')\ne\mathsf{structuralFlexible},\\
- \Omega(\chi)=\mathsf{structuralFlexible}
-   &\Longrightarrow C\chi\text{ は ledger からは制限されない．}
-\end{aligned}
-\]
-最後の場合にも occurs check など通常の unification 条件は課される．rigid な $\chi_r$ 自身を
-束縛して $\chi_r=\Any$ や，異なる $\chi'$ との $\chi_r=\chi'$ を解くことはできない．
-rename-only な $\chi_n$ は
-$\chi_n=\chi_r$ を rename で解けるが，$\chi_n=\Any$ や $\chi_n=K(\Any)$ は解けない．
-structural-flexible な $\chi_f$ は，構造的に compatible である限りこれらを解ける．
-$\chi_n=\chi_f$ の安全な向きは $\chi_f\mapsto\chi_n$ であり，逆向きではない．
+\paragraph{三状態が型推論を分ける例．}
+三状態は solver metavariable を分類し，capability 構文の rigid skolem $\hat s$ とは区別される．
+役割は次の型推論例に現れ，それぞれの受理・拒否境界は機械化されている．
 
-rename-only の像を非 structural variable に限る条件は，逐次 substitution に対する閉性のために
-必要である．もし $\chi_n\mapsto\chi_f$ を許せば，後続の admissible な
-$\chi_f\mapsto K(\Any)$ により，export 済み producer $\chi_n$ を間接的に構造化できる．
-完全な rigid ではこの抜け道とともに，独立に fresh 化された instance 間の無害な alpha-renaming
-まで拒否する．完全な flexible では producer strengthening を許す．したがって
-$\mathsf{renameOnly}$ は rigid と structural-flexible の間に必要な第三の状態である．
+\emph{局所特殊化．}
+$\mathtt{Pack}:\forall\chi.\forall\alpha.\Matcher{\chi}{\alpha}\to\mathtt{Packed}$ に
+$\mathtt{something}:\Matcher{\Any}{\beta}$ を渡すと，constructor instance の $\chi_f$ は
+structural-flexible なので $\chi_f\mapsto\Any$ と解け，$\mathtt{Packed}$ を推論する．rigid または
+rename-only では，generic declaration の正当な特殊化を誤って拒否する．
 
-権限の lifecycle は単調である．signature／入力 context の variable は rigid，既に producer value
-を表す value-flow instance は rename-only，局所特殊化のための constructor／primitive／consumer
-variable は structural-flexible として始まる．export または matcher finalization で外へ出る
-structural leaf は rename-only に freeze され，以後 structural-flexible へ戻らない．ledger は
-solver の解を制限するだけであり，ordinary equality と slot-directed coercion のどちらを選ぶかは
-expected head が別に決める．
+\emph{export 後の rename．}
+引数なし constructor を
+$\mathtt{makeF}:\forall\chi.\Matcher{\chi}{\mathtt{Int}}\to\mathtt{Int}$，
+$\mathtt{makeM}:\forall\chi.\Matcher{\chi}{\mathtt{Int}}$ とする．独立に生成された
+$\chi_1,\chi_2$ は result に残るため export で rename-only になる．
+$\mathtt{makeF}()\;\mathtt{makeM}()$ は $\chi_2\mapsto\chi_1$ だけを必要とし，$\mathtt{Int}$ を
+推論する．完全な rigid では fresh 名の違いだけで誤って拒否する．
+
+\emph{producer strengthening の拒否．}
+consumer が $\Matcher{\mathsf{List}(\Any)}{\mathtt{Int}}$ を要求し，context に
+$\mathtt{producer}:\forall\chi.\Matcher{\chi}{\mathtt{Int}}$ があるとする．lookup が作る
+$\chi_n$ は rename-only なので，$\chi_n\mapsto\mathsf{List}(\Any)$ を必要とする
+$\mathtt{consumeProducer}\;\mathtt{producer}$ は拒否される．producer が最初から
+$\Matcher{\mathsf{List}(\Any)}{\mathtt{Int}}$ なら成功する．value-flow image を structural-flexible
+にすると，利用箇所から producer capability を捏造してしまう．
+
+\emph{外部仮定の固定．}
+入力 context の $r:\Matcher{\chi_r}{\mathtt{Int}}$ に自由な $\chi_r$ が現れる場合，
+$\Matcher{\Any}{\mathtt{Int}}$ が必要な位置で $r$ を検査しても $\chi_r\mapsto\Any$ としては
+ならない．未登録の $\chi_r$ は rigid なので，caller の仮定を変えるこの constraint を拒否する．
+
+以上より，structural-flexible は局所特殊化，rename-only は export 済み producer の alpha-renaming，
+rigid は外部仮定の保存を担う．rename-only な $\chi_n$ と structural-flexible な $\chi_f$ の等式は
+$\chi_f\mapsto\chi_n$ へ向ける．逆向きでは後続の structural solve が $\chi_n$ を間接的に強化できる．
+export と matcher finalization は外へ出る structural leaf を rename-only へ一方向に freeze する．
+ledger は solver の解を制限するが，coercion branch の選択には使わない．
 
 \subsection{判断の一覧}
 
