@@ -190,7 +190,8 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
   `TypingInvariant` へ射影できる．
 - source-facingな安全性境界では，このsignature closednessを`FrozenSigWF.schemesClosed`から
   供給し，callerに別premiseとして要求しない．
-- `capFreezeProgram` と `letCapFreezeProgram` はpublic `SourceTyping`では導出不能である．
+- public producer-strengthening regressionは多相producerの構造的strengtheningを拒否し，
+  concrete producerと安全なvariable renamingを受理する．
 
 ## 3. executable inference
 
@@ -429,10 +430,21 @@ variable node 自体に追加 field はなく，canonical scheme opening の代�
 直接構成する．audit factsはsolver stateを `TypingInvariant` に持ち込まず，erasure時に必要な終端事実だけを
 供給する．
 
+`LetFacts` を省く場合の最小反例は，空signature／contextのcutで value type が
+`α0 -> α1`，cut substitutionが恒等写像の場合である．auditのない関係がこのcut以後の任意suffixを
+許すと仮定する．cut schemeは
+`Gen(∅, ∅, α0 -> α1) = ∀a b. a -> b`だが，bodyの後続solve
+から生成されたかを問わずsuffix `R = [α1 := α0]`の後にrootで再計算すると
+`Gen(∅, ∅, R(α0 -> α1)) = ∀a. a -> a`になる．閉じた二binder schemeへの`R`の作用は恒等なので，
+`R(∀a b. a -> b) != ∀a. a -> a`である．auditなしではdomain／codomainを独立にinstantiateできる
+過剰なschemeを保持するため，terminal auditはこのraw cutを拒否する．matcher／pattern constructorの
+factsも，同じ再検査原理をterminal hole evidence／capability compatibilityへ適用する．
+
 capability-origin ledger と Origin certificate は引き続き instance，fresh allocation，selective
-export，matcher finalization，solve admissibility を時系列に保証する．`capFreezeProgram` と
-`letCapFreezeProgram` は public `SourceTyping` では導出不能であり，or-pattern，delegating matcher，
-let-polymorphic producer は positive regression として維持されている．
+export，matcher finalization，solve admissibility を時系列に保証する．public producer-strengthening
+regressionは多相producerの拒否をconcrete producerと安全なvariable renamingの成功と対にし，上の
+cut-level反例と `DamasMilnerWLetStability` は `LetFacts` の必要性および後続W stepを越えた保存を固定する．
+or-pattern，delegating matcher，let-polymorphic producerはpositive regressionとして維持されている．
 
 ### 5.4 terminal-fixed mutual erasure
 

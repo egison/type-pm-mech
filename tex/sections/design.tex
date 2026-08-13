@@ -102,6 +102,17 @@ Originから成功traceを再構成する．
 任意のfuture suffixへの安定性を要求すると，$\mathtt{let}$のgeneralized setが変わり得るため強すぎる．
 そこで公開rootの終端substitutionに固定したauditを，raw derivationと同じ木構造で持つ．
 
+\paragraph{terminal auditを省く場合の最小反例．}
+auditのない$\mathtt{let}$ cutが何を許すかを考える．空のsignature／context，cut substitution
+$\mathsf{id}$，value type $\tau_1=\alpha_0\to\alpha_1$に対し，cutでのgeneralizationは
+$\sigma_{\mathrm{cut}}=\Gen(\varnothing,\varnothing,\tau_1)=\forall a\,b.\,a\to b$である．bodyの後続solveが
+生成したかを問わず，任意の後続suffix $R=[\alpha_1\mapsto\alpha_0]$を許すと，binderは既にcloseされているので
+$R\sigma_{\mathrm{cut}}=\sigma_{\mathrm{cut}}$のままである．しかしrootで再計算すべきschemeは
+$\Gen(\varnothing,\varnothing,R\tau_1)=\Gen(\varnothing,\varnothing,\alpha_0\to\alpha_0)=\forall a.\,a\to a$となる．従って
+$R\sigma_{\mathrm{cut}}\ne\Gen(\varnothing,\varnothing,R\tau_1)$であり，auditなしではdomainとcodomainを独立に
+instantiateできる過剰なschemeを残してしまう．$\mathtt{let}$のterminal auditはこの不一致を拒否する．
+matcherとpattern constructorでは，同じ原理をterminal hole evidenceとcapability compatibilityへ適用する．
+
 \begin{center}
 \begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.35\linewidth}}
 \toprule
