@@ -170,8 +170,9 @@ evaluation kernel quantified at the same fuel as the walk.
 -/
 theorem armsSafe
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {SF : RuntimeSigF}
     (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF))
+      SF)
     {matcherContext : Context} {ρa matcherEnv : Env}
     {pattern : Pattern} {value : Value} {target : Ty}
     {pp : PPat} {next : Expr} {prevailing : Subst} {holes : List Dual}
@@ -182,7 +183,7 @@ theorem armsSafe
     (decompose : decomposeME next holes.length = some nextMatchers)
     (nextTyping : ExprsTy signature matcherContext nextMatchers
       (holes.map fun hole => .slot hole.cap hole.target))
-    (ppmRun : ppmFuel [] fuel₀ ρa pp pattern =
+    (ppmRun : ppmFuel SF fuel₀ ρa pp pattern =
       .ok (some (captures, ppEnv)))
     (ppTyped : MonoEnvTys signature ppBindings ppEnv)
     (ppPristine : EnvPristine ppEnv) (ppScoped : ScopedEnv ppEnv)
@@ -209,10 +210,10 @@ theorem armsSafe
           EnvTyped signature context' ρ' → EnvPristine ρ' →
           ScopedEnv ρ' →
           (∀ name ∈ e.freeVars, name ∈ Env.names ρ') →
-          evalFuel [] fuel' ρ' e ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρ' e = .ok v → ScopedValue v) →
+          evalFuel SF fuel' ρ' e ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρ' e = .ok v → ScopedValue v) →
       Safe (DispatchBranchProps (Env.names ρa) pattern)
-        (armsFuel [] fuel ρa matcherEnv value next captures ppEnv
+        (armsFuel SF fuel ρa matcherEnv value next captures ppEnv
           arms) := by
   intro fuel
   induction fuel with
@@ -285,7 +286,7 @@ theorem armsSafe
                 exact List.mem_append.mpr
                   (.inr (armFv (Arm.mk dp body) List.mem_cons_self name
                     (List.mem_removeAll_of_mem membership hBound)))
-            cases hBody : evalFuel [] fuel
+            cases hBody : evalFuel SF fuel
                 (dataEnv ++ ppEnv ++ matcherEnv) body with
             | timeout => exact Safe.timeout
             | stuck =>
@@ -338,7 +339,7 @@ theorem armsSafe
                           .slot hole.cap hole.target)
                         (by simpa [List.length_map] using decompose)
                         nextTyping
-                    cases hNext : evalFuel [] fuel matcherEnv next with
+                    cases hNext : evalFuel SF fuel matcherEnv next with
                     | timeout => exact Safe.timeout
                     | stuck =>
                         exact absurd hNext
@@ -411,8 +412,9 @@ facts consumed by the arm walk are derived locally from the single
 -/
 theorem dispatchSafe
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {SF : RuntimeSigF}
     (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF))
+      SF)
     {matcherContext : Context} {ρa matcherEnv : Env}
     {pattern : Pattern} {value : Value} {target : Ty}
     {original : List Clause} {producerCapability : Cap}
@@ -440,9 +442,9 @@ theorem dispatchSafe
             producerCapability →
           PPatCoreOrder clause.pp →
           ∀ {fuel' : Nat}, fuel' < fuel →
-            ppmFuel [] fuel' ρa clause.pp pattern ≠ .stuck ∧
+            ppmFuel SF fuel' ρa clause.pp pattern ≠ .stuck ∧
             ∀ captures ppEnv,
-              ppmFuel [] fuel' ρa clause.pp pattern =
+              ppmFuel SF fuel' ρa clause.pp pattern =
                 .ok (some (captures, ppEnv)) →
               MonoEnvTys signature ppBindings ppEnv ∧
               EnvPristine ppEnv ∧ ScopedEnv ppEnv) →
@@ -452,12 +454,12 @@ theorem dispatchSafe
           EnvTyped signature context' ρ' → EnvPristine ρ' →
           ScopedEnv ρ' →
           (∀ name ∈ e.freeVars, name ∈ Env.names ρ') →
-          evalFuel [] fuel' ρ' e ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρ' e = .ok v → ScopedValue v) →
+          evalFuel SF fuel' ρ' e ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρ' e = .ok v → ScopedValue v) →
       (∀ clause ∈ remaining, clause ∈ original) →
       (∃ clause ∈ remaining, ppShapeOK clause.pp pattern = true) →
       Safe (DispatchBranchProps (Env.names ρa) pattern)
-        (dispatchFuel [] fuel ρa matcherEnv pattern value
+        (dispatchFuel SF fuel ρa matcherEnv pattern value
           remaining) := by
   intro fuel
   induction fuel with
@@ -475,7 +477,7 @@ theorem dispatchSafe
           have headMember : Clause.mk pp next arms ∈ original :=
             memberOriginal _ List.mem_cons_self
           simp only [dispatchFuel, RunResult.monad_bind_eq_bind]
-          cases hPpm : ppmFuel [] fuel ρa pp pattern with
+          cases hPpm : ppmFuel SF fuel ρa pp pattern with
           | timeout => exact Safe.timeout
           | stuck =>
               cases hShape : ppShapeOK pp pattern with

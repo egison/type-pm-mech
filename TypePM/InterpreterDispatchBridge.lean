@@ -2,6 +2,8 @@ import TypePM.InterpreterNoStuck
 import TypePM.InterpreterPpmPrimitive
 import TypePM.InterpreterPpmSafe
 import TypePM.InterpreterDispatchSafe
+import TypePM.InterpreterCompleteness
+import TypePM.Soundness
 
 /-!
 # Extraction lemmas for the dispatch discharge
@@ -61,7 +63,8 @@ theorem ScopedClauses.clause_facts
 core-ordered header, the committed match cannot stick and a successful
 capture environment is typed, pristine, and scoped. -/
 theorem ppmPair_of_captureAdm
-    {signature : FrozenSig} {context : Context} {input : MonoCtx}
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    {context : Context} {input : MonoCtx}
     {ρa : Env} {pp : PPat} {pattern : Pattern} {target : Ty}
     {ppBindings : MonoCtx}
     (admissible : CaptureAdm signature context input pp pattern target
@@ -76,13 +79,13 @@ theorem ppmPair_of_captureAdm
           TypingInvariant signature (input.toContext ++ context)
             expression target' →
           (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-          evalFuel [] fuel' ρa expression ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρa expression = .ok v →
+          evalFuel SF fuel' ρa expression ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρa expression = .ok v →
             ScopedValue v ∧ ValuePristine v ∧
             ValueTy signature v target') :
-    ppmFuel [] fuel ρa pp pattern ≠ .stuck ∧
+    ppmFuel SF fuel ρa pp pattern ≠ .stuck ∧
     ∀ captures ppEnv,
-      ppmFuel [] fuel ρa pp pattern = .ok (some (captures, ppEnv)) →
+      ppmFuel SF fuel ρa pp pattern = .ok (some (captures, ppEnv)) →
       MonoEnvTys signature ppBindings ppEnv ∧
       EnvPristine ppEnv ∧ ScopedEnv ppEnv := by
   obtain ⟨finished, ordered⟩ := ppOrder
@@ -99,14 +102,14 @@ recovers capture admissibility from the clause order; the primitive
 route analyzes the shallow header match directly.
 -/
 theorem dispatchKernelAt_discharge
-    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF)) :
-    ∀ fuel, (∀ fuel' < fuel, NoStuckAt signature fuel') →
-      DispatchKernelAt signature fuel := by
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF) :
+    ∀ fuel, (∀ fuel' < fuel, NoStuckAt signature SF fuel') →
+      DispatchKernelAt signature SF fuel := by
   intro fuel below
-  intro context input output ρa pattern matcher value matcherEnv original
-    current typing envTyped envPristine envScoped ambient matcherScoped
+  intro context parameters input output ρa pattern matcher value matcherEnv
+    original current typing envTyped envPristine envScoped ambient matcherScoped
     valueScoped matcherPristine valuePristine matcherEq
   subst matcherEq
   obtain ⟨currentEq, matcherEnvPristine⟩ := matcherPristine.matcherV_start
@@ -120,8 +123,8 @@ theorem dispatchKernelAt_discharge
           EnvTyped signature context' ρ' → EnvPristine ρ' →
           ScopedEnv ρ' →
           (∀ name ∈ e.freeVars, name ∈ Env.names ρ') →
-          evalFuel [] fuel' ρ' e ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρ' e = .ok v → ScopedValue v := by
+          evalFuel SF fuel' ρ' e ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρ' e = .ok v → ScopedValue v := by
     intro fuel' lt context' ρ' e τ t envT envP envS fv
     have run := (below fuel' lt).eval t envT envP envS fv
     refine ⟨run.not_stuck, ?_⟩
@@ -134,8 +137,8 @@ theorem dispatchKernelAt_discharge
           TypingInvariant signature (input.toContext ++ context)
             expression target' →
           (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-          evalFuel [] fuel' ρa expression ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρa expression = .ok v →
+          evalFuel SF fuel' ρa expression ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρa expression = .ok v →
             ScopedValue v ∧ ValuePristine v ∧
             ValueTy signature v target' := by
     intro fuel' lt expression target' t fv
@@ -196,11 +199,56 @@ theorem dispatchKernelAt_discharge
           rfl⟩
 
 /--
-**Expression-layer progress.**  A typed closed program never sticks: for
-every fuel, the fuel-indexed reference interpreter returns a value or
-times out, never a stuck configuration.  Nontermination remains the only
-way to fail to produce a value.
+**Expression-layer progress with a checked runtime table.**  A typed closed
+program never sticks: for every fuel, the fuel-indexed reference interpreter
+returns a value or times out, never a stuck configuration.
 -/
+theorem typed_never_stuck_runtime
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF)
+    (runtimeScoped : RuntimeSigScoped SF)
+    {expression : Expr} {target : Ty}
+    (typing : TypingInvariant signature [] expression target)
+    (closed : expression.freeVars = [])
+    (fuel : Nat) :
+    evalFuel SF fuel [] expression ≠ .stuck :=
+  typed_never_stuck_of_dispatch signatureWF agrees runtimeScoped
+    (dispatchKernelAt_discharge signatureWF agrees) typing closed fuel
+
+/-- For a typed closed program, timing out at every fuel is equivalent to the
+absence of a finite relational evaluation.  The right-hand side is deliberately
+not called divergence: relating it to a separate coinductive divergence
+judgment would require another theorem. -/
+theorem typed_all_timeout_iff_no_finite_eval
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF)
+    (runtimeScoped : RuntimeSigScoped SF)
+    {expression : Expr} {target : Ty}
+    (typing : TypingInvariant signature [] expression target)
+    (closed : expression.freeVars = []) :
+    (∀ fuel, evalFuel SF fuel [] expression = .timeout) ↔
+      ¬∃ value, Eval SF [] expression value := by
+  constructor
+  · intro allTimeout finite
+    obtain ⟨value, evaluation⟩ := finite
+    obtain ⟨threshold, persistent⟩ := evalFuel_eventually_ok evaluation
+    have success : evalFuel SF threshold [] expression = .ok value := by
+      simpa using persistent 0
+    rw [allTimeout threshold] at success
+    cases success
+  · intro noFinite fuel
+    cases run : evalFuel SF fuel [] expression with
+    | timeout => rfl
+    | stuck =>
+        exact absurd run
+          (typed_never_stuck_runtime signatureWF agrees runtimeScoped
+            typing closed fuel)
+    | ok value =>
+        exact (noFinite ⟨value, evalFuel_ok run⟩).elim
+
+/-- Empty-runtime specialization retained for the paper-1 fragment. -/
 theorem typed_never_stuck
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
     (agrees : ∀ context, RuntimeSigAgrees signature context
@@ -210,7 +258,38 @@ theorem typed_never_stuck
     (closed : expression.freeVars = [])
     (fuel : Nat) :
     evalFuel [] fuel [] expression ≠ .stuck :=
-  typed_never_stuck_of_dispatch signatureWF agrees
-    (dispatchKernelAt_discharge signatureWF agrees) typing closed fuel
+  typed_never_stuck_runtime signatureWF agrees runtimeSigScoped_nil
+    typing closed fuel
+
+namespace SourceTyping
+
+/-- Paper-1 source-facing no-stuck theorem.  The fragment explicitly has no
+source pattern-function definitions, so the empty runtime table satisfies the
+required agreement in every source context. -/
+theorem never_stuck_paper1
+    {signature : FrozenSig} {expression : Expr} {target : Ty}
+    (signatureWF : FrozenSigWF signature)
+    (noPatternFuns : signature.patternFuns = [])
+    (typing : SourceTyping signature [] expression target)
+    (closed : expression.freeVars = [])
+    (fuel : Nat) :
+    evalFuel [] fuel [] expression ≠ .stuck :=
+  typed_never_stuck signatureWF (runtimeSigAgrees_nil noPatternFuns)
+    (typing.typingInvariant signatureWF.schemesClosed) closed fuel
+
+/-- Paper-1 specialization of the exact all-fuel-timeout characterization. -/
+theorem all_timeout_iff_no_finite_eval_paper1
+    {signature : FrozenSig} {expression : Expr} {target : Ty}
+    (signatureWF : FrozenSigWF signature)
+    (noPatternFuns : signature.patternFuns = [])
+    (typing : SourceTyping signature [] expression target)
+    (closed : expression.freeVars = []) :
+    (∀ fuel, evalFuel [] fuel [] expression = .timeout) ↔
+      ¬∃ value, Eval [] [] expression value :=
+  typed_all_timeout_iff_no_finite_eval signatureWF
+    (runtimeSigAgrees_nil noPatternFuns) runtimeSigScoped_nil
+    (typing.typingInvariant signatureWF.schemesClosed) closed
+
+end SourceTyping
 
 end TypePM

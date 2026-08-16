@@ -20,7 +20,8 @@ namespace TypePM
 
 /-- The search-layer contract a strictly smaller fuel provides to the
 expression layer. -/
-def SearchKernel (signature : FrozenSig) (fuel : Nat) : Prop :=
+def SearchKernel (signature : FrozenSig) (SF : RuntimeSigF)
+    (fuel : Nat) : Prop :=
   ∀ {fuel' : Nat}, fuel' < fuel →
     ∀ {context : Context} {goal : MonoCtx} {state : MState},
       MStateTy signature context state goal →
@@ -29,12 +30,12 @@ def SearchKernel (signature : FrozenSig) (fuel : Nat) : Prop :=
           MatchSubstTyped signature goal θ' ∧ EnvPristine θ' ∧
           ScopedEnv θ' ∧
           ∀ name ∈ statePromise state, name ∈ Env.names θ')
-        (searchFuel [] fuel' state)
+        (searchFuel SF fuel' state)
 
 /-- Weaken a search kernel to a smaller fuel bound. -/
-theorem SearchKernel.weaken {signature : FrozenSig} {fuel : Nat}
-    (kernel : SearchKernel signature (fuel + 1)) :
-    SearchKernel signature fuel :=
+theorem SearchKernel.weaken {signature : FrozenSig} {SF : RuntimeSigF}
+    {fuel : Nat} (kernel : SearchKernel signature SF (fuel + 1)) :
+    SearchKernel signature SF fuel :=
   fun {_fuel'} lt {_context} {_goal} {_state} typing wellScoped =>
     kernel (Nat.lt_succ_of_lt lt) typing wellScoped
 
@@ -140,9 +141,9 @@ private theorem primEval_scoped {op : PrimOp} {values : List Value}
 /-- Pointwise value typing of a successful list evaluation, recovered
 relationally. -/
 private theorem valueTys_of_zip
-    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF))
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF)
     {context : Context} {ρ : Env}
     (ρPristine : EnvPristine ρ) (ρTyped : EnvTyped signature context ρ) :
     ∀ {exprs : List Expr} {targets : List Ty} {values : List Value},
@@ -150,7 +151,7 @@ private theorem valueTys_of_zip
       exprs.length = values.length →
       (∀ pair ∈ exprs.zip targets,
         TypingInvariant signature context pair.1 pair.2) →
-      (∀ pair ∈ exprs.zip values, Eval [] ρ pair.1 pair.2) →
+      (∀ pair ∈ exprs.zip values, Eval SF ρ pair.1 pair.2) →
       ValueTys signature values targets := by
   intro exprs
   induction exprs with
@@ -197,16 +198,16 @@ A typed expression in a typed, pristine, scoped environment that answers
 its free variables cannot stick, and its value is scoped.
 -/
 theorem evalSafe
-    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF)) :
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF) :
     ∀ {fuel : Nat} {context : Context} {ρ : Env} {expression : Expr}
       {target : Ty},
       TypingInvariant signature context expression target →
       EnvTyped signature context ρ → EnvPristine ρ → ScopedEnv ρ →
       (∀ name ∈ expression.freeVars, name ∈ Env.names ρ) →
-      SearchKernel signature fuel →
-      Safe ScopedValue (evalFuel [] fuel ρ expression)
+      SearchKernel signature SF fuel →
+      Safe ScopedValue (evalFuel SF fuel ρ expression)
   | 0, _, _, _, _, _, _, _, _, _, _ => Safe.timeout
   | fuel + 1, context, ρ, expression, target, typing, ρTyped, ρPristine,
       ρScoped, fv, kernel => by
@@ -250,7 +251,7 @@ theorem evalSafe
             simp only [Expr.freeVars]
             exact List.mem_append.mpr (.inl h)))
           kernel.weaken
-        cases hFn : evalFuel [] fuel ρ fn with
+        cases hFn : evalFuel SF fuel ρ fn with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hFn] at fnRun
@@ -271,7 +272,7 @@ theorem evalSafe
                 simp only [Expr.freeVars]
                 exact List.mem_append.mpr (.inr h)))
               kernel.weaken
-            cases hArg : evalFuel [] fuel ρ arg with
+            cases hArg : evalFuel SF fuel ρ arg with
             | timeout => exact Safe.timeout
             | stuck =>
                 rw [hArg] at argRun
@@ -326,7 +327,7 @@ theorem evalSafe
               simp only [Expr.freeVars]
               exact Expr.freeVarsList_mem_of_mem membership h))
           kernel.weaken
-        cases hList : evalListFuel [] fuel ρ exprs with
+        cases hList : evalListFuel SF fuel ρ exprs with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hList] at listRun
@@ -350,7 +351,7 @@ theorem evalSafe
               simp only [Expr.freeVars]
               exact Expr.freeVarsList_mem_of_mem membership h))
           kernel.weaken
-        cases hList : evalListFuel [] fuel ρ exprs with
+        cases hList : evalListFuel SF fuel ρ exprs with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hList] at listRun
@@ -374,7 +375,7 @@ theorem evalSafe
               simp only [Expr.freeVars]
               exact Expr.freeVarsList_mem_of_mem membership h))
           kernel.weaken
-        cases hList : evalListFuel [] fuel ρ exprs with
+        cases hList : evalListFuel SF fuel ρ exprs with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hList] at listRun
@@ -400,7 +401,7 @@ theorem evalSafe
             simp only [Expr.freeVars]
             exact List.mem_append.mpr (.inl h)))
           kernel.weaken
-        cases hBound : evalFuel [] fuel ρ bound with
+        cases hBound : evalFuel SF fuel ρ bound with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hBound] at boundRun
@@ -451,7 +452,7 @@ theorem evalSafe
             exact List.mem_append.mpr (.inl (List.mem_append.mpr (.inl
               (List.mem_append.mpr (.inl h)))))))
           kernel.weaken
-        cases hTarget : evalFuel [] fuel ρ matchTarget with
+        cases hTarget : evalFuel SF fuel ρ matchTarget with
         | timeout => exact Safe.timeout
         | stuck =>
             rw [hTarget] at targetRun
@@ -472,7 +473,7 @@ theorem evalSafe
                 exact List.mem_append.mpr (.inl (List.mem_append.mpr
                   (.inl (List.mem_append.mpr (.inr h)))))))
               kernel.weaken
-            cases hMatcher : evalFuel [] fuel ρ matcher with
+            cases hMatcher : evalFuel SF fuel ρ matcher with
             | timeout => exact Safe.timeout
             | stuck =>
                 rw [hMatcher] at matcherRun
@@ -508,7 +509,7 @@ theorem evalSafe
                       .nil⟩
                 have searchRun := kernel (Nat.lt_succ_self fuel)
                   stateTyping stateScoped
-                cases hSearch : searchFuel [] fuel
+                cases hSearch : searchFuel SF fuel
                     ⟨[.atom ⟨pattern, matcherValue, targetValue⟩],
                       ρ, []⟩ with
                 | timeout => exact Safe.timeout
@@ -535,7 +536,7 @@ theorem evalSafe
                               (List.mem_removeAll_of_mem nameMembership
                                 hIn))))))
                       kernel.weaken
-                    cases hSubsts : evalSubstsFuel [] fuel ρ body
+                    cases hSubsts : evalSubstsFuel SF fuel ρ body
                         substitutions with
                     | timeout => exact Safe.timeout
                     | stuck =>
@@ -548,15 +549,15 @@ theorem evalSafe
 
 /-- Pointwise expression-list evaluation is safe. -/
 theorem evalListSafe
-    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF)) :
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF) :
     ∀ {fuel : Nat} {context : Context} {ρ : Env} {exprs : List Expr},
       (∀ e ∈ exprs, ∃ τ, TypingInvariant signature context e τ) →
       EnvTyped signature context ρ → EnvPristine ρ → ScopedEnv ρ →
       (∀ e ∈ exprs, ∀ name ∈ e.freeVars, name ∈ Env.names ρ) →
-      SearchKernel signature fuel →
-      Safe ScopedValues (evalListFuel [] fuel ρ exprs)
+      SearchKernel signature SF fuel →
+      Safe ScopedValues (evalListFuel SF fuel ρ exprs)
   | 0, _, _, _, _, _, _, _, _, _ => Safe.timeout
   | _ + 1, _, _, [], _, _, _, _, _, _ => ScopedValues.nil
   | fuel + 1, context, ρ, e :: exprs, typings, ρTyped, ρPristine,
@@ -565,7 +566,7 @@ theorem evalListSafe
       obtain ⟨τ, headTyping⟩ := typings e List.mem_cons_self
       have headRun := evalSafe signatureWF agrees headTyping ρTyped
         ρPristine ρScoped (fvs e List.mem_cons_self) kernel.weaken
-      cases hHead : evalFuel [] fuel ρ e with
+      cases hHead : evalFuel SF fuel ρ e with
       | timeout => exact Safe.timeout
       | stuck =>
           rw [hHead] at headRun
@@ -580,7 +581,7 @@ theorem evalListSafe
             (fun candidate membership =>
               fvs candidate (List.mem_cons_of_mem _ membership))
             kernel.weaken
-          cases hTail : evalListFuel [] fuel ρ exprs with
+          cases hTail : evalListFuel SF fuel ρ exprs with
           | timeout => exact Safe.timeout
           | stuck =>
               rw [hTail] at tailRun
@@ -592,9 +593,9 @@ theorem evalListSafe
 
 /-- Per-substitution body evaluation is safe. -/
 theorem evalSubstsSafe
-    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF)) :
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    (signatureWF : FrozenSigWF signature)
+    (agrees : ∀ context, RuntimeSigAgrees signature context SF) :
     ∀ {fuel : Nat} {context : Context} {ρ : Env} {body : Expr}
       {substitutions : List MatchSubst} {bindings : MonoCtx}
       {result : Ty},
@@ -605,8 +606,8 @@ theorem evalSubstsSafe
         MatchSubstTyped signature bindings θ' ∧ EnvPristine θ' ∧
         ScopedEnv θ' ∧
         ∀ name ∈ body.freeVars, name ∈ Env.names (θ' ++ ρ)) →
-      SearchKernel signature fuel →
-      Safe ScopedValues (evalSubstsFuel [] fuel ρ body substitutions)
+      SearchKernel signature SF fuel →
+      Safe ScopedValues (evalSubstsFuel SF fuel ρ body substitutions)
   | 0, _, _, _, _, _, _, _, _, _, _, _, _ => Safe.timeout
   | _ + 1, _, _, _, [], _, _, _, _, _, _, _, _ => ScopedValues.nil
   | fuel + 1, context, ρ, body, θ' :: substitutions, bindings, result,
@@ -617,7 +618,7 @@ theorem evalSubstsSafe
       have headRun := evalSafe signatureWF agrees bodyTyping
         (θTyped.envTyped_append ρTyped) (θPristine.append ρPristine)
         (ScopedEnv.append θScoped ρScoped) headFv kernel.weaken
-      cases hHead : evalFuel [] fuel (θ' ++ ρ) body with
+      cases hHead : evalFuel SF fuel (θ' ++ ρ) body with
       | timeout => exact Safe.timeout
       | stuck =>
           rw [hHead] at headRun
@@ -630,7 +631,7 @@ theorem evalSubstsSafe
             (fun candidate membership =>
               facts candidate (List.mem_cons_of_mem _ membership))
             kernel.weaken
-          cases hTail : evalSubstsFuel [] fuel ρ body substitutions with
+          cases hTail : evalSubstsFuel SF fuel ρ body substitutions with
           | timeout => exact Safe.timeout
           | stuck =>
               rw [hTail] at tailRun

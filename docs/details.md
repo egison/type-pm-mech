@@ -502,11 +502,13 @@ pattern capture は depth-first・左から右の `PPatCoreOrder` から導出�
 
 公開形は `MStateTy.progress_of_evals`: typed な非終端 top-level 状態は，埋め込み評価の収束
 (`StateEvals`; 各評価は derivation-local な `EvalRuntimeSigAgrees` を伴う)だけから一歩進む．
-すなわち局所 progress の前提は「収束」だけに縮み，発散のみが残る．capture admissibility は
+すなわち局所progressの未放電の前提は「有限の評価導出が存在すること」だけに縮む．これは
+収束しない場合を余帰納的な発散判断で分類する主張ではない．capture admissibility は
 ordered route(`captureAdm_of_order_at`)と primitive route(`captureAdm_of_primitive_success`)の
 二経路で放電し，`ppm_of_captureAdm` が typed・pristine な capture 環境ごと PPM を構成する．
 
-式層ではこの「発散のみ」を fuel 付き参照インタプリタで大域化する(**`typed_never_stuck`**)．
+式層では局所progressの収束前提を，fuel付き参照インタプリタの
+no-stuck定理で大域的に扱う（**`typed_never_stuck_runtime`**）．
 証明の構造:
 
 - 各層に kernel 前提つきの standalone 定理を置く: `evalSafe`(式)・`matomSafe`(atom 一歩)・
@@ -522,9 +524,20 @@ ordered route(`captureAdm_of_order_at`)と primitive route(`captureAdm_of_primit
   adequacy(`evalFuel_ok`)＋`EvalRuntimeSigAgrees.of_global`＋既存の関係的 preservation で
   回収する．新規に必要なのは構文的スコープ層(`ScopedValue` 系)だけで，これは closure が
   存在量化された文脈を持つ `ValueTy` に触れずに変数 lookup の全域性を与える．
-- 対象は runtime pattern-function 表が空(`SF = []`)の fragment であり，前提の
-  `RuntimeSigAgrees signature context []` は `runtimeSigAgrees_nil`(`patternFuns = []`)で
-  構成できる．pattern-function head の atom は同じ agreement から反証される．
+- 一般形は非空のruntime pattern-function表も扱う．前提は
+  `∀ context, RuntimeSigAgrees signature context SF`（source定義との全contextでの整合）と
+  `RuntimeSigScoped SF`（各runtime本体に自由な式変数がないこと）である．`stepSafe`は
+  pattern-function applicationをMNodeへ展開し，embedded parameterをenclosing MNodeで
+  実引数へ戻すため，これらを通常のatom reducerへ渡さない．
+- 論文1断片では`signature.patternFuns = []`を明記し，`runtimeSigAgrees_nil`から
+  `∀ context, RuntimeSigAgrees signature context []`を構成する
+  `SourceTyping.never_stuck_paper1`を使う．空表の`RuntimeSigScoped`は自明である．
+- `evalFuel_eventually_ok`は有限の関係的評価が十分大きいすべてのfuelで同じ値になることを
+  証明する．`typed_all_timeout_iff_no_finite_eval`は`evalFuel_ok`とno-stuckも組み合わせ，
+  全fuelでのtimeoutと有限の関係的評価が存在しないことの同値を明示する．別の余帰納的発散判断
+  との同値は主張しない．一般のterminationは非目標で
+  あり，幅優先探索（breadth-first search; BFS）の`matchAll`に対するmatching completenessは
+  将来課題である．
 
 global signature条件は `FrozenSigWF` だけである．これは従来のdynamic obligationsに加えて
 `signature.SchemesClosed`と，デコード全域性を支える`listCtorsExclusive`(`List`を結果に
@@ -633,7 +646,8 @@ D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定した
 - `DemandTypingSafetyRegression`: closed inferenceから`SourceTyping.safe`を通るevaluation safety．
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
-- `PatternFunctionSafetyRegression`: pattern function と matching safety の接続．
+- `PatternFunctionSafetyRegression`: pattern function とmatching safetyの接続，および非空runtime表を
+  用いる閉programの`typed_never_stuck_runtime`具体化．
 - `DynamicSafetyRegression`: end-to-end evaluation safety．
 - `DynamicCaptureRegression`: value-pattern capture．
 - `DynamicDispatchRegression`: matcher cursor と dispatch．
@@ -689,9 +703,9 @@ demand-directed関連moduleの役割は次のとおりである．
 | `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
 | `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰と`program_never_stuck` |
 | `TermFreeVars`／`InterpreterScoping`／`InterpreterSafetyDefs` | 構文的自由変数層（`Expr.freeVars`・`Pattern.scopeVars`・`Pattern.exprVarsUnder`・`Env.names`），値／環境／状態のスコープ述語（`ScopedValue`など；closureの存在文脈をfv包含で回避），`Safe`契約・`AtomsScoped`・`stackBinders` |
-| `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`；pattern-function headは空SF agreementで反証），状態一歩＋探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
+| `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`），pattern-function application・MNode内部step・embedded parameter展開を含む状態一歩と探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
 | `InterpreterPpmSafe`／`InterpreterPpmPrimitive`／`InterpreterDispatchSafe` | clause header照合の安全性（`CaptureAdm`駆動の`ppmSafe`／`ppmListSafe`と，primForm patternの浅い直接解析`ppmSafe_primitive`），clause／arm歩行の安全性（`dispatchSafe`／`armsSafe`・`DispatchBranchProps`；`pdMatch_scoped`等の補題込み） |
-| `InterpreterNoStuck`／`InterpreterDispatchBridge` | fuel上のstrong induction（束`NoStuckAt`＋`noStuck_master`；dispatch契約は`DispatchKernelAt`として分離），matcher literalのinversionからdispatch契約を放電する`dispatchKernelAt_discharge`（capture-admissible route＋primitive routeの2経路），空SF agreementの構成子`runtimeSigAgrees_nil`，**公開headline `typed_never_stuck`**（型付きclosed programは全fuelで`stuck`にならない） |
+| `InterpreterNoStuck`／`InterpreterDispatchBridge` | fuel上のstrong induction（束`NoStuckAt`＋`noStuck_master`；dispatch契約は`DispatchKernelAt`として分離），matcher literalのinversionからdispatch契約を放電する`dispatchKernelAt_discharge`，非空runtime表を扱う**公開headline `typed_never_stuck_runtime`**，空表特殊化`typed_never_stuck`，論文1のsource-facing特殊化`SourceTyping.never_stuck_paper1` |
 | `DemandTypingSafetyRegression` | closed inferenceを公開`SourceTyping` safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件
@@ -702,7 +716,7 @@ demand-directed関連moduleの役割は次のとおりである．
 埋めない．
 
 公理監査：`AxiomAudit` は，`PublicTheorems` の見出し定理と README の定理表が指す公開定数
-（計21個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
+（計27個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
 `Quot.sound` 以外の公理（`native_decide` が導入する補助公理，`sorryAx`，project-defined
 `axiom`）が現れた時点で elaboration を失敗させる．検査は許容集合方式なので，公理の生成名の
 変化に依存しない．監査対象は double-backquote 名前リテラルで解決するため，公開定理の改名は

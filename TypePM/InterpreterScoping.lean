@@ -1,5 +1,6 @@
 import TypePM.Interpreter
 import TypePM.TermFreeVars
+import TypePM.Dynamic
 
 /-!
 # Scoping invariants for the no-stuck theorem
@@ -9,12 +10,10 @@ matching states carry enough name discipline that every variable lookup the
 interpreter performs succeeds.  Everything here is purely syntactic; the
 type-shaped refutations live in the safety module.
 
-The matching-state invariant covers the `SF = []` fragment: stacks contain
-only atoms (pattern-function nodes require a nonempty runtime signature to
-arise, and the paper fragment fixes `SF = []`), and the stack threads each
-atom's guaranteed binders (`Pattern.scopeVars`) into the scope of the atoms
-below it — mirroring, names-only, what the typed threading does with binding
-contexts.
+The matching-state invariant covers both ordinary atoms and isolated
+pattern-function nodes.  A node retains the captured environment, its inner
+matching state, the actual-pattern table, and the binders promised by the
+embedded formal parameters that remain in the inner tree.
 -/
 
 namespace TypePM
@@ -128,13 +127,127 @@ theorem ScopedAtom.mono {scope scope' : List String} {atom : Atom}
   ⟨fun name membership => subset name (wellScoped.1 name membership),
     wellScoped.2.1, wellScoped.2.2⟩
 
-/-- Atom-only matching stacks threading guaranteed binders downward. -/
+/-- Left-to-right scoping of a pattern list. -/
+def ScopedPatterns (scope : List String) :
+    List String → List Pattern → Prop
+  | _, [] => True
+  | bound, pattern :: patterns =>
+      (∀ name ∈ Pattern.exprVarsUnder [] pattern,
+        name ∈ scope ∨ name ∈ bound) ∧
+      ScopedPatterns scope (bound ++ pattern.scopeVars) patterns
+
+/-- Ambient weakening for a scoped pattern list. -/
+theorem ScopedPatterns.mono_scope {scope scope' : List String} :
+    ∀ {bound : List String} {patterns : List Pattern},
+      ScopedPatterns scope bound patterns →
+      (∀ name ∈ scope, name ∈ scope') →
+      ScopedPatterns scope' bound patterns
+  | _, [], _, _ => trivial
+  | bound, pattern :: patterns, wellScoped, subset => by
+      obtain ⟨head, tail⟩ := wellScoped
+      refine ⟨?_, ScopedPatterns.mono_scope tail subset⟩
+      intro name membership
+      rcases head name membership with h | h
+      · exact .inl (subset name h)
+      · exact .inr h
+
+/-- Simultaneous weakening of the ambient and already-bound name sets. -/
+theorem ScopedPatterns.mono {scope scope' : List String} :
+    ∀ {bound bound' : List String} {patterns : List Pattern},
+      ScopedPatterns scope bound patterns →
+      (∀ name, name ∈ scope ∨ name ∈ bound →
+        name ∈ scope' ∨ name ∈ bound') →
+      ScopedPatterns scope' bound' patterns
+  | _, _, [], _, _ => trivial
+  | bound, bound', pattern :: patterns, wellScoped, subset => by
+      obtain ⟨head, tail⟩ := wellScoped
+      refine ⟨fun name membership => subset name (head name membership), ?_⟩
+      refine ScopedPatterns.mono tail ?_
+      intro name membership
+      rcases membership with h | h
+      · rcases subset name (.inl h) with h | h
+        · exact .inl h
+        · exact .inr (List.mem_append.mpr (.inl h))
+      · rcases List.mem_append.mp h with h | h
+        · rcases subset name (.inr h) with h | h
+          · exact .inl h
+          · exact .inr (List.mem_append.mpr (.inl h))
+        · exact .inr (List.mem_append.mpr (.inr h))
+
+/-- Names already bound before a remaining pattern list may be moved into
+its ambient scope. -/
+theorem ScopedPatterns.bound_to_scope {scope bound : List String}
+    {patterns : List Pattern}
+    (wellScoped : ScopedPatterns scope bound patterns) :
+    ScopedPatterns (bound ++ scope) [] patterns :=
+  wellScoped.mono (fun name membership => by
+    rcases membership with h | h
+    · exact .inl (List.mem_append.mpr (.inr h))
+    · exact .inl (List.mem_append.mpr (.inl h)))
+
+/-- Resolve the binders of the remaining embedded formal occurrences through
+the retained actual-pattern table. -/
+def resolvePiPatterns (piE : PiEnv) (names : List String) : List Pattern :=
+  names.filterMap fun name =>
+    match List.find? (fun entry => entry.1 == name) piE with
+    | some (_, pattern) => some pattern
+    | none => none
+
+/-- Actual patterns that correspond to the embedded formal occurrences still
+present in an isolated node. -/
+def nodePatterns (trees : List Tree) (piE : PiEnv) : List Pattern :=
+  resolvePiPatterns piE (stackEmbedOccs trees)
+
+/-- Resolve the binders of the remaining embedded formal occurrences through
+the retained actual-pattern table. -/
+def resolvePiScopeVars (piE : PiEnv) (names : List String) : List String :=
+  Pattern.scopeVarsList (resolvePiPatterns piE names)
+
+/-- Binders still promised by an isolated pattern-function node. -/
+def nodeBinders (trees : List Tree) (piE : PiEnv) : List String :=
+  resolvePiScopeVars piE (stackEmbedOccs trees)
+
+@[simp] theorem nodePatterns_nil (piE : PiEnv) :
+    nodePatterns [] piE = [] := rfl
+
+@[simp] theorem nodeBinders_nil (piE : PiEnv) :
+    nodeBinders [] piE = [] := rfl
+
+/-- Every runtime pattern-function body is closed with respect to ordinary
+expression variables after accounting for binders inside the pattern. -/
+def RuntimeSigScoped (SF : RuntimeSigF) : Prop :=
+  ∀ entry ∈ SF, Pattern.exprVarsUnder [] entry.2.body = []
+
+/-- Lookup exposes the scoping certificate of a runtime pattern-function
+body. -/
+theorem RuntimeSigScoped.lookup {SF : RuntimeSigF}
+    (wellScoped : RuntimeSigScoped SF) {name : String}
+    {runtime : PatFunRuntimeSig}
+    (found : List.find? (fun entry => entry.1 == name) SF =
+      some (name, runtime)) :
+    Pattern.exprVarsUnder [] runtime.body = [] :=
+  wellScoped (name, runtime) (List.mem_of_find?_eq_some found)
+
+@[simp] theorem runtimeSigScoped_nil :
+    RuntimeSigScoped ([] : RuntimeSigF) := by
+  intro entry membership
+  cases membership
+
+/-- Matching stacks threading guaranteed binders downward. -/
 inductive ScopedStack : List String → List Tree → Prop where
   | nil {scope : List String} : ScopedStack scope []
   | cons {scope : List String} {atom : Atom} {rest : List Tree} :
       ScopedAtom scope atom →
       ScopedStack (atom.p.scopeVars ++ scope) rest →
       ScopedStack scope (.atom atom :: rest)
+  | mnode {scope : List String} {trees : List Tree} {innerEnv : Env}
+      {innerSubst : MatchSubst} {piE : PiEnv} {rest : List Tree} :
+      ScopedEnv innerEnv → ScopedEnv innerSubst →
+      ScopedStack (Env.names innerSubst ++ Env.names innerEnv) trees →
+      ScopedPatterns scope [] (nodePatterns trees piE) →
+      ScopedStack (nodeBinders trees piE ++ scope) rest →
+      ScopedStack scope
+        (.mnode trees innerEnv innerSubst piE :: rest)
 
 /-- Weakening for stacks. -/
 theorem ScopedStack.mono {scope scope' : List String} {stack : List Tree}
@@ -150,13 +263,23 @@ theorem ScopedStack.mono {scope scope' : List String} {stack : List Tree}
       rcases membership with membership | membership
       · exact .inl membership
       · exact .inr (subset name membership)
+  | mnode innerEnvScoped innerSubstScoped innerScoped actualsScoped rest
+      _innerInduction restInduction =>
+      refine .mnode innerEnvScoped innerSubstScoped innerScoped
+        (actualsScoped.mono_scope subset) (restInduction ?_)
+      intro name membership
+      rw [List.mem_append] at membership ⊢
+      rcases membership with membership | membership
+      · exact .inl membership
+      · exact .inr (subset name membership)
 
 /-- Names guaranteed bound once every atom of the stack has reduced. -/
 def stackScopeOut : List String → List Tree → List String
   | scope, [] => scope
   | scope, .atom atom :: rest =>
       stackScopeOut (atom.p.scopeVars ++ scope) rest
-  | scope, .mnode _ _ _ _ :: rest => stackScopeOut scope rest
+  | scope, .mnode trees _ _ piE :: rest =>
+      stackScopeOut (nodeBinders trees piE ++ scope) rest
 
 /-- A whole matching state is scoped. -/
 def ScopedState (state : MState) : Prop :=
@@ -390,6 +513,27 @@ theorem Pattern.mem_exprVarsUnderList_extend :
         · exact .inr h
 
 end
+
+/-- Pointwise ambient coverage implies left-to-right pattern scoping. -/
+theorem ScopedPatterns.of_ambient {scope : List String} :
+    ∀ {bound : List String} {patterns : List Pattern},
+      (∀ name ∈ Pattern.exprVarsUnderList bound patterns,
+        name ∈ scope) →
+      ScopedPatterns scope bound patterns
+  | _, [], _ => trivial
+  | bound, pattern :: patterns, ambient => by
+      refine ⟨?_, ScopedPatterns.of_ambient ?_⟩
+      · intro name membership
+        rcases Pattern.mem_exprVarsUnder_extend
+            (bs := []) (bound := bound) membership with h | h
+        · exact .inl (ambient name (by
+            simp only [Pattern.exprVarsUnderList, List.mem_append]
+            exact .inl (by simpa using h)))
+        · exact .inr h
+      · intro name membership
+        exact ambient name (by
+          simp only [Pattern.exprVarsUnderList, List.mem_append]
+          exact .inr membership)
 
 /-! ## Scope facts for successful primitive-pattern matches -/
 

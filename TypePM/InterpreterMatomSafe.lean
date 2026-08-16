@@ -13,9 +13,10 @@ fuel-bounded kernel (discharged by the dispatch-walk module), and the
 embedded value-pattern evaluation through a fuel-bounded evaluation kernel
 (discharged by the master induction).
 
-The statement fixes `parameters = []` and `SF = []`: the paper fragment,
-in which embedded pattern parameters and pattern-function atoms are
-untypable.
+The statement is polymorphic in the pattern-parameter context and runtime
+table.  Its caller supplies the two local facts that the atom being sent to
+`matomFuel` is neither a pattern-function application nor an embedded
+parameter; `stepSafe` handles those forms before entering this layer.
 -/
 
 namespace TypePM
@@ -91,12 +92,12 @@ evaluation obligations arrive as fuel-bounded kernels.
 -/
 theorem matomSafe
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
-    (agrees : ∀ context, RuntimeSigAgrees signature context
-      ([] : RuntimeSigF))
+    {SF : RuntimeSigF}
     {context : Context} {parameters : PatternCtx}
     {input output : MonoCtx} {ρa : Env}
     {pattern : Pattern} {matcher value : Value} {fuel : Nat}
-    (noParameters : parameters = [])
+    (notPatfun : ∀ name arguments, pattern ≠ .papp name arguments)
+    (notEmbed : ∀ name, pattern ≠ .embed name)
     (typing : AtomTy signature context parameters input
       ⟨pattern, matcher, value⟩ output)
     (environmentTyping :
@@ -113,8 +114,8 @@ theorem matomSafe
           TypingInvariant signature (input.toContext ++ context) expression
             target →
           (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-          evalFuel [] fuel' ρa expression ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρa expression = .ok v → ScopedValue v)
+          evalFuel SF fuel' ρa expression ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρa expression = .ok v → ScopedValue v)
     (dispatchKernel :
       ∀ {fuel' : Nat}, fuel' < fuel →
         ∀ {matcherEnv : Env} {original current : List Clause},
@@ -125,9 +126,9 @@ theorem matomSafe
               AtomsScoped (Env.names ρa) [] atoms ∧
               ∀ name ∈ pattern.scopeVars,
                 name ∈ Pattern.scopeVarsList (atoms.map Atom.p))
-            (dispatchFuel [] fuel' ρa matcherEnv pattern value current)) :
+            (dispatchFuel SF fuel' ρa matcherEnv pattern value current)) :
     Safe (MatomOutputScoped (Env.names ρa) pattern)
-      (matomFuel [] fuel ρa pattern matcher value) := by
+      (matomFuel SF fuel ρa pattern matcher value) := by
   cases fuel with
   | zero => exact Safe.timeout
   | succ fuel =>
@@ -197,17 +198,9 @@ theorem matomSafe
                 exact both.2
             · cases membership
       | papp name arguments =>
-          exfalso
-          cases patternTyping.terminal with
-          | app sourceLookup children instanceTyping =>
-              obtain ⟨definition, _, runtimeFound, _⟩ :=
-                (agrees context).sourceLookup sourceLookup
-              simp at runtimeFound
+          exact absurd rfl (notPatfun name arguments)
       | embed name =>
-          exfalso
-          subst noParameters
-          have found := patternTyping.embed_inversion.1
-          cases found
+          exact absurd rfl (notEmbed name)
       | pvar name =>
           cases matcher with
           | lit n => cases mTyping
@@ -308,7 +301,7 @@ theorem matomSafe
                 simpa [Pattern.exprVarsUnder, List.removeAll_nil] using
                   membership
               simp only [matomFuel, RunResult.monad_bind_eq_bind]
-              cases hEval : evalFuel [] fuel ρa expression with
+              cases hEval : evalFuel SF fuel ρa expression with
               | ok expected =>
                   simp only [RunResult.bind_ok]
                   split
@@ -504,7 +497,7 @@ theorem matomSafe
                 simpa [Pattern.exprVarsUnder, List.removeAll_nil] using
                   membership
               simp only [matomFuel, RunResult.monad_bind_eq_bind]
-              cases hEval : evalFuel [] fuel ρa expression with
+              cases hEval : evalFuel SF fuel ρa expression with
               | ok expected =>
                   simp only [RunResult.bind_ok]
                   split

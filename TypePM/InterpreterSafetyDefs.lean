@@ -51,11 +51,12 @@ def AtomsScoped (scope : List String) :
       ScopedValue atom.m ∧ ScopedValue atom.v ∧
       AtomsScoped scope (bound ++ atom.p.scopeVars) atoms
 
-/-- Binders an atom stack still promises to bind, front to back. -/
+/-- Binders a matching stack still promises to bind, front to back. -/
 def stackBinders : List Tree → List String
   | [] => []
   | .atom atom :: rest => atom.p.scopeVars ++ stackBinders rest
-  | .mnode _ _ _ _ :: rest => stackBinders rest
+  | .mnode trees _ _ piE :: rest =>
+      nodeBinders trees piE ++ stackBinders rest
 
 /-- Ambient weakening for branch scoping. -/
 theorem AtomsScoped.mono_scope {scope scope' : List String} :

@@ -148,7 +148,8 @@ theorem CaptureAdm.shapeOK
 fuel, the committed clause's primitive-pattern match and its component walk
 are safe below an evaluation kernel covering the strictly smaller fuels. -/
 private theorem ppmSafe_aux
-    {signature : FrozenSig} {context : Context} {input : MonoCtx}
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    {context : Context} {input : MonoCtx}
     {ρa : Env} (fuel : Nat) :
     (∀ {pp : PPat} {pattern : Pattern} {target : Ty} {bindings : MonoCtx}
       {seen finished : Bool} {bound : List String},
@@ -158,8 +159,8 @@ private theorem ppmSafe_aux
             TypingInvariant signature (input.toContext ++ context) expression
               target' →
             (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-            evalFuel [] fuel' ρa expression ≠ .stuck ∧
-            ∀ value, evalFuel [] fuel' ρa expression = .ok value →
+            evalFuel SF fuel' ρa expression ≠ .stuck ∧
+            ∀ value, evalFuel SF fuel' ρa expression = .ok value →
               ScopedValue value ∧ ValuePristine value ∧
               ValueTy signature value target') →
       CaptureAdm signature context input pp pattern target bindings →
@@ -171,7 +172,7 @@ private theorem ppmSafe_aux
         ∀ captures ppEnv, outcome = some (captures, ppEnv) →
           MonoEnvTys signature bindings ppEnv ∧
           EnvPristine ppEnv ∧ ScopedEnv ppEnv)
-        (ppmFuel [] fuel ρa pp pattern)) ∧
+        (ppmFuel SF fuel ρa pp pattern)) ∧
     (∀ {pps : List PPat} {patterns : List Pattern} {targets : List Ty}
       {bindings : MonoCtx} {seen finished : Bool} {bound : List String},
       (evalKernel :
@@ -180,8 +181,8 @@ private theorem ppmSafe_aux
             TypingInvariant signature (input.toContext ++ context) expression
               target' →
             (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-            evalFuel [] fuel' ρa expression ≠ .stuck ∧
-            ∀ value, evalFuel [] fuel' ρa expression = .ok value →
+            evalFuel SF fuel' ρa expression ≠ .stuck ∧
+            ∀ value, evalFuel SF fuel' ρa expression = .ok value →
               ScopedValue value ∧ ValuePristine value ∧
               ValueTy signature value target') →
       CaptureAdms signature context input pps patterns targets bindings →
@@ -193,7 +194,7 @@ private theorem ppmSafe_aux
         MonoEnvTys signature bindings ((results.map Prod.snd).flatten) ∧
         EnvPristine ((results.map Prod.snd).flatten) ∧
         ScopedEnv ((results.map Prod.snd).flatten))
-        (ppmListFuel [] fuel ρa pps patterns)) := by
+        (ppmListFuel SF fuel ρa pps patterns)) := by
   induction fuel with
   | zero =>
       constructor
@@ -236,7 +237,7 @@ private theorem ppmSafe_aux
                 membership
             simp only [ppmFuel, RunResult.monad_bind_eq_bind]
             split
-            · cases hEval : evalFuel [] fuel ρa expression with
+            · cases hEval : evalFuel SF fuel ρa expression with
               | ok value =>
                   simp only [RunResult.bind_ok, RunResult.pure_eq_ok]
                   intro captures ppEnv h
@@ -268,7 +269,7 @@ private theorem ppmSafe_aux
                     simpa [Pattern.exprVarsUnder] using membership)
                 simp only [ppmFuel, RunResult.monad_bind_eq_bind]
                 split
-                · cases hList : ppmListFuel [] fuel ρa pps patterns with
+                · cases hList : ppmListFuel SF fuel ρa pps patterns with
                   | ok results =>
                       simp only [RunResult.bind_ok, RunResult.pure_eq_ok]
                       intro captures ppEnv h
@@ -296,7 +297,7 @@ private theorem ppmSafe_aux
                     simpa [Pattern.exprVarsUnder] using membership)
                 simp only [ppmFuel, RunResult.monad_bind_eq_bind]
                 split
-                · cases hList : ppmListFuel [] fuel ρa pps patterns with
+                · cases hList : ppmListFuel SF fuel ρa pps patterns with
                   | ok results =>
                       simp only [RunResult.bind_ok, RunResult.pure_eq_ok]
                       intro captures ppEnv h
@@ -354,7 +355,7 @@ private theorem ppmSafe_aux
                     simp only [Pattern.exprVarsUnderList, List.mem_append]
                     exact .inr membership)
                 simp only [ppmListFuel, RunResult.monad_bind_eq_bind]
-                cases hHead : ppmFuel [] fuel ρa pp pattern with
+                cases hHead : ppmFuel SF fuel ρa pp pattern with
                 | ok outcome =>
                     simp only [RunResult.bind_ok]
                     rw [hHead] at headSafe
@@ -370,7 +371,7 @@ private theorem ppmSafe_aux
                         obtain ⟨headTyped, headPristine, headScoped⟩ :=
                           headSafe captures ppEnv rfl
                         cases hTail :
-                            ppmListFuel [] fuel ρa pps patterns with
+                            ppmListFuel SF fuel ρa pps patterns with
                         | ok results =>
                             simp only [RunResult.bind_ok,
                               RunResult.pure_eq_ok]
@@ -403,7 +404,8 @@ admissible binding context, pristine, and scoped.  The embedded `#$x`
 evaluations are received through an evaluation kernel covering exactly the
 strictly smaller fuels. -/
 theorem ppmSafe
-    {signature : FrozenSig} {context : Context} {input : MonoCtx}
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    {context : Context} {input : MonoCtx}
     {ρa : Env} :
     ∀ {fuel : Nat} {pp : PPat} {pattern : Pattern} {target : Ty}
       {bindings : MonoCtx} {seen finished : Bool} {bound : List String},
@@ -413,8 +415,8 @@ theorem ppmSafe
             TypingInvariant signature (input.toContext ++ context) expression
               target' →
             (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-            evalFuel [] fuel' ρa expression ≠ .stuck ∧
-            ∀ value, evalFuel [] fuel' ρa expression = .ok value →
+            evalFuel SF fuel' ρa expression ≠ .stuck ∧
+            ∀ value, evalFuel SF fuel' ρa expression = .ok value →
               ScopedValue value ∧ ValuePristine value ∧
               ValueTy signature value target') →
       CaptureAdm signature context input pp pattern target bindings →
@@ -426,7 +428,7 @@ theorem ppmSafe
         ∀ captures ppEnv, outcome = some (captures, ppEnv) →
           MonoEnvTys signature bindings ppEnv ∧
           EnvPristine ppEnv ∧ ScopedEnv ppEnv)
-        (ppmFuel [] fuel ρa pp pattern) := by
+        (ppmFuel SF fuel ρa pp pattern) := by
   intro fuel pp pattern target bindings seen finished bound evalKernel
     admissible order boundEmpty ambient
   exact (ppmSafe_aux fuel).1 evalKernel admissible order boundEmpty ambient
@@ -436,7 +438,8 @@ components is safe, and its successful results flatten to a capture
 environment typed at the concatenated admissible binding context, pristine,
 and scoped. -/
 theorem ppmListSafe
-    {signature : FrozenSig} {context : Context} {input : MonoCtx}
+    {signature : FrozenSig} {SF : RuntimeSigF}
+    {context : Context} {input : MonoCtx}
     {ρa : Env} :
     ∀ {fuel : Nat} {pps : List PPat} {patterns : List Pattern}
       {targets : List Ty} {bindings : MonoCtx} {seen finished : Bool}
@@ -447,8 +450,8 @@ theorem ppmListSafe
             TypingInvariant signature (input.toContext ++ context) expression
               target' →
             (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-            evalFuel [] fuel' ρa expression ≠ .stuck ∧
-            ∀ value, evalFuel [] fuel' ρa expression = .ok value →
+            evalFuel SF fuel' ρa expression ≠ .stuck ∧
+            ∀ value, evalFuel SF fuel' ρa expression = .ok value →
               ScopedValue value ∧ ValuePristine value ∧
               ValueTy signature value target') →
       CaptureAdms signature context input pps patterns targets bindings →
@@ -460,7 +463,7 @@ theorem ppmListSafe
         MonoEnvTys signature bindings ((results.map Prod.snd).flatten) ∧
         EnvPristine ((results.map Prod.snd).flatten) ∧
         ScopedEnv ((results.map Prod.snd).flatten))
-        (ppmListFuel [] fuel ρa pps patterns) := by
+        (ppmListFuel SF fuel ρa pps patterns) := by
   intro fuel pps patterns targets bindings seen finished bound evalKernel
     admissible orders boundEmpty ambient
   exact (ppmSafe_aux fuel).2 evalKernel admissible orders boundEmpty ambient

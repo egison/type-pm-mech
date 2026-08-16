@@ -91,15 +91,21 @@ MLのprincipal typeと同じ概念である：推論器が返す型は，そのp
 報告された型を持ち（preservation），パターン変数にはmatcherが約束した型の値だけが束縛され
 （matching consistency），実行は途中で詰まらない（progress）．progressはfuel付き参照
 インタプリタ上の式層の定理として閉じている：型付きclosed programはどのfuelでも
-`stuck`（適用できる規則がない状態）に到達せず，値を返さない唯一の可能性はfuel切れ
-（発散）である．停止性そのものは主張しない．
+`stuck`（適用できる規則がない状態）に到達しない．fuel切れは「そのfuelでは計算が
+完了しなかった」ことを表し，それ自体を発散と同一視しない．adequacyとfuel完全性を
+合わせると，全fuelでのfuel切れは「有限の関係的評価導出が存在しない」ことと一致する．
+これを別に定義した余帰納的な発散判断と同一視する定理や，一般の停止性は主張しない．
 
 | 定理 | 意味 |
 |---|---|
 | `SourceTyping.typingInvariant` | state erasure：推論の内部状態（fresh変数の割当・履歴）を消しても型付けの事実は残る．静的な型付けと実行時安全性をつなぐ橋 |
 | `SourceTyping.safe` | 型安全性の束：closed programの型付けから，preservation・progress・matching consistencyを含む安全性package（`CoreSafety`）を一括で得る |
 | `MStateTy.progress_of_evals` | progress（関係的semantics上の局所形）：typedなmatching状態は，埋め込まれた式の評価が停止する限り必ず一歩進める．デコード成功やディスパッチ先の存在は仮定ではなく型付けから導出される |
-| `typed_never_stuck` | progress（式層の大域形）：型付きclosed programをfuel付き参照インタプリタで走らせると，どのfuelでも`stuck`にならない．fuel上のstrong induction（`noStuck_master`）が式・atom・状態・探索・clause dispatch・header照合の全層を束ね，adequacy（`evalFuel_ok`：`ok`なら関係的導出が再生される）が既存のpreservationへ接続する．対象はruntime pattern-function表が空のfragment |
+| `typed_never_stuck_runtime` | progress（式層の大域形）：source signatureと全contextで整合し，本体の式変数が閉じたruntime pattern-function表について，型付きclosed programはどのfuelでも`stuck`にならない．fuel上のstrong induction（`noStuck_master`）が式・atom・状態・探索・clause dispatch・header照合の全層を束ねる |
+| `typed_never_stuck` | 上記の空runtime表への特殊化 |
+| `SourceTyping.never_stuck_paper1` | 論文1断片のsource-facingな特殊化：`signature.patternFuns = []`を明示し，`runtimeSigAgrees_nil`で`∀ context, RuntimeSigAgrees signature context []`を導いてno-stuckを得る |
+| `evalFuel_ok`／`evalFuel_eventually_ok` | adequacyとfuel完全性：`ok`なら有限の関係的評価導出があり，有限の関係的評価導出があれば十分大きいすべてのfuelで同じ値を返す |
+| `typed_all_timeout_iff_no_finite_eval` | 型付きclosed programについて，全fuelでのtimeoutと有限の関係的評価の不在が同値であることを明示する．余帰納的な発散判断との同値ではない |
 | `Inference.infer_closed_safe` | 合成：型検査（`infer`）を通ったclosed programは上記の安全性packageを得る．推論の健全性と型システムの健全性をつないだ，教科書的な意味での主張 |
 
 ### 既存理論との関係

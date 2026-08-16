@@ -21,7 +21,7 @@ successful capture environment is typed at the header's binding context,
 pristine, and scoped.
 -/
 theorem ppmSafe_primitive
-    {signature : FrozenSig}
+    {signature : FrozenSig} {SF : RuntimeSigF}
     {context : Context} {parameters : PatternCtx} {input output : MonoCtx}
     {ρa : Env} {prevailing patternPrevailing : Subst}
     {pp : PPat} {pattern : Pattern} {patternCapability : Cap}
@@ -41,13 +41,13 @@ theorem ppmSafe_primitive
           TypingInvariant signature (input.toContext ++ context) expression
             target' →
           (∀ name ∈ expression.freeVars, name ∈ Env.names ρa) →
-          evalFuel [] fuel' ρa expression ≠ .stuck ∧
-          ∀ v, evalFuel [] fuel' ρa expression = .ok v →
+          evalFuel SF fuel' ρa expression ≠ .stuck ∧
+          ∀ v, evalFuel SF fuel' ρa expression = .ok v →
             ScopedValue v ∧ ValuePristine v ∧
             ValueTy signature v target') :
-    ppmFuel [] fuel ρa pp pattern ≠ .stuck ∧
+    ppmFuel SF fuel ρa pp pattern ≠ .stuck ∧
     ∀ captures ppEnv,
-      ppmFuel [] fuel ρa pp pattern = .ok (some (captures, ppEnv)) →
+      ppmFuel SF fuel ρa pp pattern = .ok (some (captures, ppEnv)) →
       MonoEnvTys signature ppBindings ppEnv ∧
       EnvPristine ppEnv ∧ ScopedEnv ppEnv := by
   cases fuel with
@@ -56,7 +56,7 @@ theorem ppmSafe_primitive
     cases pp with
     | hole =>
         have admissible := captureAdm_of_primitive_success
-          (SF := ([] : RuntimeSigF)) (environment := ρa) patternTyping
+          (SF := SF) (environment := ρa) patternTyping
           primitive ppTyping .hole
         cases admissible with
         | hole =>
@@ -70,7 +70,7 @@ theorem ppmSafe_primitive
         cases pattern with
         | wild =>
             have admissible := captureAdm_of_primitive_success
-              (SF := ([] : RuntimeSigF)) (environment := ρa) patternTyping
+              (SF := SF) (environment := ρa) patternTyping
               primitive ppTyping .wild
             cases admissible with
             | wild =>
@@ -98,7 +98,7 @@ theorem ppmSafe_primitive
                 simpa [Pattern.exprVarsUnder, List.removeAll_nil] using h)
             have kernelRun := evalKernel (Nat.lt_succ_self fuel) exprTyping
               exprFv
-            cases hEval : evalFuel [] fuel ρa expression with
+            cases hEval : evalFuel SF fuel ρa expression with
             | stuck => exact absurd hEval kernelRun.1
             | timeout =>
                 constructor
@@ -110,7 +110,7 @@ theorem ppmSafe_primitive
                 obtain ⟨scopedV, pristineV, typedV⟩ :=
                   kernelRun.2 value hEval
                 have admissible := captureAdm_of_primitive_success
-                  (SF := ([] : RuntimeSigF)) (environment := ρa)
+                  (SF := SF) (environment := ρa)
                   patternTyping primitive ppTyping
                   (.pval (evalFuel_ok hEval))
                 cases admissible with

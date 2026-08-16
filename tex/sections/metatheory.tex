@@ -211,10 +211,11 @@ s.S \neq []
 \]
 が成り立つ($\mathsf{StateEvals}$は先頭位置に埋め込まれた式評価の収束で，各評価は
 derivation-localなruntime-signature agreementを伴う)．従って公開の局所progress
-$\mathsf{MStateTy.progress\_of\_evals}$の前提は埋め込み評価の収束だけに縮み，残る条件は
-発散のみである．coverageは引き続きpreservation側(継続atomの型付け)の条件である．
+$\mathsf{MStateTy.progress\_of\_evals}$の未放電の前提は，埋め込み評価の有限導出が存在する
+ことだけに縮む．これは収束しない場合を別の発散判断で分類する主張ではない．coverageは
+引き続きpreservation側(継続atomの型付け)の条件である．
 
-この「発散のみ」は式層で大域化されている．$\mathsf{evalFuel}$は評価・matching・clause dispatch
+この収束前提は式層のno-stuck定理で大域的に扱われる．$\mathsf{evalFuel}$は評価・matching・clause dispatch
 の全再帰をfuelで打ち切る関数的big-step評価器で，結果を$\mathsf{ok}$(値)・$\mathsf{timeout}$
 (fuel切れ)・$\mathsf{stuck}$(適用できる規則がない)の三値で返し，発散と詰まりを区別する．
 adequacy($\mathsf{evalFuel\_ok}$: $\mathsf{ok}$の実行は関係的big-step導出を再生する)が
@@ -222,22 +223,34 @@ adequacy($\mathsf{evalFuel\_ok}$: $\mathsf{ok}$の実行は関係的big-step導�
 clause dispatch・header照合の各層の安全性を束ねて，次を与える．
 \[
 \frac{
+  \begin{gathered}
   \mathsf{FrozenSigWF}(\Sighat)
-  \qquad
+  \quad
+  \forall\Gamma.\;\mathsf{RuntimeSigAgrees}(\Sighat,\Gamma,\mathcal S_F)
+  \quad
+  \mathsf{RuntimeSigScoped}(\mathcal S_F)\\
   \mathsf{TypingInvariant}(\Sighat,\emptyset,e,\tau)
-  \qquad
+  \quad
   \mathsf{fv}(e)=\emptyset
+  \end{gathered}
 }{
-  \forall n.\; \mathsf{evalFuel}\,n\,e \neq \mathsf{stuck}
+  \forall n.\; \mathsf{evalFuel}\,\mathcal S_F\,n\,e \neq \mathsf{stuck}
 }
 \tag{\textsc{No-Stuck}}
 \]
-(Lean: $\mathsf{typed\_never\_stuck}$．runtime pattern-function表が空のfragmentに対する
-主張で，空表とのagreement $\mathsf{RuntimeSigAgrees}(\Sighat,\Gamma,[])$を前提に含む．
-これは$\mathsf{patternFuns}=[]$の署名なら$\mathsf{runtimeSigAgrees\_nil}$で構成できる．)
-型付きclosed programの実行が値を返さない唯一の可能性は$\mathsf{timeout}$，すなわち発散で
-ある．中間値の型付け・pristine性は機能的に再証明せず，adequacyを介して関係的preservationから
-回収する．停止性そのものは引き続き主張しない．
+(Lean: $\mathsf{typed\_never\_stuck\_runtime}$．$\mathsf{RuntimeSigScoped}$はruntime本体に
+自由な式変数がないことを表す．論文1の空表断片では$\mathsf{patternFuns}=[]$を明記し，
+$\mathsf{runtimeSigAgrees\_nil}$から
+$\forall\Gamma.\mathsf{RuntimeSigAgrees}(\Sighat,\Gamma,[])$を構成する
+$\mathsf{SourceTyping.never\_stuck\_paper1}$を用いる．)
+$\mathsf{evalFuel\_eventually\_ok}$は，有限の関係的評価があれば十分大きいすべてのfuelで
+同じ値を返すことを示す．従ってadequacyと合わせると，全fuelでのtimeoutは有限の関係的
+評価が存在しないことと一致する
+($\mathsf{typed\_all\_timeout\_iff\_no\_finite\_eval}$)が，別に定義した余帰納的な
+発散判断との同値は主張しない．
+一般のterminationは非目標であり，BFS（幅優先探索）の$\mathsf{matchAll}$に対するmatching
+completenessは将来課題である．中間値の型付け・pristine性はadequacyを介して関係的
+preservationから回収する．
 
 これらをsource-facingな一つの定理に束ねる．
 \[

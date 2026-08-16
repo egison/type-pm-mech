@@ -1,4 +1,5 @@
 import TypePM.DynamicSafetyRegression
+import TypePM.InterpreterDispatchBridge
 
 /-!
 # Nonempty pattern-function safety regression
@@ -91,6 +92,14 @@ theorem runtime_agrees (context : Context) :
 theorem global_runtime_agreement :
     ∀ context, RuntimeSigAgrees signature context runtimeSignature :=
   runtime_agrees
+
+/-- The erased body has no free expression variables, as required by the
+fuel-indexed evaluator theorem for a nonempty runtime table. -/
+theorem runtime_signature_scoped : RuntimeSigScoped runtimeSignature := by
+  intro entry membership
+  simp only [runtimeSignature, List.mem_singleton] at membership
+  subst entry
+  rfl
 
 /-! ## Parameterized global-agreement regression -/
 
@@ -415,6 +424,32 @@ private theorem singleton_instantiated_body :
 
 def program : Expr :=
   .matchAll (.tuple []) (.var "tupleMatcher") (.papp "unit" []) (.lit 1)
+
+/-- Closed variant used to instantiate the fuel-indexed no-stuck theorem
+with the same nonempty runtime pattern-function table. -/
+def closedProgram : Expr :=
+  .matchAll (.tuple []) (.tuple []) (.papp "unit" []) (.lit 1)
+
+def closedInferenceResult : Inference.ExprResult :=
+  (Inference.infer signature [] closedProgram).get (by native_decide)
+
+theorem closed_inference_success :
+    Inference.infer signature [] closedProgram = some closedInferenceResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem closed_program_typed :
+    TypingInvariant signature [] closedProgram
+      closedInferenceResult.resolvedTarget :=
+  Inference.infer_success_typingInvariant closed_inference_success
+
+@[simp] theorem closed_program_freeVars : closedProgram.freeVars = [] := by
+  native_decide
+
+/-- Concrete regression for evaluator safety with a nonempty runtime table. -/
+theorem closed_program_never_stuck (fuel : Nat) :
+    evalFuel runtimeSignature fuel [] closedProgram ≠ .stuck :=
+  typed_never_stuck_runtime signature_wf global_runtime_agreement
+    runtime_signature_scoped closed_program_typed closed_program_freeVars fuel
 
 def tupleMatcherType : Ty :=
   .slot (.prod []) (.prod [])
