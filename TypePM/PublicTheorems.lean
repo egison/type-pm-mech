@@ -6,6 +6,7 @@ import TypePM.PrincipalityCounterexample
 import TypePM.Soundness
 import TypePM.Readiness
 import TypePM.InterpreterDispatchBridge
+import TypePM.InterpreterCompleteness
 import TypePM.InterpreterRegression
 import TypePM.DamasMilnerConservativity
 import TypePM.DamasMilnerAcceptanceMutual
@@ -39,6 +40,10 @@ statements are introduced.
 * `evalFuel_ok` — adequacy of the reference interpreter: every successful
   fuel-indexed run replays as a relational big-step derivation, connecting
   `typed_never_stuck` to the relational preservation theorems.
+* `evalFuel_eventually_ok` — completeness of the reference interpreter:
+  every finite relational evaluation is reproduced at some fuel and at all
+  larger fuels.  Together with adequacy, persistent timeout means precisely
+  that no finite relational evaluation exists.
 * `SourceTyping.typingInvariant` — closed `SourceTyping` yields the internal
   state-free typing invariant at exactly its published type.
 * `SourceTyping.target_unique_modulo_renaming` — any two audited

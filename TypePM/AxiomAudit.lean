@@ -46,6 +46,8 @@ def auditedConstants : List Name :=
    ``TypePM.typed_never_stuck,
    ``TypePM.noStuck_master,
    ``TypePM.evalFuel_ok,
+   ``TypePM.evalFuel_eventually_ok,
+   ``TypePM.evalFuel_complete,
    ``TypePM.SourceTyping.typingInvariant,
    ``TypePM.DM.sourceTyping_to_dm,
    ``TypePM.DM.Typing.inferenceSucceeds,
