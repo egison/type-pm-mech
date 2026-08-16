@@ -50,6 +50,8 @@ import TypePM.DynamicMetatheory
 import TypePM.Reachability
 import TypePM.Safety
 import TypePM.Readiness
+import TypePM.Interpreter
+import TypePM.InterpreterAdequacy
 import TypePM.RuntimeAgreementBridge
 import TypePM.InferenceBase
 import TypePM.Bounds
@@ -78,6 +80,7 @@ import TypePM.AcceptanceGapRegression
 import TypePM.ApplicationCoercionRegression
 import TypePM.DynamicSafetyRegression
 import TypePM.ReadinessRegression
+import TypePM.InterpreterRegression
 import TypePM.DynamicCaptureRegression
 import TypePM.DynamicDispatchRegression
 import TypePM.PatternFunctionSafetyRegression

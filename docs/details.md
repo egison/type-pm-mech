@@ -664,6 +664,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingRegression`／`DemandTypingTerminalAuditErasureRegression` | raw境界，Origin-aware局所solve，terminal audit，公開state-erasure定理の回帰 |
 | `Soundness` | `SourceTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
 | `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
+| `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰 |
 | `DemandTypingSafetyRegression` | closed inferenceを公開`SourceTyping` safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件

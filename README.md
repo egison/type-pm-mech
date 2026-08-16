@@ -263,7 +263,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
-| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Soundness` | evaluation，matching machine，readiness構成，公開安全性 |
+| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタ，公開安全性 |
 | fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
