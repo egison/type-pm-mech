@@ -1,8 +1,14 @@
 # type-pm-mech — Egison core の型推論と安全性
 
-非 CAS の Egison core を Lean 4 で機械化するリポジトリである．matcherを生成する型
-`Matcher κ τ`と，matcherを必要とする消費位置の型`MatcherSlot κ τ`を分け，coercionを
-消費側のdemandから決める．
+非 CAS の Egison core を Lean 4 で機械化するリポジトリである．一言でいえば，Egison の
+matcher（パターンマッチの「分解の流儀」を第一級の値にしたもの）に静的型を与え，型システムの
+古典的な保証 — 注釈なしの型推論が正しく働くこと（健全性・完全性），推論される型が最も一般的で
+あること（主要型），型付けされたプログラムの実行が型を裏切らないこと（型安全性）— が成り立つ
+ことを機械検証した．
+
+型の中心は，matcherを生成する型 `Matcher κ τ`（τ 型の値を capability κ の流儀で分解する
+matcher）と，matcherを必要とする消費位置の型 `MatcherSlot κ τ` の区別である．producer を
+consumer に合わせる coercion（暗黙変換）は，消費側のdemandからだけ決める．
 
 source programの型付け可能性を定義するjudgmentは`SourceTyping`だけである．公開推論器`infer`は，
 well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する．closed programについては，
@@ -10,23 +16,24 @@ well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する�
 
 ## 現在の到達点
 
-中心となる接続は次の四つである．
+中心となる接続は次の四つである．各行の右側のコメントが一般的な意味である．
 
 ```text
-infer Σ Γ e = some r
-  ── soundness ──→ SourceTyping Σ Γ e r.resolvedTarget
+infer Σ Γ e = some r                       -- 推論器が型を返したなら
+  ── soundness ──→ SourceTyping Σ Γ e r.resolvedTarget      -- その型付けは正しい
 
-SourceTyping Σ Γ e τ + FrozenSigWF Σ
-  ── completeness ──→ (infer Σ Γ e).isSome = true
+SourceTyping Σ Γ e τ + FrozenSigWF Σ       -- 型が付くprogramは
+  ── completeness ──→ (infer Σ Γ e).isSome = true           -- 推論器が必ず受理する
 
-SourceTyping Σ [] e τ + FrozenSigWF Σ
-  ── state erasure / safety ──→ TypingInvariant Σ [] e τ + CoreSafety
+SourceTyping Σ [] e τ + FrozenSigWF Σ      -- closed programの型付けから
+  ── state erasure / safety ──→ TypingInvariant Σ [] e τ + CoreSafety   -- 実行時安全性が従う
 
-DM.Typing Γ e τ + FrozenSigWF Σ
-  ── normalized Algorithm W replay ──→ inferenceSucceeds Σ Γ.emb e = true
+DM.Typing Γ e τ + FrozenSigWF Σ            -- 従来のDamas–Milnerで型が付くなら
+  ── normalized Algorithm W replay ──→ inferenceSucceeds Σ Γ.emb e = true  -- 本推論器も受理する
 ```
 
-したがって一般contextについて，次の受理同値と決定可能性が得られている．
+したがって一般contextについて，次の受理同値と決定可能性が得られている．「型が付くこと」と
+「推論器が成功すること」が同値なので，型注釈は不要である（annotation freeness）．
 
 ```text
 FrozenSigWF Σ →
@@ -34,36 +41,65 @@ FrozenSigWF Σ →
 ```
 
 主な公開定理は[`TypePM/PublicTheorems.lean`](TypePM/PublicTheorems.lean)から参照できる．
+以下，各定理を型システムの標準的な概念に対応させて説明する．
 
-| 定理 | 主張 |
+### 型推論の正確さ
+
+「推論器の答えを信じてよい」ことの二方向である．健全性（soundness）は誤検出がないこと
+（返した型は必ず正しい），完全性（completeness）は見落としがないこと（型が付くのに拒否する
+ことはない）．両者を合わせると，型付け可能性はアルゴリズムで決定できる．
+
+| 定理 | 意味 |
 |---|---|
-| `Inference.infer_success_sourceTyping` | `infer`が返した型には`SourceTyping` derivationがある |
-| `SourceTyping.infer_isSome` | `FrozenSigWF`の下で`SourceTyping`を持つprogramを`infer`が受理する |
-| `Inference.sourceTypable_iff_infer_isSome` | source typabilityと公開推論器の成功が同値である |
-| `Inference.sourceTypableDecidable` | source typabilityを公開推論器で決定できる |
-| `SourceTyping.target_unique_modulo_renaming` | 同じsourceのtargetはresidual二sortmetaのrenamingを法として一意である |
-| `Inference.inferType_principal` | `inferType`の返値は有限scope二sortinstance preorder上でprincipalである |
-| `Inference.infer_relative_principal` | open termのresolved contextとtargetを同じsubstitutionで相対比較できる |
-| `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
-| `MStateTy.progress_of_evals` | typedな非終端matching stateは埋め込み評価の収束だけから一歩進む(デコード成功とdispatch到達はtypingから導出) |
-| `DM.sourceTyping_to_dm` | closed・pattern-freeの`SourceTyping`を型消去して`DM.Typing`を得る |
-| `DM.Typing.inferenceSucceeds` | 任意の`DM.Typing` derivationを埋込みcontext上で公開推論器が受理する |
+| `Inference.infer_success_sourceTyping` | 健全性：`infer`が型を返したら，その型の正しい型付け導出（`SourceTyping`）が必ず存在する |
+| `SourceTyping.infer_isSome` | 完全性：型付け可能なprogramを`infer`は必ず受理する |
+| `Inference.sourceTypable_iff_infer_isSome` | 受理同値：「型が付く」＝「推論が成功する」．注釈不要性の根拠 |
+| `Inference.sourceTypableDecidable` | 決定可能性：型が付くかどうかは計算して判定できる |
 
-targetのrenaming一意性に加えて，target単体のinstance preorder上のprincipalityと，open contextで
-context／targetを同時に比較する相対principalityまで証明済みである．一般のprogram terminationは
-主張しない．Damas--Milner側の結果はexecutable acceptanceであり，DM derivationが選ぶtargetと
-`inferType`返値の構文的一致は主張しない．
+### 推論される型の質
 
-### 証明済みのメタ理論
+MLのprincipal typeと同じ概念である：推論器が返す型は，そのprogramに付きうる型すべてを代入で
+カバーする「最も一般的な型」である．さらに型は，残ったmeta変数の名前の付け替えを除いて一意に
+決まる．
 
-| 領域 | 現在の到達点 |
+| 定理 | 意味 |
 |---|---|
-| 基盤 | soundness，completeness，受理同値，決定可能性，安全性，target一意性を公開定理として接続済み |
-| principality | 二sort instance preorder，closed target principality，open context／target相対principalityを証明済み |
-| Damas--Milner | 任意の`DM.Typing`のexecutable acceptanceと，closed source fragmentからDMへの型消去を証明済み |
-| source order | no-guessとchronological state threadingによる順序依存を意図された仕様として正負回帰で固定済み |
+| `Inference.inferType_principal` | 主要型：返値はそのprogramに付きうる型の中で最も一般的 |
+| `Inference.infer_relative_principal` | open termでも，文脈と型を同時に比較する意味で最も一般的 |
+| `SourceTyping.target_unique_modulo_renaming` | 一意性：型はresidualな二sort metaのrenamingを除いて一意 |
+
+### 実行時安全性
+
+「型付けされたprogramの実行は型を裏切らない」ことである．評価が値を返せばその値は報告された
+型を持ち（preservation），パターン変数にはmatcherが約束した型の値だけが束縛され
+（matching consistency），パターンマッチの実行は埋め込まれた式の評価が停止する限り途中で
+詰まらない（progress）．停止性そのものは主張しない．
+
+| 定理 | 意味 |
+|---|---|
+| `SourceTyping.typingInvariant` | state erasure：推論の内部状態（fresh変数の割当・履歴）を消しても型付けの事実は残る．静的な型付けと実行時安全性をつなぐ橋 |
+| `SourceTyping.safe` | 型安全性の束：closed programの型付けから，preservation・progress・matching consistencyを含む安全性package（`CoreSafety`）を一括で得る |
+| `MStateTy.progress_of_evals` | progress：typedなmatching状態は，埋め込まれた式の評価が停止する限り必ず一歩進める．デコード成功やディスパッチ先の存在は仮定ではなく型付けから導出され，残る条件は停止性（発散の不在）だけ |
+
+### 既存理論との関係
+
+Damas–MilnerはML/Haskellのlet多相型推論の標準理論である．パターンマッチを使わない断片では
+本体系はDamas–Milnerと過不足なく一致する．すなわち既存の型推論の保守的拡張になっている
+（DMで型が付くものは受理し，pattern-freeで型が付くものはDMでも型が付く）．
+
+| 定理 | 意味 |
+|---|---|
+| `DM.sourceTyping_to_dm` | 保守性：pattern-freeなclosed programの型付けは型消去でDamas–Milnerの型付けに落ちる（本体系が勝手に多くを受理してはいない） |
+| `DM.Typing.inferenceSucceeds` | DM全受理：Damas–Milnerで型が付く式は本推論器も必ず受理する（勝手に少なく受理してもいない） |
+
+一般のprogram terminationは主張しない．Damas--Milner側の結果はexecutable acceptanceであり，
+DM derivationが選ぶtargetと`inferType`返値の構文的一致は主張しない．
 
 ### Principality
+
+型 τ が τ′ より一般的（τ ⪯ τ′）とは，代入によって τ から τ′ が得られることをいう．本体系は
+capabilityと型の二sortを持つため，この「代入」は両sortを同時に動かすpaired substitutionで
+定義する．以下はその形式化である．
 
 `TypeInstance`はsource typeのfree capability／target metaだけを変更できる有限supportのpaired
 substitutionでinstance関係を定める．`ScopedTypeInstance`は二つのscopeを明示する．restrictionが
@@ -88,6 +124,10 @@ substitutionで正規化したcontextと公開targetを取り出すviewである
 `TypeInstance` principalityへ戻る．
 
 ### Damas--Milner acceptanceとconservativity
+
+「パターンマッチを使わなければ普通のMLと同じ」ことの形式化である．方向は二つある：DMで型が
+付くものは本推論器も受理する（DM全受理），本体系でpattern-freeに型が付くものはDMでも型が付く
+（保守性）．
 
 `DamasMilner`はpattern-free expression classifierとcapability-inert type decoderを持ち，埋込みの
 像と単射性を証明する．`DamasMilnerAcceptance`は一sort substitutionの合成／restriction，monotype／
@@ -121,6 +161,9 @@ FrozenSigWF Σ → InFragmentExpr e → SourceTyping Σ [] e τ →
 
 ### Source-order依存
 
+同じ部分式の集まりでも，並び順によって受理・拒否が変わることがある．これはバグではなく，
+「未解決の型変数から構造を推測しない（no-guess）」原則の帰結として意図した仕様である．
+
 checking cutはその時点のprevailing substitutionを適用したexpected headだけを観測し，未解決変数を
 slotへ先読みして構造化しない．listはsource順にstateを渡すため，既知のslot demandが先に現れる
 programは受理されても，同じ要素を逆順にしたprogramは拒否され得る．
@@ -133,6 +176,9 @@ constraintまたはchecking obligationを遅延する別calculusとして設計�
 変えるため，基盤とそのcalculusに依存するメタ定理を再確立する必要がある．
 
 ## judgmentの役割
+
+「型付け」に見えるjudgmentが四層あるのは役割が違うからである．受理（どのprogramに型が付くか）
+を定義するのは`SourceTyping`だけで，残りは証明をつなぐ内部の中継点である．
 
 | 層 | 役割 |
 |---|---|
@@ -150,8 +196,10 @@ type systemとして使ったり，その存在からsource acceptanceや推論�
 
 ## demand-directed coercion
 
-checkingは式を先にsynthesizeし，そのcutで解決したexpected typeのheadを一度だけ調べる．非恒等
-coercionはexpected headが`MatcherSlot`の場合に限られる．
+coercionとは，`Matcher`（producer）を`MatcherSlot`要求位置（consumer）へ合わせる暗黙変換で
+ある．いつ挿入するかの判断基準は一つしかない：checkingは式を先にsynthesizeし，そのcutで解決した
+expected typeのheadを一度だけ調べる．非恒等coercionはexpected headが`MatcherSlot`の場合に
+限られる．
 
 | resolved source | resolved expected | alignment |
 |---|---|---|
@@ -169,6 +217,8 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 `m : Matcher κ τ`を渡す場合も，関数適用のargument checking cutで同じalignmentを使う．
 
 ## 現在固定している境界
+
+以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．
 
 - matcher literalはactual clause evidence，shape，catch-all order，data-arm exhaustiveness，
   binder線形性，coverageをすべて要求する．
