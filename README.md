@@ -2,8 +2,8 @@
 
 非 CAS の Egison core を Lean 4 で機械化するリポジトリである．一言でいえば，Egison の
 matcher（パターンマッチの「分解の流儀」を第一級の値にしたもの）に静的型を与え，型システムの
-古典的な保証 — 注釈なしの型推論が正しく働くこと（健全性・完全性），推論される型が最も一般的で
-あること（主要型），型付けされたプログラムの実行が型を裏切らないこと（型安全性）— が成り立つ
+古典的な保証 — 注釈なしの型推論が仕様と一致して働くこと（推論の健全性・完全性），推論される型が最も一般的で
+あること（主要型），型が付いたプログラムが実行時に型エラーを起こさないこと（型システムの健全性）— が成り立つ
 ことを機械検証した．
 
 型の中心は，matcherを生成する型 `Matcher κ τ`（τ 型の値を capability κ の流儀で分解する
@@ -20,7 +20,7 @@ well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する�
 
 ```text
 infer Σ Γ e = some r                       -- 推論器が型を返したなら
-  ── soundness ──→ SourceTyping Σ Γ e r.resolvedTarget      -- その型付けは正しい
+  ── soundness ──→ SourceTyping Σ Γ e r.resolvedTarget      -- その型付けは仕様どおり導出できる
 
 SourceTyping Σ Γ e τ + FrozenSigWF Σ       -- 型が付くprogramは
   ── completeness ──→ (infer Σ Γ e).isSome = true           -- 推論器が必ず受理する
@@ -40,19 +40,35 @@ FrozenSigWF Σ →
   ((∃ τ, SourceTyping Σ Γ e τ) ↔ (infer Σ Γ e).isSome = true)
 ```
 
+なお「健全性（soundness）」という語は型システムの文献で二通りに使われるため，本READMEでは
+区別して呼ぶ．
+
+- **推論の健全性・完全性**（Damas–MilnerがAlgorithm Wについて言う意味）：アルゴリズム`infer`が
+  宣言的仕様`SourceTyping`を正しく実装していること．上の図の一段目・二段目であり，「`infer`の
+  受理と`SourceTyping`の存在が一致する」こと**だけ**を言う．実行時の話はまだ含まない．
+- **型システムの健全性**（Milnerの “well-typed programs cannot go wrong”，型安全性とも呼ぶ）：
+  型が付いたprogramは実行時に型エラーを起こさないこと．上の図の三段目であり，本READMEでは
+  「実行時安全性」の節の定理群が担う．
+
+両者を合成すると教科書的な意味の主張になる：`Inference.infer_closed_safe`は「型検査
+（`infer`）を通ったclosed programは実行時安全性package（`CoreSafety`）を得る」を直接与える
+（progressに残る条件は「実行時安全性」の節を参照）．
+
 主な公開定理は[`TypePM/PublicTheorems.lean`](TypePM/PublicTheorems.lean)から参照できる．
 以下，各定理を型システムの標準的な概念に対応させて説明する．
 
 ### 型推論の正確さ
 
-「推論器の答えを信じてよい」ことの二方向である．健全性（soundness）は誤検出がないこと
-（返した型は必ず正しい），完全性（completeness）は見落としがないこと（型が付くのに拒否する
-ことはない）．両者を合わせると，型付け可能性はアルゴリズムで決定できる．
+「推論器の答えを信じてよい」こと，すなわち推論アルゴリズムが宣言的仕様`SourceTyping`と一致する
+ことの二方向である．推論の健全性は誤検出がないこと（返した型付けは仕様どおり導出できる），
+推論の完全性は見落としがないこと（仕様上型が付くのに拒否することはない）．両者を合わせると，
+型付け可能性はアルゴリズムで決定できる．教科書でいう「型システムの健全性」（実行時エラーの
+不在）はこの節ではなく「実行時安全性」の節の内容である．
 
 | 定理 | 意味 |
 |---|---|
-| `Inference.infer_success_sourceTyping` | 健全性：`infer`が型を返したら，その型の正しい型付け導出（`SourceTyping`）が必ず存在する |
-| `SourceTyping.infer_isSome` | 完全性：型付け可能なprogramを`infer`は必ず受理する |
+| `Inference.infer_success_sourceTyping` | 推論の健全性：`infer`が型を返したら，その型の`SourceTyping`導出が必ず存在する |
+| `SourceTyping.infer_isSome` | 推論の完全性：型付け可能なprogramを`infer`は必ず受理する |
 | `Inference.sourceTypable_iff_infer_isSome` | 受理同値：「型が付く」＝「推論が成功する」．注釈不要性の根拠 |
 | `Inference.sourceTypableDecidable` | 決定可能性：型が付くかどうかは計算して判定できる |
 
@@ -70,8 +86,9 @@ MLのprincipal typeと同じ概念である：推論器が返す型は，そのp
 
 ### 実行時安全性
 
-「型付けされたprogramの実行は型を裏切らない」ことである．評価が値を返せばその値は報告された
-型を持ち（preservation），パターン変数にはmatcherが約束した型の値だけが束縛され
+教科書で「型システムの健全性」（well-typed programs cannot go wrong）と呼ばれる性質に対応する
+節である．すなわち「型付けされたprogramの実行は型を裏切らない」：評価が値を返せばその値は
+報告された型を持ち（preservation），パターン変数にはmatcherが約束した型の値だけが束縛され
 （matching consistency），パターンマッチの実行は埋め込まれた式の評価が停止する限り途中で
 詰まらない（progress）．停止性そのものは主張しない．
 
@@ -80,6 +97,7 @@ MLのprincipal typeと同じ概念である：推論器が返す型は，そのp
 | `SourceTyping.typingInvariant` | state erasure：推論の内部状態（fresh変数の割当・履歴）を消しても型付けの事実は残る．静的な型付けと実行時安全性をつなぐ橋 |
 | `SourceTyping.safe` | 型安全性の束：closed programの型付けから，preservation・progress・matching consistencyを含む安全性package（`CoreSafety`）を一括で得る |
 | `MStateTy.progress_of_evals` | progress：typedなmatching状態は，埋め込まれた式の評価が停止する限り必ず一歩進める．デコード成功やディスパッチ先の存在は仮定ではなく型付けから導出され，残る条件は停止性（発散の不在）だけ |
+| `Inference.infer_closed_safe` | 合成：型検査（`infer`）を通ったclosed programは上記の安全性packageを得る．推論の健全性と型システムの健全性をつないだ，教科書的な意味での主張 |
 
 ### 既存理論との関係
 
