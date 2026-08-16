@@ -186,10 +186,33 @@ constructorだけはterminal auditの三種のfactsを使う．従ってclosed s
 \]
 が成立する．$\mathsf{TypingInvariant}$の存在をsource ruleのpremiseに置く循環はない．
 
-$\mathsf{FrozenSigWF}$はこのscheme closednessに加えてruntime signatureの動的整合性を持つ．その下で
-evaluationは$\mathsf{TypingInvariant}$を$\mathsf{ValueTy}$へ保存し，matching machineについてtyped
-stateの一段保存，局所progress，到達可能stateの保存，成功branchのsubstitution typingが成り立つ．
+$\mathsf{FrozenSigWF}$はこのscheme closednessに加えてruntime signatureの動的整合性を持つ．
+デコード全域性のため，$\mathsf{listCtorsExclusive}$(list結果へinstantiateできるdata constructorは
+canonicalな$\mathtt{nil}$／$\mathtt{cons}$のみ)もfieldであり，$\mathsf{frozenSigWFCheck}$が
+table全体を検査する．この条件の下でevaluationは$\mathsf{TypingInvariant}$を$\mathsf{ValueTy}$へ
+保存し，matching machineについてtyped stateの一段保存，$\mathsf{StepReady}$を前提とする局所
+progress，到達可能stateの保存，成功branchのsubstitution typingが成り立つ．
 空successor列は正当なmatch failureでありstuckではない．
+
+$\mathsf{StepReady}$は(a)埋め込み式評価の収束，(b)$\mathsf{listOfV}$／$\mathsf{decodeTuple}$の
+デコード成功，(c)成功clause／armへの到達，を束ねた帰納述語だが，typed stateでは(b)(c)は仮定でなく
+定理である．到達(c)はcoverageを使わず$\mathsf{CatchAllLast}$と$\mathsf{ArmExhaustive}$だけから，
+デコード成功(b)はpreservationとcanonical form
+($\mathsf{listCtorsExclusive}$・product inversion)から放電され，構成定理
+\[
+\mathsf{MStateTy}(\Sighat,\Gamma,s,\Delta)
+\;\land\;
+s.S \neq []
+\;\land\;
+\mathsf{StateEvals}(\Sighat,\mathcal S_F,s)
+\Longrightarrow
+\mathsf{StepReady}(\mathcal S_F,s)
+\tag{\textsc{Ready-Of-Typed}}
+\]
+が成り立つ($\mathsf{StateEvals}$は先頭位置に埋め込まれた式評価の収束で，各評価は
+derivation-localなruntime-signature agreementを伴う)．従って公開の局所progress
+$\mathsf{MStateTy.progress\_of\_evals}$の前提は埋め込み評価の収束だけに縮み，残る条件は
+発散のみである．coverageは引き続きpreservation側(継続atomの型付け)の条件である．
 
 これらをsource-facingな一つの定理に束ねる．
 \[

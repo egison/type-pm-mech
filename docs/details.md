@@ -487,10 +487,31 @@ literal は `TypingInvariant` proof を保持する．
 空 successor list は正当な match failure であり stuck ではない．primitive-pattern 内の value
 pattern capture は depth-first・左から右の `PPatCoreOrder` から導出する．
 
+さらに [`TypePM/Readiness.lean`](../TypePM/Readiness.lean) は `StepReady` を typing から構成する．
+`StepReady`／`MAtomReady` は (a) 埋め込み式評価(value pattern の式・clause の body／next)の収束，
+(b) `listOfV`／`decodeTuple` のデコード成功，(c) 成功する clause／arm への到達，の三種を束ねた
+帰納述語だが，(b)(c) は typed 状態では仮定でなく定理である:
+
+- 到達 (c) は coverage を使わず，`CatchAllLast`(最終 bare-hole catch-all は全 dispatchable
+  pattern と shape 適合)と `ArmExhaustive`(`basicArmExhaustive` は irrefutable arm を要求)だけ
+  から出る．coverage は引き続き preservation 側(継続 atom の型付け)の条件である．
+- デコード成功 (b) は evaluation preservation と canonical form から出る．list 側は
+  `FrozenSigWF.listCtorsExclusive`(`List` を結果に持てる data constructor は canonical な
+  `nil`／`cons` のみ; `frozenSigWFCheck` の `listCtorCheck` 条項が table 全体を検査)が支える
+  `listOfV_isSome`，tuple 側は `ValueTy.product_inversion` による `decodeTuple_isSome` を使う．
+
+公開形は `MStateTy.progress_of_evals`: typed な非終端 top-level 状態は，埋め込み評価の収束
+(`StateEvals`; 各評価は derivation-local な `EvalRuntimeSigAgrees` を伴う)だけから一歩進む．
+すなわち局所 progress の前提は「収束」だけに縮み，発散のみが残る．capture admissibility は
+ordered route(`captureAdm_of_order_at`)と primitive route(`captureAdm_of_primitive_success`)の
+二経路で放電し，`ppm_of_captureAdm` が typed・pristine な capture 環境ごと PPM を構成する．
+
 global signature条件は `FrozenSigWF` だけである．これは従来のdynamic obligationsに加えて
-`signature.SchemesClosed`をfieldとして持つ．`SignatureChecker`の`frozenSigWFCheck`は全tableの
-scheme closednessも直接検査する有限checkerであり，`frozenSigWFCheck_sound`がその証拠を含む
-`FrozenSigWF`を構成する．function-valuedな`armExhaustive`だけは，signature構築時に固定した
+`signature.SchemesClosed`と，デコード全域性を支える`listCtorsExclusive`(`List`を結果に
+instantiate できる data constructor は canonical な`nil`／`cons`のみ)をfieldとして持つ．
+`SignatureChecker`の`frozenSigWFCheck`は全tableのscheme closednessと`listCtorCheck`も直接検査する
+有限checkerであり，`frozenSigWFCheck_sound`がその証拠を含む`FrozenSigWF`を構成する．
+function-valuedな`armExhaustive`だけは，signature構築時に固定した
 `armExhaustive = basicArmExhaustive`をsoundness theoremへ渡す．lookupで隠れる重複entryもtable全体の
 検査対象である．
 
@@ -596,6 +617,8 @@ D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定した
 - `DynamicSafetyRegression`: end-to-end evaluation safety．
 - `DynamicCaptureRegression`: value-pattern capture．
 - `DynamicDispatchRegression`: matcher cursor と dispatch．
+- `ReadinessRegression`: typed dispatch fixture 上で `MStateTy.progress_of_evals` を発火させる．
+  `StepReady`・デコード成功・committed clause／arm は与えず，埋め込み評価の収束だけを供給する．
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
@@ -640,6 +663,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingTerminalAuditErasure`／`DemandTypingTerminalErasure` | terminal-fixedな`TypingInvariant`への相互射影とmatcher終端再構成 |
 | `DemandTypingRegression`／`DemandTypingTerminalAuditErasureRegression` | raw境界，Origin-aware局所solve，terminal audit，公開state-erasure定理の回帰 |
 | `Soundness` | `SourceTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
+| `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
 | `DemandTypingSafetyRegression` | closed inferenceを公開`SourceTyping` safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件

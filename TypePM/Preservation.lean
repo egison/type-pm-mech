@@ -121,6 +121,16 @@ structure FrozenSigWF (signature : FrozenSig) : Prop where
       ValueTy signature value result
   /-- The core uses exactly the conservative executable checker. -/
   armExhaustiveBasic : signature.armExhaustive = basicArmExhaustive
+  /-- Only the canonical `nil`/`cons` declarations instantiate to a list
+  result, so every value typed at `Ty.listT` is a decodable `nil`/`cons`
+  chain.  `dataResult` alone still admits foreign constructors targeting
+  the `List` former; this field closes that gap for decode totality. -/
+  listCtorsExclusive :
+    ∀ {name scheme targets element},
+      signature.findDataCtor name = some scheme →
+      scheme.Inst targets (Ty.listT element) →
+      (name = "nil" ∧ targets = []) ∨
+      (name = "cons" ∧ targets = [element, Ty.listT element])
 
 /-- A positive frozen checker result identifies a successful data arm. -/
 theorem FrozenSigWF.armExhaustiveSuccess

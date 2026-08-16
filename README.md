@@ -45,6 +45,7 @@ FrozenSigWF Σ →
 | `Inference.inferType_principal` | `inferType`の返値は有限scope二sortinstance preorder上でprincipalである |
 | `Inference.infer_relative_principal` | open termのresolved contextとtargetを同じsubstitutionで相対比較できる |
 | `SourceTyping.safe` | closed `SourceTyping`から同じ型の内部invariantと動的安全性を得る |
+| `MStateTy.progress_of_evals` | typedな非終端matching stateは埋め込み評価の収束だけから一歩進む(デコード成功とdispatch到達はtypingから導出) |
 | `DM.sourceTyping_to_dm` | closed・pattern-freeの`SourceTyping`を型消去して`DM.Typing`を得る |
 | `DM.Typing.inferenceSucceeds` | 任意の`DM.Typing` derivationを埋込みcontext上で公開推論器が受理する |
 
@@ -194,7 +195,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
-| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Soundness` | evaluation，matching machine，公開安全性 |
+| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Soundness` | evaluation，matching machine，readiness構成，公開安全性 |
 | fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は

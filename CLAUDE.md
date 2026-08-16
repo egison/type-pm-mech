@@ -130,8 +130,12 @@ commit／pushについては次のリポジトリ固有規則を優先する．
   露出しない．低レベルのstate-erasure補題がこのpredicateを明示的に受けることは許す．
 - primitive-pattern pattern は depth-first・左から右に走査し，一度 hole を通過した後の
   value-pattern-pattern を禁止する（`PPatCoreOrder`）．この順序条件から値パターン
-  capture admissibility を導出し，公開 preservation の前提には戻さない．局所的な
-  埋込み評価の `StepReady` だけは progress 定理の明示前提としてよい．
+  capture admissibility を導出し，公開 preservation の前提には戻さない．progress の
+  公開形（`MStateTy.progress_of_evals`）の明示前提は埋込み評価の収束（`StateEvals`）
+  だけとする．`StepReady` は内部の帰納骨格であり，typed 状態では `StepReady.of_typed`
+  が収束から構成する．デコード成功や dispatch 到達を公開 premise に戻さない．dispatch
+  到達は coverage でなく `CatchAllLast`＋`ArmExhaustive` から，デコード成功は
+  preservation＋canonical form（`FrozenSigWF.listCtorsExclusive`）から放電する．
 - source-facingな公開安全性の唯一のglobal signature条件 `FrozenSigWF` は仮定に戻さず，実行可能 checker
   `frozenSigWFCheck`＋`frozenSigWFCheck_sound` で確立する．checker は保守的・
   fail closed を維持する．

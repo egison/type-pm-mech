@@ -4,6 +4,7 @@ import TypePM.SourcePrincipality
 import TypePM.RelativePrincipality
 import TypePM.PrincipalityCounterexample
 import TypePM.Soundness
+import TypePM.Readiness
 import TypePM.DamasMilnerConservativity
 import TypePM.DamasMilnerAcceptanceMutual
 
@@ -23,6 +24,10 @@ statements are introduced.
   reconstructs `SourceTyping` at its reported type.
 * `SourceTyping.safe` — closed `SourceTyping` enters the concrete dynamic safety
   package under the single public signature condition.
+* `MStateTy.progress_of_evals` — a typed nonterminal matching state whose
+  embedded evaluations converge takes one concrete step; decode success and
+  dispatch reachability are discharged from the typing evidence, so the
+  `StepReady` premise of local progress reduces to convergence alone.
 * `SourceTyping.typingInvariant` — closed `SourceTyping` yields the internal
   state-free typing invariant at exactly its published type.
 * `SourceTyping.target_unique_modulo_renaming` — any two audited

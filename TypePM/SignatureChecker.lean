@@ -1215,6 +1215,16 @@ def patternCtorCheck (signature : FrozenSig) (name : String)
         | none => false)
   | _ => false
 
+/-- Exclusivity of the canonical list constructors: a data-constructor entry
+whose scheme has a `List` result root must be the canonical `nil` or `cons`
+declaration.  Any other entry passes vacuously. -/
+def listCtorCheck (entry : String × CtorScheme) : Bool :=
+  match entry.2.result with
+  | .data "List" _ =>
+      decide (entry.1 = "nil" ∧ entry.2 = nilCanonicalScheme) ||
+        decide (entry.1 = "cons" ∧ entry.2 = consCanonicalScheme)
+  | _ => true
+
 /-- Executable closedness check for every entry in the complete frozen
 tables.  Inspecting entries directly is intentional: lookup alone would miss
 a malformed scheme shadowed by an earlier key. -/
@@ -1252,7 +1262,8 @@ def frozenSigWFCheck (signature : FrozenSig) : Bool :=
   signature.patternCtors.all (fun entry =>
     patternCtorCheck signature entry.1 entry.2) &&
   signature.primitives.all (fun entry =>
-    decide (entry.2 = primCanonicalScheme entry.1))
+    decide (entry.2 = primCanonicalScheme entry.1)) &&
+  signature.dataCtors.all listCtorCheck
 
 /-! ## Closedness boundary regression -/
 
@@ -1511,6 +1522,19 @@ theorem familyChild_demands
               (CapabilityDemands.cons demand CapabilityDemands.nil))
             tailDemand
 
+/-- A checked table entry whose scheme has a `List` result root is one of the
+two canonical list declarations. -/
+theorem listCtorCheck_sound
+    {name : String} {scheme : CtorScheme}
+    (checked : listCtorCheck (name, scheme) = true)
+    {resultArgs : List Ty}
+    (resultShape : scheme.result = .data "List" resultArgs) :
+    (name = "nil" ∧ scheme = nilCanonicalScheme) ∨
+      (name = "cons" ∧ scheme = consCanonicalScheme) := by
+  unfold listCtorCheck at checked
+  rw [resultShape] at checked
+  simpa using checked
+
 /-- A positive executable check establishes every dynamic obligation. -/
 theorem frozenSigWFCheck_sound
     {signature : FrozenSig}
@@ -1519,8 +1543,8 @@ theorem frozenSigWFCheck_sound
     FrozenSigWF signature := by
   simp only [frozenSigWFCheck, Bool.and_eq_true, decide_eq_true_eq,
     List.all_eq_true] at checked
-  obtain ⟨⟨⟨⟨⟨⟨closedChecked, nilFound⟩, consFound⟩, funsNodup⟩,
-    dataChecked⟩, patternChecked⟩, primChecked⟩ := checked
+  obtain ⟨⟨⟨⟨⟨⟨⟨closedChecked, nilFound⟩, consFound⟩, funsNodup⟩,
+    dataChecked⟩, patternChecked⟩, primChecked⟩, listChecked⟩ := checked
   refine
     { schemesClosed := schemesClosedCheck_sound closedChecked
       listSigWF :=
@@ -1534,7 +1558,8 @@ theorem frozenSigWFCheck_sound
       patternCapArgsUnique := ?_
       patternCapDemands := ?_
       patternCtorIndexed := ?_
-      primEvalTyped := ?_ }
+      primEvalTyped := ?_
+      listCtorsExclusive := ?_ }
   · intro name scheme targets result found instanceTyping
     have entryChecked := dataChecked _ (findDataCtor_mem found)
     obtain ⟨former, resultArgs, resultShape⟩ :=
@@ -1610,3 +1635,24 @@ theorem frozenSigWFCheck_sound
     have schemeCanonical := primChecked _ (findPrimitive_mem found)
     exact primEvalTyped_of_canonical nilFound consFound found
       schemeCanonical instanceTyping valuesTyped evaluated
+  · intro name scheme targets element found instanceTyping
+    have memEntry := findDataCtor_mem found
+    obtain ⟨former, resultArgs, resultShape⟩ :=
+      dataCtorCheck_result (dataChecked _ memEntry)
+    obtain ⟨arguments, resultEq⟩ :=
+      CtorScheme.instDataRoot resultShape instanceTyping
+    simp only [Ty.listT] at resultEq
+    injection resultEq with formerEq argumentsEq
+    subst formerEq
+    rcases listCtorCheck_sound (listChecked _ memEntry) resultShape with
+      ⟨nameEq, schemeEq⟩ | ⟨nameEq, schemeEq⟩
+    · subst schemeEq
+      obtain ⟨elem, targetsEq, _⟩ :=
+        nilCanonicalScheme_inst_inversion instanceTyping
+      exact .inl ⟨nameEq, targetsEq⟩
+    · subst schemeEq
+      obtain ⟨elem, targetsEq, resultElemEq⟩ :=
+        consCanonicalScheme_inst_inversion instanceTyping
+      have elemEq : element = elem := Ty.listT_injective resultElemEq
+      subst elemEq
+      exact .inr ⟨nameEq, targetsEq⟩

@@ -42,6 +42,7 @@ def auditedConstants : List Name :=
    ``TypePM.Inference.infer_closed_safe,
    ``TypePM.DemandTypingTargetUniqueness.SourceTyping.target_unique_modulo_renaming,
    ``TypePM.SourceTyping.safe,
+   ``TypePM.MStateTy.progress_of_evals,
    ``TypePM.SourceTyping.typingInvariant,
    ``TypePM.DM.sourceTyping_to_dm,
    ``TypePM.DM.Typing.inferenceSucceeds,

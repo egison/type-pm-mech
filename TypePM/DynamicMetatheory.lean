@@ -1946,6 +1946,123 @@ theorem listOfV_typed
   · intros
     trivial
 
+/-- Pointwise typing at a replicated target types every member. -/
+theorem ValueTys.replicate_mem
+    {signature : FrozenSig} {target : Ty} :
+    ∀ {values : List Value},
+      ValueTys signature values (List.replicate values.length target) →
+      ∀ value ∈ values, ValueTy signature value target
+  | [], _, _, membership => by cases membership
+  | head :: tail, typing, value, membership => by
+      simp only [List.length_cons, List.replicate_succ] at typing
+      cases typing with
+      | cons headTyping tailTyping =>
+          rcases List.mem_cons.mp membership with rfl | membership
+          · exact headTyping
+          · exact ValueTys.replicate_mem tailTyping value membership
+
+/-- Under exclusive canonical list constructors, every value typed at a list
+type is a decodable `nil`/`cons` chain. -/
+theorem listOfV_isSome
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature) :
+    ∀ {value : Value} {target : Ty},
+      ValueTy signature value (Ty.listT target) →
+      ∃ values, listOfV value = some values := by
+  let P : Value → Prop := fun value =>
+    ∀ {target : Ty},
+      ValueTy signature value (Ty.listT target) →
+      ∃ values, listOfV value = some values
+  refine Value.rec
+    (motive_1 := P)
+    (motive_2 := fun fields => ∀ value ∈ fields, P value)
+    (motive_3 := fun _ => True)
+    (motive_4 := fun _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · intro literal target typing
+    cases typing
+  · intro name fields fieldsIH target typing
+    cases typing with
+    | ctor found instanceTyping fieldsTyped =>
+        rcases signatureWF.listCtorsExclusive found instanceTyping with
+          ⟨nameEq, targetsEq⟩ | ⟨nameEq, targetsEq⟩
+        · subst nameEq
+          subst targetsEq
+          cases fieldsTyped
+          exact ⟨[], rfl⟩
+        · subst nameEq
+          subst targetsEq
+          cases fieldsTyped with
+          | @cons headValue _ restValues _ headTyping restTyped =>
+              cases restTyped with
+              | @cons tailValue _ nilValues _ tailTyping nilTyped =>
+                  cases nilTyped
+                  obtain ⟨tailValues, tailDecode⟩ :=
+                    fieldsIH tailValue (by simp) tailTyping
+                  exact ⟨headValue :: tailValues, by
+                    simp [listOfV, tailDecode]⟩
+  · intro fields _ target typing
+    cases typing
+  · intro self environment parameter body _ target typing
+    cases typing
+  · intro environment originalClauses currentClauses _ target typing
+    cases typing
+  · intro target typing
+    cases typing
+  · intro value membership
+    contradiction
+  · intro head tail headIH tailIH value membership
+    rcases List.mem_cons.mp membership with rfl | membership
+    · exact headIH
+    · exact tailIH value membership
+  · trivial
+  · intros
+    trivial
+  · intros
+    trivial
+
+/-- Every value typed at a source product arity decodes as a tuple of that
+arity; the arity-one representation is the value itself. -/
+theorem decodeTuple_isSome
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {value : Value} {targets : List Ty}
+    (typing : ValueTy signature value (prodTy targets)) :
+    ∃ values, decodeTuple targets.length value = some values := by
+  cases targets with
+  | nil =>
+      obtain ⟨values, valueEq, valuesTyped⟩ :=
+        ValueTy.product_inversion signatureWF (by simpa [prodTy] using typing)
+      subst valueEq
+      cases valuesTyped
+      exact ⟨[], by simp [decodeTuple]⟩
+  | cons head rest =>
+      cases rest with
+      | nil => exact ⟨[value], by simp [decodeTuple]⟩
+      | cons second more =>
+          obtain ⟨values, valueEq, valuesTyped⟩ :=
+            ValueTy.product_inversion signatureWF
+              (by simpa [prodTy] using typing)
+          subst valueEq
+          have lengthEq := valuesTyped.length
+          refine ⟨values, ?_⟩
+          simp [decodeTuple, lengthEq]
+
+/-- Pointwise decode totality for a list of typed product values. -/
+theorem mapM_decodeTuple_isSome
+    {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
+    {targets : List Ty} :
+    ∀ {values : List Value},
+      (∀ value ∈ values, ValueTy signature value (prodTy targets)) →
+      ∃ lists, values.mapM (decodeTuple targets.length) = some lists
+  | [], _ => ⟨[], rfl⟩
+  | value :: values, typed => by
+      obtain ⟨head, headDecode⟩ :=
+        decodeTuple_isSome signatureWF (typed value List.mem_cons_self)
+      obtain ⟨tail, tailDecode⟩ :=
+        mapM_decodeTuple_isSome signatureWF (values := values)
+          (fun candidate membership =>
+            typed candidate (List.mem_cons_of_mem _ membership))
+      exact ⟨head :: tail, by simp [List.mapM_cons, headDecode, tailDecode]⟩
+
 /-- Encoding pointwise typed elements produces a typed core list. -/
 theorem mkListV_typed
     {signature : FrozenSig} (signatureWF : FrozenSigWF signature)
