@@ -132,52 +132,46 @@ def evalSubstsFuel (SF : RuntimeSigF) :
       pure (value :: values)
 
 /-- Fuel-indexed primitive-pattern-pattern matching mirroring `PPM`.
-`some` is a successful match, `none` an explicit shape failure. -/
+The shape check runs first: a shape-failing pair is an immediate explicit
+failure with no embedded evaluation, and under a passing shape check the
+structural walk cannot fail. -/
 def ppmFuel (SF : RuntimeSigF) :
     Nat → Env → PPat → Pattern → RunResult (Option (List Pattern × Env))
   | 0, _, _, _ => .timeout
   | fuel + 1, ρ, pp, pattern =>
-    match pp, pattern with
-    | .hole, pattern => .ok (some ([pattern], []))
-    | .wild, .wild => .ok (some ([], []))
-    | .pval name, .pval expression => do
-        let value ← evalFuel SF fuel ρ expression
-        pure (some ([], [(name, value)]))
-    | .ctor name pps, .pctor name' patterns =>
-        if name == name' then do
-          let outcome ← ppmListFuel SF fuel ρ pps patterns
-          match outcome with
-          | some results =>
-              pure (some ((results.map (·.1)).flatten,
-                (results.map (·.2)).flatten))
-          | none => pure none
-        else .ok none
-    | .tuple pps, .ptuple patterns => do
-        let outcome ← ppmListFuel SF fuel ρ pps patterns
-        match outcome with
-        | some results =>
-            pure (some ((results.map (·.1)).flatten,
-              (results.map (·.2)).flatten))
-        | none => pure none
-    | _, _ => .ok none
+    if ppShapeOK pp pattern then
+      match pp, pattern with
+      | .hole, pattern => .ok (some ([pattern], []))
+      | .wild, .wild => .ok (some ([], []))
+      | .pval name, .pval expression => do
+          let value ← evalFuel SF fuel ρ expression
+          pure (some ([], [(name, value)]))
+      | .ctor _ pps, .pctor _ patterns => do
+          let results ← ppmListFuel SF fuel ρ pps patterns
+          pure (some ((results.map (·.1)).flatten,
+            (results.map (·.2)).flatten))
+      | .tuple pps, .ptuple patterns => do
+          let results ← ppmListFuel SF fuel ρ pps patterns
+          pure (some ((results.map (·.1)).flatten,
+            (results.map (·.2)).flatten))
+      | _, _ => .stuck
+    else .ok none
 
-/-- Componentwise primitive-pattern matching; `none` on any child shape
-failure or an arity mismatch. -/
+/-- Componentwise primitive-pattern matching under a passing parent shape
+check; the impossible branches are stuck. -/
 def ppmListFuel (SF : RuntimeSigF) :
     Nat → Env → List PPat → List Pattern →
-    RunResult (Option (List (List Pattern × Env)))
+    RunResult (List (List Pattern × Env))
   | 0, _, _, _ => .timeout
-  | _ + 1, _, [], [] => .ok (some [])
+  | _ + 1, _, [], [] => .ok []
   | fuel + 1, ρ, pp :: pps, pattern :: patterns => do
-      let head ← ppmFuel SF fuel ρ pp pattern
-      match head with
-      | none => pure none
+      let outcome ← ppmFuel SF fuel ρ pp pattern
+      match outcome with
       | some result => do
-          let tail ← ppmListFuel SF fuel ρ pps patterns
-          match tail with
-          | none => pure none
-          | some results => pure (some (result :: results))
-  | _ + 1, _, _, _ => .ok none
+          let results ← ppmListFuel SF fuel ρ pps patterns
+          pure (result :: results)
+      | none => .stuck
+  | _ + 1, _, _, _ => .stuck
 
 /-- Fuel-indexed reduction of one matching atom mirroring `MAtom`. -/
 def matomFuel (SF : RuntimeSigF) :

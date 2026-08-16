@@ -45,6 +45,28 @@ theorem basicArmExhaustive_success
           obtain ⟨found, member, environment, matched⟩ := induction tailChecked
           exact ⟨found, by simp [member], environment, matched⟩
 
+/-! ## Canonical primitive schemes -/
+
+/-- The canonical scheme of the `append` decomposition primitive. -/
+def appendCanonicalScheme : CtorScheme where
+  capBinders := []
+  tyBinders := [0]
+  args := [.data "List" [.var 0], .data "List" [.var 0]]
+  result := .data "List" [.var 0]
+
+/-- The canonical scheme of the `splits` decomposition primitive. -/
+def splitsCanonicalScheme : CtorScheme where
+  capBinders := []
+  tyBinders := [0]
+  args := [.data "List" [.var 0]]
+  result := .data "List"
+    [.prod [.data "List" [.var 0], .data "List" [.var 0]]]
+
+/-- The canonical scheme demanded for each declared primitive operation. -/
+def primCanonicalScheme : PrimOp → CtorScheme
+  | .append => appendCanonicalScheme
+  | .splits => splitsCanonicalScheme
+
 /-- Public well-formedness conditions for a frozen signature.  Closedness
 supports demand-directed state erasure; the remaining fields are consumed by the dynamic
 kernel. -/
@@ -131,6 +153,12 @@ structure FrozenSigWF (signature : FrozenSig) : Prop where
       scheme.Inst targets (Ty.listT element) →
       (name = "nil" ∧ targets = []) ∨
       (name = "cons" ∧ targets = [element, Ty.listT element])
+  /-- Every declared primitive uses exactly its canonical scheme; primitive
+  delta totality on typed arguments follows from the canonical shapes. -/
+  primitivesCanonical :
+    ∀ {op scheme},
+      signature.findPrimitive op = some scheme →
+      scheme = primCanonicalScheme op
 
 /-- A positive frozen checker result identifies a successful data arm. -/
 theorem FrozenSigWF.armExhaustiveSuccess

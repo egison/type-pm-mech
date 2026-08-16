@@ -282,140 +282,107 @@ theorem ppmFuel_ok {SF : RuntimeSigF} :
       PPM SF ρ pp pattern outcome
   | 0, _, _, _, _, h => by simp [ppmFuel] at h
   | fuel + 1, ρ, pp, pattern, outcome, h => by
-    cases pp with
-    | hole =>
-        cases h
-        exact .hole
-    | wild =>
-        cases pattern <;> cases h <;>
-          first
-          | exact .wild
-          | exact .fail rfl
-    | pval name =>
-        cases pattern with
-        | pval expression =>
-            simp only [ppmFuel, RunResult.monad_bind_eq_bind] at h
-            cases hEval : evalFuel SF fuel ρ expression with
-            | ok value =>
-                rw [hEval] at h
-                cases h
-                exact .pval (evalFuel_ok hEval)
-            | timeout => rw [hEval] at h; cases h
-            | stuck => rw [hEval] at h; cases h
-        | pvar name' => cases h; exact .fail rfl
-        | wild => cases h; exact .fail rfl
-        | embed name' => cases h; exact .fail rfl
-        | pctor name' patterns => cases h; exact .fail rfl
-        | pand left right => cases h; exact .fail rfl
-        | por left right => cases h; exact .fail rfl
-        | papp name' patterns => cases h; exact .fail rfl
-        | ptuple patterns => cases h; exact .fail rfl
-    | ctor name pps =>
-        cases pattern with
-        | pctor name' patterns =>
-            simp only [ppmFuel, RunResult.monad_bind_eq_bind] at h
-            split at h
-            · rename_i hName
+    simp only [ppmFuel] at h
+    split at h
+    · rename_i hShape
+      cases pp with
+      | hole =>
+          cases h
+          exact .hole
+      | wild =>
+          cases pattern with
+          | wild => cases h; exact .wild
+          | pvar _ => simp [ppShapeOK] at hShape
+          | pval _ => simp [ppShapeOK] at hShape
+          | embed _ => simp [ppShapeOK] at hShape
+          | pctor _ _ => simp [ppShapeOK] at hShape
+          | pand _ _ => simp [ppShapeOK] at hShape
+          | por _ _ => simp [ppShapeOK] at hShape
+          | papp _ _ => simp [ppShapeOK] at hShape
+          | ptuple _ => simp [ppShapeOK] at hShape
+      | pval name =>
+          cases pattern with
+          | pval expression =>
+              have h' : RunResult.bind (evalFuel SF fuel ρ expression)
+                  (fun value => pure (some ([], [(name, value)]))) =
+                  .ok outcome := h
+              cases hEval : evalFuel SF fuel ρ expression with
+              | ok value =>
+                  rw [hEval] at h'
+                  cases h'
+                  exact .pval (evalFuel_ok hEval)
+              | timeout => rw [hEval] at h'; cases h'
+              | stuck => rw [hEval] at h'; cases h'
+          | pvar _ => simp [ppShapeOK] at hShape
+          | wild => simp [ppShapeOK] at hShape
+          | embed _ => simp [ppShapeOK] at hShape
+          | pctor _ _ => simp [ppShapeOK] at hShape
+          | pand _ _ => simp [ppShapeOK] at hShape
+          | por _ _ => simp [ppShapeOK] at hShape
+          | papp _ _ => simp [ppShapeOK] at hShape
+          | ptuple _ => simp [ppShapeOK] at hShape
+      | ctor name pps =>
+          cases pattern with
+          | pctor name' patterns =>
+              simp only [ppShapeOK, Bool.and_eq_true] at hShape
+              obtain ⟨hName, _⟩ := hShape
+              have nameEq : name = name' := by simpa using hName
+              subst nameEq
+              have h' : RunResult.bind (ppmListFuel SF fuel ρ pps patterns)
+                  (fun results => pure (some ((results.map (·.1)).flatten,
+                    (results.map (·.2)).flatten))) = .ok outcome := h
               cases hList : ppmListFuel SF fuel ρ pps patterns with
-              | ok listOutcome =>
-                  rw [hList] at h
-                  simp only [RunResult.bind_ok] at h
-                  cases listOutcome with
-                  | some results =>
-                      cases h
-                      obtain ⟨lengths, zipLengths, pointwise⟩ :=
-                        ppmListFuel_some hList
-                      have nameEq : name = name' := by simpa using hName
-                      subst nameEq
-                      exact .ctor lengths zipLengths pointwise
-                  | none =>
-                      cases h
-                      refine .fail ?_
-                      simp [ppShapeOK, ppmListFuel_none_shape hList]
-              | timeout => rw [hList] at h; cases h
-              | stuck => rw [hList] at h; cases h
-            · rename_i hName
-              cases h
-              refine .fail ?_
-              have : (name == name') = false := by
-                simpa using hName
-              simp [ppShapeOK, this]
-        | pvar name' => cases h; exact .fail rfl
-        | wild => cases h; exact .fail rfl
-        | pval expression => cases h; exact .fail rfl
-        | embed name' => cases h; exact .fail rfl
-        | pand left right => cases h; exact .fail rfl
-        | por left right => cases h; exact .fail rfl
-        | papp name' patterns => cases h; exact .fail rfl
-        | ptuple patterns => cases h; exact .fail rfl
-    | tuple pps =>
-        cases pattern with
-        | ptuple patterns =>
-            simp only [ppmFuel, RunResult.monad_bind_eq_bind] at h
-            cases hList : ppmListFuel SF fuel ρ pps patterns with
-            | ok listOutcome =>
-                rw [hList] at h
-                simp only [RunResult.bind_ok] at h
-                cases listOutcome with
-                | some results =>
-                    cases h
-                    obtain ⟨lengths, zipLengths, pointwise⟩ :=
-                      ppmListFuel_some hList
-                    exact .tuple lengths zipLengths pointwise
-                | none =>
-                    cases h
-                    refine .fail ?_
-                    simp [ppShapeOK, ppmListFuel_none_shape hList]
-            | timeout => rw [hList] at h; cases h
-            | stuck => rw [hList] at h; cases h
-        | pvar name' => cases h; exact .fail rfl
-        | wild => cases h; exact .fail rfl
-        | pval expression => cases h; exact .fail rfl
-        | embed name' => cases h; exact .fail rfl
-        | pctor name' patterns => cases h; exact .fail rfl
-        | pand left right => cases h; exact .fail rfl
-        | por left right => cases h; exact .fail rfl
-        | papp name' patterns => cases h; exact .fail rfl
+              | ok results =>
+                  rw [hList] at h'
+                  simp only [RunResult.bind_ok] at h'
+                  cases h'
+                  obtain ⟨lengths, zipLengths, pointwise⟩ :=
+                    ppmListFuel_ok hList
+                  exact .ctor lengths zipLengths pointwise
+              | timeout => rw [hList] at h'; cases h'
+              | stuck => rw [hList] at h'; cases h'
+          | pvar _ => simp [ppShapeOK] at hShape
+          | wild => simp [ppShapeOK] at hShape
+          | pval _ => simp [ppShapeOK] at hShape
+          | embed _ => simp [ppShapeOK] at hShape
+          | pand _ _ => simp [ppShapeOK] at hShape
+          | por _ _ => simp [ppShapeOK] at hShape
+          | papp _ _ => simp [ppShapeOK] at hShape
+          | ptuple _ => simp [ppShapeOK] at hShape
+      | tuple pps =>
+          cases pattern with
+          | ptuple patterns =>
+              have h' : RunResult.bind (ppmListFuel SF fuel ρ pps patterns)
+                  (fun results => pure (some ((results.map (·.1)).flatten,
+                    (results.map (·.2)).flatten))) = .ok outcome := h
+              cases hList : ppmListFuel SF fuel ρ pps patterns with
+              | ok results =>
+                  rw [hList] at h'
+                  simp only [RunResult.bind_ok] at h'
+                  cases h'
+                  obtain ⟨lengths, zipLengths, pointwise⟩ :=
+                    ppmListFuel_ok hList
+                  exact .tuple lengths zipLengths pointwise
+              | timeout => rw [hList] at h'; cases h'
+              | stuck => rw [hList] at h'; cases h'
+          | pvar _ => simp [ppShapeOK] at hShape
+          | wild => simp [ppShapeOK] at hShape
+          | pval _ => simp [ppShapeOK] at hShape
+          | embed _ => simp [ppShapeOK] at hShape
+          | pctor _ _ => simp [ppShapeOK] at hShape
+          | pand _ _ => simp [ppShapeOK] at hShape
+          | por _ _ => simp [ppShapeOK] at hShape
+          | papp _ _ => simp [ppShapeOK] at hShape
+    · rename_i hShape
+      cases h
+      exact .fail (by simpa using hShape)
 
-/-- A `none` component outcome refutes the componentwise shape check. -/
-theorem ppmListFuel_none_shape {SF : RuntimeSigF} :
-    ∀ {fuel : Nat} {ρ : Env} {pps : List PPat} {patterns : List Pattern},
-      ppmListFuel SF fuel ρ pps patterns = .ok none →
-      ppShapeOKList pps patterns = false
-  | 0, _, _, _, h => by simp [ppmListFuel] at h
-  | _ + 1, _, [], [], h => by cases h
-  | _ + 1, _, [], _ :: _, _ => by simp [ppShapeOKList]
-  | _ + 1, _, _ :: _, [], _ => by simp [ppShapeOKList]
-  | fuel + 1, ρ, pp :: pps, pattern :: patterns, h => by
-      simp only [ppmListFuel, RunResult.monad_bind_eq_bind] at h
-      cases hHead : ppmFuel SF fuel ρ pp pattern with
-      | ok headOutcome =>
-          rw [hHead] at h
-          simp only [RunResult.bind_ok] at h
-          cases headOutcome with
-          | none =>
-              cases ppmFuel_ok hHead with
-              | fail headShape => simp [ppShapeOKList, headShape]
-          | some result =>
-              cases hTail : ppmListFuel SF fuel ρ pps patterns with
-              | ok tailOutcome =>
-                  rw [hTail] at h
-                  simp only [RunResult.bind_ok] at h
-                  cases tailOutcome with
-                  | none =>
-                      simp [ppShapeOKList, ppmListFuel_none_shape hTail]
-                  | some results => cases h
-              | timeout => rw [hTail] at h; cases h
-              | stuck => rw [hTail] at h; cases h
-      | timeout => rw [hHead] at h; cases h
-      | stuck => rw [hHead] at h; cases h
-
-/-- A `some` component outcome is a pointwise `PPM` success of the exact
+/-- A successful component run is a pointwise `PPM` success of the exact
 arity. -/
-theorem ppmListFuel_some {SF : RuntimeSigF} :
+theorem ppmListFuel_ok {SF : RuntimeSigF} :
     ∀ {fuel : Nat} {ρ : Env} {pps : List PPat} {patterns : List Pattern}
       {results : List (List Pattern × Env)},
-      ppmListFuel SF fuel ρ pps patterns = .ok (some results) →
+      ppmListFuel SF fuel ρ pps patterns = .ok results →
       pps.length = patterns.length ∧
         (pps.zip patterns).length = results.length ∧
         ∀ entry ∈ (pps.zip patterns).zip results,
@@ -436,24 +403,21 @@ theorem ppmListFuel_some {SF : RuntimeSigF} :
           | none => cases h
           | some result =>
               cases hTail : ppmListFuel SF fuel ρ pps patterns with
-              | ok tailOutcome =>
+              | ok tailResults =>
                   rw [hTail] at h
                   simp only [RunResult.bind_ok] at h
-                  cases tailOutcome with
-                  | none => cases h
-                  | some tailResults =>
-                      cases h
-                      obtain ⟨lengths, zipLengths, pointwise⟩ :=
-                        ppmListFuel_some hTail
-                      refine ⟨by simp [lengths], ?_, ?_⟩
-                      · simp [List.zip_cons_cons, zipLengths]
-                      · intro entry membership
-                        rw [List.zip_cons_cons, List.zip_cons_cons]
-                          at membership
-                        rcases List.mem_cons.mp membership with
-                          rfl | membership
-                        · exact ppmFuel_ok hHead
-                        · exact pointwise entry membership
+                  cases h
+                  obtain ⟨lengths, zipLengths, pointwise⟩ :=
+                    ppmListFuel_ok hTail
+                  refine ⟨by simp [lengths], ?_, ?_⟩
+                  · simp [List.zip_cons_cons, zipLengths]
+                  · intro entry membership
+                    rw [List.zip_cons_cons, List.zip_cons_cons]
+                      at membership
+                    rcases List.mem_cons.mp membership with
+                      rfl | membership
+                    · exact ppmFuel_ok hHead
+                    · exact pointwise entry membership
               | timeout => rw [hTail] at h; cases h
               | stuck => rw [hTail] at h; cases h
       | timeout => rw [hHead] at h; cases h

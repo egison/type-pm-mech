@@ -49,26 +49,6 @@ def consCanonicalScheme : CtorScheme where
   args := [.var 0, .data "List" [.var 0]]
   result := .data "List" [.var 0]
 
-/-- The canonical scheme of the `append` decomposition primitive. -/
-def appendCanonicalScheme : CtorScheme where
-  capBinders := []
-  tyBinders := [0]
-  args := [.data "List" [.var 0], .data "List" [.var 0]]
-  result := .data "List" [.var 0]
-
-/-- The canonical scheme of the `splits` decomposition primitive. -/
-def splitsCanonicalScheme : CtorScheme where
-  capBinders := []
-  tyBinders := [0]
-  args := [.data "List" [.var 0]]
-  result := .data "List"
-    [.prod [.data "List" [.var 0], .data "List" [.var 0]]]
-
-/-- The canonical scheme demanded for each declared primitive operation. -/
-def primCanonicalScheme : PrimOp → CtorScheme
-  | .append => appendCanonicalScheme
-  | .splits => splitsCanonicalScheme
-
 /-- The canonical `nil` scheme produces every instantiated list type. -/
 theorem nilCanonicalScheme_inst (target : Ty) :
     nilCanonicalScheme.Inst [] (Ty.listT target) := by
@@ -1559,7 +1539,8 @@ theorem frozenSigWFCheck_sound
       patternCapDemands := ?_
       patternCtorIndexed := ?_
       primEvalTyped := ?_
-      listCtorsExclusive := ?_ }
+      listCtorsExclusive := ?_
+      primitivesCanonical := ?_ }
   · intro name scheme targets result found instanceTyping
     have entryChecked := dataChecked _ (findDataCtor_mem found)
     obtain ⟨former, resultArgs, resultShape⟩ :=
@@ -1656,3 +1637,5 @@ theorem frozenSigWFCheck_sound
       have elemEq : element = elem := Ty.listT_injective resultElemEq
       subst elemEq
       exact .inr ⟨nameEq, targetsEq⟩
+  · intro op scheme found
+    exact primChecked _ (findPrimitive_mem found)

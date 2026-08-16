@@ -136,6 +136,13 @@ commit／pushについては次のリポジトリ固有規則を優先する．
   が収束から構成する．デコード成功や dispatch 到達を公開 premise に戻さない．dispatch
   到達は coverage でなく `CatchAllLast`＋`ArmExhaustive` から，デコード成功は
   preservation＋canonical form（`FrozenSigWF.listCtorsExclusive`）から放電する．
+- 式層の大域 progress は fuel 付き参照インタプリタ上の `typed_never_stuck` で閉じる．
+  その前提は `FrozenSigWF`・closed な `TypingInvariant`・`freeVars = []`・空 runtime 表との
+  agreement だけとし，デコード成功・dispatch 到達・収束を premise に戻さない．層別定理
+  （`evalSafe`／`matomSafe`／`stepSafe`／`searchSafe`／`dispatchSafe`／`ppmSafe`）の kernel
+  前提は常に同じ fuel の真に下（`∀ fuel' < fuel`）に束縛し，unbounded kernel を導入しない
+  （strong induction `noStuck_master` が組めなくなる）．結果値の `ValueTy`／`ValuePristine`
+  は adequacy＋関係的 preservation 経由で回収し，fuel 側で型付けを再証明しない．
 - source-facingな公開安全性の唯一のglobal signature条件 `FrozenSigWF` は仮定に戻さず，実行可能 checker
   `frozenSigWFCheck`＋`frozenSigWFCheck_sound` で確立する．checker は保守的・
   fail closed を維持する．

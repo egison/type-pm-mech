@@ -214,6 +214,31 @@ derivation-localなruntime-signature agreementを伴う)．従って公開の局
 $\mathsf{MStateTy.progress\_of\_evals}$の前提は埋め込み評価の収束だけに縮み，残る条件は
 発散のみである．coverageは引き続きpreservation側(継続atomの型付け)の条件である．
 
+この「発散のみ」は式層で大域化されている．$\mathsf{evalFuel}$は評価・matching・clause dispatch
+の全再帰をfuelで打ち切る関数的big-step評価器で，結果を$\mathsf{ok}$(値)・$\mathsf{timeout}$
+(fuel切れ)・$\mathsf{stuck}$(適用できる規則がない)の三値で返し，発散と詰まりを区別する．
+adequacy($\mathsf{evalFuel\_ok}$: $\mathsf{ok}$の実行は関係的big-step導出を再生する)が
+これを既存のpreservationへ接続し，fuel上のstrong inductionが式・atom・状態・探索・
+clause dispatch・header照合の各層の安全性を束ねて，次を与える．
+\[
+\frac{
+  \mathsf{FrozenSigWF}(\Sighat)
+  \qquad
+  \mathsf{TypingInvariant}(\Sighat,\emptyset,e,\tau)
+  \qquad
+  \mathsf{fv}(e)=\emptyset
+}{
+  \forall n.\; \mathsf{evalFuel}\,n\,e \neq \mathsf{stuck}
+}
+\tag{\textsc{No-Stuck}}
+\]
+(Lean: $\mathsf{typed\_never\_stuck}$．runtime pattern-function表が空のfragmentに対する
+主張で，空表とのagreement $\mathsf{RuntimeSigAgrees}(\Sighat,\Gamma,[])$を前提に含む．
+これは$\mathsf{patternFuns}=[]$の署名なら$\mathsf{runtimeSigAgrees\_nil}$で構成できる．)
+型付きclosed programの実行が値を返さない唯一の可能性は$\mathsf{timeout}$，すなわち発散で
+ある．中間値の型付け・pristine性は機能的に再証明せず，adequacyを介して関係的preservationから
+回収する．停止性そのものは引き続き主張しない．
+
 これらをsource-facingな一つの定理に束ねる．
 \[
 \frac{

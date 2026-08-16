@@ -89,14 +89,17 @@ MLのprincipal typeと同じ概念である：推論器が返す型は，そのp
 教科書で「型システムの健全性」（well-typed programs cannot go wrong）と呼ばれる性質に対応する
 節である．すなわち「型付けされたprogramの実行は型を裏切らない」：評価が値を返せばその値は
 報告された型を持ち（preservation），パターン変数にはmatcherが約束した型の値だけが束縛され
-（matching consistency），パターンマッチの実行は埋め込まれた式の評価が停止する限り途中で
-詰まらない（progress）．停止性そのものは主張しない．
+（matching consistency），実行は途中で詰まらない（progress）．progressはfuel付き参照
+インタプリタ上の式層の定理として閉じている：型付きclosed programはどのfuelでも
+`stuck`（適用できる規則がない状態）に到達せず，値を返さない唯一の可能性はfuel切れ
+（発散）である．停止性そのものは主張しない．
 
 | 定理 | 意味 |
 |---|---|
 | `SourceTyping.typingInvariant` | state erasure：推論の内部状態（fresh変数の割当・履歴）を消しても型付けの事実は残る．静的な型付けと実行時安全性をつなぐ橋 |
 | `SourceTyping.safe` | 型安全性の束：closed programの型付けから，preservation・progress・matching consistencyを含む安全性package（`CoreSafety`）を一括で得る |
-| `MStateTy.progress_of_evals` | progress：typedなmatching状態は，埋め込まれた式の評価が停止する限り必ず一歩進める．デコード成功やディスパッチ先の存在は仮定ではなく型付けから導出され，残る条件は停止性（発散の不在）だけ |
+| `MStateTy.progress_of_evals` | progress（関係的semantics上の局所形）：typedなmatching状態は，埋め込まれた式の評価が停止する限り必ず一歩進める．デコード成功やディスパッチ先の存在は仮定ではなく型付けから導出される |
+| `typed_never_stuck` | progress（式層の大域形）：型付きclosed programをfuel付き参照インタプリタで走らせると，どのfuelでも`stuck`にならない．fuel上のstrong induction（`noStuck_master`）が式・atom・状態・探索・clause dispatch・header照合の全層を束ね，adequacy（`evalFuel_ok`：`ok`なら関係的導出が再生される）が既存のpreservationへ接続する．対象はruntime pattern-function表が空のfragment |
 | `Inference.infer_closed_safe` | 合成：型検査（`infer`）を通ったclosed programは上記の安全性packageを得る．推論の健全性と型システムの健全性をつないだ，教科書的な意味での主張 |
 
 ### 既存理論との関係
@@ -263,7 +266,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
-| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタ，公開安全性 |
+| dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Interpreter*Safe`, `InterpreterNoStuck`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタとadequacy，層別no-stuck定理とfuel上のstrong induction，公開安全性 |
 | fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は

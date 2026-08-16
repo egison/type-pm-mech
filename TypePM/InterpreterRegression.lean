@@ -1,4 +1,5 @@
 import TypePM.InterpreterAdequacy
+import TypePM.InterpreterDispatchBridge
 import TypePM.DynamicSafetyRegression
 
 /-!
@@ -35,6 +36,13 @@ theorem program_run_typed :
     EnvPristine.nil
     (fun name value found => by simp [Env.find?] at found)
     program_typed
+
+/-- The headline no-stuck theorem on the fixture: the typed closed program
+cannot stick, at any fuel. -/
+theorem program_never_stuck (fuel : Nat) :
+    evalFuel [] fuel [] program ≠ .stuck :=
+  typed_never_stuck signature_wf global_runtime_agreement program_typed
+    rfl fuel
 
 end InterpreterRegression
 end TypePM

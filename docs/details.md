@@ -506,6 +506,26 @@ pattern capture は depth-first・左から右の `PPatCoreOrder` から導出�
 ordered route(`captureAdm_of_order_at`)と primitive route(`captureAdm_of_primitive_success`)の
 二経路で放電し，`ppm_of_captureAdm` が typed・pristine な capture 環境ごと PPM を構成する．
 
+式層ではこの「発散のみ」を fuel 付き参照インタプリタで大域化する(**`typed_never_stuck`**)．
+証明の構造:
+
+- 各層に kernel 前提つきの standalone 定理を置く: `evalSafe`(式)・`matomSafe`(atom 一歩)・
+  `stepSafe`／`searchSafe`(状態・探索)・`dispatchSafe`／`armsSafe`(clause／arm 歩行)・
+  `ppmSafe`(`CaptureAdm` 駆動の header 照合)・`ppmSafe_primitive`(primForm の浅い直接解析)．
+  kernel は常に「同じ fuel の真に下」(`∀ fuel' < fuel`)に束縛される．
+- `NoStuckAt` が式・atom・状態・探索の 4 成分を束ね，`noStuck_master` が fuel 上の
+  strong induction で全 fuel へ閉じる．clause dispatch だけ `DispatchKernelAt` 契約として
+  分離し，`dispatchKernelAt_discharge` が matcher literal の inversion
+  (pristine が cursor=start を強制・`matcherLiteral_inversion`・`matcher_inversion`・
+  catch-all clause が shape-true witness)から放電する．
+- 安全性の意味論的成分(結果値の `ValueTy`・`ValuePristine`)は機能的に再証明せず，
+  adequacy(`evalFuel_ok`)＋`EvalRuntimeSigAgrees.of_global`＋既存の関係的 preservation で
+  回収する．新規に必要なのは構文的スコープ層(`ScopedValue` 系)だけで，これは closure が
+  存在量化された文脈を持つ `ValueTy` に触れずに変数 lookup の全域性を与える．
+- 対象は runtime pattern-function 表が空(`SF = []`)の fragment であり，前提の
+  `RuntimeSigAgrees signature context []` は `runtimeSigAgrees_nil`(`patternFuns = []`)で
+  構成できる．pattern-function head の atom は同じ agreement から反証される．
+
 global signature条件は `FrozenSigWF` だけである．これは従来のdynamic obligationsに加えて
 `signature.SchemesClosed`と，デコード全域性を支える`listCtorsExclusive`(`List`を結果に
 instantiate できる data constructor は canonical な`nil`／`cons`のみ)をfieldとして持つ．
@@ -619,6 +639,9 @@ D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定した
 - `DynamicDispatchRegression`: matcher cursor と dispatch．
 - `ReadinessRegression`: typed dispatch fixture 上で `MStateTy.progress_of_evals` を発火させる．
   `StepReady`・デコード成功・committed clause／arm は与えず，埋め込み評価の収束だけを供給する．
+- `InterpreterRegression`: fixture を fuel 20 の kernel 簡約(`rfl`)で実行し，adequacy 経由で
+  preservation へ接続する．`program_never_stuck` は公開 `typed_never_stuck` を fixture の
+  typing と `freeVars = []`(`rfl`)だけで発火させる．
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
@@ -664,7 +687,11 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingRegression`／`DemandTypingTerminalAuditErasureRegression` | raw境界，Origin-aware局所solve，terminal audit，公開state-erasure定理の回帰 |
 | `Soundness` | `SourceTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
 | `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
-| `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰 |
+| `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰と`program_never_stuck` |
+| `TermFreeVars`／`InterpreterScoping`／`InterpreterSafetyDefs` | 構文的自由変数層（`Expr.freeVars`・`Pattern.scopeVars`・`Pattern.exprVarsUnder`・`Env.names`），値／環境／状態のスコープ述語（`ScopedValue`など；closureの存在文脈をfv包含で回避），`Safe`契約・`AtomsScoped`・`stackBinders` |
+| `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`；pattern-function headは空SF agreementで反証），状態一歩＋探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
+| `InterpreterPpmSafe`／`InterpreterPpmPrimitive`／`InterpreterDispatchSafe` | clause header照合の安全性（`CaptureAdm`駆動の`ppmSafe`／`ppmListSafe`と，primForm patternの浅い直接解析`ppmSafe_primitive`），clause／arm歩行の安全性（`dispatchSafe`／`armsSafe`・`DispatchBranchProps`；`pdMatch_scoped`等の補題込み） |
+| `InterpreterNoStuck`／`InterpreterDispatchBridge` | fuel上のstrong induction（束`NoStuckAt`＋`noStuck_master`；dispatch契約は`DispatchKernelAt`として分離），matcher literalのinversionからdispatch契約を放電する`dispatchKernelAt_discharge`（capture-admissible route＋primitive routeの2経路），空SF agreementの構成子`runtimeSigAgrees_nil`，**公開headline `typed_never_stuck`**（型付きclosed programは全fuelで`stuck`にならない） |
 | `DemandTypingSafetyRegression` | closed inferenceを公開`SourceTyping` safety packageへ接続するend-to-end回帰 |
 
 ## 9. 検証条件
@@ -675,7 +702,7 @@ demand-directed関連moduleの役割は次のとおりである．
 埋めない．
 
 公理監査：`AxiomAudit` は，`PublicTheorems` の見出し定理と README の定理表が指す公開定数
-（計17個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
+（計21個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
 `Quot.sound` 以外の公理（`native_decide` が導入する補助公理，`sorryAx`，project-defined
 `axiom`）が現れた時点で elaboration を失敗させる．検査は許容集合方式なので，公理の生成名の
 変化に依存しない．監査対象は double-backquote 名前リテラルで解決するため，公開定理の改名は

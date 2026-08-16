@@ -5,6 +5,8 @@ import TypePM.RelativePrincipality
 import TypePM.PrincipalityCounterexample
 import TypePM.Soundness
 import TypePM.Readiness
+import TypePM.InterpreterDispatchBridge
+import TypePM.InterpreterRegression
 import TypePM.DamasMilnerConservativity
 import TypePM.DamasMilnerAcceptanceMutual
 
@@ -28,6 +30,15 @@ statements are introduced.
   embedded evaluations converge takes one concrete step; decode success and
   dispatch reachability are discharged from the typing evidence, so the
   `StepReady` premise of local progress reduces to convergence alone.
+* `typed_never_stuck` — expression-layer progress: a typed closed program
+  run by the fuel-indexed reference interpreter never reaches a stuck
+  configuration, at any fuel; nontermination (timeout) remains the only
+  way to fail to produce a value.  Proved by `noStuck_master`, a strong
+  induction on fuel that ties every interpreter layer (expression, atom,
+  state, search, clause dispatch, header match) to its safety statement.
+* `evalFuel_ok` — adequacy of the reference interpreter: every successful
+  fuel-indexed run replays as a relational big-step derivation, connecting
+  `typed_never_stuck` to the relational preservation theorems.
 * `SourceTyping.typingInvariant` — closed `SourceTyping` yields the internal
   state-free typing invariant at exactly its published type.
 * `SourceTyping.target_unique_modulo_renaming` — any two audited
