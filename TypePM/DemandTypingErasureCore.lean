@@ -872,7 +872,8 @@ theorem stateFactorization_matcher_of_clauses
     (DDLedger.RefinesBelow.refl q ledger)
   have freezing := DDErasure.StateFactorization.ofTransition
     (S := S') (SupplyExtends.refl q')
-    (DDLedger.RefinesBelow.freezeMatcherProducer q' ledger₁ capability)
+    (DDLedger.RefinesBelow.freezeMatcherProducerExcept q' ledger₁ capability
+      (Inference.borrowedMatcherCapVarsAt S' context))
   exact (allocation.trans clausesFactorization).trans freezing
 
 /-- `matchAll` is a direct chronological composition.  The user-pattern

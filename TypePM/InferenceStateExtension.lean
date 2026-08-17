@@ -102,6 +102,18 @@ theorem InferState.stateExtension_protectMatcherCapability
     intro varId membership
     exact List.mem_append_left _ membership
 
+theorem InferState.stateExtension_protectMatcherCapabilityExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    state.StateExtension
+      (state.protectMatcherCapabilityExcept capability borrowed) where
+  history := state.historyPrefix_protectMatcherCapabilityExcept capability
+    borrowed
+  supplyCap := Nat.le_refl _
+  supplyTy := Nat.le_refl _
+  protectedCaps := by
+    intro varId membership
+    exact List.mem_append_left _ membership
+
 theorem InferState.stateExtension_freshTy
     (state : InferState) (origin : ConstraintOrigin) :
     state.StateExtension (state.freshTy origin).2 where

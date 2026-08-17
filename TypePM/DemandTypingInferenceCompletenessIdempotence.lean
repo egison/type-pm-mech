@@ -59,6 +59,13 @@ theorem PrevailingIdempotent.protectMatcherCapability
     PrevailingIdempotent (state.protectMatcherCapability capability) := by
   simpa [PrevailingIdempotent] using idem
 
+theorem PrevailingIdempotent.protectMatcherCapabilityExcept
+    {state : InferState} (idem : PrevailingIdempotent state)
+    (capability : Cap) (borrowed : List CapVar) :
+    PrevailingIdempotent
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  simpa [PrevailingIdempotent] using idem
+
 theorem PrevailingIdempotent.freezeCapabilityExport
     {state : InferState} (idem : PrevailingIdempotent state)
     (capImages : List CapVar) (exportedPayload : Ty) :

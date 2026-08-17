@@ -283,6 +283,19 @@ def freezeMatcherProducer (ledger : CapabilityOriginLedger) (capability : Cap) :
   ledger.setOrigins
     (matcherProducerLeaves ledger capability) .renameOnly
 
+/-- Matcher-producer leaves after removing capabilities supplied by ambient
+slot demands. -/
+def matcherProducerLeavesExcept (ledger : CapabilityOriginLedger)
+    (capability : Cap) (borrowed : List CapVar) : List CapVar :=
+  Inference.matcherProducerLedgerLeavesExcept ledger capability borrowed
+
+/-- Finalize a matcher while retaining structural flexibility for ambient
+slot-demand variables. -/
+def freezeMatcherProducerExcept (ledger : CapabilityOriginLedger)
+    (capability : Cap) (borrowed : List CapVar) : CapabilityOriginLedger :=
+  ledger.setOrigins
+    (matcherProducerLeavesExcept ledger capability borrowed) .renameOnly
+
 theorem exportLeaves_origin
     (ledger : CapabilityOriginLedger) (S : Subst)
     (capImages : List CapVar) (exportedPayload : Ty) (varId : CapVar)
@@ -308,6 +321,30 @@ theorem matcherProducerLeaves_origin
   simp [matcherProducerLeaves, Inference.matcherProducerLedgerLeaves]
     at membership
   cases originEquation : ledger.originOf varId <;> simp_all
+
+theorem matcherProducerLeavesExcept_recorded
+    (ledger : CapabilityOriginLedger) (capability : Cap)
+    (borrowed : List CapVar) (varId : CapVar)
+    (membership : varId ∈ matcherProducerLeavesExcept ledger capability
+      borrowed) :
+    varId ∈ capability.fcv ∧ varId ∈ ledger.map Prod.fst := by
+  simp only [matcherProducerLeavesExcept,
+    Inference.matcherProducerLedgerLeavesExcept, List.mem_filter]
+    at membership
+  exact matcherProducerLeaves_recorded ledger capability varId
+    (by simpa [matcherProducerLeaves] using membership.1)
+
+theorem matcherProducerLeavesExcept_origin
+    (ledger : CapabilityOriginLedger) (capability : Cap)
+    (borrowed : List CapVar) (varId : CapVar)
+    (membership : varId ∈ matcherProducerLeavesExcept ledger capability
+      borrowed) :
+    ledger.originOf varId = .structuralFlexible := by
+  simp only [matcherProducerLeavesExcept,
+    Inference.matcherProducerLedgerLeavesExcept, List.mem_filter]
+    at membership
+  exact matcherProducerLeaves_origin ledger capability varId
+    (by simpa [matcherProducerLeaves] using membership.1)
 
 theorem markSchemeInstance_origin_of_mem
     (ledger : CapabilityOriginLedger) (q : InferenceBase.FreshSupply)

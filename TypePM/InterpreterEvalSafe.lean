@@ -137,6 +137,33 @@ private theorem primEval_scoped {op : PrimOp} {values : List Value}
                   · intro x hx
                     exact listOfV_scoped (valuesScoped v (by simp)) hDecode
                       x (List.drop_subset _ _ hx)
+  | submultisetSplits =>
+      cases values with
+      | nil => exact nomatch evaluation
+      | cons v rest =>
+          cases rest with
+          | cons _ _ => exact nomatch evaluation
+          | nil =>
+              cases hDecode : listOfV v with
+              | none => simp [primEval, hDecode] at evaluation
+              | some elements =>
+                  simp [primEval, hDecode] at evaluation
+                  subst evaluation
+                  refine mkListV_scoped ?_
+                  intro splitValue membership
+                  obtain ⟨⟨left, right⟩, splitMembership, rfl⟩ :=
+                    List.mem_map.mp membership
+                  obtain ⟨leftMembers, rightMembers⟩ :=
+                    submultisetSplits_members splitMembership
+                  refine ScopedValue.tuple
+                    (.cons (mkListV_scoped ?_)
+                      (.cons (mkListV_scoped ?_) .nil))
+                  · intro x hx
+                    exact listOfV_scoped (valuesScoped v (by simp)) hDecode
+                      x (leftMembers x hx)
+                  · intro x hx
+                    exact listOfV_scoped (valuesScoped v (by simp)) hDecode
+                      x (rightMembers x hx)
 
 /-- Pointwise value typing of a successful list evaluation, recovered
 relationally. -/

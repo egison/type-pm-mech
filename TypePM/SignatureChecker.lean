@@ -19,7 +19,7 @@ theorem `frozenSigWFCheck_sound` discharges every semantic field of
   check via the substitution-agreement converse lemmas below;
 * the canonical `nil`/`cons` declarations witness `ListSigWF`;
 * primitive delta preservation is proved once per primitive operation
-  (`append`, `splits`) against its canonical scheme;
+  (`append`, `splits`, `submultisetSplits`) against its canonical scheme;
 * pattern constructors are restricted to the canonical single-parameter
   collection family (`nil`/`cons`/`join` over one observable former), for
   which capability projection is inverted explicitly.
@@ -1166,6 +1166,42 @@ theorem primEvalTyped_of_canonical {signature : FrozenSig}
               · intro element membership
                 exact listOfV_valueTy consFound argTyped argDecode element
                   (List.mem_of_mem_drop membership)
+  | submultisetSplits =>
+      obtain ⟨target, targetsEq, resultEq⟩ :=
+        splitsCanonicalScheme_inst_inversion instanceTyping
+      subst targetsEq resultEq
+      cases valuesTyped with
+      | @cons argValue _ nilValues _ argTyped nilTyped =>
+          cases nilTyped
+          have evaluatedBind :
+              ((listOfV argValue).bind fun elements =>
+                some (mkListV (submultisetSplits elements |>.map fun split =>
+                  .tuple [mkListV split.1, mkListV split.2]))) =
+                some value := evaluated
+          cases argDecode : listOfV argValue with
+          | none => rw [argDecode] at evaluatedBind; cases evaluatedBind
+          | some elements =>
+              rw [argDecode] at evaluatedBind
+              have valueEq :
+                  mkListV (submultisetSplits elements |>.map fun split =>
+                    Value.tuple [mkListV split.1, mkListV split.2]) = value := by
+                simpa using evaluatedBind
+              subst valueEq
+              refine mkListV_valueTy nilFound consFound ?_
+              intro splitValue splitMem
+              obtain ⟨⟨left, right⟩, splitMembership, rfl⟩ :=
+                List.mem_map.mp splitMem
+              obtain ⟨leftMembers, rightMembers⟩ :=
+                submultisetSplits_members splitMembership
+              refine ValueTy.tuple ?_
+              refine .cons (mkListV_valueTy nilFound consFound ?_)
+                (.cons (mkListV_valueTy nilFound consFound ?_) .nil)
+              · intro element membership
+                exact listOfV_valueTy consFound argTyped argDecode element
+                  (leftMembers element membership)
+              · intro element membership
+                exact listOfV_valueTy consFound argTyped argDecode element
+                  (rightMembers element membership)
 
 /-! ## The executable checker -/
 
@@ -1345,10 +1381,7 @@ theorem findPrimitive_mem
       simp only [Option.map_some, Option.some.injEq] at found
       have entryMem := List.mem_of_find?_eq_some findResult
       have opEq : entry.1 = op := by
-        have beqTrue := List.find?_some findResult
-        cases h : entry.1 <;> cases op <;> rw [h] at beqTrue
-        · exact absurd beqTrue (by decide)
-        · exact absurd beqTrue (by decide)
+        simpa only [beq_iff_eq] using List.find?_some findResult
       rw [← opEq, ← found]
       exact entryMem
 

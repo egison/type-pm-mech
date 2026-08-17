@@ -56,6 +56,14 @@ theorem InferState.AdmissibleTrace.protectMatcherCapability
     (state.protectMatcherCapability capability).AdmissibleTrace := by
   simpa [InferState.AdmissibleTrace, LedgerAdmissibleSteps] using admissible
 
+/-- Selective matcher protection also leaves all stored solve snapshots
+unchanged. -/
+theorem InferState.AdmissibleTrace.protectMatcherCapabilityExcept
+    {state : InferState} (admissible : state.AdmissibleTrace)
+    (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).AdmissibleTrace := by
+  simpa [InferState.AdmissibleTrace, LedgerAdmissibleSteps] using admissible
+
 /-- Export freezing appends an event and changes only current producer ledgers;
 all earlier solve snapshots remain unchanged. -/
 theorem InferState.AdmissibleTrace.freezeCapabilityExport

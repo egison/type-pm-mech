@@ -235,7 +235,8 @@ hole slotに対して同じchecking判断を使う．
 
 matcher literalは全clauseで一つのfresh targetを共有する．終端substitutionでhole dualを解決して
 evidenceを再計算し，shape，catch-all order，binder線形性，arm exhaustiveness，coverageを検査する．
-最後に，final capabilityに現れる全demand-owned explicit ledger keyのstructural leafだけをfreezeする．
+最後に，final capabilityに現れるmatcher-owned explicit ledger keyのstructural leafだけをfreezeする．
+active contextのtop-level slot demandまたはdirect-selfの引数slotから借りたleafは新規freeze対象から除く．
 \begin{mathpar}
 \inferrule{
   q+\langle0,1\rangle;S;\Omega;\Gamma\vdash\mathit{cls}

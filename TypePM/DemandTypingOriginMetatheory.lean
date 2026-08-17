@@ -281,9 +281,9 @@ theorem DemandSynthOrigin.ledgerEvolution
       have clausesEvolution := DDClausesOrigin.ledgerEvolution clausesOrigin
         preEvolution.1
       have traversed := preEvolution.trans bump clausesEvolution
-      ⟨LedgerBelow.freezeMatcherProducer _ clausesEvolution.1,
+      ⟨LedgerBelow.freezeMatcherProducerExcept _ _ clausesEvolution.1,
         traversed.2.trans
-          (RefinesBelow.freezeMatcherProducer q _ _)⟩
+          (RefinesBelow.freezeMatcherProducerExcept q _ _ _)⟩
   | .matchAll targetOrigin patternOrigin targetAligned matcherOrigin
       bodyOrigin =>
       have targetEvolution := DemandSynthOrigin.ledgerEvolution targetOrigin below

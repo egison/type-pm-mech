@@ -303,6 +303,252 @@ theorem unary_pattern_function_step_mirror :
   StepRuntimeSigAgrees.of_global unary_global_runtime_agreement
     unary_pattern_function_step
 
+/-! ## Parameterized execution and the variable-only source boundary -/
+
+/-!
+The original `unaryScheme` deliberately uses target type `Unit`.  This core
+has no runtime inhabitant of `Unit` (`()` is the distinct nullary-product type
+`prod []`), so it cannot isolate a source-inference rejection on a closed
+runtime value.  The aligned declaration below changes only the frozen
+use-site scheme to `Int`; runtime erasure is still exactly the existing
+`pass(parameter) = embed parameter` definition.
+-/
+
+def alignedUnaryDual (varId : CapVar) : Dual :=
+  ⟨.var varId, .int⟩
+
+private def alignedUnarySchemeAt (varId : CapVar) : DualScheme where
+  capBinders := [varId]
+  tyBinders := []
+  args := [alignedUnaryDual varId]
+  result := alignedUnaryDual varId
+
+def alignedUnaryScheme : DualScheme where
+  capBinders := [unaryBinder]
+  tyBinders := []
+  args := [alignedUnaryDual unaryBinder]
+  result := alignedUnaryDual unaryBinder
+
+def alignedUnaryDefinition : PatternDef where
+  name := "pass"
+  parameters := [("parameter", .int)]
+  body := .embed "parameter"
+
+def alignedUnarySignature : FrozenSig :=
+  { DynamicSafetyRegression.signature with
+    patternFuns := [("pass", alignedUnaryScheme)] }
+
+/-- The target-aligned negative fixture is otherwise an admissible frozen
+signature; its rejection is not caused by a malformed or open declaration. -/
+theorem aligned_unary_signature_wf :
+    FrozenSigWF alignedUnarySignature :=
+  frozenSigWFCheck_sound (by decide) rfl
+
+def alignedUnaryRuntimeSignature : RuntimeSigF :=
+  [("pass", alignedUnaryDefinition.runtime)]
+
+/-- Target annotations are erased at runtime, so this is the same checked
+parameter/body expansion exercised by the earlier step-level fixture. -/
+private theorem aligned_runtime_erasure :
+    alignedUnaryRuntimeSignature = unaryRuntimeSignature := by
+  rfl
+
+private theorem alignedUnarySchemeAt_instance_transport
+    (source target : CapVar) {args : List Dual} {result : Dual}
+    (instanceTyping : (alignedUnarySchemeAt source).ValueFlowInst args result) :
+    (alignedUnarySchemeAt target).ValueFlowInst args result := by
+  rcases instanceTyping with ⟨C, T, instanceTyping⟩
+  rcases instanceTyping.capBinderVariable source
+      (by simp [alignedUnarySchemeAt]) with ⟨image, imageEquation⟩
+  have argsEquation : [alignedUnaryDual image] = args := by
+    simpa [alignedUnarySchemeAt, alignedUnaryDual, Dual.apply, Cap.apply,
+      imageEquation] using instanceTyping.argsResult
+  have resultEquation : alignedUnaryDual image = result := by
+    simpa [alignedUnarySchemeAt, alignedUnaryDual, Dual.apply, Cap.apply,
+      imageEquation] using instanceTyping.resultResult
+  refine ⟨Unification.CapSubst.single target (.var image), TySubst.id, ?_⟩
+  refine
+    { capSupport := ?_
+      tySupport := TySubst.id_supportWithin []
+      capBinderVariable := ?_
+      argsResult := ?_
+      resultResult := ?_ }
+  · intro candidate outside
+    have distinct : candidate ≠ target := by
+      simpa [alignedUnarySchemeAt] using outside
+    exact if_neg (Ne.symm distinct)
+  · intro candidate member
+    have equal : candidate = target := by
+      simpa [alignedUnarySchemeAt] using member
+    subst candidate
+    exact ⟨image, if_pos rfl⟩
+  · simpa [alignedUnarySchemeAt, alignedUnaryDual, Dual.apply, Cap.apply,
+      Unification.CapSubst.single] using argsEquation
+  · simpa [alignedUnarySchemeAt, alignedUnaryDual, Dual.apply, Cap.apply,
+      Unification.CapSubst.single] using resultEquation
+
+private theorem alignedUnarySchemeAt_equivalent (left right : CapVar) :
+    (alignedUnarySchemeAt left).ValueFlowEquivalent
+      (alignedUnarySchemeAt right) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro args result
+    exact ⟨alignedUnarySchemeAt_instance_transport left right,
+      alignedUnarySchemeAt_instance_transport right left⟩
+  · simp [DualScheme.fcv, alignedUnarySchemeAt, alignedUnaryDual,
+      Dual.fcv, Cap.fcv, Ty.fcv]
+  · simp [DualScheme.ftv, alignedUnarySchemeAt, alignedUnaryDual,
+      Dual.ftv, Ty.ftv]
+
+private def alignedDefinitionFreshCap (context : Context) : CapVar :=
+  ⟨InferenceBase.binderSpan
+    ((alignedUnarySignature.fcv ++ context.fcv).map CapVar.id)⟩
+
+private theorem alignedDefinitionFreshCap_not_reserved (context : Context) :
+    alignedDefinitionFreshCap context ∉
+      alignedUnarySignature.fcv ++ context.fcv := by
+  intro member
+  have mapped :
+      (alignedDefinitionFreshCap context).id ∈
+        (alignedUnarySignature.fcv ++ context.fcv).map CapVar.id :=
+    List.mem_map.mpr ⟨alignedDefinitionFreshCap context, member, rfl⟩
+  have bounded := InferenceBase.mem_lt_binderSpan mapped
+  change InferenceBase.binderSpan
+      ((alignedUnarySignature.fcv ++ context.fcv).map CapVar.id) <
+    InferenceBase.binderSpan
+      ((alignedUnarySignature.fcv ++ context.fcv).map CapVar.id) at bounded
+  exact (Nat.lt_irrefl _ bounded)
+
+private theorem alignedDefinitionFreshCap_fresh (context : Context) :
+    FreshCap alignedUnarySignature context [] []
+      (alignedDefinitionFreshCap context) := by
+  refine ⟨?_, ?_, by simp [PatternCtx.fcv], by simp [MonoCtx.fcv]⟩
+  · intro member
+    exact alignedDefinitionFreshCap_not_reserved context
+      (List.mem_append_left _ member)
+  · intro member
+    exact alignedDefinitionFreshCap_not_reserved context
+      (List.mem_append_right _ member)
+
+@[simp] theorem find_aligned_unary :
+    alignedUnarySignature.findPatternFun "pass" =
+      some alignedUnaryScheme := by
+  rfl
+
+/-- The `Int`-aligned runtime entry is backed by a checked source definition
+in every expression context, not merely by the same untyped erasure. -/
+theorem aligned_unary_definition_typed (context : Context) :
+    PatternDefTy alignedUnarySignature context alignedUnaryDefinition
+      alignedUnaryScheme := by
+  let fresh := alignedDefinitionFreshCap context
+  let result := alignedUnaryDual fresh
+  have localScheme :
+      alignedUnaryDefinition.coreScheme alignedUnarySignature context
+          [.var fresh] result = alignedUnarySchemeAt fresh := by
+    have freshNotContext : alignedDefinitionFreshCap context ∉ context.fcv :=
+      (alignedDefinitionFreshCap_fresh context).2.1
+    have freshNotContext' : fresh ∉ context.fcv := freshNotContext
+    have dualApplyId (dual : Dual) :
+        dual.apply (fun varId => Cap.var varId) TySubst.id = dual := by
+      change dual.apply CapSubst.id TySubst.id = dual
+      simpa only [Dual.applySubst, Subst.id] using
+        Dual.applySubst_id dual
+    simp [PatternDef.coreScheme, alignedUnarySignature,
+      alignedUnaryDefinition, patternParameterDuals,
+      FrozenSig.generalizeDual, normalizeDualSingletons,
+      singletonDefaultSubst, dualSingletonCaps, dualSharedCaps,
+      dualCapOccurrences, FrozenSig.fcv, FrozenSig.ftv, result,
+      alignedUnaryDual, alignedUnarySchemeAt,
+      DynamicSafetyRegression.signature, DynamicSafetyRegression.nilScheme,
+      DynamicSafetyRegression.consScheme, DualScheme.fcv, Dual.fcv,
+      Dual.ftv, Cap.fcv, Ty.fcv, Ty.fcvList, Ty.ftv, CtorScheme.fcv,
+      CtorScheme.ftv, uniqueVars, freshNotContext', dualApplyId]
+  refine @PatternDefTy.mk alignedUnarySignature context
+    alignedUnaryDefinition [.var fresh] result [] alignedUnaryScheme
+    Subst.id find_aligned_unary ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · decide
+  · rfl
+  · simp [PatternDef.parameterNames, alignedUnaryDefinition]
+  · intro capability member
+    simp only [List.mem_singleton] at member
+    subst capability
+    exact ⟨fresh, rfl, alignedDefinitionFreshCap_fresh context⟩
+  · simp
+  · apply PatternTy.resolve_id
+    apply PatternTy.embed
+    unfold PatternDef.coreParameters
+    rw [localScheme]
+    rfl
+  · rfl
+  · rw [localScheme]
+    change alignedUnaryScheme.ValueFlowEquivalent
+      (alignedUnarySchemeAt fresh)
+    exact alignedUnarySchemeAt_equivalent unaryBinder fresh
+
+theorem aligned_runtime_agrees (context : Context) :
+    RuntimeSigAgrees alignedUnarySignature context
+      alignedUnaryRuntimeSignature where
+  runtimeTyped := by
+    intro entry member
+    simp only [alignedUnaryRuntimeSignature, List.mem_singleton] at member
+    subst entry
+    exact ⟨alignedUnaryDefinition, alignedUnaryScheme, rfl,
+      aligned_unary_definition_typed context⟩
+  sourceLookup := by
+    intro name scheme found
+    by_cases passName : name = "pass"
+    · subst name
+      have schemeEquality : scheme = alignedUnaryScheme :=
+        (Option.some.inj (find_aligned_unary.symm.trans found)).symm
+      subst scheme
+      exact ⟨alignedUnaryDefinition, rfl, rfl,
+        aligned_unary_definition_typed context⟩
+    · have reverseName : "pass" ≠ name :=
+        fun equality => passName equality.symm
+      simp [alignedUnarySignature, FrozenSig.findPatternFun,
+        reverseName] at found
+
+theorem aligned_global_runtime_agreement :
+    ∀ context, RuntimeSigAgrees alignedUnarySignature context
+      alignedUnaryRuntimeSignature :=
+  aligned_runtime_agrees
+
+theorem aligned_runtime_signature_scoped :
+    RuntimeSigScoped alignedUnaryRuntimeSignature := by
+  intro entry membership
+  simp only [alignedUnaryRuntimeSignature, List.mem_singleton] at membership
+  subst entry
+  rfl
+
+/-- A closed runtime program whose actual pattern is passed through `pass`.
+The runtime expansion replaces `embed "parameter"` by `$x`; the resulting
+match binds `x`, and the body observes that binding. -/
+def unaryProgram : Expr :=
+  .matchAll (.lit 7) .something (.papp "pass" [.pvar "x"]) (.var "x")
+
+def unaryProgramValue : Value :=
+  mkListV [.lit 7]
+
+/-- Parameter expansion, matching, binding export from the completed node,
+and body evaluation all occur in this exact executable run. -/
+theorem unary_program_runs :
+    evalFuel alignedUnaryRuntimeSignature 20 [] unaryProgram =
+      .ok unaryProgramValue := by
+  rfl
+
+theorem unary_program_runs_relationally :
+    Eval alignedUnaryRuntimeSignature [] unaryProgram unaryProgramValue :=
+  evalFuel_ok unary_program_runs
+
+/-- This runtime-valid program is intentionally outside public source
+inference.  The shared capability binder of `pass` first maps to the variable
+introduced for `$x`; the later `something` matcher would have to change that
+protected image to `Any`, which the variable-only value-flow rule forbids.
+Both the pattern-function declaration and the target are `Int`, so target
+incompatibility cannot explain this rejection. -/
+theorem unary_program_inference_rejected :
+    Inference.infer alignedUnarySignature [] unaryProgram = none := by
+  native_decide
+
 /-! ## Singleton-default core regression -/
 
 private def singletonCap : CapVar := ⟨0⟩
@@ -437,6 +683,14 @@ theorem closed_inference_success :
     Inference.infer signature [] closedProgram = some closedInferenceResult := by
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
+/-- The nullary closed fixture also crosses the public source-typing
+boundary; unlike the parameterized negative boundary above, it has no
+value-flow binder whose image would later need structural refinement. -/
+theorem closed_program_source_typed :
+    SourceTyping signature [] closedProgram
+      closedInferenceResult.resolvedTarget :=
+  Inference.infer_success_sourceTyping closed_inference_success
+
 theorem closed_program_typed :
     TypingInvariant signature [] closedProgram
       closedInferenceResult.resolvedTarget :=
@@ -450,6 +704,16 @@ theorem closed_program_never_stuck (fuel : Nat) :
     evalFuel runtimeSignature fuel [] closedProgram ≠ .stuck :=
   typed_never_stuck_runtime signature_wf global_runtime_agreement
     runtime_signature_scoped closed_program_typed closed_program_freeVars fuel
+
+/-- Exact execution of the closed, publicly inferred nullary fixture. -/
+theorem closed_program_runs :
+    evalFuel runtimeSignature 20 [] closedProgram =
+      .ok (mkListV [.lit 1]) := by
+  rfl
+
+theorem closed_program_runs_relationally :
+    Eval runtimeSignature [] closedProgram (mkListV [.lit 1]) :=
+  evalFuel_ok closed_program_runs
 
 def tupleMatcherType : Ty :=
   .slot (.prod []) (.prod [])

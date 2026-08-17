@@ -274,6 +274,17 @@ theorem ValidatorRunExtension.protectMatcherCapability
   intro event membership previous
   exact False.elim (previous (by simpa using membership))
 
+theorem ValidatorRunExtension.protectMatcherCapabilityExcept
+    (terminal : Subst) (signature : FrozenSig) (state : InferState)
+    (capability : Cap) (borrowed : List CapVar) :
+    ValidatorRunExtension terminal signature state
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  apply ValidatorRunExtension.ofOrdinary
+    (OrdinaryValidatorHistoryExtension.protectMatcherCapabilityExcept
+      signature state capability borrowed)
+  intro event membership previous
+  exact False.elim (previous (by simpa using membership))
+
 theorem ValidatorRunExtension.freezeCapabilityExport
     (terminal : Subst) (signature : FrozenSig) (state : InferState)
     (images : List CapVar) (payload : Ty) :

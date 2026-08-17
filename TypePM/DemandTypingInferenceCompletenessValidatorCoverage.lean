@@ -597,6 +597,16 @@ theorem OrdinaryValidatorHistoryExtension.protectMatcherCapability
   OrdinaryValidatorHistoryExtension.ofNoEvents
     (state.stateExtension_protectMatcherCapability capability) (by rfl)
 
+/-- Selective matcher protection likewise changes no event history. -/
+theorem OrdinaryValidatorHistoryExtension.protectMatcherCapabilityExcept
+    (signature : FrozenSig) (state : InferState) (capability : Cap)
+    (borrowed : List CapVar) :
+    OrdinaryValidatorHistoryExtension signature state
+      (state.protectMatcherCapabilityExcept capability borrowed) :=
+  OrdinaryValidatorHistoryExtension.ofNoEvents
+    (state.stateExtension_protectMatcherCapabilityExcept capability borrowed)
+    (by rfl)
+
 /-- Fresh target allocation appends only its neutral allocation event. -/
 theorem OrdinaryValidatorHistoryExtension.freshTy
     (signature : FrozenSig) (state : InferState) (origin : ConstraintOrigin) :

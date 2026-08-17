@@ -30,6 +30,19 @@ theorem ValuesPristine.member
       · exact headPristine
       · exact induction tailPristine membership
 
+/-- A sublist in the membership sense inherits pointwise pristine values. -/
+theorem ValuesPristine.of_subset
+    {small large : List Value} (largePristine : ValuesPristine large)
+    (subset : ∀ value ∈ small, value ∈ large) :
+    ValuesPristine small := by
+  induction small with
+  | nil => exact .nil
+  | cons head tail induction =>
+      exact .cons
+        (largePristine.member (subset head (by simp)))
+        (induction (fun value membership =>
+          subset value (by simp [membership])))
+
 /-- Pointwise pristine value lists compose by append. -/
 theorem ValuesPristine.append
     {left right : List Value}
@@ -324,7 +337,7 @@ theorem stackPristine_atoms_zip
                           (by simpa using valueLength) matchersPristine
                           valuesPristine)
 
-/-- The two concrete primitive operations preserve pristine values. -/
+/-- The concrete primitive operations preserve pristine values. -/
 theorem primEval_pristine
     {op : PrimOp} {values : List Value} {result : Value}
     (pristine : ValuesPristine values)
@@ -388,6 +401,39 @@ theorem primEval_pristine
                             (mkListV_pristine
                               ((listOfV_pristine inputPristine decoding).drop
                                 index))
+                            .nil))
+  | submultisetSplits =>
+      cases values with
+      | nil => simp [primEval] at evaluation
+      | cons input rest =>
+          cases rest with
+          | cons extra extras => simp [primEval] at evaluation
+          | nil =>
+              cases pristine with
+              | cons inputPristine tailPristine =>
+                  cases tailPristine
+                  cases decoding : listOfV input with
+                  | none => simp [primEval, decoding] at evaluation
+                  | some elements =>
+                      simp [primEval, decoding] at evaluation
+                      subst result
+                      apply mkListV_pristine
+                      apply valuesPristine_map_of_mem
+                      intro split membership
+                      rcases split with ⟨left, right⟩
+                      obtain ⟨leftMembers, rightMembers⟩ :=
+                        submultisetSplits_members membership
+                      have elementsPristine :=
+                        listOfV_pristine inputPristine decoding
+                      exact .tuple
+                        (.cons
+                          (mkListV_pristine
+                            (ValuesPristine.of_subset elementsPristine
+                              leftMembers))
+                          (.cons
+                            (mkListV_pristine
+                              (ValuesPristine.of_subset elementsPristine
+                                rightMembers))
                             .nil))
 
 /-! ## Bidirectional source/runtime pattern-function agreement -/

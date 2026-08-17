@@ -470,7 +470,8 @@ inductive DemandSynthOrigin (signature : FrozenSig) :
       DemandSynthOrigin signature
         (.matcher clausesRaw collected inferred clauseCaps catchAll binders
           arms coverage) ledger
-        (DDLedger.freezeMatcherProducer ledger₁ capability)
+        (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+          (Inference.borrowedMatcherCapVarsAt S' context))
   | matchAll
       {q : InferenceBase.FreshSupply} {S : Subst} {context : Context}
       {target matcher : Expr} {pattern : Pattern} {body : Expr}

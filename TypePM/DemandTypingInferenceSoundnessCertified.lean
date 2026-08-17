@@ -1234,12 +1234,15 @@ private theorem inferExprFuel_certifiedRunAtAux
       (.matcher clauses) (.matcher capability (.var initial.supply.nextTy))
       clausesResult.state.supply clausesResult.state.prevailing at rawDerived
     change DemandSynthOrigin signature rawDerived initial.capabilityOrigins
-      (DDLedger.freezeMatcherProducer clausesResult.state.capabilityOrigins
-        capability) at rawOrigin
+      (DDLedger.freezeMatcherProducerExcept
+        clausesResult.state.capabilityOrigins capability
+        (borrowedMatcherCapVarsAt clausesResult.state.prevailing context))
+        at rawOrigin
     have localMembership : finalizationEvent ∈
-        (finalizedState.protectMatcherCapability capability).trace.events := by
+        (finalizedState.protectMatcherCapabilityExcept capability
+          (borrowedMatcherCapVars finalizedState context)).trace.events := by
       simp [finalizedState, finalizationEvent, coverageState,
-        InferState.recordEvent, InferState.protectMatcherCapability]
+        InferState.recordEvent, InferState.protectMatcherCapabilityExcept]
     have facts := DDTerminalAudit.MatcherFacts.ofWBridgeWF bridge
       (history.event_mem localMembership)
     have sourceAudit : Nonempty
@@ -1250,8 +1253,9 @@ private theorem inferExprFuel_certifiedRunAtAux
         (coverage := coverage) clausesAudit facts⟩
     refine ⟨.matcher capability (.var initial.supply.nextTy), rawDerived,
       rfl, ?_, ?_⟩
-    · simpa [DDLedger.freezeMatcherProducer,
-        DDLedger.matcherProducerLeaves] using rawOrigin
+    · simpa [DDLedger.freezeMatcherProducerExcept,
+        DDLedger.matcherProducerLeavesExcept,
+        borrowedMatcherCapVars] using rawOrigin
     · exact DemandSynthTerminalAudit.transportRawOrigin sourceAudit
   case case81 =>
     rename_i fuel signature context selfEnv path index target initial result

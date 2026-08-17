@@ -77,6 +77,13 @@ theorem InferState.admissibleTraceExtension_protectMatcherCapability
       (state.protectMatcherCapability capability) :=
   fun admissible => admissible.protectMatcherCapability capability
 
+theorem InferState.admissibleTraceExtension_protectMatcherCapabilityExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    state.AdmissibleTraceExtension
+      (state.protectMatcherCapabilityExcept capability borrowed) :=
+  fun admissible =>
+    admissible.protectMatcherCapabilityExcept capability borrowed
+
 theorem InferState.admissibleTraceExtension_freezeCapabilityExport
     (state : InferState) (capImages : List CapVar)
     (exportedPayload : Ty) :
@@ -882,6 +889,7 @@ private theorem inferExprFuel_admissibleTraceExtensionCore
         InferState.admissibleTraceExtension_freshTy,
         InferState.admissibleTraceExtension_freshCap,
         InferState.admissibleTraceExtension_protectMatcherCapability,
+        InferState.admissibleTraceExtension_protectMatcherCapabilityExcept,
         InferState.admissibleTraceExtension_freezeCapabilityExport,
         InferState.admissibleTraceExtension_recordEvent,
         InferState.admissibleTraceExtension_recordSource,
@@ -1477,8 +1485,8 @@ theorem inferMatcherFuel_admissibleTraceExtension
                           _ _).trans
                           ((InferState.admissibleTraceExtension_recordEvent
                             _ _).trans
-                            (InferState.admissibleTraceExtension_protectMatcherCapability
-                              _ _))))
+                            (InferState.admissibleTraceExtension_protectMatcherCapabilityExcept
+                              _ _ _))))
                   · contradiction
 
 /-! ## Complete raw inference -/

@@ -170,5 +170,35 @@ theorem CurrentProtectedProducerSafe.protectMatcherCapability
     exact (InferState.mem_protectMatcherCapability_protectedCaps state
       capability varId).2 (Or.inr fresh)
 
+/-- Finalization remains safe when ambient matcher-demand variables are left
+unfrozen: those variables are not appended to the protected producer list. -/
+theorem CurrentProtectedProducerSafe.protectMatcherCapabilityExcept
+    {state : InferState} (safe : CurrentProtectedProducerSafe state)
+    (frozen : ProtectedCapOrigins state) (capability : Cap)
+    (borrowed : List CapVar)
+    (fixed : capability.apply state.prevailing.cap = capability) :
+    CurrentProtectedProducerSafe
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  let selected := matcherProducerLedgerLeavesExcept
+    state.capabilityOrigins capability borrowed
+  have oldSafe : SafeCapVars
+      (state.capabilityOrigins.setOrigins selected .renameOnly)
+      state.prevailing.cap state.protectedCaps :=
+    SafeCapVars.setOrigins_renameOnly safe
+  have afterFrozen := frozen.protectMatcherCapabilityExcept capability borrowed
+  intro varId membership
+  simp only [InferState.protectMatcherCapabilityExcept_protectedCaps,
+    List.mem_append, matcherProducerVarsExcept, List.mem_filter,
+    mem_matcherProducerVars] at membership
+  rcases membership with old | fresh
+  · exact oldSafe varId old
+  · refine ⟨varId,
+        Cap.fixed_of_apply_self capability fixed varId fresh.1.1, ?_⟩
+    exact afterFrozen varId (by
+      simp only [InferState.protectMatcherCapabilityExcept_protectedCaps,
+        List.mem_append, matcherProducerVarsExcept, List.mem_filter,
+        mem_matcherProducerVars]
+      exact Or.inr fresh)
+
 end DemandTypingInferenceCompletenessProtectedTrace
 end TypePM

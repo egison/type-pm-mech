@@ -141,7 +141,15 @@ deriving Repr
 inductive PrimOp where
   | append
   | splits
-deriving Repr, DecidableEq, BEq
+  | submultisetSplits
+deriving Repr, DecidableEq
+
+instance : BEq PrimOp where
+  beq left right := decide (left = right)
+
+instance : LawfulBEq PrimOp where
+  eq_of_beq checked := of_decide_eq_true checked
+  rfl := by simp
 
 mutual
 

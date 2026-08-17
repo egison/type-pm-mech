@@ -77,7 +77,8 @@ S.\mathsf{Idempotent}\Longrightarrow S'.\mathsf{Idempotent}
 exact MGUはconstraint外で恒等，constraint range内，solved formである．Origin admissibilityはrigid
 keyを固定し，rename-only keyのstructural strengtheningを拒否する．constructor／fresh consumerの
 structural variableは局所solveを許すが，exportまたはmatcher finalizationを越えて公開payloadに残る
-producer leafはrename-onlyになる．
+matcher-owned producer leafはrename-onlyになる．active contextのtop-level slot demandまたは
+direct-selfの引数slotから借りたleafは，matcherが生成したinterfaceではないため新規freeze対象から除く．
 
 この境界がなければ，量化producer capabilityを後続solveが$\Any$へ強化するprogramや，
 let-generalized capabilityを強化するprogramを受理してしまう．現行$\mathsf{SourceTyping}$では，
@@ -256,11 +257,22 @@ preservationから回収する．
 $\mathsf{FeatureExecutionRegression}$は，公開推論の成功，$\mathsf{SourceTyping}$の再構成，
 $\mathsf{evalFuel}$の正確な返値，$\mathsf{evalFuel\_ok}$による関係的評価，任意fuelでのno-stuckを
 同じfixture上で接続する．非線形patternについては\texttt{pair \$x \#x}の一致が一結果を，不一致が
-正常なmatch failureとして空listを返す．multisetについては，実際の\texttt{List}表現のsingletonが
-$(1,[])$へ分解されるruntime経路を検査する．加えて\texttt{Pair}を二要素collectionの有限carrier
-（要素を保持する内部表現）とし，一つの対象から$(1,2)$と$(2,1)$の両分解を列挙する．
-後者は複数選択と探索結果収集の具体的検査であり，任意長の再帰的multiset matcher，\texttt{join}，
-BFS completenessの代用ではない．これらは段階的な実行検証の次項目として残す．
+正常なmatch failureとして空listを返す．既存の有限carrier回帰に加えて，
+$\mathsf{GeneralMultisetExecutionRegression}$は入力長に特化しない再帰matcher関数をこの型安全性の鎖へ
+接続し，同じ定義の実行について，空・一要素・三要素・重複要素の\texttt{nil}／\texttt{cons}，
+入れ子\texttt{cons}，\texttt{join}を検査する．\texttt{submultisetSplits}は，各出現位置を左右へ
+割り振る全二分割を，左側の要素数と元の添字順で列挙するprimitiveであり，同じ値を持つ異なる出現も
+別分岐として残す．入れ子\texttt{cons}の結果は現在のdepth-first（深さ優先）・左から右の探索順を固定する．
+
+閉じたmultiset適用はelement matcherに\texttt{something}を使い，三要素の\texttt{cons}，入れ子
+\texttt{cons}，および\texttt{join}を公開推論，$\mathsf{SourceTyping}$，正確な評価，adequacy，
+全fuel no-stuckへ接続する．matcherの引数slotから借りたcapability変数はmatcher自身が生成した
+producer変数ではないため，matcher確定時の新たなfreeze対象から除く．したがって\texttt{something}の
+\texttt{Any}に特殊化できる一方，matcher-ownedの結果leafと既に輸出済みの変数の保護は維持する．
+pattern functionについても，nullary fixtureは同一program上の全段階を接続し，parameter付き
+\texttt{pass}はembedded parameterの展開からbody結果までの正確な実行と，同じvariable-only境界による
+公開推論拒否を対で固定する．これらは全入力listの機能的正当性，Egison標準multiset matcherの全機能，
+BFS completenessを主張しない．
 
 これらをsource-facingな一つの定理に束ねる．
 \[

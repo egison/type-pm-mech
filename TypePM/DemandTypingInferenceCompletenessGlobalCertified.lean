@@ -1815,7 +1815,8 @@ theorem auditedSynth_complete_paired_except_matchers
       Nonempty (BoundedPairedCertifiedSynthRunCompletion terminal signature
         before (inferExprFuel fuel signature executableContext selfEnv path
           (.matcher clauses) state) q' S'
-        (DDLedger.freezeMatcherProducer ledger₁ capability)
+        (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+          (borrowedMatcherCapVarsAt S' declarativeContext))
         (.matcher capability (.var q.nextTy))))
     (matchAllCase : ∀ {targetExpr matcher : Expr} {pattern : Pattern}
       {body : Expr} {bodyTy : Ty} {q' : InferenceBase.FreshSupply}

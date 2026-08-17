@@ -90,8 +90,9 @@ theorem inferMatcherFuel_ddSynthRun
                 refine ⟨.matcher capability (.var initial.supply.nextTy),
                   ?_, rfl, ?_⟩
                 · simpa using rawDerived
-                · simpa [DDLedger.freezeMatcherProducer,
-                    DDLedger.matcherProducerLeaves] using rawOrigin
+                · simpa [DDLedger.freezeMatcherProducerExcept,
+                    DDLedger.matcherProducerLeavesExcept,
+                    borrowedMatcherCapVars] using rawOrigin
               · simp_all
 
 /-- The expression-level matcher branch only adds its syntax visit and result

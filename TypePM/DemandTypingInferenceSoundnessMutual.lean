@@ -565,12 +565,15 @@ theorem inferExprFuel_ddSynthRun
       (.matcher clauses) (.matcher capability (.var initial.supply.nextTy))
       clausesResult.state.supply clausesResult.state.prevailing at rawDerived
     change DemandSynthOrigin signature rawDerived initial.capabilityOrigins
-      (DDLedger.freezeMatcherProducer clausesResult.state.capabilityOrigins
-        capability) at rawOrigin
+      (DDLedger.freezeMatcherProducerExcept
+        clausesResult.state.capabilityOrigins capability
+        (borrowedMatcherCapVarsAt clausesResult.state.prevailing context))
+        at rawOrigin
     refine ⟨.matcher capability (.var initial.supply.nextTy), ?_, rfl, ?_⟩
     · exact rawDerived
-    · simpa [DDLedger.freezeMatcherProducer,
-        DDLedger.matcherProducerLeaves] using rawOrigin
+    · simpa [DDLedger.freezeMatcherProducerExcept,
+        DDLedger.matcherProducerLeavesExcept,
+        borrowedMatcherCapVars] using rawOrigin
   case case81 =>
     rename_i fuel signature context selfEnv path index target initial result
       resultEq

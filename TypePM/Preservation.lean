@@ -54,7 +54,8 @@ def appendCanonicalScheme : CtorScheme where
   args := [.data "List" [.var 0], .data "List" [.var 0]]
   result := .data "List" [.var 0]
 
-/-- The canonical scheme of the `splits` decomposition primitive. -/
+/-- The canonical scheme shared by the consecutive and submultiset split
+decomposition primitives. -/
 def splitsCanonicalScheme : CtorScheme where
   capBinders := []
   tyBinders := [0]
@@ -66,6 +67,7 @@ def splitsCanonicalScheme : CtorScheme where
 def primCanonicalScheme : PrimOp → CtorScheme
   | .append => appendCanonicalScheme
   | .splits => splitsCanonicalScheme
+  | .submultisetSplits => splitsCanonicalScheme
 
 /-- Public well-formedness conditions for a frozen signature.  Closedness
 supports demand-directed state erasure; the remaining fields are consumed by the dynamic

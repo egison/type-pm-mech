@@ -58,6 +58,14 @@ theorem InferState.FactorizingTrace.protectMatcherCapability
     (state.protectMatcherCapability capability).FactorizingTrace := by
   simpa [InferState.FactorizingTrace, LocallyFactorizingSteps] using factorizing
 
+/-- Selective matcher protection also leaves stored solve certificates
+unchanged. -/
+theorem InferState.FactorizingTrace.protectMatcherCapabilityExcept
+    {state : InferState} (factorizing : state.FactorizingTrace)
+    (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).FactorizingTrace := by
+  simpa [InferState.FactorizingTrace, LocallyFactorizingSteps] using factorizing
+
 /-- Export freezing changes current ledgers and events, not prior solve
 certificates or their captured snapshots. -/
 theorem InferState.FactorizingTrace.freezeCapabilityExport
@@ -232,6 +240,13 @@ theorem InferState.factorizingTraceExtension_protectMatcherCapability
     state.FactorizingTraceExtension
       (state.protectMatcherCapability capability) :=
   fun admissible => admissible.protectMatcherCapability capability
+
+theorem InferState.factorizingTraceExtension_protectMatcherCapabilityExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    state.FactorizingTraceExtension
+      (state.protectMatcherCapabilityExcept capability borrowed) :=
+  fun admissible =>
+    admissible.protectMatcherCapabilityExcept capability borrowed
 
 theorem InferState.factorizingTraceExtension_freezeCapabilityExport
     (state : InferState) (capImages : List CapVar)
@@ -1038,6 +1053,7 @@ private theorem inferExprFuel_factorizingTraceExtensionCore
         InferState.factorizingTraceExtension_freshTy,
         InferState.factorizingTraceExtension_freshCap,
         InferState.factorizingTraceExtension_protectMatcherCapability,
+        InferState.factorizingTraceExtension_protectMatcherCapabilityExcept,
         InferState.factorizingTraceExtension_freezeCapabilityExport,
         InferState.factorizingTraceExtension_recordEvent,
         InferState.factorizingTraceExtension_recordSource,
@@ -1633,8 +1649,8 @@ theorem inferMatcherFuel_factorizingTraceExtension
                           _ _).trans
                           ((InferState.factorizingTraceExtension_recordEvent
                             _ _).trans
-                            (InferState.factorizingTraceExtension_protectMatcherCapability
-                              _ _))))
+                            (InferState.factorizingTraceExtension_protectMatcherCapabilityExcept
+                              _ _ _))))
                   · contradiction
 
 /-! ## Complete raw inference -/

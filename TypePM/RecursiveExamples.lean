@@ -208,11 +208,12 @@ theorem paperCompleteMultisetInferenceResult_success :
       some paperCompleteMultisetInferenceResult := by
   exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
 
-/-- Matcher finalization exports the structural producer variable into the
-protected ledger in both recursive end-to-end examples. -/
-theorem recursiveMatcher_final_producers_protected :
-    ⟨1⟩ ∈ listMatcherInferenceResult.state.protectedCaps ∧
-      ⟨1⟩ ∈ paperCompleteMultisetInferenceResult.state.protectedCaps := by
+/-- The recursive producer variable is also the argument slot demand, so
+matcher finalization leaves it structurally flexible for applications such as
+`multiset something`. -/
+theorem recursiveMatcher_slot_demands_remain_flexible :
+    ⟨1⟩ ∉ listMatcherInferenceResult.state.protectedCaps ∧
+      ⟨1⟩ ∉ paperCompleteMultisetInferenceResult.state.protectedCaps := by
   native_decide
 
 /-! ## Reconstructed typing from public inference success -/

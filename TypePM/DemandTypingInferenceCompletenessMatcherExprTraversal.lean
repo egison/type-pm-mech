@@ -20,6 +20,139 @@ open DemandTypingInferenceCompletenessDataBisimulation
 open DemandTypingInferenceCompletenessMatcherTraversal
 open DemandTypingInferenceCompletenessProtected
 open DemandTypingInferenceCompletenessProtectedTrace
+open DemandTypingInferenceCompletenessContextBisimulation
+
+mutual
+
+/-- A free variable that is renamed to a variable remains visible after
+ambient substitution of a polymorphic capability. -/
+theorem polyCap_mem_fcv_applyMeta_of_mem {capArity : Nat}
+    (substitution : CapSubst) :
+    ∀ (capability : PolyCap capArity) (source target : CapVar),
+      source ∈ capability.fcv → substitution source = .var target →
+        target ∈ (capability.applyMeta substitution).fcv
+  | .any, _, _, membership, _ => by
+      simp [PolyCap.fcv] at membership
+  | .mvar original, source, target, membership, image => by
+      simp only [PolyCap.fcv, List.mem_singleton] at membership
+      subst original
+      simp [PolyCap.applyMeta, image, PolyCap.lift, PolyCap.fcv]
+  | .bound _, _, _, membership, _ => by
+      simp [PolyCap.fcv] at membership
+  | .skolem _, _, _, membership, _ => by
+      simp [PolyCap.fcv] at membership
+  | .con _ children, source, target, membership, image => by
+      simpa [PolyCap.applyMeta, PolyCap.fcv] using
+        polyCap_mem_fcvList_applyMeta_of_mem substitution children
+          source target (by simpa [PolyCap.fcv] using membership) image
+  | .prod components, source, target, membership, image => by
+      simpa [PolyCap.applyMeta, PolyCap.fcv] using
+        polyCap_mem_fcvList_applyMeta_of_mem substitution components
+          source target (by simpa [PolyCap.fcv] using membership) image
+
+/-- List form of `polyCap_mem_fcv_applyMeta_of_mem`. -/
+theorem polyCap_mem_fcvList_applyMeta_of_mem {capArity : Nat}
+    (substitution : CapSubst) :
+    ∀ (capabilities : List (PolyCap capArity)) (source target : CapVar),
+      source ∈ PolyCap.fcvList capabilities →
+        substitution source = .var target →
+        target ∈ PolyCap.fcvList
+          (capabilities.map (PolyCap.applyMeta substitution))
+  | [], _, _, membership, _ => by
+      simp [PolyCap.fcvList] at membership
+  | capability :: capabilities, source, target, membership, image => by
+      simp only [PolyCap.fcvList, List.mem_append] at membership ⊢
+      rcases membership with head | tail
+      · simpa [List.map_cons, PolyCap.fcvList] using
+          Or.inl (polyCap_mem_fcv_applyMeta_of_mem substitution
+            capability source target head image)
+      · simpa [List.map_cons, PolyCap.fcvList] using
+          Or.inr (polyCap_mem_fcvList_applyMeta_of_mem substitution
+            capabilities source target tail image)
+
+end
+
+/-- Top-level matcher-slot demand variables are preserved by a variable
+image of an ambient substitution. -/
+private theorem schemeMatcherDemandCapVars_applyMeta_mem
+    (substitution : Subst) (scheme : Scheme) (source target : CapVar)
+    (membership : source ∈ schemeMatcherDemandCapVars scheme)
+    (image : substitution.cap source = .var target) :
+    target ∈ schemeMatcherDemandCapVars (scheme.applyMeta substitution) := by
+  rcases scheme with ⟨capArity, tyArity, body⟩
+  cases body <;> try { simp [schemeMatcherDemandCapVars] at membership }
+  case fn domain codomain =>
+    cases domain <;> try { simp [schemeMatcherDemandCapVars] at membership }
+    case slot capability payload =>
+      simpa [schemeMatcherDemandCapVars, Scheme.applyMeta, PolyTy.applyMeta]
+        using polyCap_mem_fcv_applyMeta_of_mem substitution.cap capability
+          source target membership image
+  case slot capability payload =>
+    simpa [schemeMatcherDemandCapVars, Scheme.applyMeta, PolyTy.applyMeta]
+      using polyCap_mem_fcv_applyMeta_of_mem substitution.cap capability
+        source target membership image
+
+/-- Applying a context substitution transports every top-level matcher-slot
+demand variable whose image is another variable. -/
+private theorem contextMatcherDemandCapVars_applySubst_mem
+    (substitution : Subst) :
+    ∀ (context : Context) (source target : CapVar),
+      source ∈ context.flatMap (fun entry =>
+        schemeMatcherDemandCapVars entry.2) →
+      substitution.cap source = .var target →
+      target ∈ (context.applySubst substitution).flatMap (fun entry =>
+        schemeMatcherDemandCapVars entry.2)
+  | [], _, _, membership, _ => by simp at membership
+  | entry :: context, source, target, membership, image => by
+      rcases entry with ⟨name, scheme⟩
+      simp only [Context.applySubst, List.map_cons, List.flatMap_cons,
+        List.mem_append] at membership ⊢
+      rcases membership with head | tail
+      · exact Or.inl (schemeMatcherDemandCapVars_applyMeta_mem substitution
+          scheme source target head image)
+      · exact Or.inr (contextMatcherDemandCapVars_applySubst_mem substitution
+          context source target tail image)
+
+/-- A context bisimulation transports the borrowed-demand classification in
+the executable-to-declarative direction. -/
+private theorem ContextBisimulation.forwardBorrowedMatcherCapVar
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    {source target : CapVar}
+    (image : relation.forward.cap source = .var target)
+    (membership : source ∈ borrowedMatcherCapVarsAt state.prevailing
+      executableContext) :
+    target ∈ borrowedMatcherCapVarsAt declarative declarativeContext := by
+  simp only [borrowedMatcherCapVarsAt, List.mem_eraseDups] at membership ⊢
+  have transported := contextMatcherDemandCapVars_applySubst_mem
+    relation.forward (executableContext.applySubst state.prevailing)
+    source target membership image
+  rw [contexts.forward]
+  exact transported
+
+/-- Reverse counterpart of `forwardBorrowedMatcherCapVar`. -/
+private theorem ContextBisimulation.reverseBorrowedMatcherCapVar
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    {relation : StateBisimulation ledger declarative state}
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    {source target : CapVar}
+    (image : relation.reverse.cap source = .var target)
+    (membership : source ∈ borrowedMatcherCapVarsAt declarative
+      declarativeContext) :
+    target ∈ borrowedMatcherCapVarsAt state.prevailing executableContext := by
+  simp only [borrowedMatcherCapVarsAt, List.mem_eraseDups] at membership ⊢
+  have transported := contextMatcherDemandCapVars_applySubst_mem
+    relation.reverse (declarativeContext.applySubst declarative)
+    source target membership image
+  rw [contexts.reverse]
+  exact transported
 
 private theorem structural_origin_mem_keys
     {ledger : CapabilityOriginLedger} {varId : CapVar}
@@ -52,6 +185,7 @@ theorem StateBisimulation.forwardMatcherProducerLeavesOfRelated
       varId ∈ DDLedger.matcherProducerLeaves state.capabilityOrigins
         executableCapability →
       ∃ image, relation.forward.cap varId = .var image ∧
+        relation.reverse.cap image = .var varId ∧
         image ∈ DDLedger.matcherProducerLeaves ledger
           declarativeCapability := by
   classical
@@ -111,7 +245,7 @@ theorem StateBisimulation.forwardMatcherProducerLeavesOfRelated
         have equal : actualImage = varId := (Cap.var.inj equation).symm
         subst actualImage
         exact False.elim (safe executableStructural)
-  refine ⟨image, forwardImage, ?_⟩
+  refine ⟨image, forwardImage, reverseImage, ?_⟩
   unfold DDLedger.matcherProducerLeaves Inference.matcherProducerLedgerLeaves
   simp only [List.mem_filter, List.mem_eraseDups]
   exact ⟨⟨declarativeMember, decide_eq_true
@@ -133,6 +267,7 @@ theorem StateBisimulation.reverseMatcherProducerLeavesOfRelated
     ∀ varId,
       varId ∈ DDLedger.matcherProducerLeaves ledger declarativeCapability →
       ∃ image, relation.reverse.cap varId = .var image ∧
+        relation.forward.cap image = .var varId ∧
         image ∈ DDLedger.matcherProducerLeaves state.capabilityOrigins
           executableCapability := by
   classical
@@ -190,12 +325,87 @@ theorem StateBisimulation.reverseMatcherProducerLeavesOfRelated
         have equal : declarativeImage = varId := (Cap.var.inj equation).symm
         subst declarativeImage
         exact False.elim (safe declarativeStructural)
-  refine ⟨image, reverseImage, ?_⟩
+  refine ⟨image, reverseImage, forwardImage, ?_⟩
   unfold DDLedger.matcherProducerLeaves Inference.matcherProducerLedgerLeaves
   simp only [List.mem_filter, List.mem_eraseDups]
   exact ⟨⟨executableMember, decide_eq_true
     (structural_origin_mem_keys executableStructural)⟩,
     decide_eq_true executableStructural⟩
+
+/-- Selected executable matcher-producer representatives that are not
+borrowed from the ambient context map to equally non-borrowed declarative
+representatives. -/
+theorem StateBisimulation.forwardMatcherProducerLeavesExceptOfRelated
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    {declarativeCapability executableCapability : Cap}
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (declarativeFixed : declarativeCapability.apply declarative.cap =
+      declarativeCapability)
+    (executableFixed : executableCapability.apply state.prevailing.cap =
+      executableCapability) :
+    ∀ varId,
+      varId ∈ DDLedger.matcherProducerLeavesExcept state.capabilityOrigins
+        executableCapability
+        (borrowedMatcherCapVarsAt state.prevailing executableContext) →
+      ∃ image, relation.forward.cap varId = .var image ∧
+        image ∈ DDLedger.matcherProducerLeavesExcept ledger
+          declarativeCapability
+          (borrowedMatcherCapVarsAt declarative declarativeContext) := by
+  intro varId membership
+  simp only [DDLedger.matcherProducerLeavesExcept,
+    matcherProducerLedgerLeavesExcept, List.mem_filter] at membership ⊢
+  rcases membership with ⟨selected, notBorrowedCheck⟩
+  rcases StateBisimulation.forwardMatcherProducerLeavesOfRelated relation
+      capability declarativeFixed executableFixed varId selected with
+    ⟨image, forwardImage, reverseImage, imageSelected⟩
+  refine ⟨image, forwardImage, imageSelected, decide_eq_true ?_⟩
+  intro borrowedImage
+  exact of_decide_eq_true notBorrowedCheck
+    (ContextBisimulation.reverseBorrowedMatcherCapVar contexts reverseImage
+      borrowedImage)
+
+/-- Reverse counterpart of
+`forwardMatcherProducerLeavesExceptOfRelated`. -/
+theorem StateBisimulation.reverseMatcherProducerLeavesExceptOfRelated
+    {ledger : CapabilityOriginLedger} {declarative : Subst}
+    {state : InferState}
+    (relation : StateBisimulation ledger declarative state)
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation declarativeContext
+      executableContext)
+    {declarativeCapability executableCapability : Cap}
+    (capability : CapBisimulation relation declarativeCapability
+      executableCapability)
+    (declarativeFixed : declarativeCapability.apply declarative.cap =
+      declarativeCapability)
+    (executableFixed : executableCapability.apply state.prevailing.cap =
+      executableCapability) :
+    ∀ varId,
+      varId ∈ DDLedger.matcherProducerLeavesExcept ledger
+        declarativeCapability
+        (borrowedMatcherCapVarsAt declarative declarativeContext) →
+      ∃ image, relation.reverse.cap varId = .var image ∧
+        image ∈ DDLedger.matcherProducerLeavesExcept state.capabilityOrigins
+          executableCapability
+          (borrowedMatcherCapVarsAt state.prevailing executableContext) := by
+  intro varId membership
+  simp only [DDLedger.matcherProducerLeavesExcept,
+    matcherProducerLedgerLeavesExcept, List.mem_filter] at membership ⊢
+  rcases membership with ⟨selected, notBorrowedCheck⟩
+  rcases StateBisimulation.reverseMatcherProducerLeavesOfRelated relation
+      capability declarativeFixed executableFixed varId selected with
+    ⟨image, reverseImage, forwardImage, imageSelected⟩
+  refine ⟨image, reverseImage, imageSelected, decide_eq_true ?_⟩
+  intro borrowedImage
+  exact of_decide_eq_true notBorrowedCheck
+    (ContextBisimulation.forwardBorrowedMatcherCapVar contexts forwardImage
+      borrowedImage)
 
 /-- Freeze related demand-directed/executable matcher capabilities and retain the complete
 traversal correspondence. -/
@@ -203,6 +413,9 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelated
     {q : InferenceBase.FreshSupply} {declarative : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
     (relation : TraversalStateCorrespondence q declarative ledger state)
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation.prevailing declarativeContext
+      executableContext)
     {declarativeCapability executableCapability : Cap}
     (capability : CapBisimulation relation.prevailing declarativeCapability
       executableCapability)
@@ -211,38 +424,51 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelated
     (executableFixed : executableCapability.apply state.prevailing.cap =
       executableCapability) :
     TraversalStateCorrespondence q declarative
-      (DDLedger.freezeMatcherProducer ledger declarativeCapability)
-      (state.protectMatcherCapability executableCapability) := by
-  let afterLedger := DDLedger.freezeMatcherProducer ledger
-    declarativeCapability
-  let afterState := state.protectMatcherCapability executableCapability
+      (DDLedger.freezeMatcherProducerExcept ledger declarativeCapability
+        (borrowedMatcherCapVarsAt declarative declarativeContext))
+      (state.protectMatcherCapabilityExcept executableCapability
+        (borrowedMatcherCapVarsAt state.prevailing executableContext)) := by
+  let declarativeBorrowed := borrowedMatcherCapVarsAt declarative
+    declarativeContext
+  let executableBorrowed := borrowedMatcherCapVarsAt state.prevailing
+    executableContext
+  let afterLedger := DDLedger.freezeMatcherProducerExcept ledger
+    declarativeCapability declarativeBorrowed
+  let afterState := state.protectMatcherCapabilityExcept executableCapability
+    executableBorrowed
   have ledgerTransport : LedgerBisimulation afterLedger
       afterState.capabilityOrigins relation.prevailing.forward
       relation.prevailing.reverse := by
     constructor
-    · unfold afterLedger DDLedger.freezeMatcherProducer
+    · unfold afterLedger DDLedger.freezeMatcherProducerExcept
       rw [show afterState.capabilityOrigins =
         state.capabilityOrigins.setOrigins
-          (DDLedger.matcherProducerLeaves state.capabilityOrigins
-            executableCapability) .renameOnly by rfl]
+          (DDLedger.matcherProducerLeavesExcept state.capabilityOrigins
+            executableCapability executableBorrowed) .renameOnly by rfl]
       constructor
       exact relation.prevailing.ledgerBisimulation.forwardBetween.cap.freezeSelected
-        (fun varId membership => DDLedger.matcherProducerLeaves_origin ledger
-          declarativeCapability varId membership)
-        (StateBisimulation.forwardMatcherProducerLeavesOfRelated
-          relation.prevailing capability declarativeFixed executableFixed)
-    · unfold afterLedger DDLedger.freezeMatcherProducer
+        (fun varId membership => DDLedger.matcherProducerLeavesExcept_origin
+          ledger declarativeCapability declarativeBorrowed varId membership)
+        (by
+          simpa [declarativeBorrowed, executableBorrowed] using
+            StateBisimulation.forwardMatcherProducerLeavesExceptOfRelated
+              relation.prevailing contexts capability declarativeFixed
+                executableFixed)
+    · unfold afterLedger DDLedger.freezeMatcherProducerExcept
       rw [show afterState.capabilityOrigins =
         state.capabilityOrigins.setOrigins
-          (DDLedger.matcherProducerLeaves state.capabilityOrigins
-            executableCapability) .renameOnly by rfl]
+          (DDLedger.matcherProducerLeavesExcept state.capabilityOrigins
+            executableCapability executableBorrowed) .renameOnly by rfl]
       constructor
       exact relation.prevailing.ledgerBisimulation.reverseBetween.cap.freezeSelected
         (fun varId membership =>
-          DDLedger.matcherProducerLeaves_origin state.capabilityOrigins
-            executableCapability varId membership)
-        (StateBisimulation.reverseMatcherProducerLeavesOfRelated
-          relation.prevailing capability declarativeFixed executableFixed)
+          DDLedger.matcherProducerLeavesExcept_origin state.capabilityOrigins
+            executableCapability executableBorrowed varId membership)
+        (by
+          simpa [declarativeBorrowed, executableBorrowed] using
+            StateBisimulation.reverseMatcherProducerLeavesExceptOfRelated
+              relation.prevailing contexts capability declarativeFixed
+                executableFixed)
   let after : StateBisimulation afterLedger declarative afterState :=
     { forward := relation.prevailing.forward
       forwardEquation := by simpa [afterState] using
@@ -263,29 +489,38 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelated
         relation.executable_bounded
       forward_bounded := relation.forward_bounded
       reverse_bounded := relation.reverse_bounded
-      ledger_below := DDLedger.LedgerBelow.freezeMatcherProducer
-        declarativeCapability relation.ledger_below
+      ledger_below := DDLedger.LedgerBelow.freezeMatcherProducerExcept
+        declarativeCapability declarativeBorrowed relation.ledger_below
       executable_ledger_below := by
-        simpa [afterState, DDLedger.freezeMatcherProducer,
-          DDLedger.matcherProducerLeaves] using
-          DDLedger.LedgerBelow.freezeMatcherProducer executableCapability
-            relation.executable_ledger_below
-      protected_origins := relation.protected_origins.protectMatcherCapability
-        executableCapability
-      protected_below := relation.protected_below.protectMatcherCapability
+        simpa [afterState, DDLedger.freezeMatcherProducerExcept,
+          DDLedger.matcherProducerLeavesExcept] using
+          DDLedger.LedgerBelow.freezeMatcherProducerExcept
+            executableCapability executableBorrowed
+              relation.executable_ledger_below
+      protected_origins :=
+        relation.protected_origins.protectMatcherCapabilityExcept
+          executableCapability executableBorrowed
+      protected_below :=
+        relation.protected_below.protectMatcherCapabilityExcept
         (allocatedCapsBelowSupply_of_recorded relation.allocated_recorded (by
           rw [relation.supply_eq]
           exact relation.executable_ledger_below)) executableCapability
+            executableBorrowed
       allocated_recorded :=
-        relation.allocated_recorded.protectMatcherCapability
-          executableCapability
-      protected_safe := relation.protected_safe.protectMatcherCapability
-        relation.protected_origins executableCapability executableFixed }
+        relation.allocated_recorded.protectMatcherCapabilityExcept
+          executableCapability executableBorrowed
+      protected_safe :=
+        relation.protected_safe.protectMatcherCapabilityExcept
+          relation.protected_origins executableCapability executableBorrowed
+            executableFixed }
 
 def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
     {q : InferenceBase.FreshSupply} {declarative : Subst}
     {ledger : CapabilityOriginLedger} {state : InferState}
     (relation : TraversalStateCorrespondence q declarative ledger state)
+    {declarativeContext executableContext : Context}
+    (contexts : ContextBisimulation relation.prevailing declarativeContext
+      executableContext)
     {declarativeCapability executableCapability : Cap}
     (capability : CapBisimulation relation.prevailing declarativeCapability
       executableCapability)
@@ -294,11 +529,13 @@ def TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
     (executableFixed : executableCapability.apply state.prevailing.cap =
       executableCapability) :
     BisimulationExtension relation.prevailing
-      (DDLedger.freezeMatcherProducer ledger declarativeCapability)
-      declarative (state.protectMatcherCapability executableCapability) where
+      (DDLedger.freezeMatcherProducerExcept ledger declarativeCapability
+        (borrowedMatcherCapVarsAt declarative declarativeContext))
+      declarative (state.protectMatcherCapabilityExcept executableCapability
+        (borrowedMatcherCapVarsAt state.prevailing executableContext)) where
   after :=
     (DemandTypingInferenceCompletenessMatcherExprTraversal.TraversalStateCorrespondence.protectMatcherCapabilityRelated
-      relation capability declarativeFixed executableFixed).prevailing
+      relation contexts capability declarativeFixed executableFixed).prevailing
   transportTy := by
     intro declarativeTarget executableTarget related
     exact ⟨by
@@ -422,14 +659,17 @@ theorem inferClausesFuel_result_target
 /-- Complete `inferMatcherFuel` from one reconstructed clause-list traversal
 and its paired finalization evidence. -/
 def inferMatcherFuel_complete
-    {fuel : Nat} {signature : FrozenSig} {context : Context}
+    {fuel : Nat} {signature : FrozenSig}
+    {declarativeContext executableContext : Context}
     {selfEnv : SelfEnv} {path : SyntaxPath} {clauses : List Clause}
     {q q' : InferenceBase.FreshSupply} {S S' : Subst}
     {ledger ledger' : CapabilityOriginLedger} {initial : InferState}
     (before : TraversalStateCorrespondence q S ledger initial)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
     (clausesRun : ClausesRunCompletion
       (before.freshTy (freshOrigin .matcherClause path "matcher-target")).state
-      (inferClausesFuel fuel signature context selfEnv path 0 clauses
+      (inferClausesFuel fuel signature executableContext selfEnv path 0 clauses
         (.var q.nextTy)
         (initial.freshTy
           (freshOrigin .matcherClause path "matcher-target")).2)
@@ -437,8 +677,11 @@ def inferMatcherFuel_complete
     (finalization : MatcherFinalizationCompletion clausesRun signature clauses
       declarativeCapability) :
     SynthRunCompletion before
-      (inferMatcherFuel (fuel + 1) signature context selfEnv path clauses initial)
-      q' S' (DDLedger.freezeMatcherProducer ledger' declarativeCapability)
+      (inferMatcherFuel (fuel + 1) signature executableContext selfEnv path
+        clauses initial)
+      q' S' (DDLedger.freezeMatcherProducerExcept ledger'
+        declarativeCapability
+          (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher declarativeCapability (.var q.nextTy)) := by
   let targetOrigin := freshOrigin .matcherClause path "matcher-target"
   let targetAllocation := before.freshTy targetOrigin
@@ -479,13 +722,18 @@ def inferMatcherFuel_complete
           finalizationEvent).prevailing.cap =
         finalization.executableCapability := by
     exact finalization.executableFixed
+  let contextAfterTarget := contexts.transport
+    (before.freshTyExtension targetOrigin)
+  let contextAfterClauses := contextAfterTarget.transport clausesRun.transition
+  let contextAfterCoverage := contextAfterClauses.transport coverageExtension
+  let contextRelation := contextAfterCoverage.transport finalizationExtension
   let protectedRelation :=
     DemandTypingInferenceCompletenessMatcherExprTraversal.TraversalStateCorrespondence.protectMatcherCapabilityRelated
-      finalizedRelation capabilityAtFinal declarativeFixedAtFinal
+      finalizedRelation contextRelation capabilityAtFinal declarativeFixedAtFinal
       executableFixedAtFinal
   let protectExtension :=
     DemandTypingInferenceCompletenessMatcherExprTraversal.TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
-      finalizedRelation capabilityAtFinal declarativeFixedAtFinal
+      finalizedRelation contextRelation capabilityAtFinal declarativeFixedAtFinal
       executableFixedAtFinal
   let rawTargetRelation := TyBisimulation.matcher finalization.capability
     (clausesRun.transition.after.sameTarget (.var q.nextTy))
@@ -494,9 +742,11 @@ def inferMatcherFuel_complete
   let finalTarget := protectExtension.transportTy afterFinalization
   let result : ExprResult :=
     ⟨.matcher finalization.executableCapability (.var q.nextTy),
-      (clausesRun.result.state.recordEvent coverageEvent |>.recordEvent
-        finalizationEvent).protectMatcherCapability
-          finalization.executableCapability⟩
+      let finalized := clausesRun.result.state.recordEvent coverageEvent
+        |>.recordEvent finalizationEvent
+      finalized.protectMatcherCapabilityExcept
+        finalization.executableCapability
+        (borrowedMatcherCapVars finalized executableContext)⟩
   have clausesTargetEq : clausesRun.result.target = .var q.nextTy :=
     inferClausesFuel_result_target clausesRun.success
   have executableCollected : collectClauseEvidence signature.toMatcherSig clauses

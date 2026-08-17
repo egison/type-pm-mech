@@ -2150,9 +2150,13 @@ theorem delegatingMatcher_ddSynth :
 def delegatingMatcher_ddSynthOrigin :
     DemandSynthOrigin emptySignature delegatingMatcher_ddSynth []
       delegatingLedger₁ := by
-  simpa [delegatingMatcher, DDLedger.freezeMatcherProducer,
-    DDLedger.matcherProducerLeaves, Inference.matcherProducerLedgerLeaves,
-    Cap.fcv, CapabilityOriginLedger.setOrigins] using
+  simpa [delegatingMatcher, DDLedger.freezeMatcherProducerExcept,
+    DDLedger.matcherProducerLeavesExcept,
+    Inference.matcherProducerLedgerLeavesExcept,
+    Inference.matcherProducerLedgerLeaves,
+    Inference.borrowedMatcherCapVarsAt,
+    Inference.schemeMatcherDemandCapVars, Cap.fcv,
+    CapabilityOriginLedger.setOrigins] using
     (DemandSynthOrigin.matcher (signature := emptySignature)
       (evidence := [.unseen]) (capability := .any)
       delegatingClauses_ddClausesOrigin rfl rfl rfl rfl rfl rfl rfl)

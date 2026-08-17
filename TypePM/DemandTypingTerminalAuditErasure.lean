@@ -485,9 +485,11 @@ private theorem DemandSynthTerminalAudit.typingInvariantErasureFuel
           (.var q.nextTy) := Ty.BoundedBy.varOf (Nat.lt_succ_self _)
       have freezing := DDErasure.StateFactorization.ofTransition
         (S := S') (before := ledger1)
-        (after := DDLedger.freezeMatcherProducer ledger1 capability)
+        (after := DDLedger.freezeMatcherProducerExcept ledger1 capability
+          (Inference.borrowedMatcherCapVarsAt S' context))
         (SupplyExtends.refl q')
-        (DDLedger.RefinesBelow.freezeMatcherProducer q' ledger1 capability)
+        (DDLedger.RefinesBelow.freezeMatcherProducerExcept q' ledger1
+          capability (Inference.borrowedMatcherCapVarsAt S' context))
       have clausesTyping := DDClausesTerminalAudit.typingInvariantErasureFuel
         (context := context) clausesAudit fuel' audit_child_bound
         (freezing.trans toTerminal) closed

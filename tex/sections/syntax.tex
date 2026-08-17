@@ -71,7 +71,7 @@ cl &::=& pp\ \mathtt{as}\ M\ \mathtt{with}\
 $c$ は pattern constructor，$C$ は data constructor である．surface
 $\mathtt{match}$ は $\mathtt{matchAll}$ と $\mathsf{head}$ への elaboration であり，
 core primitive ではない．pattern-function declaration は source expression の typing より前に
-freeze され，canonical signature の一部になる．
+freeze（後の推論で構造を強められないよう固定）され，canonical signature の一部になる．
 
 \subsection{シグネチャ・文脈・状態}
 
@@ -127,8 +127,9 @@ $\Omega$ は capability variable がどこで生成され，現在どの solve �
 key は $\mathsf{rigid}$ である．scheme／dual instance の binder image は
 $\mathsf{renameOnly}$，constructor／primitive instance と fresh consumer は
 $\mathsf{structuralFlexible}$ になる．export は外へ残る像の structural leaf だけを
-$\mathsf{renameOnly}$ へ移す．matcher finalization は最終 capability に現れる全 demand-owned
-explicit ledger key を調べるため，matcher 開始前の owned placeholder も freeze の対象となる．
+$\mathsf{renameOnly}$ へ移す．matcher finalization は最終 capability に現れるmatcher-ownedな
+explicit ledger keyを調べる．ただしactive contextのtop-level slot demandまたはdirect-selfの引数slotから
+借りたleafは新規freeze対象から除き，selfの結果だけに現れるleafは除外しない．
 
 \paragraph{三状態が型推論を分ける例．}
 三状態は solver metavariable を分類し，capability 構文の rigid skolem $\hat s$ とは区別される．
@@ -164,7 +165,9 @@ $\Matcher{\Any}{\mathtt{Int}}$ が必要な位置で $r$ を検査しても $\ch
 以上より，structural-flexible は局所特殊化，rename-only は export 済み producer の alpha-renaming，
 rigid は外部仮定の保存を担う．rename-only な $\chi_n$ と structural-flexible な $\chi_f$ の等式は
 $\chi_f\mapsto\chi_n$ へ向ける．逆向きでは後続の structural solve が $\chi_n$ を間接的に強化できる．
-export と matcher finalization は外へ出る structural leaf を rename-only へ一方向に freeze する．
+export と matcher finalization は外へ出るmatcher-ownedな structural leaf を rename-only へ一方向に
+freezeする．引数slotから借りたleafはcall siteで特殊化されるconsumer interfaceなので，matcher-ownedな
+出力leafとは区別する．
 ledger は solver の解を制限するが，coercion branch の選択には使わない．
 
 \subsection{判断の一覧}

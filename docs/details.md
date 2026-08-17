@@ -65,9 +65,13 @@ terminal auditを組み合わせる．Origin情報または公開終端で必要
 expression schemeとpattern-function dual schemeのbinder imageはinstance生成時から
 `renameOnly` になる．constructor／primitive instance，fresh pattern hole，`fixMatcher`
 placeholderなどdemand-directed内部の局所変数は `structuralFlexible` として生成される．constructor exportは
-公開payloadに残る像のstructural leafだけを選択的にfreezeする．matcher finalizationは最終
-capabilityに現れる全demand-owned explicit ledger keyのstructural leafをfreezeするため，matcher開始前に
-生成された `fixMatcher` placeholderのowned leafも対象になる．
+公開payloadに残る像のstructural leaf（capability構文中の変数）だけを選択的にfreezeする．
+ここでfreezeとは，後続solveによるstructural strengtheningを禁止するための固定である．
+matcher finalizationは最終
+capabilityに現れるmatcher-owned leafをfreezeするが，active contextのtop-level slot demandまたは
+direct-selfの引数slotから借りたleafは新規freeze対象から除く．例えば
+`multiset : MatcherSlot κ α → Matcher (List κ) (List α)`の`κ`は引数から借りたinterfaceなので，
+call siteで`Any`へ特殊化できる．一方，selfの結果だけに現れるleafや既にexport済みのleafは除外しない．
 
 三状態の差は次の型推論例に現れ，それぞれの受理・拒否境界は機械化されている．
 `Pack : ∀κ α. Matcher κ α -> Packed`へ`something`を渡す
@@ -634,7 +638,9 @@ infer success → SourceTyping → exact evalFuel result → Eval adequacy → a
 ```
 
 を同じfixtureについて検査する．安全性定理だけでは，matcherの分解結果が意図した集合であることや，
-非線形patternの等値比較が正しい向きで働くことまでは決まらないためである．
+非線形patternの等値比較が正しい向きで働くことまでは決まらないためである．variable-onlyという
+value-flow schemeのbinderをcapability変数にだけ写す規則が同一fixtureを拒否する場合は，型付き定義，
+正確なruntime実行，公開推論の負例を分け，拒否が仕様どおりであることも固定する．
 
 - `DemandTypingRegression`: raw demand-directed の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher demand-directed 拒否，unresolved lambda domainの
@@ -658,7 +664,11 @@ infer success → SourceTyping → exact evalFuel result → Eval adequacy → a
 - `ProducerStrengtheningRegression`: producer freeze の拒否／control 成功．
 - `PatternCtorCapabilityRegression`: pattern-constructor capability projection．
 - `PatternFunctionSafetyRegression`: pattern function とmatching safetyの接続，および非空runtime表を
-  用いる閉programの`typed_never_stuck_runtime`具体化．
+  用いる閉programの`typed_never_stuck_runtime`具体化．nullary `unit`は公開推論，`SourceTyping`，
+  exact evaluation，adequacy，全fuel no-stuckを接続する．parameter付き`pass`は，embedded parameterが
+  実引数`$x`へ展開され，bindingがbodyへ戻って`[7]`を返すところまで正確に評価する．同programの
+  公開推論拒否も固定する：共有capability binderのimageを，後続の`.something`に合わせて`Any`へ
+  強めることはvariable-only規則が禁止する．
 - `DynamicSafetyRegression`: end-to-end evaluation safety．
 - `DynamicCaptureRegression`: value-pattern capture．
 - `DynamicDispatchRegression`: matcher cursor と dispatch．
@@ -674,6 +684,16 @@ infer success → SourceTyping → exact evalFuel result → Eval adequacy → a
   この順で列挙する．非線形patternと二要素fixtureは公開推論，`SourceTyping`，kernel簡約による
   `evalFuel = ok`，`evalFuel_ok`による関係的評価，全fuel no-stuckまで接続する．二要素fixtureは
   multiset選択の有限具体例であり，任意長の再帰的multiset matcherや`join`の実行完全性は主張しない．
+- `GeneralMultisetExecutionRegression`: 入力長に特化しない`fix` matcher関数と，それを
+  `.something`に適用した主要programを公開推論，`SourceTyping`，正確な`evalFuel`結果，
+  adequacy，全fuel no-stuckへ接続する．実行側は
+  同じ再帰定義について，空・singleton・三要素・重複要素の`nil`／`cons`，入れ子`cons`，`join`を
+  検査する．`submultisetSplits`は連続するprefix／suffixだけを返す`splits`とは異なり，各出現位置を
+  左右へ割り振る全二分割を，左側の要素数と元の添字順で列挙する．同値な値を持つ異なる出現は別分岐
+  として残る．入れ子`cons`は現在のdepth-first・左から右の探索順を固定する．
+  matcher入力slotから借りたcapabilityを新たなfreeze対象から除く正例と，matcher-ownedの結果leafを
+  引き続きfreezeする負境界も固定する．従って全入力listの機能的正当性，BFS completeness，標準multiset matcherの全interfaceは
+  主張しない．
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
@@ -721,6 +741,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
 | `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰と`program_never_stuck` |
 | `FeatureExecutionRegression` | 非線形patternの一致／不一致，実際の`List` singletonの分解，二要素multisetの複数分解を検査し，主要fixtureを公開推論，`SourceTyping`，正確な`evalFuel`結果，adequacy，全fuel no-stuckへ接続する機能対応回帰 |
+| `GeneralMultisetExecutionRegression` | 入力長に特化しない再帰multiset matcherの型付き定義と，空・一要素・三要素・重複・入れ子`cons`・全`join`分割の正確な実行，depth-first結果順，主要適用の公開推論から全fuel no-stuckまでを固定する機能対応回帰 |
 | `TermFreeVars`／`InterpreterScoping`／`InterpreterSafetyDefs` | 構文的自由変数層（`Expr.freeVars`・`Pattern.scopeVars`・`Pattern.exprVarsUnder`・`Env.names`），値／環境／状態のスコープ述語（`ScopedValue`など；closureの存在文脈をfv包含で回避），`Safe`契約・`AtomsScoped`・`stackBinders` |
 | `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`），pattern-function application・MNode内部step・embedded parameter展開を含む状態一歩と探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
 | `InterpreterPpmSafe`／`InterpreterPpmPrimitive`／`InterpreterDispatchSafe` | clause header照合の安全性（`CaptureAdm`駆動の`ppmSafe`／`ppmListSafe`と，primForm patternの浅い直接解析`ppmSafe_primitive`），clause／arm歩行の安全性（`dispatchSafe`／`armsSafe`・`DispatchBranchProps`；`pdMatch_scoped`等の補題込み） |

@@ -718,6 +718,7 @@ private theorem inferExprFuel_stateExtensionCore
         InferState.stateExtension_freshTy,
         InferState.stateExtension_freshCap,
         InferState.stateExtension_protectMatcherCapability,
+        InferState.stateExtension_protectMatcherCapabilityExcept,
         InferState.stateExtension_freezeCapabilityExport,
         InferState.stateExtension_recordEvent,
         InferState.stateExtension_recordSource,
@@ -1346,8 +1347,8 @@ private theorem inferMatcherFuel_stateExtensionCore
                       ((inferClausesFuel_stateExtension clausesEq).trans
                         ((InferState.stateExtension_recordEvent _ _).trans
                           ((InferState.stateExtension_recordEvent _ _).trans
-                            (InferState.stateExtension_protectMatcherCapability
-                              _ _))))
+                            (InferState.stateExtension_protectMatcherCapabilityExcept
+                              _ _ _))))
                   · contradiction
 
 theorem inferMatcherFuel_stateExtension

@@ -80,7 +80,8 @@ theorem auditedSynthMatcher_complete_paired
       before
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state)
-      q' S' (DDLedger.freezeMatcherProducer ledger₁ capability)
+      q' S' (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy))) := by
   let targetOrigin := freshOrigin .matcherClause path "matcher-target"
   let entered := before.visit .exprMatcher path
@@ -143,9 +144,12 @@ theorem auditedSynthMatcher_complete_paired
   have clausesTargetEq : clausesRun.run.result.target = .var q.nextTy :=
     inferClausesFuel_result_target clausesRun.run.success
   let rawRun := inferMatcherFuel_complete
-    (fuel := fuel) (signature := signature) (context := executableContext)
+    (fuel := fuel) (signature := signature)
+    (declarativeContext := declarativeContext)
+    (executableContext := executableContext)
     (selfEnv := selfEnv) (path := path) (clauses := clauses)
-    entered clausesRun.run finalization
+    entered (contexts.transport (before.visitExtension .exprMatcher path))
+      clausesRun.run finalization
   let finished :=
     DemandTypingInferenceCompletenessExprTraversal.SynthRunCompletion.finish
       rawRun (.matcher clauses) path
@@ -162,7 +166,8 @@ theorem auditedSynthMatcher_complete_paired
   let outerRun : SynthRunCompletion before
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state)
-      q' S' (DDLedger.freezeMatcherProducer ledger₁ capability)
+      q' S' (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy)) :=
     { finished with
       success := operationEq.symm.trans finished.success
@@ -171,7 +176,8 @@ theorem auditedSynthMatcher_complete_paired
   let rawBounded : BoundedSynthRunCompletion before
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state)
-      q' S' (DDLedger.freezeMatcherProducer ledger₁ capability)
+      q' S' (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy)) :=
     ⟨outerRun, by
       change Ty.BoundedBy q'
@@ -204,19 +210,25 @@ theorem auditedSynthMatcher_complete_paired
     BisimulationExtension.transportCap finalizationExtension
       (BisimulationExtension.transportCap coverageExtension
         finalization.capability)
+  let finalizedContexts :=
+    ((clausesContexts.transport clausesRun.run.transition).transport
+      coverageExtension).transport finalizationExtension
   let protectExtension :=
     TraversalStateCorrespondence.protectMatcherCapabilityRelatedExtension
-      finalizedRelation capabilityAtFinal finalization.declarativeFixed
-      finalization.executableFixed
+      finalizedRelation finalizedContexts capabilityAtFinal
+      finalization.declarativeFixed finalization.executableFixed
   let localFinalization :=
     PairedValidatorRunExtension.recordMatcherFinalization
       (evidence := finalization.executableEvidence)
       clausesRun.run.transition.after runtimeTarget clausesRun.run.holes
       finalization.capability catchAll binders facts
   let protectValidation := PairedValidatorRunExtension.ofExact protectExtension
-    (ValidatorRunExtension.protectMatcherCapability terminal signature
+    (ValidatorRunExtension.protectMatcherCapabilityExcept terminal signature
       (covered.recordEvent finalizationEvent)
-      finalization.executableCapability)
+      finalization.executableCapability
+      (borrowedMatcherCapVarsAt
+        (covered.recordEvent finalizationEvent).prevailing
+        executableContext))
   let finishTransition := protectExtension.after.recordEventExtension
     (.inferredExpr (.matcher clauses)
       (.matcher finalization.executableCapability (.var q.nextTy)) path)

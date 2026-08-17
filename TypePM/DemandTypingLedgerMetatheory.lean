@@ -330,5 +330,25 @@ theorem RefinesBelow.freezeMatcherProducer
     (matcherProducerLeaves ledger capability)
     (matcherProducerLeaves_origin ledger capability)
 
+theorem LedgerBelow.freezeMatcherProducerExcept
+    {q : InferenceBase.FreshSupply}
+    {ledger : CapabilityOriginLedger} (capability : Cap)
+    (borrowed : List CapVar) (below : LedgerBelow q ledger) :
+    LedgerBelow q (freezeMatcherProducerExcept ledger capability borrowed) := by
+  apply LedgerBelow.setOrigins below (Nat.le_refl _)
+  intro varId membership
+  exact below varId
+    (matcherProducerLeavesExcept_recorded ledger capability borrowed varId
+      membership).2
+
+theorem RefinesBelow.freezeMatcherProducerExcept
+    (q : InferenceBase.FreshSupply) (ledger : CapabilityOriginLedger)
+    (capability : Cap) (borrowed : List CapVar) :
+    RefinesBelow q ledger
+      (freezeMatcherProducerExcept ledger capability borrowed) := by
+  exact refinesBelow_freezeStructural ledger
+    (matcherProducerLeavesExcept ledger capability borrowed)
+    (matcherProducerLeavesExcept_origin ledger capability borrowed)
+
 end DDLedger
 end TypePM

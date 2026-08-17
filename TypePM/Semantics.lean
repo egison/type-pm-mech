@@ -83,9 +83,99 @@ end
 
 /-! ## Primitive delta rules -/
 
+/-- Choose exactly `count` occurrences for the left submultiset, preserving
+source order on both sides.  Equal values at different positions remain
+distinct choices. -/
+def chooseSubmultisetSplits {α : Type} : List α → Nat →
+    List (List α × List α)
+  | elements, 0 => [([], elements)]
+  | [], _ + 1 => []
+  | element :: elements, count + 1 =>
+      ((chooseSubmultisetSplits elements count).map fun split =>
+        (element :: split.1, split.2))
+      ++
+      ((chooseSubmultisetSplits elements (count + 1)).map fun split =>
+        (split.1, element :: split.2))
+
+/-- All submultiset bipartitions, ordered first by left size and then by
+source-index choice. -/
+def submultisetSplits {α : Type} (elements : List α) :
+    List (List α × List α) :=
+  (List.range (elements.length + 1)).flatMap
+    (chooseSubmultisetSplits elements)
+
+theorem chooseSubmultisetSplits_members {α : Type} {elements : List α}
+    {count : Nat} {left right : List α}
+    (membership : (left, right) ∈ chooseSubmultisetSplits elements count) :
+    (∀ element ∈ left, element ∈ elements) ∧
+      (∀ element ∈ right, element ∈ elements) := by
+  induction elements generalizing count left right with
+  | nil =>
+      cases count with
+      | zero =>
+          rcases (by simpa [chooseSubmultisetSplits] using membership) with
+            ⟨rfl, rfl⟩
+          simp
+      | succ count => simp [chooseSubmultisetSplits] at membership
+  | cons head tail induction =>
+      cases count with
+      | zero =>
+          rcases (by simpa [chooseSubmultisetSplits] using membership) with
+            ⟨rfl, rfl⟩
+          simp
+      | succ count =>
+          rw [chooseSubmultisetSplits, List.mem_append] at membership
+          rcases membership with membership | membership
+          · obtain ⟨⟨splitLeft, splitRight⟩, splitMembership, splitEq⟩ :=
+              List.mem_map.mp membership
+            simp only [Prod.mk.injEq] at splitEq
+            rcases splitEq with ⟨leftEq, rightEq⟩
+            subst left
+            subst right
+            obtain ⟨leftMembers, rightMembers⟩ :=
+              induction splitMembership
+            exact ⟨by
+              intro element elementMembership
+              simp only [List.mem_cons] at elementMembership ⊢
+              exact elementMembership.elim Or.inl
+                (fun tailMembership => Or.inr
+                  (leftMembers element tailMembership)),
+              by
+                intro element elementMembership
+                exact List.mem_cons_of_mem head
+                  (rightMembers element elementMembership)⟩
+          · obtain ⟨⟨splitLeft, splitRight⟩, splitMembership, splitEq⟩ :=
+              List.mem_map.mp membership
+            simp only [Prod.mk.injEq] at splitEq
+            rcases splitEq with ⟨leftEq, rightEq⟩
+            subst left
+            subst right
+            obtain ⟨leftMembers, rightMembers⟩ :=
+              induction splitMembership
+            exact ⟨by
+              intro element elementMembership
+              exact List.mem_cons_of_mem head
+                (leftMembers element elementMembership),
+              by
+                intro element elementMembership
+                simp only [List.mem_cons] at elementMembership ⊢
+                exact elementMembership.elim Or.inl
+                  (fun tailMembership => Or.inr
+                    (rightMembers element tailMembership))⟩
+
+theorem submultisetSplits_members {α : Type} {elements : List α}
+    {left right : List α}
+    (membership : (left, right) ∈ submultisetSplits elements) :
+    (∀ element ∈ left, element ∈ elements) ∧
+      (∀ element ∈ right, element ∈ elements) := by
+  simp only [submultisetSplits, List.mem_flatMap] at membership
+  obtain ⟨count, _, splitMembership⟩ := membership
+  exact chooseSubmultisetSplits_members splitMembership
+
 /--
 Evaluation of runtime primitives.  `append` concatenates encoded lists;
-`splits` enumerates every consecutive prefix/suffix split.
+`splits` enumerates every consecutive prefix/suffix split; and
+`submultisetSplits` enumerates every occurrence-based bipartition.
 -/
 def primEval : PrimOp → List Value → Option Value
   | .append, [v₁, v₂] => do
@@ -96,6 +186,10 @@ def primEval : PrimOp → List Value → Option Value
       let l ← listOfV v
       pure (mkListV ((List.range (l.length + 1)).map fun i =>
         .tuple [mkListV (l.take i), mkListV (l.drop i)]))
+  | .submultisetSplits, [v] => do
+      let l ← listOfV v
+      pure (mkListV (submultisetSplits l |>.map fun split =>
+        .tuple [mkListV split.1, mkListV split.2]))
   | _, _ => none
 
 /-! ## Primitive data-pattern matching -/

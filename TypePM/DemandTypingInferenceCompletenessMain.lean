@@ -3017,16 +3017,20 @@ theorem auditedSynthMatcher_complete_of_finalization
     (finalization :
       DemandTypingInferenceCompletenessMatcherExprTraversal.MatcherFinalizationCompletion
         clausesRun signature clauses capability)
+    (contexts : ContextBisimulation before.prevailing declarativeContext
+      executableContext)
     (targetBounded : Ty.BoundedBy q' (.var q.nextTy)) :
     Nonempty (BoundedSynthRunCompletion before
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state) q' S'
-      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy))) := by
-  let _ := declarativeContext
   let rawRun :=
     DemandTypingInferenceCompletenessMatcherExprTraversal.inferMatcherFuel_complete
-      (before.visit .exprMatcher path) clausesRun finalization
+      (before.visit .exprMatcher path)
+      (contexts.transport (before.visitExtension .exprMatcher path))
+      clausesRun finalization
   let finished :=
     DemandTypingInferenceCompletenessExprTraversal.SynthRunCompletion.finish
       rawRun (.matcher clauses) path
@@ -3035,7 +3039,8 @@ theorem auditedSynthMatcher_complete_of_finalization
         let inner ← inferMatcherFuel (fuel + 1) signature executableContext
           selfEnv path clauses (visit state .exprMatcher path)
         pure (finishExpr (.matcher clauses) path inner.target inner.state)) q' S'
-      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy)) :=
     ⟨finished, by
       change Ty.BoundedBy q'
@@ -3045,7 +3050,8 @@ theorem auditedSynthMatcher_complete_of_finalization
   let normalized : BoundedSynthRunCompletion (before.visit .exprMatcher path)
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state) q' S'
-      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy)) := by
     have operationEq :
         (do
@@ -3062,7 +3068,8 @@ theorem auditedSynthMatcher_complete_of_finalization
   let outerRun : SynthRunCompletion before
       (inferExprFuel (fuel + 2) signature executableContext selfEnv path
         (.matcher clauses) state) q' S'
-      (DDLedger.freezeMatcherProducer ledger₁ capability)
+      (DDLedger.freezeMatcherProducerExcept ledger₁ capability
+        (borrowedMatcherCapVarsAt S' declarativeContext))
       (.matcher capability (.var q.nextTy)) :=
     { normalized.run with
       transition := (before.visitExtension .exprMatcher path).seq

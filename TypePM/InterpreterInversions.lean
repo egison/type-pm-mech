@@ -74,6 +74,18 @@ theorem primEval_isSome
               .tuple [mkListV (elements.take index),
                 mkListV (elements.drop index)]),
             by simp [primEval, argDecode]⟩
+  | submultisetSplits =>
+      obtain ⟨target, targetsEq, -⟩ :=
+        splitsCanonicalScheme_inst_inversion instanceTyping
+      subst targetsEq
+      cases valuesTyped with
+      | @cons argValue _ nilValues _ argTyped nilTyped =>
+          cases nilTyped
+          obtain ⟨elements, argDecode⟩ :=
+            listOfV_isSome signatureWF argTyped
+          exact ⟨mkListV (submultisetSplits elements |>.map fun split =>
+              .tuple [mkListV split.1, mkListV split.2]),
+            by simp [primEval, argDecode]⟩
 
 /-! ## Coercion-stripping typing inversions
 

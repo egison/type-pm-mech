@@ -161,6 +161,35 @@ theorem ProtectedCapOrigins.protectMatcherCapability
       simp [matcherProducerLedgerLeaves, capabilityMembership,
         originOf_eq_structural_mem_keys structural, structural]
 
+/-- Borrowed matcher-demand variables are omitted from both the protected
+list and the origin freeze, so the ordinary matcher-finalization argument
+restricts to the remaining producer-owned variables. -/
+theorem ProtectedCapOrigins.protectMatcherCapabilityExcept
+    {state : InferState} (frozen : ProtectedCapOrigins state)
+    (capability : Cap) (borrowed : List CapVar) :
+    ProtectedCapOrigins
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  intro varId membership
+  simp only [InferState.protectMatcherCapabilityExcept_protectedCaps,
+    List.mem_append, matcherProducerVarsExcept, List.mem_filter,
+    mem_matcherProducerVars] at membership
+  simp only [InferState.protectMatcherCapabilityExcept_capabilityOrigins,
+    CapabilityOriginLedger.originOf_setOrigins_eq]
+  by_cases selected : varId ∈
+      matcherProducerLedgerLeavesExcept state.capabilityOrigins capability
+        borrowed
+  · simp [selected]
+  · rw [if_neg selected]
+    rcases membership with oldMembership |
+      ⟨⟨capabilityMembership, _⟩, notBorrowed⟩
+    · exact frozen varId oldMembership
+    · intro structural
+      have notBorrowed' : varId ∉ borrowed := of_decide_eq_true notBorrowed
+      apply selected
+      simp [matcherProducerLedgerLeavesExcept, matcherProducerLedgerLeaves,
+        capabilityMembership, originOf_eq_structural_mem_keys structural,
+        structural, notBorrowed']
+
 /-! ## Fresh-cut preservation -/
 
 /-- Trace ownership is the convenient sufficient hypothesis for matcher
@@ -257,6 +286,19 @@ theorem AllocatedCapsRecorded.protectMatcherCapability
     (state.capabilityOrigins.setOrigins
       (matcherProducerLedgerLeaves state.capabilityOrigins capability)
       .renameOnly).map Prod.fst
+  exact (mem_keys_setOrigins _ _ _ _).2
+    (Or.inr (recorded varId membership))
+
+theorem AllocatedCapsRecorded.protectMatcherCapabilityExcept
+    {state : InferState} (recorded : AllocatedCapsRecorded state)
+    (capability : Cap) (borrowed : List CapVar) :
+    AllocatedCapsRecorded
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  intro varId membership
+  change varId ∈
+    (state.capabilityOrigins.setOrigins
+      (matcherProducerLedgerLeavesExcept state.capabilityOrigins capability
+        borrowed) .renameOnly).map Prod.fst
   exact (mem_keys_setOrigins _ _ _ _).2
     (Or.inr (recorded varId membership))
 
@@ -415,6 +457,20 @@ theorem ProtectedCapsBelowSupply.protectMatcherCapability
   intro varId membership
   rw [InferState.mem_protectMatcherCapability_protectedCaps] at membership
   rcases membership with oldMembership | ⟨_, allocatedMembership⟩
+  · exact below varId oldMembership
+  · exact allocatedBelow varId allocatedMembership
+
+theorem ProtectedCapsBelowSupply.protectMatcherCapabilityExcept
+    {state : InferState} (below : ProtectedCapsBelowSupply state)
+    (allocatedBelow : AllocatedCapsBelowSupply state)
+    (capability : Cap) (borrowed : List CapVar) :
+    ProtectedCapsBelowSupply
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
+  intro varId membership
+  simp only [InferState.protectMatcherCapabilityExcept_protectedCaps,
+    List.mem_append, matcherProducerVarsExcept, List.mem_filter,
+    mem_matcherProducerVars] at membership
+  rcases membership with oldMembership | ⟨⟨_, allocatedMembership⟩, _⟩
   · exact below varId oldMembership
   · exact allocatedBelow varId allocatedMembership
 

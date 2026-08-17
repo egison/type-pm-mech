@@ -663,6 +663,21 @@ def matcherProducerLedgerLeaves
       varId ∈ ledger.map Prod.fst).eraseDups.filter
     fun varId => ledger.originOf varId = .structuralFlexible
 
+/-- Producer-owned variables after excluding capabilities borrowed from the
+surrounding context or an active recursive placeholder. -/
+def matcherProducerVarsExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    List CapVar :=
+  (matcherProducerVars state capability).filter fun varId =>
+    varId ∉ borrowed
+
+/-- Ledger leaves owned by the matcher itself, excluding borrowed variables. -/
+def matcherProducerLedgerLeavesExcept
+    (ledger : CapabilityOriginLedger) (capability : Cap)
+    (borrowed : List CapVar) : List CapVar :=
+  (matcherProducerLedgerLeaves ledger capability).filter fun varId =>
+    varId ∉ borrowed
+
 @[simp] theorem mem_matcherProducerVars
     (state : InferState) (capability : Cap) (varId : CapVar) :
     varId ∈ matcherProducerVars state capability ↔
@@ -682,6 +697,19 @@ def InferState.protectMatcherCapability
       (matcherProducerLedgerLeaves state.capabilityOrigins capability)
       .renameOnly }
 
+/-- Finalize a matcher without freezing capability variables supplied by its
+ambient context or active direct-self placeholder. -/
+def InferState.protectMatcherCapabilityExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    InferState :=
+  { state with
+    protectedCaps := state.protectedCaps ++
+      matcherProducerVarsExcept state capability borrowed
+    capabilityOrigins := state.capabilityOrigins.setOrigins
+      (matcherProducerLedgerLeavesExcept state.capabilityOrigins capability
+        borrowed)
+      .renameOnly }
+
 @[simp] theorem InferState.protectMatcherCapability_trace
     (state : InferState) (capability : Cap) :
     (state.protectMatcherCapability capability).trace =
@@ -691,6 +719,18 @@ def InferState.protectMatcherCapability
 @[simp] theorem InferState.protectMatcherCapability_supply
     (state : InferState) (capability : Cap) :
     (state.protectMatcherCapability capability).supply =
+      state.supply :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapabilityExcept_trace
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).trace =
+      state.trace :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapabilityExcept_supply
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).supply =
       state.supply :=
   rfl
 
@@ -709,6 +749,22 @@ def InferState.protectMatcherCapability
         matcherProducerVars state capability :=
   rfl
 
+@[simp] theorem InferState.protectMatcherCapabilityExcept_capabilityOrigins
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).capabilityOrigins =
+      state.capabilityOrigins.setOrigins
+        (matcherProducerLedgerLeavesExcept state.capabilityOrigins capability
+          borrowed)
+        .renameOnly :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapabilityExcept_protectedCaps
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).protectedCaps =
+      state.protectedCaps ++
+        matcherProducerVarsExcept state capability borrowed :=
+  rfl
+
 theorem InferState.protectMatcherCapability_origin_of_mem
     (state : InferState) (capability : Cap) (varId : CapVar)
     (membership : varId ∈
@@ -720,6 +776,19 @@ theorem InferState.protectMatcherCapability_origin_of_mem
       (matcherProducerLedgerLeaves state.capabilityOrigins capability) varId
       .renameOnly membership
 
+theorem InferState.protectMatcherCapabilityExcept_origin_of_mem
+    (state : InferState) (capability : Cap) (borrowed : List CapVar)
+    (varId : CapVar)
+    (membership : varId ∈ matcherProducerLedgerLeavesExcept
+      state.capabilityOrigins capability borrowed) :
+    (state.protectMatcherCapabilityExcept capability borrowed).capabilityOrigins.originOf
+        varId = .renameOnly := by
+  exact CapabilityOriginLedger.originOf_setOrigins_of_mem
+    state.capabilityOrigins
+      (matcherProducerLedgerLeavesExcept state.capabilityOrigins capability
+        borrowed)
+      varId .renameOnly membership
+
 @[simp] theorem InferState.mem_protectMatcherCapability_protectedCaps
     (state : InferState) (capability : Cap) (varId : CapVar) :
     varId ∈ (state.protectMatcherCapability capability).protectedCaps ↔
@@ -727,6 +796,16 @@ theorem InferState.protectMatcherCapability_origin_of_mem
         (varId ∈ capability.fcv ∧
           varId ∈ state.trace.allocatedCapVars) := by
   simp
+
+@[simp] theorem InferState.mem_protectMatcherCapabilityExcept_protectedCaps
+    (state : InferState) (capability : Cap) (borrowed : List CapVar)
+    (varId : CapVar) :
+    varId ∈ (state.protectMatcherCapabilityExcept capability borrowed).protectedCaps ↔
+      varId ∈ state.protectedCaps ∨
+        (varId ∈ capability.fcv ∧
+          varId ∈ state.trace.allocatedCapVars ∧ varId ∉ borrowed) := by
+  simp [matcherProducerVarsExcept]
+  grind
 
 /-! ### Producer non-strengthening -/
 
@@ -810,6 +889,12 @@ def InferState.prevailing (state : InferState) : Subst :=
 @[simp] theorem InferState.protectMatcherCapability_prevailing
     (state : InferState) (capability : Cap) :
     (state.protectMatcherCapability capability).prevailing =
+      state.prevailing :=
+  rfl
+
+@[simp] theorem InferState.protectMatcherCapabilityExcept_prevailing
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    (state.protectMatcherCapabilityExcept capability borrowed).prevailing =
       state.prevailing :=
   rfl
 
@@ -956,6 +1041,14 @@ theorem InferState.historyPrefix_protectMatcherCapability
     (state : InferState) (capability : Cap) :
     state.HistoryPrefix
       (state.protectMatcherCapability capability) := by
+  exact InferState.HistoryPrefix.of_same_trace rfl
+
+/-- Excluding context-owned variables from final matcher-producer protection
+also changes only the producer ledger. -/
+theorem InferState.historyPrefix_protectMatcherCapabilityExcept
+    (state : InferState) (capability : Cap) (borrowed : List CapVar) :
+    state.HistoryPrefix
+      (state.protectMatcherCapabilityExcept capability borrowed) := by
   exact InferState.HistoryPrefix.of_same_trace rfl
 
 /-- Eliminate the state component of a successful pair-returning helper. -/
@@ -1674,6 +1767,29 @@ def SelfEnv.eraseMany : SelfEnv -> List String -> SelfEnv
   | environment, [] => environment
   | environment, name :: names =>
       eraseMany (environment.erase name) names
+
+/-- Free capability variables in a context entry's top-level slot demand.
+For an active recursive placeholder, that demand is the top-level slot in its
+function domain.  Capabilities elsewhere in the scheme remain producer-owned. -/
+def schemeMatcherDemandCapVars (scheme : Scheme) : List CapVar :=
+  match scheme.body with
+  | .slot capability _ => capability.fcv
+  | .fn (.slot capability _) _ => capability.fcv
+  | _ => []
+
+/-- Capability variables supplied by matcher-slot demands in the surrounding
+context at one substitution cut.  A recursive self placeholder is already in
+that context, so no separate operational self environment is needed. -/
+def borrowedMatcherCapVarsAt (prevailing : Subst) (context : Context) :
+    List CapVar :=
+  ((context.applySubst prevailing).flatMap fun
+      (entry : String × Scheme) =>
+      schemeMatcherDemandCapVars entry.2).eraseDups
+
+/-- State-indexed executable form of `borrowedMatcherCapVarsAt`. -/
+def borrowedMatcherCapVars (state : InferState) (context : Context) :
+    List CapVar :=
+  borrowedMatcherCapVarsAt state.prevailing context
 
 @[simp] theorem SelfEnv.find?_cons_self
     (name : String) (placeholder : Ty) (environment : SelfEnv) :
@@ -3582,7 +3698,10 @@ def inferMatcherFuel :
                       (.matcherFinalization state.trace.solves.length clauses
                         target clausesResult.rawHoleLists finalTarget
                         finalHoleLists evidence capability)
-                    let state := state.protectMatcherCapability capability
+                    let borrowed :=
+                      borrowedMatcherCapVars state context
+                    let state := state.protectMatcherCapabilityExcept capability
+                      borrowed
                     some ⟨Ty.matcher capability target, state⟩
                   else none
 
@@ -4601,6 +4720,7 @@ theorem inferExprFuel_historyPrefix
         InferState.historyPrefix_freshTy,
         InferState.historyPrefix_freshCap,
         InferState.historyPrefix_protectMatcherCapability,
+        InferState.historyPrefix_protectMatcherCapabilityExcept,
         InferState.historyPrefix_freezeCapabilityExport,
         InferState.historyPrefix_recordEvent,
         InferState.historyPrefix_recordSource,
