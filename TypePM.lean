@@ -125,6 +125,7 @@ import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
 import TypePM.DemandTypingTerminalAuditErasureRegression
+import TypePM.CompositionFeatureRegression
 import TypePM.PublicTheorems
 import TypePM.AxiomAudit
 

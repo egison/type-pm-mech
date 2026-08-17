@@ -694,6 +694,12 @@ value-flow schemeのbinderをcapability変数にだけ写す規則が同一fixtu
   matcher入力slotから借りたcapabilityを新たなfreeze対象から除く正例と，matcher-ownedの結果leafを
   引き続きfreezeする負境界も固定する．従って全入力listの機能的正当性，BFS completeness，標準multiset matcherの全interfaceは
   主張しない．
+- `CompositionFeatureRegression`: 一般multiset matcher，非線形pattern，pattern functionを同一の
+  `matchAll`で合成するP2回帰．`join`で左右を分け，左右の`cons`で選んだ要素について，`$x`で整数を
+  束縛し，`#x`で等値を検査し，各要素にnullary（引数を取らない）`unit()` pattern functionを適用する．
+  重複する二つの`1`を異なる出現位置として選ぶ成功例は，同じ値を持つ2分岐を正確に返す．等しい整数を
+  持たない例は正常なmatch failureとして`[]`を返す．両fixtureについて公開推論，`SourceTyping`，正確な
+  `evalFuel`結果，adequacyによる関係的`Eval`，全fuel no-stuckまで接続する．
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
@@ -742,6 +748,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰と`program_never_stuck` |
 | `FeatureExecutionRegression` | 非線形patternの一致／不一致，実際の`List` singletonの分解，二要素multisetの複数分解を検査し，主要fixtureを公開推論，`SourceTyping`，正確な`evalFuel`結果，adequacy，全fuel no-stuckへ接続する機能対応回帰 |
 | `GeneralMultisetExecutionRegression` | 入力長に特化しない再帰multiset matcherの型付き定義と，空・一要素・三要素・重複・入れ子`cons`・全`join`分割の正確な実行，depth-first結果順，主要適用の公開推論から全fuel no-stuckまでを固定する機能対応回帰 |
+| `CompositionFeatureRegression` | 一般multisetの`join`／`cons`，`$x`／`#x`による非線形照合，nullary `unit()` pattern functionを同一`matchAll`で合成し，成功時の2分岐と不一致時の`[]`を公開推論から全fuel no-stuckまで固定するP2機能対応回帰 |
 | `TermFreeVars`／`InterpreterScoping`／`InterpreterSafetyDefs` | 構文的自由変数層（`Expr.freeVars`・`Pattern.scopeVars`・`Pattern.exprVarsUnder`・`Env.names`），値／環境／状態のスコープ述語（`ScopedValue`など；closureの存在文脈をfv包含で回避），`Safe`契約・`AtomsScoped`・`stackBinders` |
 | `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`），pattern-function application・MNode内部step・embedded parameter展開を含む状態一歩と探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
 | `InterpreterPpmSafe`／`InterpreterPpmPrimitive`／`InterpreterDispatchSafe` | clause header照合の安全性（`CaptureAdm`駆動の`ppmSafe`／`ppmListSafe`と，primForm patternの浅い直接解析`ppmSafe_primitive`），clause／arm歩行の安全性（`dispatchSafe`／`armsSafe`・`DispatchBranchProps`；`pdMatch_scoped`等の補題込み） |

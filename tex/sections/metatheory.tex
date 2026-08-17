@@ -271,8 +271,19 @@ producer変数ではないため，matcher確定時の新たなfreeze対象か�
 \texttt{Any}に特殊化できる一方，matcher-ownedの結果leafと既に輸出済みの変数の保護は維持する．
 pattern functionについても，nullary fixtureは同一program上の全段階を接続し，parameter付き
 \texttt{pass}はembedded parameterの展開からbody結果までの正確な実行と，同じvariable-only境界による
-公開推論拒否を対で固定する．これらは全入力listの機能的正当性，Egison標準multiset matcherの全機能，
-BFS completenessを主張しない．
+公開推論拒否を対で固定する．
+
+$\mathsf{CompositionFeatureRegression}$は，これらの機能を同一の\texttt{matchAll}で合成するP2回帰である．
+一般multiset matcherの\texttt{join}で左右を分け，左右の\texttt{cons}で要素を選び，
+\texttt{\$x}（変数pattern）で束縛した整数を\texttt{\#x}（value pattern）で比較する．各要素には
+nullary（引数を取らない）\texttt{unit()} pattern functionも適用する．重複する二つの\texttt{1}を
+異なる出現位置として選ぶ成功例は，同じ値を持つ2分岐を正確に返す．等しい整数を持たない例は，
+評価器の\texttt{stuck}ではなく正常な不一致として空listを返す．両方について公開推論，
+$\mathsf{SourceTyping}$，正確な$\mathsf{evalFuel}$結果，adequacyによる関係的評価，任意fuelでの
+no-stuckを同じfixture上で接続する．
+
+これらは一般のtermination，全入力listに対するmultiset matcherの機能的正当性，Egison標準multiset
+matcherの全機能，BFS completenessを主張しない．
 
 これらをsource-facingな一つの定理に束ねる．
 \[

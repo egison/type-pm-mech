@@ -273,7 +273,7 @@ public inference succeeds
 | P0 | **multiset matcher**：実際の`List`表現の一要素分解を評価し，さらに二要素の有限carrierから選択要素と残余を両順序で列挙する．後者は結果順を含む正確な値と上の全段階を検査する | 完了：`FeatureExecutionRegression.Multiset` |
 | P1 | 一般の再帰的multiset matcher：入力長に特化しない定義について，空・一要素・三要素・重複要素，入れ子`cons`，`join`，現在の探索順を実行時に検査する | 完了：`GeneralMultisetExecutionRegression`．全入力listに対する機能的正当性定理は主張しない |
 | P1 | pattern function：非空runtime tableを使う安全性回帰に加え，parameter展開を含むprogramの正確な`evalFuel = ok`結果を検査する | 完了：`PatternFunctionSafetyRegression`．nullary正例は全段階を接続し，parameter付き`pass`は正確な実行とvariable-only境界による公開推論拒否を対で固定する |
-| P2 | 機能の合成：multiset matcher，非線形pattern，pattern functionを同じprogramで組み合わせ，個別回帰では見えない相互作用を検査する | 未着手 |
+| P2 | 機能の合成：multiset matcher，非線形pattern，pattern functionを同じprogramで組み合わせ，個別回帰では見えない相互作用を検査する | 完了：`CompositionFeatureRegression`．同一`matchAll`で一般multisetの`join`／`cons`，`$x`／`#x`，nullary `unit()` pattern functionを組み合わせ，全段階を接続する |
 | 将来課題 | BFS（幅優先探索）の`matchAll`に対するmatching completeness | 非目標ではなく将来課題．現在の安全性定理には含めない |
 
 P0のmultiset回帰は二つを組み合わせる．一つは実際の`List`上の`cons` matcherがsingletonを
@@ -294,6 +294,14 @@ matcherの結果側だけに現れる変数や，既にsignatureから輸出さ�
 重複除去しない．現在の「探索順」はdepth-first（深さ優先）かつ左から右の結果順を指す．これは
 BFSの順序や，任意の入力listに対する完全な入出力仕様の帰納的証明を意味しない．また対象は
 `nil`／`cons`／`join` interfaceであり，Egison標準multiset matcherの全機能を実装したという主張ではない．
+
+P2では，これらを一つずつ試すだけでなく，同一の`matchAll`内で相互作用を検査する．
+`CompositionFeatureRegression`は，一般multiset matcherの`join`で左右を分け，左右の`cons`で要素を
+選び，`$x`（変数pattern）で束縛した整数を`#x`（value pattern）で比較する．各要素には
+`unit()`という引数を取らないpattern functionも適用する．重複する二つの`1`がそれぞれ別の出現位置
+として成功する例は，同じ値を持つ2分岐を正確に返す．等しい整数を含まない例は，評価器の`stuck`では
+なく正常な不一致として`[]`を返す．両方について公開推論，`SourceTyping`，正確な`evalFuel`結果，
+adequacyによる関係的評価，任意fuelでのno-stuckを同じfixture上で接続する．
 
 一般のprogram terminationは引き続き非目標である．また，型のないprogramや不正なsignatureを
 安全に実行することも目標に含めない．
@@ -328,7 +336,7 @@ BFSの順序や，任意の入力listに対する完全な入出力仕様の帰�
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Interpreter*Safe`, `InterpreterNoStuck`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタとadequacy，層別no-stuck定理とfuel上のstrong induction，公開安全性 |
-| feature validation | `FeatureExecutionRegression`, `GeneralMultisetExecutionRegression`, `PatternFunctionSafetyRegression` | 非線形pattern，有限carrier，入力長に特化しない再帰multiset matcher，pattern-function展開を，正確な実行結果と型付けの正負境界で検査する回帰 |
+| feature validation | `FeatureExecutionRegression`, `GeneralMultisetExecutionRegression`, `PatternFunctionSafetyRegression`, `CompositionFeatureRegression` | 非線形pattern，有限carrier，入力長に特化しない再帰multiset matcher，pattern-function展開とそれらの合成を，正確な実行結果と型付けの正負境界で検査する回帰 |
 | fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は
