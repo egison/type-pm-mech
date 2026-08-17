@@ -6,6 +6,13 @@ matcher（パターンマッチの「分解の流儀」を第一級の値にし�
 あること（主要型），型が付いたプログラムが実行時に型エラーを起こさないこと（型システムの健全性）— が成り立つ
 ことを機械検証した．
 
+本リポジトリにはもう一つの明示的な目標がある：**定理が意図したEgisonの機能を正しくモデル化して
+いることを示す**ことである．定理は形式化した言語に対して正しいことを保証するが，その形式化が
+multiset matcher，非線形pattern，pattern functionなどの意図した動作を表すことは，代表的な
+programの実行結果でも確認する必要がある．このため，公開型推論，`SourceTyping`の導出，fuel付き
+評価器の正確な返値，関係的評価へのadequacy，任意fuelでのno-stuckを一続きに検査する
+end-to-end回帰（入力から最終結果までを通す再実行可能なテスト）を維持する．
+
 型の中心は，matcherを生成する型 `Matcher κ τ`（τ 型の値を capability κ の流儀で分解する
 matcher）と，matcherを必要とする消費位置の型 `MatcherSlot κ τ` の区別である．producer を
 consumer に合わせる coercion（暗黙変換）は，消費側のdemandからだけ決める．
@@ -243,6 +250,40 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 この原則は`matchAll`専用ではない．たとえば`use : MatcherSlot κ τ → ρ`へ
 `m : Matcher κ τ`を渡す場合も，関数適用のargument checking cutで同じalignmentを使う．
 
+## Egison機能との対応を確認するRoadmap
+
+ここでいう「対応の確認」とは，安全性定理そのものとは別に，代表的なEgison programについて
+次の鎖を具体的に検査することである．
+
+```text
+public inference succeeds
+  → SourceTyping is reconstructed
+  → evalFuel returns the intended exact value
+  → adequacy yields a relational Eval derivation
+  → every fuel is proved not stuck
+```
+
+優先順位と現在の状態は次のとおりである．
+
+| 優先度 | 機能と完了条件 | 状態 |
+|---|---|---|
+| P0 | **非線形pattern**：`pair $x #x`の一致例が1結果を返し，不一致例が正常なmatch failureとして空listを返す．両方について上の全段階を検査する | 完了：`FeatureExecutionRegression.NonLinear` |
+| P0 | **multiset matcher**：実際の`List`表現の一要素分解を評価し，さらに二要素の有限carrierから選択要素と残余を両順序で列挙する．後者は結果順を含む正確な値と上の全段階を検査する | 完了：`FeatureExecutionRegression.Multiset` |
+| P1 | 一般の再帰的multiset matcher：任意長のcollection，空・一要素・重複要素，`join`，探索順を実行時に検査する | 未着手．現在のP0回帰は二要素専用であり，一般性を主張しない |
+| P1 | pattern function：非空runtime tableを使う既存安全性回帰に加え，parameter展開を含むprogramの正確な`evalFuel = ok`結果を検査する | 一部完了：安全性接続済み，正確な実行結果を追加予定 |
+| P2 | 機能の合成：multiset matcher，非線形pattern，pattern functionを同じprogramで組み合わせ，個別回帰では見えない相互作用を検査する | 未着手 |
+| 将来課題 | BFS（幅優先探索）の`matchAll`に対するmatching completeness | 非目標ではなく将来課題．現在の安全性定理には含めない |
+
+P0のmultiset回帰は二つを組み合わせる．一つは実際の`List`上の`cons` matcherがsingletonを
+`(1, [])`へ分解するruntime検査である．もう一つは`Pair`を二要素collectionの有限carrier
+（要素を保持する内部表現）として使い，matcherが`(1, 2)`と`(2, 1)`の二つの分解を返す
+end-to-end検査である．後者はmultiset matchingの中核である「同じ対象から複数の選択を列挙する」
+動作を実行する一方，再帰的な一般multiset実装の代用ではない．一般matcherの型推論・評価・探索を
+同じ鎖で閉じた時点でP1を完了とする．
+
+一般のprogram terminationは引き続き非目標である．また，型のないprogramや不正なsignatureを
+安全に実行することも目標に含めない．
+
 ## 現在固定している境界
 
 以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．
@@ -273,6 +314,7 @@ ordinary equalityの失敗後に別branchを試すrollbackも行わない．solv
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Interpreter*Safe`, `InterpreterNoStuck`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタとadequacy，層別no-stuck定理とfuel上のstrong induction，公開安全性 |
+| feature validation | `FeatureExecutionRegression` | 非線形patternの一致／不一致，`List` singletonの分解，二要素multisetの複数分解を検査し，主要fixtureを推論・source typing・正確な実行結果・adequacy・全fuel no-stuckまで接続する回帰 |
 | fragments | `DamasMilner`, `DamasMilnerAcceptance`, `DamasMilnerAcceptanceMutual`, `DamasMilnerConservativity`, `DMTerminalAcceptance` | pattern-free DM断片，canonical opening代数，全DM typingの公開受理，closed sourceからDMへの保守性，受理回帰 |
 
 全moduleのpublic import surfaceは[`TypePM.lean`](TypePM.lean)である．詳細なmodule対応，定理，回帰一覧は

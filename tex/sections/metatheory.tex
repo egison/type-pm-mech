@@ -252,6 +252,16 @@ $\mathsf{evalFuel\_eventually\_ok}$は，有限の関係的評価があれば十
 completenessは将来課題である．中間値の型付け・pristine性はadequacyを介して関係的
 preservationから回収する．
 
+安全性とは別に，形式化したcoreが意図したEgisonの機能を表すことを具体的な実行回帰でも検査する．
+$\mathsf{FeatureExecutionRegression}$は，公開推論の成功，$\mathsf{SourceTyping}$の再構成，
+$\mathsf{evalFuel}$の正確な返値，$\mathsf{evalFuel\_ok}$による関係的評価，任意fuelでのno-stuckを
+同じfixture上で接続する．非線形patternについては\texttt{pair \$x \#x}の一致が一結果を，不一致が
+正常なmatch failureとして空listを返す．multisetについては，実際の\texttt{List}表現のsingletonが
+$(1,[])$へ分解されるruntime経路を検査する．加えて\texttt{Pair}を二要素collectionの有限carrier
+（要素を保持する内部表現）とし，一つの対象から$(1,2)$と$(2,1)$の両分解を列挙する．
+後者は複数選択と探索結果収集の具体的検査であり，任意長の再帰的multiset matcher，\texttt{join}，
+BFS completenessの代用ではない．これらは段階的な実行検証の次項目として残す．
+
 これらをsource-facingな一つの定理に束ねる．
 \[
 \frac{

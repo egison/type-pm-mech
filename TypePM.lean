@@ -95,6 +95,7 @@ import TypePM.ReadinessRegression
 import TypePM.InterpreterRegression
 import TypePM.DynamicCaptureRegression
 import TypePM.DynamicDispatchRegression
+import TypePM.FeatureExecutionRegression
 import TypePM.PatternFunctionSafetyRegression
 import TypePM.ProducerStrengtheningRegression
 import TypePM.InferenceRegression

@@ -625,6 +625,17 @@ D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定した
 
 ## 8. 回帰の読み方
 
+回帰には二つの役割がある．第一は受理・拒否やメタ定理の設計境界を固定することである．第二は，
+定理が対象とするcoreが意図したEgisonの機能をモデル化していることを，具体的な実行結果で確認する
+ことである．後者のend-to-end回帰（入力から最終結果までを通す再実行可能なテスト）は，原則として
+
+```text
+infer success → SourceTyping → exact evalFuel result → Eval adequacy → all-fuel no-stuck
+```
+
+を同じfixtureについて検査する．安全性定理だけでは，matcherの分解結果が意図した集合であることや，
+非線形patternの等値比較が正しい向きで働くことまでは決まらないためである．
+
 - `DemandTypingRegression`: raw demand-directed の旧freeze反例，局所Origin拒否，public freeze負回帰，state replay，supply boundedness．
 - `AcceptanceGapRegression`: or-pattern 正例，nested matcher demand-directed 拒否，unresolved lambda domainの
   executable source-order正負とsource typability counterexample，constructor export freeze．
@@ -656,6 +667,13 @@ D2のsource-to-DM射影とD1のDM-to-acceptanceを合成すれば，指定した
 - `InterpreterRegression`: fixture を fuel 20 の kernel 簡約(`rfl`)で実行し，adequacy 経由で
   preservation へ接続する．`program_never_stuck` は公開 `typed_never_stuck` を fixture の
   typing と `freeVars = []`(`rfl`)だけで発火させる．
+- `FeatureExecutionRegression`: Egison機能との対応を優先して検査するend-to-end回帰．
+  `NonLinear`は`pair $x #x`の一致時に`[1]`，不一致時に`[]`を正確に返すことを固定する．
+  `Multiset`はまず実際の`List`上のsingletonを`(1, [])`へ分解するruntime経路を検査する．さらに
+  `Pair`を二要素collectionの有限carrierとして使い，同じ対象から`(1, 2)`と`(2, 1)`の両分解を
+  この順で列挙する．非線形patternと二要素fixtureは公開推論，`SourceTyping`，kernel簡約による
+  `evalFuel = ok`，`evalFuel_ok`による関係的評価，全fuel no-stuckまで接続する．二要素fixtureは
+  multiset選択の有限具体例であり，任意長の再帰的multiset matcherや`join`の実行完全性は主張しない．
 - `RecursiveExamples`: list／multiset matcher，direct-self recursion，coverage．
 - `GeneralizationRegression`: binder 番号衝突下の instance と generalization．
 - `ElaborationRegression`: canonical coercion plan と reconstruction factorization．
@@ -702,6 +720,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `Soundness` | `SourceTyping.safe`，`Inference.infer_closed_safe`，source typingからconcrete safetyへの公開facade |
 | `Readiness`／`ReadinessRegression` | typing＋埋め込み評価収束からの`StepReady`構成，公開`MStateTy.progress_of_evals`，その実行回帰 |
 | `Interpreter`／`InterpreterAdequacy`／`InterpreterRegression` | fuel付き参照インタプリタ（`ok`／`timeout`／`stuck`で発散と詰まりを分離），adequacy（`ok`⇒関係的導出），fixtureの実行回帰と`program_never_stuck` |
+| `FeatureExecutionRegression` | 非線形patternの一致／不一致，実際の`List` singletonの分解，二要素multisetの複数分解を検査し，主要fixtureを公開推論，`SourceTyping`，正確な`evalFuel`結果，adequacy，全fuel no-stuckへ接続する機能対応回帰 |
 | `TermFreeVars`／`InterpreterScoping`／`InterpreterSafetyDefs` | 構文的自由変数層（`Expr.freeVars`・`Pattern.scopeVars`・`Pattern.exprVarsUnder`・`Env.names`），値／環境／状態のスコープ述語（`ScopedValue`など；closureの存在文脈をfv包含で回避），`Safe`契約・`AtomsScoped`・`stackBinders` |
 | `InterpreterMatomSafe`／`InterpreterStepSafe`／`InterpreterEvalSafe` | 層別no-stuck定理（kernel前提つき）：atom一歩（`matomSafe`），pattern-function application・MNode内部step・embedded parameter展開を含む状態一歩と探索（`stepSafe`・`searchSafe`／`searchListSafe`），式層（`evalSafe`／`evalListSafe`／`evalSubstsSafe`；中間値の型付け・pristine性はadequacy＋関係的preservationで回収） |
 | `InterpreterPpmSafe`／`InterpreterPpmPrimitive`／`InterpreterDispatchSafe` | clause header照合の安全性（`CaptureAdm`駆動の`ppmSafe`／`ppmListSafe`と，primForm patternの浅い直接解析`ppmSafe_primitive`），clause／arm歩行の安全性（`dispatchSafe`／`armsSafe`・`DispatchBranchProps`；`pdMatch_scoped`等の補題込み） |
