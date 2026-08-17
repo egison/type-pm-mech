@@ -63,11 +63,20 @@ def splitsCanonicalScheme : CtorScheme where
   result := .data "List"
     [.prod [.data "List" [.var 0], .data "List" [.var 0]]]
 
+/-- The fixed-head multiset decomposition consumes an element and a list and
+returns zero or one residual lists. -/
+def removeFirstChoiceCanonicalScheme : CtorScheme where
+  capBinders := []
+  tyBinders := [0]
+  args := [.var 0, .data "List" [.var 0]]
+  result := .data "List" [.data "List" [.var 0]]
+
 /-- The canonical scheme demanded for each declared primitive operation. -/
 def primCanonicalScheme : PrimOp → CtorScheme
   | .append => appendCanonicalScheme
   | .splits => splitsCanonicalScheme
   | .submultisetSplits => splitsCanonicalScheme
+  | .removeFirstChoice => removeFirstChoiceCanonicalScheme
 
 /-- Public well-formedness conditions for a frozen signature.  Closedness
 supports demand-directed state erasure; the remaining fields are consumed by the dynamic

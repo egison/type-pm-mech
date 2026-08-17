@@ -264,6 +264,13 @@ $\mathsf{GeneralMultisetExecutionRegression}$は入力長に特化しない再�
 割り振る全二分割を，左側の要素数と元の添字順で列挙するprimitiveであり，同じ値を持つ異なる出現も
 別分岐として残す．入れ子\texttt{cons}の結果は現在のdepth-first（深さ優先）・左から右の探索順を固定する．
 
+論文3節の特殊化された三つのmatcher節も同じ回帰で個別に検査する．\texttt{\$ :: \_}は
+対象全体を一度返す．\texttt{\#\$val :: \$}はEgisonライブラリと同じ値先行の
+\texttt{member val tgt}／\texttt{deleteFirst val tgt}を\texttt{removeFirstChoice val tgt}へ
+コンパイルし，重複があるときも最初の出現だけを除き，値がなければ正常な不一致を返す．
+\texttt{\$ ++ \$}は\texttt{submultisetSplits}で全二分割を列挙する．三節とも公開推論，
+$\mathsf{SourceTyping}$，正確な評価，adequacy，全fuel no-stuckへ接続する．
+
 閉じたmultiset適用はelement matcherに\texttt{something}を使い，三要素の\texttt{cons}，入れ子
 \texttt{cons}，および\texttt{join}を公開推論，$\mathsf{SourceTyping}$，正確な評価，adequacy，
 全fuel no-stuckへ接続する．matcherの引数slotから借りたcapability変数はmatcher自身が生成した

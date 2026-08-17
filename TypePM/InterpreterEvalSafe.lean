@@ -164,6 +164,31 @@ private theorem primEval_scoped {op : PrimOp} {values : List Value}
                   · intro x hx
                     exact listOfV_scoped (valuesScoped v (by simp)) hDecode
                       x (rightMembers x hx)
+  | removeFirstChoice =>
+      cases values with
+      | nil => exact nomatch evaluation
+      | cons needle rest =>
+          cases rest with
+          | nil => exact nomatch evaluation
+          | cons input tail =>
+              cases tail with
+              | cons _ _ => exact nomatch evaluation
+              | nil =>
+                  cases hDecode : listOfV input with
+                  | none => simp [primEval, hDecode] at evaluation
+                  | some elements =>
+                      simp [primEval, hDecode] at evaluation
+                      subst evaluation
+                      refine mkListV_scoped ?_
+                      intro residueValue membership
+                      obtain ⟨residue, residueMembership, rfl⟩ :=
+                        List.mem_map.mp membership
+                      refine mkListV_scoped ?_
+                      intro element elementMembership
+                      exact listOfV_scoped
+                        (valuesScoped input (by simp)) hDecode element
+                        (removeFirstChoice_members residueMembership element
+                          elementMembership)
 
 /-- Pointwise value typing of a successful list evaluation, recovered
 relationally. -/

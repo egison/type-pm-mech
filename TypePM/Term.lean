@@ -142,6 +142,7 @@ inductive PrimOp where
   | append
   | splits
   | submultisetSplits
+  | removeFirstChoice
 deriving Repr, DecidableEq
 
 instance : BEq PrimOp where

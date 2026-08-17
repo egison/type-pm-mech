@@ -155,6 +155,66 @@ theorem mem_capChoices_map
       exact List.mem_map.mpr
         ⟨Cap.applyRenList rename rest, induction restChoice, rfl⟩
 
+/-- Mapping every candidate into a possibly larger destination candidate set
+maps every generated finite choice. -/
+theorem mem_capChoices_transport
+    (rename : CapVar → CapVar) {candidates renamedCandidates : List Cap}
+    {count : Nat} {choice : List Cap}
+    (membership : choice ∈ capChoices candidates count)
+    (candidateTransport : ∀ capability ∈ candidates,
+      capability.applyRen rename ∈ renamedCandidates) :
+    Cap.applyRenList rename choice ∈
+      capChoices renamedCandidates count := by
+  induction count generalizing choice with
+  | zero =>
+      simp [capChoices] at membership ⊢
+      subst choice
+      rfl
+  | succ count induction =>
+      simp only [capChoices] at membership ⊢
+      rcases List.mem_flatMap.mp membership with
+        ⟨capability, capabilityMem, restMem⟩
+      rcases List.mem_map.mp restMem with ⟨rest, restChoice, rfl⟩
+      apply List.mem_flatMap.mpr
+      refine ⟨capability.applyRen rename,
+        candidateTransport capability capabilityMem, ?_⟩
+      exact List.mem_map.mpr
+        ⟨Cap.applyRenList rename rest,
+          induction restChoice, rfl⟩
+
+mutual
+
+theorem Cap.rename_mem_fcv_applyRen (rename : CapVar → CapVar) :
+    ∀ {capability : Cap} {varId : CapVar},
+      varId ∈ capability.fcv →
+      rename varId ∈ (capability.applyRen rename).fcv
+  | .any, _, membership => nomatch membership
+  | .var source, varId, membership => by
+      simp only [Cap.fcv, Cap.applyRen, List.mem_singleton] at membership ⊢
+      subst varId
+      rfl
+  | .skolem _, _, membership => nomatch membership
+  | .con _ children, varId, membership => by
+      simp only [Cap.fcv, Cap.applyRen]
+      exact Cap.rename_mem_fcvList_applyRen rename membership
+  | .prod components, varId, membership => by
+      simp only [Cap.fcv, Cap.applyRen]
+      exact Cap.rename_mem_fcvList_applyRen rename membership
+
+theorem Cap.rename_mem_fcvList_applyRen (rename : CapVar → CapVar) :
+    ∀ {capabilities : List Cap} {varId : CapVar},
+      varId ∈ Cap.fcvList capabilities →
+      rename varId ∈ Cap.fcvList (Cap.applyRenList rename capabilities)
+  | [], _, membership => nomatch membership
+  | capability :: capabilities, varId, membership => by
+      simp only [Cap.fcvList, Cap.applyRenList, List.mem_append]
+        at membership ⊢
+      rcases membership with inHead | inTail
+      · exact Or.inl (Cap.rename_mem_fcv_applyRen rename inHead)
+      · exact Or.inr (Cap.rename_mem_fcvList_applyRen rename inTail)
+
+end
+
 mutual
 
 /-- A successful primitive-pattern capability check remains successful after
@@ -204,8 +264,24 @@ theorem ppatCapsAtCheck_applyRen_of_success
         simp only [Bool.and_eq_true] at childChecked
         apply List.any_eq_true.mpr
         refine ⟨Cap.applyRenList rename children, ?_, ?_⟩
-        · have mapped := mem_capChoices_map rename choiceMem
-          simpa [Cap.applyRenList, Cap.applyRen] using mapped
+        · apply mem_capChoices_transport rename choiceMem
+          intro capability capabilityMem
+          simp only [List.mem_cons, List.mem_append] at capabilityMem
+          rcases capabilityMem with outerEq | anyEq | remainder
+          · subst capability
+            exact List.mem_cons_self
+          · subst capability
+            exact List.mem_cons_of_mem _ List.mem_cons_self
+          · rcases remainder with holeMem | freeMem
+            · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+                (List.mem_append_left _
+                  (Cap.mem_applyRenList rename holeMem)))
+            · obtain ⟨varId, varMem, rfl⟩ := List.mem_map.mp freeMem
+              exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+                (List.mem_append_right _
+                  (List.mem_map.mpr
+                    ⟨rename varId,
+                      Cap.rename_mem_fcv_applyRen rename varMem, rfl⟩)))
         · rw [Bool.and_eq_true]
           exact ⟨ppatCapsListCheck_applyRen_of_success rename signature
               patterns holes children childChecked.1,

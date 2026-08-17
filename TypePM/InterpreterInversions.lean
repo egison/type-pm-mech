@@ -86,6 +86,20 @@ theorem primEval_isSome
           exact ⟨mkListV (submultisetSplits elements |>.map fun split =>
               .tuple [mkListV split.1, mkListV split.2]),
             by simp [primEval, argDecode]⟩
+  | removeFirstChoice =>
+      obtain ⟨target, targetsEq, -⟩ :=
+        removeFirstChoiceCanonicalScheme_inst_inversion instanceTyping
+      subst targetsEq
+      cases valuesTyped with
+      | @cons needleValue _ restValues _ needleTyped restTyped =>
+          cases restTyped with
+          | @cons inputValue _ nilValues _ inputTyped nilTyped =>
+              cases nilTyped
+              obtain ⟨elements, inputDecode⟩ :=
+                listOfV_isSome signatureWF inputTyped
+              exact ⟨mkListV
+                  ((removeFirstChoice needleValue elements).map mkListV),
+                by simp [primEval, inputDecode]⟩
 
 /-! ## Coercion-stripping typing inversions
 

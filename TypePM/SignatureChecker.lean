@@ -1016,6 +1016,23 @@ theorem splitsCanonicalScheme_inst_inversion
       Ty.applyCapabilityList, Ty.applyTarget, Ty.applyTargetList] using
       resultEq.symm
 
+/-- Inversion of instantiating the canonical fixed-head removal scheme. -/
+theorem removeFirstChoiceCanonicalScheme_inst_inversion
+    {targets : List Ty} {result : Ty}
+    (instanceTyping : removeFirstChoiceCanonicalScheme.Inst targets result) :
+    ∃ target,
+      targets = [target, Ty.listT target] ∧
+        result = Ty.listT (Ty.listT target) := by
+  rcases instanceTyping with
+    ⟨capSubst, tySubst, capSupport, tySupport, argsEq, resultEq⟩
+  refine ⟨tySubst 0, ?_, ?_⟩
+  · simpa [removeFirstChoiceCanonicalScheme, Ty.listT, Subst.apply,
+      Ty.applyCapability, Ty.applyCapabilityList, Ty.applyTarget,
+      Ty.applyTargetList] using argsEq.symm
+  · simpa [removeFirstChoiceCanonicalScheme, Ty.listT, Subst.apply,
+      Ty.applyCapability, Ty.applyCapabilityList, Ty.applyTarget,
+      Ty.applyTargetList] using resultEq.symm
+
 /-- Decoded elements of a canonically typed list value keep the element type. -/
 theorem listOfV_valueTy {signature : FrozenSig}
     (consFound : signature.findDataCtor "cons" = some consCanonicalScheme) :
@@ -1202,6 +1219,39 @@ theorem primEvalTyped_of_canonical {signature : FrozenSig}
               · intro element membership
                 exact listOfV_valueTy consFound argTyped argDecode element
                   (rightMembers element membership)
+  | removeFirstChoice =>
+      obtain ⟨target, targetsEq, resultEq⟩ :=
+        removeFirstChoiceCanonicalScheme_inst_inversion instanceTyping
+      subst targetsEq resultEq
+      cases valuesTyped with
+      | @cons needleValue _ restValues _ needleTyped restTyped =>
+          cases restTyped with
+          | @cons inputValue _ nilValues _ inputTyped nilTyped =>
+              cases nilTyped
+              have evaluatedBind :
+                  ((listOfV inputValue).bind fun elements =>
+                    some (mkListV
+                      ((removeFirstChoice needleValue elements).map
+                        mkListV))) = some value := evaluated
+              cases inputDecode : listOfV inputValue with
+              | none => rw [inputDecode] at evaluatedBind; cases evaluatedBind
+              | some elements =>
+                  rw [inputDecode] at evaluatedBind
+                  have valueEq :
+                      mkListV ((removeFirstChoice needleValue elements).map
+                        mkListV) = value := by
+                    simpa using evaluatedBind
+                  subst valueEq
+                  refine mkListV_valueTy nilFound consFound ?_
+                  intro residueValue residueValueMembership
+                  obtain ⟨residue, residueMembership, rfl⟩ :=
+                    List.mem_map.mp residueValueMembership
+                  refine mkListV_valueTy nilFound consFound ?_
+                  intro element elementMembership
+                  exact listOfV_valueTy consFound inputTyped inputDecode
+                    element
+                    (removeFirstChoice_members residueMembership element
+                      elementMembership)
 
 /-! ## The executable checker -/
 

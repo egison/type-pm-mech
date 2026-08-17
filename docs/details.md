@@ -694,6 +694,11 @@ value-flow schemeのbinderをcapability変数にだけ写す規則が同一fixtu
   matcher入力slotから借りたcapabilityを新たなfreeze対象から除く正例と，matcher-ownedの結果leafを
   引き続きfreezeする負境界も固定する．従って全入力listの機能的正当性，BFS completeness，標準multiset matcherの全interfaceは
   主張しない．
+  さらに論文3節の特殊化された三節を同じ定義に追加する．`$ :: _`は対象全体を一度返す．
+  `#$val :: $`はEgisonと同じ値先行の`member val tgt`／`deleteFirst val tgt`を
+  `removeFirstChoice val tgt`へコンパイルし，最初の一致だけを除くか，不在なら正常な不一致を返す．
+  `$ ++ $`は`submultisetSplits`で全二分割を列挙する．各節について公開推論から全fuel no-stuckまでを
+  接続し，重複・不在・三要素の列挙順を正確な値で検査する．
 - `CompositionFeatureRegression`: 一般multiset matcher，非線形pattern，pattern functionを同一の
   `matchAll`で合成するP2回帰．`join`で左右を分け，左右の`cons`で選んだ要素について，`$x`で整数を
   束縛し，`#x`で等値を検査し，各要素にnullary（引数を取らない）`unit()` pattern functionを適用する．

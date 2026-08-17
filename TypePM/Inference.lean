@@ -1502,8 +1502,11 @@ mutual
 
 /-- Executable check of the exact `PPatCapsAt` judgment.  Constructor child
 capabilities are searched only in the finite set consisting of the outer
-capability, the concrete hole capabilities, and `Any`; success is always
-rechecked by `CapCompatible`, so this restriction affects completeness only. -/
+capability, its flexible leaves, the concrete hole capabilities, and `Any`.
+Including the outer leaves is necessary for specialized clauses such as
+`#$val :: $`: with outer capability `List κ`, its value-pattern child uses
+`κ` while its hole child uses `List κ`.  Every candidate tuple is rechecked
+by `CapCompatible`, so extending this search set does not weaken soundness. -/
 def ppatCapsAtCheck
     (signature : FrozenSig) (atRoot : Bool) :
     PPat -> List Cap -> Cap -> Bool
@@ -1517,7 +1520,8 @@ def ppatCapsAtCheck
       match signature.findPatternCtor name with
       | none => false
       | some entry =>
-          let candidates := outer :: Cap.any :: holes
+          let candidates :=
+            outer :: Cap.any :: (holes ++ outer.fcv.map Cap.var)
           (capChoices candidates patterns.length).any fun children =>
             ppatCapsListCheck signature patterns holes children &&
             capCompatibleCheck entry children outer

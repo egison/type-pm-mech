@@ -27,7 +27,8 @@ def signature : FrozenSig :=
   { RecursiveExamples.multisetSignature with
     primitives :=
       [(.append, appendCanonicalScheme),
-        (.submultisetSplits, splitsCanonicalScheme)] }
+        (.submultisetSplits, splitsCanonicalScheme),
+        (.removeFirstChoice, removeFirstChoiceCanonicalScheme)] }
 
 theorem signature_wf : FrozenSigWF signature :=
   frozenSigWFCheck_sound (by decide) rfl
@@ -45,6 +46,9 @@ def selectedName := "selected"
 def residueName := "residue"
 def leftName := "left"
 def rightName := "right"
+def fixedValueName := "fixedValue"
+def fixedTargetName := "fixedTarget"
+def headOnlyTargetName := "headOnlyTarget"
 
 def selfCall : Expr := .app (.var selfName) (.var argumentName)
 
@@ -52,6 +56,21 @@ def nilClause : Clause :=
   .mk (generalPP "nil" 0) (.tuple [])
     [.mk (.ctor "nil" []) (singletonE (.tuple [])),
       .mk .wild nilE]
+
+/-- Paper clause `$ :: _ as m`: only the head is a hole, so the target list
+itself is the ordered list of one-component decompositions. -/
+def headOnlyConsClause : Clause :=
+  .mk (.ctor "cons" [.hole, .wild]) (.var argumentName)
+    [.mk (.var headOnlyTargetName) (.var headOnlyTargetName)]
+
+/-- Paper clause `#$val :: $ as multiset m`: its surface
+`member`/`deleteFirst` pair compiles to the zero-or-one decomposition primitive
+`removeFirstChoice`. -/
+def fixedConsClause : Clause :=
+  .mk (.ctor "cons" [.pval fixedValueName, .hole]) selfCall
+    [.mk (.var fixedTargetName)
+      (.prim .removeFirstChoice
+        [.var fixedValueName, .var fixedTargetName])]
 
 def recursiveConsChoices : Expr :=
   .matchAll (.var tailName) selfCall
@@ -89,10 +108,21 @@ def catchClause : Clause :=
 def clauses : List Clause :=
   [nilClause, consClause, joinClause, catchClause]
 
+/-- Clause order from the paper: the two specialized `cons` headers precede
+the general `cons` header, and `join` precedes whole-value/catch-all handling. -/
+def paperClauses : List Clause :=
+  [nilClause, headOnlyConsClause, fixedConsClause, consClause, joinClause,
+    catchClause]
+
 def matcherFunction : Expr :=
   .fix selfName argumentName (.matcher clauses)
 
 def matcher : Expr := .app matcherFunction .something
+
+def paperMatcherFunction : Expr :=
+  .fix selfName argumentName (.matcher paperClauses)
+
+def paperMatcher : Expr := .app paperMatcherFunction .something
 
 def listE : List Int → Expr
   | [] => nilE
@@ -112,6 +142,20 @@ def consProgram (elements : List Int) : Expr :=
   .matchAll (listE elements) matcher consPattern
     (.tuple [.var selectedName, .var residueName])
 
+def headOnlyProgram (elements : List Int) : Expr :=
+  .matchAll (listE elements) paperMatcher
+    (.pctor "cons" [.pvar selectedName, .wild])
+    (.var selectedName)
+
+def fixedConsProgram (fixed : Int) (elements : List Int) : Expr :=
+  .matchAll (listE elements) paperMatcher
+    (.pctor "cons" [.pval (.lit fixed), .pvar residueName])
+    (.var residueName)
+
+def paperJoinProgram (elements : List Int) : Expr :=
+  .matchAll (listE elements) paperMatcher joinPattern
+    (.tuple [.var leftName, .var rightName])
+
 def nestedConsProgram (elements : List Int) : Expr :=
   .matchAll (listE elements) matcher
     (.pctor "cons"
@@ -126,6 +170,12 @@ def joinProgram (elements : List Int) : Expr :=
 def consExpected (choices : List (Int × List Int)) : Value :=
   mkListV (choices.map fun choice =>
     .tuple [.lit choice.1, listV choice.2])
+
+def headOnlyExpected (choices : List Int) : Value :=
+  mkListV (choices.map Value.lit)
+
+def fixedConsExpected (residues : List (List Int)) : Value :=
+  mkListV (residues.map listV)
 
 def nestedConsExpected (choices : List (Int × Int × List Int)) : Value :=
   mkListV (choices.map fun choice =>
@@ -175,6 +225,111 @@ theorem matcher_function_never_stuck (fuel : Nat) :
     evalFuel [] fuel [] matcherFunction ≠ .stuck :=
   SourceTyping.never_stuck_paper1 signature_wf rfl matcher_source_typed
     (by decide) fuel
+
+/-! ## Public typing and safety of the paper's specialized clauses -/
+
+def paperMatcherInferenceResult : Inference.ExprResult :=
+  (Inference.infer signature [] paperMatcherFunction).get
+    (by native_decide)
+
+theorem paper_matcher_inference_success :
+    Inference.infer signature [] paperMatcherFunction =
+      some paperMatcherInferenceResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+def paperMatcherFunctionTy : Ty :=
+  .fn (.slot (.var 3) (.var 35))
+    (.matcher (.con "List" [.var 3]) (.data "List" [.var 35]))
+
+theorem paper_matcher_inference_result_type :
+    paperMatcherInferenceResult.resolvedTarget = paperMatcherFunctionTy := by
+  native_decide
+
+theorem paper_matcher_source_typed :
+    SourceTyping signature [] paperMatcherFunction paperMatcherFunctionTy := by
+  have typing :=
+    Inference.infer_success_sourceTyping paper_matcher_inference_success
+  rw [paper_matcher_inference_result_type] at typing
+  exact typing
+
+def headOnlyThreeInferenceResult : Inference.ExprResult :=
+  (Inference.infer signature [] (headOnlyProgram [1, 2, 3])).get
+    (by native_decide)
+
+theorem head_only_three_inference_success :
+    Inference.infer signature [] (headOnlyProgram [1, 2, 3]) =
+      some headOnlyThreeInferenceResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem head_only_three_inference_result_type :
+    headOnlyThreeInferenceResult.resolvedTarget = .listT .int := by
+  native_decide
+
+theorem head_only_three_source_typed :
+    SourceTyping signature [] (headOnlyProgram [1, 2, 3]) (.listT .int) := by
+  have typing :=
+    Inference.infer_success_sourceTyping head_only_three_inference_success
+  rw [head_only_three_inference_result_type] at typing
+  exact typing
+
+theorem head_only_three_never_stuck (fuel : Nat) :
+    evalFuel [] fuel [] (headOnlyProgram [1, 2, 3]) ≠ .stuck :=
+  SourceTyping.never_stuck_paper1 signature_wf rfl
+    head_only_three_source_typed (by decide) fuel
+
+def fixedConsDuplicateInferenceResult : Inference.ExprResult :=
+  (Inference.infer signature [] (fixedConsProgram 1 [1, 1, 2])).get
+    (by native_decide)
+
+theorem fixed_cons_duplicate_inference_success :
+    Inference.infer signature [] (fixedConsProgram 1 [1, 1, 2]) =
+      some fixedConsDuplicateInferenceResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem fixed_cons_duplicate_inference_result_type :
+    fixedConsDuplicateInferenceResult.resolvedTarget =
+      .listT (.listT .int) := by
+  native_decide
+
+theorem fixed_cons_duplicate_source_typed :
+    SourceTyping signature [] (fixedConsProgram 1 [1, 1, 2])
+      (.listT (.listT .int)) := by
+  have typing := Inference.infer_success_sourceTyping
+    fixed_cons_duplicate_inference_success
+  rw [fixed_cons_duplicate_inference_result_type] at typing
+  exact typing
+
+theorem fixed_cons_duplicate_never_stuck (fuel : Nat) :
+    evalFuel [] fuel [] (fixedConsProgram 1 [1, 1, 2]) ≠ .stuck :=
+  SourceTyping.never_stuck_paper1 signature_wf rfl
+    fixed_cons_duplicate_source_typed (by decide) fuel
+
+def paperJoinThreeInferenceResult : Inference.ExprResult :=
+  (Inference.infer signature [] (paperJoinProgram [1, 2, 3])).get
+    (by native_decide)
+
+theorem paper_join_three_inference_success :
+    Inference.infer signature [] (paperJoinProgram [1, 2, 3]) =
+      some paperJoinThreeInferenceResult := by
+  exact Inference.option_eq_some_get_of_isSome _ (by native_decide)
+
+theorem paper_join_three_inference_result_type :
+    paperJoinThreeInferenceResult.resolvedTarget =
+      .listT (.prod [.listT .int, .listT .int]) := by
+  native_decide
+
+theorem paper_join_three_source_typed :
+    SourceTyping signature [] (paperJoinProgram [1, 2, 3])
+      (.listT (.prod [.listT .int, .listT .int])) := by
+  have typing :=
+    Inference.infer_success_sourceTyping paper_join_three_inference_success
+  rw [paper_join_three_inference_result_type] at typing
+  exact typing
+
+theorem paper_join_three_never_stuck (fuel : Nat) :
+    evalFuel [] fuel [] (paperJoinProgram [1, 2, 3]) ≠ .stuck :=
+  SourceTyping.never_stuck_paper1 signature_wf rfl
+    paper_join_three_source_typed (by decide) fuel
 
 def ownershipProbeState : Inference.InferState :=
   let first := (Inference.InferState.empty.freshCap
@@ -287,6 +442,35 @@ theorem join_three_never_stuck (fuel : Nat) :
 
 /-! ## Exact operational matrix -/
 
+theorem head_only_three_runs_in_target_order :
+    evalFuel [] 500 [] (headOnlyProgram [1, 2, 3]) =
+      .ok (headOnlyExpected [1, 2, 3]) := by
+  rfl
+
+theorem head_only_duplicates_preserve_occurrence_branches :
+    evalFuel [] 500 [] (headOnlyProgram [1, 1, 2]) =
+      .ok (headOnlyExpected [1, 1, 2]) := by
+  rfl
+
+theorem fixed_cons_removes_only_the_first_occurrence :
+    evalFuel [] 500 [] (fixedConsProgram 1 [1, 1, 2]) =
+      .ok (fixedConsExpected [[1, 2]]) := by
+  rfl
+
+theorem fixed_cons_absence_fails_normally :
+    evalFuel [] 500 [] (fixedConsProgram 4 [1, 2, 3]) =
+      .ok (fixedConsExpected []) := by
+  rfl
+
+theorem paper_join_three_runs_in_submultiset_order :
+    evalFuel [] 600 [] (paperJoinProgram [1, 2, 3]) =
+      .ok (joinExpected
+        [([], [1, 2, 3]),
+          ([1], [2, 3]), ([2], [1, 3]), ([3], [1, 2]),
+          ([1, 2], [3]), ([1, 3], [2]), ([2, 3], [1]),
+          ([1, 2, 3], [])]) := by
+  rfl
+
 theorem nil_empty_runs :
     evalFuel [] 160 [] (nilProgram []) = .ok (mkListV [.lit 0]) := by
   rfl
@@ -371,6 +555,25 @@ theorem join_three_runs_relationally :
           ([1, 2], [3]), ([1, 3], [2]), ([2, 3], [1]),
           ([1, 2, 3], [])]) :=
   evalFuel_ok join_three_runs_in_submultiset_order
+
+theorem head_only_three_runs_relationally :
+    Eval [] [] (headOnlyProgram [1, 2, 3])
+      (headOnlyExpected [1, 2, 3]) :=
+  evalFuel_ok head_only_three_runs_in_target_order
+
+theorem fixed_cons_duplicate_runs_relationally :
+    Eval [] [] (fixedConsProgram 1 [1, 1, 2])
+      (fixedConsExpected [[1, 2]]) :=
+  evalFuel_ok fixed_cons_removes_only_the_first_occurrence
+
+theorem paper_join_three_runs_relationally :
+    Eval [] [] (paperJoinProgram [1, 2, 3])
+      (joinExpected
+        [([], [1, 2, 3]),
+          ([1], [2, 3]), ([2], [1, 3]), ([3], [1, 2]),
+          ([1, 2], [3]), ([1, 3], [2]), ([2, 3], [1]),
+          ([1, 2, 3], [])]) :=
+  evalFuel_ok paper_join_three_runs_in_submultiset_order
 
 end GeneralMultisetExecutionRegression
 end TypePM

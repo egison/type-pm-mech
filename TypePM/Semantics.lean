@@ -104,6 +104,37 @@ def submultisetSplits {α : Type} (elements : List α) :
   (List.range (elements.length + 1)).flatMap
     (chooseSubmultisetSplits elements)
 
+/-- Remove the first structurally equal occurrence and return its single
+residue as a decomposition choice.  Absence is ordinary matching failure,
+represented by no choices.  The argument order is the searched value first
+and the collection second, as in Egison's `deleteFirst` and Haskell's
+`Data.List.delete`. -/
+def removeFirstChoice (needle : Value) : List Value → List (List Value)
+  | [] => []
+  | head :: tail =>
+      if needle.structEq head then
+        [tail]
+      else
+        (removeFirstChoice needle tail).map (head :: ·)
+
+theorem removeFirstChoice_members {needle : Value} {elements residue : List Value}
+    (membership : residue ∈ removeFirstChoice needle elements) :
+    ∀ element ∈ residue, element ∈ elements := by
+  induction elements generalizing residue with
+  | nil => simp [removeFirstChoice] at membership
+  | cons head tail induction =>
+      simp only [removeFirstChoice] at membership
+      split at membership
+      · rcases List.mem_singleton.mp membership with rfl
+        intro element elementMembership
+        exact List.mem_cons_of_mem head elementMembership
+      · obtain ⟨inner, innerMembership, rfl⟩ := List.mem_map.mp membership
+        intro element elementMembership
+        simp only [List.mem_cons] at elementMembership ⊢
+        exact elementMembership.elim Or.inl
+          (fun tailMembership => Or.inr
+            (induction innerMembership element tailMembership))
+
 theorem chooseSubmultisetSplits_members {α : Type} {elements : List α}
     {count : Nat} {left right : List α}
     (membership : (left, right) ∈ chooseSubmultisetSplits elements count) :
@@ -175,7 +206,9 @@ theorem submultisetSplits_members {α : Type} {elements : List α}
 /--
 Evaluation of runtime primitives.  `append` concatenates encoded lists;
 `splits` enumerates every consecutive prefix/suffix split; and
-`submultisetSplits` enumerates every occurrence-based bipartition.
+`submultisetSplits` enumerates every occurrence-based bipartition; and
+`removeFirstChoice` implements the fused membership/remove decomposition used
+by the fixed-head multiset clause.
 -/
 def primEval : PrimOp → List Value → Option Value
   | .append, [v₁, v₂] => do
@@ -190,6 +223,9 @@ def primEval : PrimOp → List Value → Option Value
       let l ← listOfV v
       pure (mkListV (submultisetSplits l |>.map fun split =>
         .tuple [mkListV split.1, mkListV split.2]))
+  | .removeFirstChoice, [needle, v] => do
+      let l ← listOfV v
+      pure (mkListV ((removeFirstChoice needle l).map mkListV))
   | _, _ => none
 
 /-! ## Primitive data-pattern matching -/

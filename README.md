@@ -295,6 +295,12 @@ matcherの結果側だけに現れる変数や，既にsignatureから輸出さ�
 BFSの順序や，任意の入力listに対する完全な入出力仕様の帰納的証明を意味しない．また対象は
 `nil`／`cons`／`join` interfaceであり，Egison標準multiset matcherの全機能を実装したという主張ではない．
 
+論文3節に掲げた三つの節も，同じ回帰で個別に固定する．`$ :: _` は対象全体を一度だけ返し，
+`#$val :: $` はEgisonライブラリと同じ値先行の`member val tgt`／`deleteFirst val tgt`を
+`removeFirstChoice val tgt`へコンパイルして，重複を含む対象でも最初の出現だけを除く．値がなければ
+正常な不一致として`[]`を返す．`$ ++ $`は`submultisetSplits`により全二分割を列挙する．三節とも
+公開推論，`SourceTyping`，正確な評価，adequacy，全fuel no-stuckへ接続する．
+
 P2では，これらを一つずつ試すだけでなく，同一の`matchAll`内で相互作用を検査する．
 `CompositionFeatureRegression`は，一般multiset matcherの`join`で左右を分け，左右の`cons`で要素を
 選び，`$x`（変数pattern）で束縛した整数を`#x`（value pattern）で比較する．各要素には

@@ -435,6 +435,33 @@ theorem primEval_pristine
                               (ValuesPristine.of_subset elementsPristine
                                 rightMembers))
                             .nil))
+  | removeFirstChoice =>
+      cases values with
+      | nil => simp [primEval] at evaluation
+      | cons needle rest =>
+          cases rest with
+          | nil => simp [primEval] at evaluation
+          | cons input tail =>
+              cases tail with
+              | cons extra extras => simp [primEval] at evaluation
+              | nil =>
+                  cases pristine with
+                  | cons needlePristine restPristine =>
+                      cases restPristine with
+                      | cons inputPristine tailPristine =>
+                          cases tailPristine
+                          cases decoding : listOfV input with
+                          | none => simp [primEval, decoding] at evaluation
+                          | some elements =>
+                              simp [primEval, decoding] at evaluation
+                              subst result
+                              apply mkListV_pristine
+                              apply valuesPristine_map_of_mem
+                              intro residue membership
+                              exact mkListV_pristine
+                                (ValuesPristine.of_subset
+                                  (listOfV_pristine inputPristine decoding)
+                                  (removeFirstChoice_members membership))
 
 /-! ## Bidirectional source/runtime pattern-function agreement -/
 
