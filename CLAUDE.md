@@ -43,6 +43,22 @@ commit／pushについては次のリポジトリ固有規則を優先する．
 - `docs/details.md` の回帰一覧にある executable regression とその正負境界を維持する．
   正例／負例のどちらかを削る変更は，対応する設計判断ごと見直す．
 
+## 論文 program の実行回帰
+
+- `../type-pm-paper/` の本文・付録に掲載する executable program は，`TypePM/` の名前付き
+  regression で挙動を固定する．単なる型付け skeleton や matcher closure の生成だけを，実際の
+  pattern application の検査として数えない．
+- 型付けを主張する例では，公開 `Inference.infer` の成功と正確な返値型を固定し，
+  `Inference.infer_success_sourceTyping` で `SourceTyping` へ接続する．実行結果を主張する例では，
+  代表 fuel の正確な `evalFuel = .ok ...` と `evalFuel_ok` による関係的評価を固定する．型安全性の
+  対象なら `typed_never_stuck_runtime` または論文1の空 runtime table 特殊化で，すべての fuel の
+  no-stuck を示す．
+- multiset や backtracking の例は，空・通常成功・通常失敗に加えて，結果順と出現位置ごとの
+  多重性を検査する．複数機能を一つの program で組み合わせる論文上の主張には，同じ一つの閉じた
+  program を用いる合成回帰を置く．
+- 現行 core で直接表現できない surface program は，機械化済みと主張しない．README の roadmap と
+  `docs/details.md` の回帰一覧に不足・差し込み口・完了条件を記録し，論文側の scope も同期する．
+
 ## 設計規律
 
 以下は破ってはならない不変量である．各項の詳細と根拠は `docs/details.md`．

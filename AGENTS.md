@@ -2,6 +2,15 @@
 
 プロジェクト固有の設計規律，文書同期，検証方法は`CLAUDE.md`に従う．
 
+## 論文中の program を検査する回帰
+
+- `../type-pm-paper/` に掲載する executable program は，対応する名前付き regression を
+  `TypePM/` に置き，意図した型，成功／通常の不一致，探索順，出現位置ごとの分岐の多重性を検査する．
+- 型安全性の証拠として使う program は，公開 inference から `SourceTyping`，正確な
+  `evalFuel`，`evalFuel_ok`，適用可能な all-fuel no-stuck まで接続する．
+- 論文の program を追加・変更したときは対応回帰も同時に確認する．現行 core で表現できない場合は
+  機械化済みと扱わず，README の roadmap と論文の範囲記述に不足を明記する．
+
 ## Git
 
 このリポジトリは親ワークスペースの「commit／pushにはその都度の明示指示が必要」という規則の
