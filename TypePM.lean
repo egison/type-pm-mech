@@ -116,6 +116,9 @@ import TypePM.DemandTypingInferenceCompletenessPublic
 import TypePM.DemandTypingInferenceCompletenessRegression
 import TypePM.DemandTypingInferenceEquivalence
 import TypePM.DemandTypingInferenceEquivalenceRegression
+import TypePM.DemandTypingInferenceRawOrdinaryValidator
+import TypePM.InferenceGeneralizationNaturality
+import TypePM.InferenceGeneralizationAudit
 import TypePM.DemandTypingTargetUniqueness
 import TypePM.DemandTypingTargetUniquenessRegression
 import TypePM.TypeInstance
@@ -125,6 +128,7 @@ import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
 import TypePM.DemandTypingTerminalAuditErasureRegression
+import TypePM.TerminalAuditCounterexample
 import TypePM.CompositionFeatureRegression
 import TypePM.PublicTheorems
 import TypePM.AxiomAudit
@@ -148,6 +152,11 @@ the premise-free acceptance-completeness boundary from `SourceTyping` back to
 successful executable inference.  `DemandTypingInferenceEquivalence` composes
 the two directions into decidable source typability, closed-program
 annotation-freeness, and soundness of the type reported by `inferType`.
+Because `SourceTyping` contains the terminal audit, this completeness theorem
+does not state that every successful `inferRaw` run passes `wBridgeCheck`.
+`TerminalAuditCounterexample` fixes a well-formed closed run for which only the
+matcher-finalization component rejects, and keeps that raw-audit boundary
+explicit.
 `DemandTypingTargetUniqueness` strengthens this result: every two audited
 `SourceTyping` targets for the same source have one common representative under local
 two-sort variable renamings of all residual metavariables.

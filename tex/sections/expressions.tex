@@ -140,6 +140,9 @@ $\mathtt{let}$ の局所安定性だけでは，外側の後続solveを越えた
 そこでterminal auditは，rootの終端contextと終端value typeから$\Gen$を再計算し，bodyで使った
 schemeへの終端作用と一致する事実を保持する．相互erasureはこの事実を使ってvalue-flow instanceを
 再構成する．
+第2章の不一致例は任意のsuffixに対して局所cutだけを考えた例であり，そのsuffixへ到達するsource programではない．
+実際のraw traversalが生成するすべての後続solveについてpending $\mathtt{let}$ schemeが保存されるという
+終端安定性は，別の全走査不変条件として未証明である．
 
 $\DirectSelf(f,e)$ は shadowing-aware な構文条件であり，$f$ の自由出現を application spine の
 head に限る．matcher literal を body に持つ recursion は次章の専用 placeholder 規則を使う．

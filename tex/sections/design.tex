@@ -94,15 +94,17 @@ $\mathsf{TypingInvariant}$
 Origin certificateは実行traceのコピーではなく，$\mathsf{SourceTyping}$ derivation自身がsolveの
 admissibilityを持つために必要である．validatorは逆に，実行runがその関係的条件を満たすことを
 有限に検査する．この二つを混同しないため，soundnessはtraceからOriginを再構成し，completenessは
-Originから成功traceを再構成する．
+Originとterminal auditから成功traceを再構成する．従ってここでいうcompletenessは，terminal auditを
+定義に含む$\mathsf{SourceTyping}$に相対的な主張である．raw derivationが常にauditを満たすことや，
+auditと独立に定めた宣言的型付けに対する完全性は含まない．
 
-\subsection{terminal auditが必要な三箇所}
+\subsection{terminal auditを置く三箇所}
 
 局所cutで成立しても，外側の後続substitutionを適用すると再確認が必要な事実がある．すべてのnodeに
 任意のfuture suffixへの安定性を要求すると，$\mathtt{let}$のgeneralized setが変わり得るため強すぎる．
 そこで公開rootの終端substitutionに固定したauditを，raw derivationと同じ木構造で持つ．
 
-\paragraph{terminal auditを省く場合の最小反例．}
+\paragraph{$\mathtt{let}$の局所cutだけを考えた例．}
 auditのない$\mathtt{let}$ cutが何を許すかを考える．空のsignature／context，cut substitution
 $\mathsf{id}$，value type $\tau_1=\alpha_0\to\alpha_1$に対し，cutでのgeneralizationは
 $\sigma_{\mathrm{cut}}=\Gen(\varnothing,\varnothing,\tau_1)=\forall a\,b.\,a\to b$である．bodyの後続solveが
@@ -111,7 +113,9 @@ $R\sigma_{\mathrm{cut}}=\sigma_{\mathrm{cut}}$のままである．しかしroot
 $\Gen(\varnothing,\varnothing,R\tau_1)=\Gen(\varnothing,\varnothing,\alpha_0\to\alpha_0)=\forall a.\,a\to a$となる．従って
 $R\sigma_{\mathrm{cut}}\ne\Gen(\varnothing,\varnothing,R\tau_1)$であり，auditなしではdomainとcodomainを独立に
 instantiateできる過剰なschemeを残してしまう．$\mathtt{let}$のterminal auditはこの不一致を拒否する．
-matcherとpattern constructorでは，同じ原理をterminal hole evidenceとcapability compatibilityへ適用する．
+ただし，これは任意の後続suffixに対して局所cutだけを考えた代数的な例であり，このsuffixを実際のsource traversalが
+生成することを示すsource programではない．matcherとpattern constructorでは，同じ再検査原理をterminal
+hole evidenceとcapability compatibilityへ適用する．
 
 \begin{center}
 \begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.35\linewidth}}
@@ -130,6 +134,48 @@ pattern constructor
 \bottomrule
 \end{tabular}
 \end{center}
+
+\paragraph{matcher finalizationで実際に到達するterminal auditによる受理損失．}
+$\mathsf{List}$用signatureへ，観察不能（opaque）なcapability constructor $\mathsf K$を引数にだけ使う
+整形式なdata constructor
+\[
+\mathtt{consumeK}:\Matcher{\mathsf K}{\mathsf{Int}}\to\mathsf{Witness}
+\]
+を加える．一要素tupleを分解し，その要素を引数matcherへ委譲する二節matcherを
+$\mathtt{fix}\;\mathit{self}\;\mathit{argument}$で包むと，次の閉じたlambdaが得られる．
+\[
+\lambda m.\;\bigl(
+  \mathtt{consumeK}\;m,
+  (\mathtt{fix}\;\mathit{self}\;\mathit{argument}.\,
+    \mathtt{matcher}[\mathtt{tuple}_1\mapsto\mathit{argument};\mathtt{catch}])\;m
+\bigr).
+\]
+$\mathit{self}$は使わず，$\mathtt{fix}$は引数slotの局所capability variableを作るためだけに用いる．
+整形式signatureの下で$\mathsf{inferRaw}$は成功し，raw targetは
+\[
+\Matcher{\mathsf K}{\mathsf{Int}}\to
+\bigl(\mathsf{Witness}\times
+  \Matcher{\prodty(\mathsf K)}{\prodty(\mathsf{Int})}\bigr)
+\]
+である．9個のterminal checkは順に
+\[
+(\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},
+ \mathtt{true},\mathtt{true},\mathtt{false},\mathtt{true})
+\]
+となり，8番目の$\mathsf{traceFinalizationSuffixCheck}$だけが失敗して公開$\mathsf{infer}$は拒否する．
+matcher finalizationは，引数slotから借りたcapability variableをfreeze対象から除く．局所検査後の
+applicationがこのvariableを$\mathsf K$へ特殊化すると，終端検査は委譲先の$\mathsf K$まで再帰的に
+観察しようとして拒否する．しかしmatcher自身が観察するのは外側の一要素tupleだけであり，要素の観察は
+引数matcherへ委譲される．これはrawでは受理されるが公開推論では拒否されるという，terminal auditによる
+具体的な受理損失である．
+
+形式化では，compile-time guardがraw成功，公開拒否，型，9検査の結果を計算し，通常の定理が任意の
+raw成功等式から対応するdemand-directed derivationを構成する．さらに閉lambdaがclosureへ評価されることを
+証明している．auditと独立な宣言的型付けと，それに基づく安全性定理はまだないため，
+このprogramを一般的な意味で安全とする定理や，auditによる損失の正確な範囲は未確立である．修正時には，
+matcher自身が観察した構造と，引数slotから完全な値として借りたcapabilityの由来をfinalizationまで保つ必要がある．
+借りたvariableも一律にfreezeすると意図した後続特殊化を失い，すべてのopaque capabilityを許すとmatcher自身が
+opaqueな内部構造を観察する場合まで受理し得る．
 
 variable nodeは追加auditを持たない．canonical schemeのfinite openingとsubstitution transportから
 終端lookupとの一致を代数的に導く．

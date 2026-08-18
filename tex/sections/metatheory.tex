@@ -141,7 +141,22 @@ canonical arm checkerを供給する．
 \]
 である．raw visibility，freeze compatibility，solver success，validator bridgeはcaller premiseに
 残らない．ただしこれはvalidator単体が任意のraw runを受理するという主張ではなく，terminal-audited
-$\mathsf{SourceTyping}$から再構成したrunに対する受理完全性である．
+$\mathsf{SourceTyping}$から再構成したrunに対する受理完全性である．言い換えると，結論の
+「completeness」はauditを定義に含む唯一のsource judgmentに相対的であり，raw demand-directed derivationに
+対するauditの完全性や，auditと独立な宣言的型付けに対する完全性ではない．
+
+この差は空ではない．整形式なsignatureと閉じたprogramについて，$\mathsf{inferRaw}$と対応する
+$\mathsf{DemandSynthRun}$は存在する一方，9個のterminal checkが
+\[
+(\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},
+ \mathtt{true},\mathtt{true},\mathtt{false},\mathtt{true})
+\]
+となる回帰がある．失敗するのは$\mathsf{traceFinalizationSuffixCheck}$だけであり，公開
+$\mathsf{infer}$は$\mathsf{none}$を返す．原因は，引数matcherから借りたslotのcapability variableが
+局所finalization後に観察不能な$\mathsf K$へ特殊化され，終端検査が委譲先の$\mathsf K$まで再帰的に
+観察しようとすることである．従ってこの定理から「raw成功は必ずauditを通る」とは導けない．
+現在の安全性定理もauditを含む$\mathsf{SourceTyping}$を前提とするため，このprogramの独立した安全性や，
+安全なprogram全体に対するterminal auditによる受理損失の正確な範囲は未証明である．
 
 recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$を，外部から
 paired rootを渡さずこの公開定理へ到達するend-to-end regressionとして機械検査している．
@@ -404,13 +419,18 @@ $\mathsf{TypingInvariant}$の存在をcaller premiseにしない．この定理�
 \subsection{機械化の範囲と非主張}
 
 全expression／pattern／arm／clauseのraw family，対応するOrigin family，solverとledgerの局所代数，
-全14 familyのstate factorizationとsolved-form保存，terminal audit，実行推論との双方向接続，
+全14 familyのstate factorizationとsolved-form保存，terminal audit，auditを含む$\mathsf{SourceTyping}$と
+実行推論との双方向接続，
 closed-program state erasure，concrete dynamic safety，受理同値，decidability，target一意性，
 二sort instance preorder，target principality，context相対principalityはLean~4に機械化済みである．
 主定理と一般補題に$\mathtt{sorry}$，$\mathtt{admit}$，project-defined
 $\mathtt{axiom}$はない．
 
-一般のprogram terminationと，open contextで入力metaをすべて固定するtarget一意性は主張しない．
+一般のprogram terminationと，open contextで入力metaをすべて固定するtarget一意性は主張しない．また，
+terminal auditを除いた独立の宣言的型付け，それに対する完全性と安全性，およびauditによる拒否範囲の
+正確な特徴付けも現時点では主張しない．既知のmatcher-finalization反例の修正には，matcher自身が観察した
+構造とborrowed leafの由来を終端まで区別する必要があり，borrowed variableの一律freezeや全opaque leafの
+一律許可は採用していない．
 pattern-free direct-self Damas--Milner断片から
 $\mathsf{TypingInvariant}$への埋込みと具体的な受理例に加え，pattern-free syntaxと
 capability-inert type imageの実行可能な特徴付け，一sort substitutionの有限scope代数，

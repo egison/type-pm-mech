@@ -48,6 +48,20 @@ S; Ω ⊢ τraw ≼ τexpected    ⊣ S'             alignment
 terminal auditを組み合わせる．Origin情報または公開終端で必要な三種のfactsを忘れた公開wrapperは
 持たない．
 
+ここでは次の三層を区別する．raw acceptance（raw受理）は，producer保護まで通った`inferRaw`の成功と，
+そこから再構成される`DemandSynthRun`である．audited acceptance（監査済み受理）は，raw derivation，
+Origin certificate，terminal auditをまとめた`SourceTyping`である．public acceptance（公開受理）は，
+`inferRaw`の結果に有限の`wBridgeCheck`を適用する`infer`の成功である．唯一の公開source judgmentは
+引き続き`SourceTyping`だけであり，`DemandSynthRun`を第二のsource型システムとして公開しない．一方，
+`SourceTyping`自体がauditを含むため，`SourceTyping`と`infer`の受理同値は，raw derivationに対してauditが
+完全であることを意味しない．
+
+| 層 | Lean上の代表 | 含む条件 |
+|---|---|---|
+| raw受理 | `inferRaw`／`DemandSynthRun` | demand-directed traversal，Origin整合，producer保護 |
+| 監査済み受理 | `SourceTyping` | raw derivationに三種のterminal auditを追加 |
+| 公開受理 | `infer` | `inferRaw`成功後に`wBridgeCheck = true` |
+
 ### 2.1 三つの状態：fresh supply，substitution，origin ledger
 
 `q = (nextCap, nextTy)` は二 sort の fresh counter である．capability metavariable を一つ
@@ -204,6 +218,11 @@ primitive-pattern binder 線形性，arm binder 線形性，`CoverageOK` を fin
 capability-origin ledger を持つ．`infer` は `inferRaw` の結果を有限の `wBridgeCheck` で検査し，
 失敗時は `none` を返す．
 
+`inferRaw`の成功からは同じcut列を持つ`DemandSynthRun`を再構成できるが，この段階ではterminal auditも
+`SourceTyping`も得ていない．`wBridgeCheck`が成功して初めて公開soundness定理が`SourceTyping`を構成する．
+従って`inferRaw`成功を後二者と同一視してはならない．`SourceTyping`の存在と`infer`成功は，
+`FrozenSigWF`の下では既存の受理同値定理どおり一致する．
+
 executable traversalのorigin ledgerとdemand-directed側のintrinsic Origin certificateは，同じ三originと
 freeze policyを別々の役割で記録する．前者はsolverを実行時にfail closedにする状態，後者は
 関係的なdemand-directed derivationで各solveが許可されたことを証明する履歴である．consumer demandのために
@@ -279,7 +298,8 @@ SourceTyping.infer_isSome :
 その`schemesClosed`と`armExhaustiveBasic`を使う．`RawSourceVisible`，`FreezeCompatible`，solver
 success，validator bridge，既知のinference successは公開premiseではない．ここで証明したのは
 validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `SourceTyping` fragmentから
-再構成したtraceに対する受理完全性である．
+再構成したtraceに対する受理完全性である．`TerminalAuditCounterexample`は，整形式signatureでも
+`inferRaw`成功から`wBridgeCheck = true`は従わないことを具体的に示す．
 
 soundnessと受理完全性は
 [`TypePM/DemandTypingInferenceEquivalence.lean`](../TypePM/DemandTypingInferenceEquivalence.lean)
@@ -427,14 +447,15 @@ S.Idempotent → S'.Idempotent
 
 Origin certificate は chronological な生成・solve・freeze を記録するが，`TypingInvariant` への射影は root の
 終端 substitution で行う．そこで terminal audit は導出木を同じ形で辿り，追加の終端事実を必要とする
-三つの境界を記録する．`LetFacts` は終端 context／value から再計算した generalization の一致，
+三つの境界を記録する．これは終端で何らかの再検査が必要であることを表すが，現在の各再検査がraw derivationに
+対して完全であることまでは意味しない．`LetFacts` は終端 context／value から再計算した generalization の一致，
 `MatcherFacts` は terminal hole capability から再収集した evidence，shape，clause capability，arm
 exhaustiveness，coverage，`PatternCtorFacts` は終端 dual／capability 間の `CapCompatible` を保持する．
 variable node 自体に追加 field はなく，canonical scheme opening の代数的 transportから終端instanceを
 直接構成する．audit factsはsolver stateを `TypingInvariant` に持ち込まず，erasure時に必要な終端事実だけを
 供給する．
 
-`LetFacts` を省く場合の最小反例は，空signature／contextのcutで value type が
+`LetFacts` を省き，任意の後続substitutionを許す場合に局所cutだけを考えた反例は，空signature／contextのcutで value type が
 `α0 -> α1`，cut substitutionが恒等写像の場合である．auditのない関係がこのcut以後の任意suffixを
 許すと仮定する．cut schemeは
 `Gen(∅, ∅, α0 -> α1) = ∀a b. a -> b`だが，bodyの後続solve
@@ -442,12 +463,71 @@ variable node 自体に追加 field はなく，canonical scheme opening の代�
 `Gen(∅, ∅, R(α0 -> α1)) = ∀a. a -> a`になる．閉じた二binder schemeへの`R`の作用は恒等なので，
 `R(∀a b. a -> b) != ∀a. a -> a`である．auditなしではdomain／codomainを独立にinstantiateできる
 過剰なschemeを保持するため，terminal auditはこのraw cutを拒否する．matcher／pattern constructorの
-factsも，同じ再検査原理をterminal hole evidence／capability compatibilityへ適用する．
+factsも，同じ再検査原理をterminal hole evidence／capability compatibilityへ適用する．このlet例は，
+不一致を生む任意suffixの代数的な必要性を示すものであり，そのsuffixが実際のsource traversalから到達可能で
+あることを示すsource programではない．実走査のlet eventについては，記録時のcontext，target，schemeが
+正確で，append-only historyを通じて保存される局所履歴を構成的に証明した．一方，すべての後続solveが
+各pending let cutのschemeを保存するという終端安定性は，別の全走査不変条件として未証明である．
+
+これに対し，matcher finalizationには実際に到達可能な整形式・closed source programについて，terminal auditに
+よる受理損失（rawでは受理されるが公開推論では拒否されること）がある．
+`RecursiveExamples.listSignature`へ，`observability K = none`である観察不可能なcapability constructor `K`を
+引数にだけ使う整形式なdata constructor
+
+```text
+consumeK : Matcher K Int -> Witness
+```
+
+を加える．一要素tupleを分解し，その要素を引数matcherへ委譲する二節matcherを`fix self argument`で包み，
+次の閉じたlambdaを作る．`self`は使わず，`fix`は引数slot用の局所capabilityを生成するためだけに用いる．
+
+```text
+λ opaqueMatcher.
+  (consumeK opaqueMatcher,
+   (fix self argument.
+      matcher [generalTuplePP(1) -> argument; catch-all]) opaqueMatcher)
+```
+
+`TypePM/TerminalAuditCounterexample.lean`はsignatureの`FrozenSigWF`を定理として証明する．compile-time
+guardはraw traversalの成功とraw resolved target
+
+```text
+Matcher K Int -> (Witness × Matcher (K) (Int))
+```
+
+を計算し，通常の定理`raw_success_demand_synth_run`は任意のraw成功等式から対応する`DemandSynthRun`を
+構成する．ここで右辺の`(K)`／`(Int)`は一要素product capability／typeである．9個の検査結果は
+
+```text
+(true, true, true, true, true, true, true, false, true)
+```
+
+であることもcompile-time guardで固定し，`traceFinalizationSuffixCheck`だけが失敗して公開`infer`は`none`を
+返す．局所finalization時には
+借用slotのcapabilityは変数なので`Shape.Evidence.known (.var κ)`として扱えるが，外側の適用でその変数が`K`へ特殊化される．
+終端再検査は`Shape.ofCap K`をmatcher自身が観察した構造と同じ形に展開し，`observability K = none`のため
+拒否する．しかしこのmatcherが直接観察するのは外側の一要素productだけであり，要素の観察は引数matcherへ
+委譲している．従ってこれは，raw demand-directed derivationに対するterminal auditの受理損失を示す
+具体的なsource反例である．
+
+この反例が独立の宣言的型付けに対して「安全」となる定理はまだない．現在の安全性定理はauditを含む
+`SourceTyping`を前提とするため，公開拒否された本例には適用できない．形式化済みなのは，閉lambdaが即座に
+closureへ評価されること，具体的raw成功の計算とそれをdemand-directed derivationへ移す一般接続，および
+拒否原因が上記一検査だけであることまでである．従って安全なprogram全体に対する損失の正確な範囲は
+未確立である．
+
+単に借用変数を早くfreezeすると，この例をraw solverで拒否するだけで，引数matcherに応じた意図的な
+特殊化も失う．逆にすべてのopaque constructorをfinalizationで許すと，matcher自身が不透明な内部構造を
+観察する不正な場合まで通す．修正候補は，matcher自身が得たevidenceと，引数slotから完全な値として借りた
+capabilityの由来を区別し，後者を再帰的に観察しないように由来を追跡するfinalization，または同じ区別を保つ
+終端での再型付けである．
 
 capability-origin ledger と Origin certificate は引き続き instance，fresh allocation，selective
 export，matcher finalization，solve admissibility を時系列に保証する．public producer-strengthening
 regressionは多相producerの拒否をconcrete producerと安全なvariable renamingの成功と対にし，上の
-cut-level反例と `DamasMilnerWLetStability` は `LetFacts` の必要性および後続W stepを越えた保存を固定する．
+局所cutだけを考えた反例は`LetFacts`の必要性を示す．`DamasMilnerWLetStability`は，必要な変数分離条件を
+満たす一つの後続W stepについてschemeを保存する補題を与える．これを実走査の全stepへ適用する不変条件は
+まだ構成していない．
 or-pattern，delegating matcher，let-polymorphic producerはpositive regressionとして維持されている．
 
 ### 5.4 terminal-fixed mutual erasure
@@ -647,6 +727,10 @@ value-flow schemeのbinderをcapability変数にだけ写す規則が同一fixtu
   executable source-order正負とsource typability counterexample，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
+- `TerminalAuditCounterexample`: 整形式な閉じたdelegating matcherについて，raw Wと
+  `DemandSynthRun`は成功するが，9検査のmatcher finalizationだけが失敗して公開推論が拒否することを
+  固定する．raw resolved type，borrowed capabilityの終端像，空のprotected set，closureへの評価も検査し，
+  `SourceTyping`相対の完全性とraw受理に対するaudit損失を区別する．
 - `InferenceRegression`: 公開inference traversalと主要な成功／拒否境界．
 - `SignatureChecker`: 全tableのscheme closedness，open pattern-function scheme，lookupで隠れる
   open schemeの拒否．
@@ -737,6 +821,10 @@ demand-directed関連moduleの役割は次のとおりである．
 | `DemandTypingInferenceCompletenessValidatorBisimulation`／`Acceptance`／`PairedRoot` | terminal auditの実行stateへの輸送，paired rootから有限validatorへの直接射影 |
 | `DemandTypingInferenceCompletenessRootBuilder`／`GlobalRoot`／`Public`／`Regression` | canonical initial cutへの特殊化，公開 `SourceTyping.infer_isSome`，premise-free recursive matcher回帰 |
 | `DemandTypingInferenceEquivalence`／`DemandTypingInferenceEquivalenceRegression` | 一般contextの受理同値，closed annotation-freeness，`inferType`返値soundness，条件付きdecidabilityと公開回帰 |
+| `InferenceGeneralizationNaturality` | 二sort substitutionとscheme close／generalizationの可換性，binder列が保存される一つのexact solver stepに対するlet一般化保存 |
+| `InferenceGeneralizationAudit` | 実際のlet eventの局所忠実性，append-only履歴での合成，局所忠実性と別途与えた終端安定性からのgeneralization check成功 |
+| `DemandTypingInferenceRawOrdinaryValidator` | terminal-sensitiveでない6検査の集約，局所state操作・alignment・primitive patternに対する検査履歴の保存補題．raw traversal全体の定理はまだ含まない |
+| `TerminalAuditCounterexample` | 整形式な閉じたprogramについてraw成功とmatcher-finalizationだけの公開拒否を固定し，raw成功等式から`DemandSynthRun`を得る一般接続とclosure評価を与える回帰 |
 | `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context `SourceTyping` target一意性，入力meta固定版の反例 |
 | `TypeInstance`／`SourcePrincipality`／`RelativePrincipality` | 有限scope二sort instance preorder，一般／closed target principality，同一postによるopen context／target相対principality |
 | `DamasMilnerAcceptanceTheorem`／`DamasMilnerAcceptanceMutual` | Algorithm Wのretired-state／normalized witnessと，全DM typingから公開inference acceptanceへの相互帰納 |

@@ -23,6 +23,13 @@ source programの型付け可能性を定義するjudgmentは`SourceTyping`だ�
 well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する．closed programについては，
 このsource typingから評価とmatching machineの安全性まで接続済みである．
 
+ただし，`SourceTyping`自体がterminal audit（推論の最後に履歴を再検査する有限検査）を定義に含む．
+従って，ここでいう完全性は「audit済みの`SourceTyping`と公開推論`infer`が一致する」という相対的な
+主張であり，auditを除いた独立の宣言的型付けや，実行時に安全な全programに対する完全性ではない．
+この区別のため，本リポジトリでは`inferRaw`の成功（producer保護まで通ったraw traversal），
+terminal auditを含む`SourceTyping`，`inferRaw`と`wBridgeCheck`を続けて実行する公開`infer`を別の層として
+扱う．raw成功から公開成功が常に従うわけではないことは，整形式な閉じた反例で固定している．
+
 ## 現在の到達点
 
 中心となる接続は次の四つである．各行の右側のコメントが一般的な意味である．
@@ -314,7 +321,11 @@ adequacyによる関係的評価，任意fuelでのno-stuckを同じfixture上�
 
 ## 現在固定している境界
 
-以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．
+以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．ただし，
+これらの局所条件とは別に，borrowed slot（引数matcherから借りたslot）のopaqueな要素capabilityを
+terminal matcher finalizationが再帰的に観察しようとして拒否する，terminal auditによる受理損失
+（rawでは受理されるが公開推論では拒否されること）がある．これは意図した言語境界とは確定しておらず，
+auditの精度と反例の安全性を検討する対象として区別する．反例に対する独立の安全性定理はまだない．
 
 - matcher literalはactual clause evidence，shape，catch-all order，data-arm exhaustiveness，
   binder線形性，coverageをすべて要求する．
@@ -322,8 +333,9 @@ adequacyによる関係的評価，任意fuelでのno-stuckを同じfixture上�
   producer capabilityを後から構造化しない．
 - recursionはsingleton direct-selfの単相`fix`だけをcoreに含む．alias，mutual recursion，
   higher-order originはfail closedとする．
-- `nestedCapProgram`とswapped版は拒否し，or-pattern，delegating matcher，let-polymorphic matcher
-  producerは受理する．これらは正負回帰で固定済みである．
+- `nestedCapProgram`とswapped版は拒否し，現在の具体的なor-pattern，delegating matcher，
+  let-polymorphic matcher producerは受理する．これらの回帰は，opaque capabilityへ後から特殊化される
+  borrowed slotを含むすべてのdelegating matcherが受理されることまでは意味しない．
 - 未解決lambda domainを複数箇所で共有すると，左から右のchecking順序が受理結果に影響し得る．
   これはno-guessとchronological state threadingから生じる意図された言語境界であり，source
   typabilityの正負定理と実行回帰で固定する．source要素の順序不変性は主張しない．
@@ -339,6 +351,7 @@ adequacyによる関係的評価，任意fuelでのno-stuckを同じfixture上�
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
 | source typing | `DemandTyping*` | raw規則，Origin，terminal audit，soundness／completeness，state erasure |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
+| terminal auditの分析 | `InferenceGeneralizationNaturality`, `InferenceGeneralizationAudit`, `DemandTypingInferenceRawOrdinaryValidator`, `TerminalAuditCounterexample` | letの局所履歴と一般化代数，通常検査の局所補題，matcher finalizationだけが拒否する整形式反例 |
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Interpreter*Safe`, `InterpreterNoStuck`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタとadequacy，層別no-stuck定理とfuel上のstrong induction，公開安全性 |

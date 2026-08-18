@@ -236,7 +236,8 @@ hole slotに対して同じchecking判断を使う．
 matcher literalは全clauseで一つのfresh targetを共有する．終端substitutionでhole dualを解決して
 evidenceを再計算し，shape，catch-all order，binder線形性，arm exhaustiveness，coverageを検査する．
 最後に，final capabilityに現れるmatcher-owned explicit ledger keyのstructural leafだけをfreezeする．
-active contextのtop-level slot demandまたはdirect-selfの引数slotから借りたleafは新規freeze対象から除く．
+active contextのtop-level slot demandまたはdirect-selfの引数slotから借りたleafをborrowed leafと呼び，
+これはmatcher自身が生成したinterfaceではないため新規freeze対象から除く．
 \begin{mathpar}
 \inferrule{
   q+\langle0,1\rangle;S;\Omega;\Gamma\vdash\mathit{cls}
@@ -258,11 +259,24 @@ active contextのtop-level slot demandまたはdirect-selfの引数slotから借
 }\rn{demand-directed-MATCHER}
 \end{mathpar}
 
-上のevidenceはmatcher自身の局所終端$S'$で計算される．matcherが外側の式の子である場合，root終端
-までのrename-only suffixでcapability名が変わり得る．terminal auditはroot終端でhole capabilityを
-解決し直し，evidence収集，shape，clause capability，arm exhaustiveness，coverageを再検査する．
+上のevidenceはmatcher自身の局所終端$S'$で計算される．matcher-ownedでfreezeされたleafはroot終端まで
+rename-onlyであるが，borrowed leafは外側の後続solveで構造的に特殊化され得る．terminal auditはroot終端で
+hole capabilityを解決し直し，evidence収集，shape，clause capability，arm exhaustiveness，coverageを
+再検査する．
 matcherの相互erasureはこの正規化済み事実から$\mathsf{TypingInvariant}$ constructorを作り，局所の
 solver traceやMGUをtyping invariantへ残さない．
+
+現行の終端再検査はborrowed leafの由来を保持せず，そのleafが観察不能なconstructorへ特殊化された場合にも
+再帰的なshapeを要求する．第2章の閉じた反例では，matcher自身は一要素tupleだけを分解して要素を引数matcherへ
+委譲するが，borrowed leafが後から$\mathsf K$へ特殊化されるため，9検査中
+$\mathsf{traceFinalizationSuffixCheck}$だけが失敗する．従って「borrowed leafをfreezeしない」という局所規則と
+「rootでfinal shape全体を再計算する」という現行auditの組合せには，実際のsource traversalで到達する
+terminal auditによる受理損失がある．
+
+修正候補は，matcher自身が収集したevidenceと，引数slotから完全な値として借りたleafを区別する情報を
+terminal finalizationまで運び，後者の内部だけは再帰的に観察しない方法である．単にborrowed leafもfreezeすると
+引数matcherに応じた正当な特殊化を失う．逆にすべてのopaque leafを許すと，matcher自身がopaqueな内部構造を
+調べる場合まで通すため，どちらもこの区別の代わりにはならない．
 
 matcher literalをbodyに持つrecursionは，clause skeletonからplaceholderを作る専用規則を使う．
 placeholder rangeのcapability keyはmatcher開始前にstructural-flexibleとしてledgerへ追加される．
