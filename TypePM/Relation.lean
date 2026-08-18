@@ -61,6 +61,66 @@ theorem Cap.applyRenList_id :
 
 end
 
+mutual
+
+/-- An injective variable renaming is injective on complete capabilities. -/
+theorem Cap.applyRen_injective
+    {r : CapVar → CapVar}
+    (injective : ∀ left right, r left = r right → left = right) :
+    ∀ {left right : Cap},
+      left.applyRen r = right.applyRen r → left = right
+  | .any, .any, _ => rfl
+  | .var left, .var right, equality => by
+      simp only [Cap.applyRen, Cap.var.injEq] at equality ⊢
+      exact injective left right equality
+  | .skolem left, .skolem right, equality => by
+      simpa only [Cap.applyRen, Cap.skolem.injEq] using equality
+  | .con leftName leftChildren, .con rightName rightChildren, equality => by
+      simp only [Cap.applyRen, Cap.con.injEq] at equality ⊢
+      exact ⟨equality.1,
+        Cap.applyRenList_injective injective equality.2⟩
+  | .prod leftComponents, .prod rightComponents, equality => by
+      simp only [Cap.applyRen, Cap.prod.injEq] at equality ⊢
+      exact Cap.applyRenList_injective injective equality
+  | .any, .var _, equality
+  | .any, .skolem _, equality
+  | .any, .con _ _, equality
+  | .any, .prod _, equality
+  | .var _, .any, equality
+  | .var _, .skolem _, equality
+  | .var _, .con _ _, equality
+  | .var _, .prod _, equality
+  | .skolem _, .any, equality
+  | .skolem _, .var _, equality
+  | .skolem _, .con _ _, equality
+  | .skolem _, .prod _, equality
+  | .con _ _, .any, equality
+  | .con _ _, .var _, equality
+  | .con _ _, .skolem _, equality
+  | .con _ _, .prod _, equality
+  | .prod _, .any, equality
+  | .prod _, .var _, equality
+  | .prod _, .skolem _, equality
+  | .prod _, .con _ _, equality => by
+      contradiction
+
+/-- List form of `Cap.applyRen_injective`. -/
+theorem Cap.applyRenList_injective
+    {r : CapVar → CapVar}
+    (injective : ∀ left right, r left = r right → left = right) :
+    ∀ {left right : List Cap},
+      Cap.applyRenList r left = Cap.applyRenList r right → left = right
+  | [], [], _ => rfl
+  | left :: lefts, right :: rights, equality => by
+      simp only [Cap.applyRenList, List.cons.injEq] at equality ⊢
+      exact ⟨Cap.applyRen_injective injective equality.1,
+        Cap.applyRenList_injective injective equality.2⟩
+  | [], _ :: _, equality
+  | _ :: _, [], equality => by
+      contradiction
+
+end
+
 /-- Capability renaming is reflexive. -/
 theorem Cap.renamesTo_refl (cap : Cap) : cap.RenamesTo cap := by
   refine ⟨id, ?_, Cap.applyRen_id cap⟩

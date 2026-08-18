@@ -10,7 +10,9 @@ the matcher target or a result annotation.
 `Evidence.unseen` is the neutral element of exact merge.  It is deliberately
 different from the complete minimal capability `Cap.any`: an observable
 position that remains unseen is rejected during finalization, while an
-unobservable position is canonicalized to `Cap.any`.
+unobservable position with ordinary evidence is canonicalized to `Cap.any`.
+Evidence reconstructed from a non-root hole instead retains the exact
+capability consumed by that hole's next matcher.
 -/
 
 namespace TypePM
@@ -21,6 +23,9 @@ inductive Leaf where
   | any
   | var    : CapVar → Leaf
   | skolem : Nat → Leaf
+  /-- A complete capability whose value is inspected by a delegated matcher,
+  not by the matcher whose clause evidence contains this leaf. -/
+  | delegated : Cap → Leaf
 deriving Repr, DecidableEq
 
 /-- Embed a complete leaf back into the capability sort. -/
@@ -28,13 +33,16 @@ def Leaf.toCap : Leaf → Cap
   | .any       => .any
   | .var x     => .var x
   | .skolem x  => .skolem x
+  | .delegated capability => capability
 
 /--
 Partial ShapeCap evidence.
 
 Constructor and product nodes retain partial evidence independently in every
-child.  `known` contains only leaves, so structured capabilities have one
-canonical evidence representation.
+child.  Ordinary structured capabilities have one canonical tree
+representation.  A `known (.delegated capability)` leaf is the explicit
+exception: it records that a complete subtree is handled by the next matcher
+and must not be recursively interpreted as observation by this matcher.
 -/
 inductive Evidence where
   | unseen
@@ -48,6 +56,7 @@ def Leaf.applyRen (r : CapVar → CapVar) : Leaf → Leaf
   | .any => .any
   | .var varId => .var (r varId)
   | .skolem name => .skolem name
+  | .delegated capability => .delegated (capability.applyRen r)
 
 mutual
 
@@ -68,6 +77,14 @@ def Evidence.applyRenList
 
 end
 
+/--
+Frozen observability masks, indexed by canonical constructor former.
+
+`none` means that the former is opaque.  `some mask` supplies one Boolean for
+each constructor parameter; malformed arities are rejected.
+-/
+abbrev Observability := String → Option (List Bool)
+
 /-- Canonical embedding of a complete capability into evidence. -/
 def ofCap : Cap → Evidence
   | .any        => .known .any
@@ -75,6 +92,63 @@ def ofCap : Cap → Evidence
   | .skolem x   => .known (.skolem x)
   | .con k cs   => .con k (cs.map ofCap)
   | .prod cs    => .prod (cs.map ofCap)
+
+/-- Atomic evidence for a hidden delegated constructor parameter.  `Any` keeps
+its ordinary canonical representation so it can exact-merge with direct
+canonical evidence from another clause. -/
+def hiddenDelegatedCap : Cap → Evidence
+  | .any => .known .any
+  | capability => .known (.delegated capability)
+
+/-- Hidden delegated evidence commutes with capability alpha-renaming. -/
+theorem hiddenDelegatedCap_applyRen
+    (r : CapVar → CapVar) (capability : Cap) :
+    hiddenDelegatedCap (capability.applyRen r) =
+      (hiddenDelegatedCap capability).applyRen r := by
+  cases capability <;> rfl
+
+mutual
+
+  /--
+  Embed the capability of a non-root primitive-pattern hole.
+
+  Products and observable constructor formers retain the structure needed by
+  signature projection.  An opaque constructor subtree, a hidden constructor
+  parameter, or a constructor with a malformed observability arity is instead
+  a complete delegated leaf.  The next matcher consumes that value, so the
+  enclosing matcher must not claim to observe its internal structure during
+  finalization.
+  -/
+  def ofDelegatedCap (observable : Observability) : Cap → Evidence
+    | .any        => .known .any
+    | .var x      => .known (.var x)
+    | .skolem x   => .known (.skolem x)
+    | capability@(.con name children) =>
+        match observable name with
+        | none => .known (.delegated capability)
+        | some mask =>
+            match ofDelegatedCapsMasked observable mask children with
+            | some evidence => .con name evidence
+            | none => .known (.delegated capability)
+    | .prod components =>
+        .prod (components.map (ofDelegatedCap observable))
+
+  /-- Embed constructor children according to their observability mask.
+  Hidden children remain complete delegated leaves. -/
+  def ofDelegatedCapsMasked
+      (observable : Observability) :
+      List Bool → List Cap → Option (List Evidence)
+    | [], [] => some []
+    | isObservable :: mask, capability :: capabilities =>
+        let head :=
+          if isObservable then ofDelegatedCap observable capability
+          else hiddenDelegatedCap capability
+        match ofDelegatedCapsMasked observable mask capabilities with
+        | some tail => some (head :: tail)
+        | none => none
+    | _, _ => none
+
+end
 
 /-- Embedding a capability commutes with a capability alpha-renaming. -/
 theorem ofCap_applyRen (r : CapVar → CapVar) :
@@ -100,6 +174,72 @@ theorem ofCap_applyRen (r : CapVar → CapVar) :
   | cons capability capabilities capabilityInduction capabilitiesInduction =>
       simp only [Cap.applyRenList, List.map_cons, Evidence.applyRenList,
         capabilityInduction, capabilitiesInduction]
+
+/-- Delegated embedding commutes with capability alpha-renaming. -/
+theorem ofDelegatedCap_applyRen
+    (r : CapVar → CapVar) (observable : Observability) :
+    ∀ capability,
+      ofDelegatedCap observable (capability.applyRen r) =
+        (ofDelegatedCap observable capability).applyRen r := by
+  intro capability
+  induction capability using Cap.rec
+      (motive_2 := fun capabilities =>
+        (Cap.applyRenList r capabilities).map
+              (ofDelegatedCap observable) =
+            Evidence.applyRenList r
+              (capabilities.map (ofDelegatedCap observable)) ∧
+          ∀ mask,
+            ofDelegatedCapsMasked observable mask
+                (Cap.applyRenList r capabilities) =
+              (ofDelegatedCapsMasked observable mask capabilities).map
+                (Evidence.applyRenList r)) with
+  | any =>
+      simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen,
+        ofDelegatedCap]
+  | var varId =>
+      simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen,
+        ofDelegatedCap]
+  | skolem name =>
+      simp [Cap.applyRen, Evidence.applyRen, Leaf.applyRen,
+        ofDelegatedCap]
+  | con name children childrenInduction =>
+      simp only [Cap.applyRen, ofDelegatedCap]
+      cases observableResult : observable name with
+      | none =>
+          simp [Evidence.applyRen, Leaf.applyRen, Cap.applyRen]
+      | some mask =>
+          simp only [childrenInduction.2 mask]
+          cases embedded :
+              ofDelegatedCapsMasked observable mask children <;>
+            simp [Evidence.applyRen, Leaf.applyRen, Cap.applyRen]
+  | prod components componentsInduction =>
+      simp only [Cap.applyRen, ofDelegatedCap, Evidence.applyRen,
+        componentsInduction.1]
+  | nil =>
+      constructor
+      · rfl
+      · intro mask
+        cases mask <;>
+          simp [Cap.applyRenList, ofDelegatedCapsMasked,
+            Evidence.applyRenList]
+  | cons capability capabilities capabilityInduction
+      capabilitiesInduction =>
+      constructor
+      · simp only [Cap.applyRenList, List.map_cons,
+          Evidence.applyRenList, capabilityInduction,
+          capabilitiesInduction.1]
+      · intro mask
+        cases mask with
+        | nil =>
+            simp [Cap.applyRenList, ofDelegatedCapsMasked]
+        | cons isObservable mask =>
+            simp only [Cap.applyRenList, ofDelegatedCapsMasked,
+              capabilitiesInduction.2 mask]
+            cases tailEmbedded :
+                ofDelegatedCapsMasked observable mask capabilities <;>
+              cases isObservable <;>
+              simp [Evidence.applyRenList,
+                hiddenDelegatedCap_applyRen, capabilityInduction]
 
 mutual
   /--
@@ -144,21 +284,37 @@ def mergeAll : List Evidence → Option Evidence
       | some accumulated => merge evidence accumulated
       | none => none
 
-/--
-Frozen observability masks, indexed by canonical constructor former.
+/-- Complete one hidden constructor parameter.  Ordinary evidence is
+canonicalized to `Any`; a delegated leaf retains the exact capability consumed
+by the next matcher. -/
+def finalizeHidden : Evidence → Cap
+  | .known (.delegated capability) => capability
+  | _ => .any
 
-`none` means that the former is opaque.  `some mask` supplies one Boolean for
-each constructor parameter; malformed arities are rejected.
--/
-abbrev Observability := String → Option (List Bool)
+/-- Hidden delegated evidence completes to its exact capability. -/
+@[simp] theorem finalizeHidden_hiddenDelegatedCap (capability : Cap) :
+    finalizeHidden (hiddenDelegatedCap capability) = capability := by
+  cases capability <;> rfl
+
+/-- Hidden-parameter completion commutes with alpha-renaming. -/
+theorem finalizeHidden_applyRen
+    (r : CapVar → CapVar) (evidence : Evidence) :
+    finalizeHidden (evidence.applyRen r) =
+      (finalizeHidden evidence).applyRen r := by
+  cases evidence with
+  | unseen => rfl
+  | known leaf => cases leaf <;> rfl
+  | con name children => rfl
+  | prod components => rfl
 
 mutual
   /--
   Finalize partial evidence to a complete capability.
 
-  Every observable unseen position is rejected.  Every unobservable
-  constructor parameter is canonicalized to `Cap.any`, regardless of any
-  stronger evidence supplied there.  Product components are always observable.
+  Every observable unseen position is rejected.  An unobservable constructor
+  parameter is canonicalized to `Cap.any` unless it is a complete delegated
+  leaf consumed by the next matcher.  Product components are always
+  observable.
   -/
   def finalize (observable : Observability) : Evidence → Option Cap
     | .unseen => none
@@ -192,14 +348,94 @@ mutual
       List Bool → List Evidence → Option (List Cap)
     | [], [] => some []
     | isObservable :: mask, evidence :: rest =>
-        let head :=
-          if isObservable then finalize observable evidence else some .any
-        match head, finalizeMasked observable mask rest with
+      let head :=
+          if isObservable then finalize observable evidence
+          else some (finalizeHidden evidence)
+      match head, finalizeMasked observable mask rest with
         | some capability, some capabilities =>
             some (capability :: capabilities)
         | _, _ => none
     | _, _ => none
 end
+
+/-- A capability delegated through a non-root hole always finalizes exactly,
+including opaque constructors, hidden parameters, and malformed observable
+arities.  Those cases are atomic because the next matcher, not the enclosing
+matcher, consumes the corresponding value. -/
+theorem finalize_ofDelegatedCap (observable : Observability) :
+    ∀ capability,
+      finalize observable (ofDelegatedCap observable capability) =
+        some capability := by
+  intro capability
+  induction capability using Cap.rec
+      (motive_2 := fun capabilities =>
+        finalizeList observable
+              (capabilities.map (ofDelegatedCap observable)) =
+            some capabilities ∧
+          ∀ mask evidence,
+            ofDelegatedCapsMasked observable mask capabilities =
+                some evidence →
+              finalizeMasked observable mask evidence = some capabilities) with
+  | any =>
+      simp [ofDelegatedCap, finalize, Leaf.toCap]
+  | var varId =>
+      simp [ofDelegatedCap, finalize, Leaf.toCap]
+  | skolem name =>
+      simp [ofDelegatedCap, finalize, Leaf.toCap]
+  | con name children childrenInduction =>
+      simp only [ofDelegatedCap]
+      cases observableResult : observable name with
+      | none =>
+          rfl
+      | some mask =>
+          cases embedded :
+              ofDelegatedCapsMasked observable mask children with
+          | none =>
+              simp [embedded, finalize, Leaf.toCap]
+          | some evidence =>
+              simp [embedded, finalize, observableResult,
+                childrenInduction.2 mask evidence embedded]
+  | prod components componentsInduction =>
+      simp only [ofDelegatedCap, finalize, componentsInduction.1]
+  | nil =>
+      constructor
+      · rfl
+      · intro mask evidence success
+        cases mask with
+        | nil =>
+            simp [ofDelegatedCapsMasked] at success
+            subst evidence
+            rfl
+        | cons _ _ =>
+            simp [ofDelegatedCapsMasked] at success
+  | cons capability capabilities capabilityInduction
+      capabilitiesInduction =>
+      constructor
+      · simp only [List.map_cons, finalizeList, capabilityInduction,
+          capabilitiesInduction.1]
+      · intro mask evidence success
+        cases mask with
+        | nil =>
+            simp [ofDelegatedCapsMasked] at success
+        | cons isObservable mask =>
+            simp only [ofDelegatedCapsMasked] at success
+            cases tailEmbedded :
+                ofDelegatedCapsMasked observable mask capabilities with
+            | none =>
+                simp [tailEmbedded] at success
+            | some tail =>
+                have evidenceEquality :
+                    evidence =
+                      (if isObservable then
+                          ofDelegatedCap observable capability
+                        else hiddenDelegatedCap capability) :: tail := by
+                  simpa [tailEmbedded] using success.symm
+                subst evidence
+                cases isObservable <;>
+                  simp only [Bool.false_eq_true, if_false, if_true,
+                    finalizeMasked, finalizeHidden_hiddenDelegatedCap,
+                    capabilityInduction,
+                    capabilitiesInduction.2 mask tail tailEmbedded]
 
 /--
 Infer a matcher literal's root capability from its clause evidence.
@@ -229,7 +465,8 @@ theorem Leaf.applyRen_injective
     Function.Injective (Leaf.applyRen r) := by
   intro left right equality
   cases left <;> cases right <;> simp_all [Leaf.applyRen]
-  exact injective _ _ equality
+  · exact injective _ _ equality
+  · exact Cap.applyRen_injective injective equality
 
 mutual
 
@@ -745,10 +982,21 @@ theorem finalize_observable_unseen
 
 theorem finalize_unobservable_child
     {observable : Observability} {name : String} {evidence : Evidence}
-    (h : observable name = some [false]) :
+    (h : observable name = some [false])
+    (ordinary : finalizeHidden evidence = .any) :
     finalize observable (.con name [evidence]) =
       some (.con name [.any]) := by
-  simp [finalize, finalizeMasked, h]
+  simp [finalize, finalizeMasked, h, ordinary]
+
+/-- A hidden delegated child retains the exact capability handled by its next
+matcher. -/
+theorem finalize_unobservable_delegated_child
+    {observable : Observability} {name : String} {capability : Cap}
+    (h : observable name = some [false]) :
+    finalize observable
+        (.con name [.known (.delegated capability)]) =
+      some (.con name [capability]) := by
+  simp [finalize, finalizeMasked, finalizeHidden, h]
 
 set_option linter.unusedSimpArgs false in
 /--
@@ -877,9 +1125,9 @@ theorem finalizeMasked_applyRen
       | cons head tail =>
           cases isObservable <;>
             simp only [Evidence.applyRenList, finalizeMasked]
-          · rw [finalizeMasked_applyRen]
+          · rw [finalizeHidden_applyRen, finalizeMasked_applyRen]
             cases tailFinalized : finalizeMasked observable mask tail <;>
-              simp [Cap.applyRenList, Cap.applyRen]
+              simp [Cap.applyRenList]
           · rw [finalize_applyRen, finalizeMasked_applyRen]
             cases headFinalized : finalize observable head <;>
               cases tailFinalized : finalizeMasked observable mask tail <;>
@@ -894,12 +1142,14 @@ def Leaf.fcv : Leaf → List CapVar
   | .any => []
   | .var varId => [varId]
   | .skolem _ => []
+  | .delegated capability => capability.fcv
 
 /-- Leaf embedding preserves flexible capability variables. -/
 theorem Leaf.fcv_toCap : ∀ leaf : Leaf, leaf.toCap.fcv = leaf.fcv
   | .any => rfl
   | .var _ => rfl
   | .skolem _ => rfl
+  | .delegated _ => rfl
 
 mutual
 
@@ -916,6 +1166,33 @@ def Evidence.fcvList : List Evidence → List CapVar
   | evidence :: rest => evidence.fcv ++ Evidence.fcvList rest
 
 end
+
+/-- Hidden delegated evidence preserves the complete capability's variables. -/
+@[simp] theorem fcv_hiddenDelegatedCap (capability : Cap) :
+    (hiddenDelegatedCap capability).fcv = capability.fcv := by
+  cases capability <;> rfl
+
+/-- Hidden-parameter completion introduces no flexible variable absent from
+its evidence. -/
+theorem finalizeHidden_fcv (evidence : Evidence) :
+    (finalizeHidden evidence).fcv ⊆ evidence.fcv := by
+  cases evidence with
+  | unseen =>
+      intro varId membership
+      exact nomatch membership
+  | known leaf =>
+      cases leaf with
+      | delegated capability =>
+          exact fun _ membership => membership
+      | any | var | skolem =>
+          intro varId membership
+          exact nomatch membership
+  | con name children =>
+      intro varId membership
+      exact nomatch membership
+  | prod components =>
+      intro varId membership
+      exact nomatch membership
 
 /-- Membership in the variables of an evidence list is membership in the
 variables of one member. -/
@@ -948,6 +1225,83 @@ theorem fcv_ofCap :
       capabilitiesInduction =>
       simp only [List.map_cons, Evidence.fcvList, Cap.fcvList,
         capabilityInduction, capabilitiesInduction]
+
+/-- Delegated embedding preserves every flexible capability variable. -/
+theorem fcv_ofDelegatedCap (observable : Observability) :
+    ∀ capability : Cap,
+      (ofDelegatedCap observable capability).fcv = capability.fcv := by
+  intro capability
+  induction capability using Cap.rec
+      (motive_2 := fun capabilities =>
+        Evidence.fcvList
+              (capabilities.map (ofDelegatedCap observable)) =
+            Cap.fcvList capabilities ∧
+          ∀ mask evidence,
+            ofDelegatedCapsMasked observable mask capabilities =
+                some evidence →
+              Evidence.fcvList evidence = Cap.fcvList capabilities) with
+  | any =>
+      simp [ofDelegatedCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | var varId =>
+      simp [ofDelegatedCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | skolem name =>
+      simp [ofDelegatedCap, Evidence.fcv, Leaf.fcv, Cap.fcv]
+  | con name children childrenInduction =>
+      simp only [ofDelegatedCap]
+      cases observableResult : observable name with
+      | none =>
+          simp [Evidence.fcv, Leaf.fcv, Cap.fcv]
+      | some mask =>
+          cases embedded :
+              ofDelegatedCapsMasked observable mask children with
+          | none =>
+              simp [embedded, Evidence.fcv, Leaf.fcv, Cap.fcv]
+          | some evidence =>
+              simpa [embedded, Evidence.fcv, Cap.fcv] using
+                childrenInduction.2 mask evidence embedded
+  | prod components componentsInduction =>
+      simpa [ofDelegatedCap, Evidence.fcv, Cap.fcv] using
+        componentsInduction.1
+  | nil =>
+      constructor
+      · rfl
+      · intro mask evidence success
+        cases mask with
+        | nil =>
+            simp [ofDelegatedCapsMasked] at success
+            subst evidence
+            rfl
+        | cons _ _ =>
+            simp [ofDelegatedCapsMasked] at success
+  | cons capability capabilities capabilityInduction
+      capabilitiesInduction =>
+      constructor
+      · simp only [List.map_cons, Evidence.fcvList, Cap.fcvList,
+          capabilityInduction, capabilitiesInduction.1]
+      · intro mask evidence success
+        cases mask with
+        | nil =>
+            simp [ofDelegatedCapsMasked] at success
+        | cons isObservable mask =>
+            simp only [ofDelegatedCapsMasked] at success
+            cases tailEmbedded :
+                ofDelegatedCapsMasked observable mask capabilities with
+            | none =>
+                simp [tailEmbedded] at success
+            | some tail =>
+                have evidenceEquality :
+                    evidence =
+                      (if isObservable then
+                          ofDelegatedCap observable capability
+                        else hiddenDelegatedCap capability) :: tail := by
+                  simpa [tailEmbedded] using success.symm
+                subst evidence
+                cases isObservable <;>
+                  simp only [Bool.false_eq_true, if_false, if_true,
+                    Evidence.fcvList, Cap.fcvList,
+                    fcv_hiddenDelegatedCap,
+                    capabilityInduction,
+                    capabilitiesInduction.2 mask tail tailEmbedded]
 
 /-- Variables of an embedded capability list are the original variables. -/
 theorem fcvList_map_ofCap :
@@ -1184,9 +1538,11 @@ theorem finalizeMasked_fcv {observable : Observability} :
               rw [htail] at h
               cases h
               intro varId mem
-              simp only [Cap.fcvList, Cap.fcv, List.nil_append] at mem
+              simp only [Cap.fcvList, List.mem_append] at mem
               simp only [Evidence.fcvList, List.mem_append]
-              exact Or.inr (finalizeMasked_fcv htail mem)
+              rcases mem with headMem | tailMem
+              · exact Or.inl (finalizeHidden_fcv evidence headMem)
+              · exact Or.inr (finalizeMasked_fcv htail tailMem)
   | [], _ :: _, _, h => nomatch h
   | _ :: _, [], _, h => nomatch h
 

@@ -25,7 +25,11 @@ syntax を定義する．source term 自体に型注釈 form はない．
 matcher literal の各 clause は primitive pattern，next-matcher expression，arm list を持つ．
 [`TypePM/ClauseEvidence.lean`](../TypePM/ClauseEvidence.lean) と
 [`TypePM/Shape.lean`](../TypePM/Shape.lean) は hole の順序，shape capability，catch-all，coverage
-に必要な有限 evidence を定義する．
+に必要な有限 evidence を定義する．`Shape.Leaf.delegated capability`は，その部分値を現在のmatcherではなく
+next matcherが調べることを表す完全なcapability leafである．source clause evidenceの構築でこのleafを
+作るのは，primitive patternのroot（最上位）ではないholeを処理する
+`ClauseEvidence.clauseEvidenceGo`から呼ぶ
+`Shape.ofDelegatedCap`だけである．
 
 ## 2. 唯一の source typing: SourceTyping
 
@@ -298,8 +302,9 @@ SourceTyping.infer_isSome :
 その`schemesClosed`と`armExhaustiveBasic`を使う．`RawSourceVisible`，`FreezeCompatible`，solver
 success，validator bridge，既知のinference successは公開premiseではない．ここで証明したのは
 validator単体の任意のraw runに対する無条件完全性ではなく，terminal-audited `SourceTyping` fragmentから
-再構成したtraceに対する受理完全性である．`TerminalAuditCounterexample`は，整形式signatureでも
-`inferRaw`成功から`wBridgeCheck = true`は従わないことを具体的に示す．
+再構成したtraceに対する受理完全性である．`TerminalAuditDelegationRegression`は，かつて
+matcher-finalizationだけが拒否した委譲holeの例について，raw／公開推論と全9検査が成功する修正後の
+境界を固定する．これは任意の`inferRaw`成功から`wBridgeCheck = true`を導く一般定理ではない．
 
 soundnessと受理完全性は
 [`TypePM/DemandTypingInferenceEquivalence.lean`](../TypePM/DemandTypingInferenceEquivalence.lean)
@@ -469,8 +474,8 @@ factsも，同じ再検査原理をterminal hole evidence／capability compatibi
 正確で，append-only historyを通じて保存される局所履歴を構成的に証明した．一方，すべての後続solveが
 各pending let cutのschemeを保存するという終端安定性は，別の全走査不変条件として未証明である．
 
-これに対し，matcher finalizationには実際に到達可能な整形式・closed source programについて，terminal auditに
-よる受理損失（rawでは受理されるが公開推論では拒否されること）がある．
+matcher finalizationで確認された具体的な受理損失は，非rootのprimitive-pattern holeがnext matcherへ
+委譲する部分値を，終端再検査が現在のmatcherによる観察と取り違えたことであった．
 `RecursiveExamples.listSignature`へ，`observability K = none`である観察不可能なcapability constructor `K`を
 引数にだけ使う整形式なdata constructor
 
@@ -488,39 +493,51 @@ consumeK : Matcher K Int -> Witness
       matcher [generalTuplePP(1) -> argument; catch-all]) opaqueMatcher)
 ```
 
-`TypePM/TerminalAuditCounterexample.lean`はsignatureの`FrozenSigWF`を定理として証明する．compile-time
-guardはraw traversalの成功とraw resolved target
+`TypePM/TerminalAuditDelegationRegression.lean`はsignatureの`FrozenSigWF`を定理として証明する．
+compile-time guardはraw traversalと公開`infer`の成功，および両者のresolved target
 
 ```text
 Matcher K Int -> (Witness × Matcher (K) (Int))
 ```
 
-を計算し，通常の定理`raw_success_demand_synth_run`は任意のraw成功等式から対応する`DemandSynthRun`を
-構成する．ここで右辺の`(K)`／`(Int)`は一要素product capability／typeである．9個の検査結果は
+を計算する．通常の定理`raw_success_demand_synth_run`は任意のraw成功等式から対応する`DemandSynthRun`を，
+`public_success_sourceTyping`は任意の公開成功等式から`SourceTyping`を構成する．ここで右辺の
+`(K)`／`(Int)`は一要素product capability／typeである．9個の検査結果は
 
 ```text
-(true, true, true, true, true, true, true, false, true)
+(true, true, true, true, true, true, true, true, true)
 ```
 
-であることもcompile-time guardで固定し，`traceFinalizationSuffixCheck`だけが失敗して公開`infer`は`none`を
-返す．局所finalization時には
-借用slotのcapabilityは変数なので`Shape.Evidence.known (.var κ)`として扱えるが，外側の適用でその変数が`K`へ特殊化される．
-終端再検査は`Shape.ofCap K`をmatcher自身が観察した構造と同じ形に展開し，`observability K = none`のため
-拒否する．しかしこのmatcherが直接観察するのは外側の一要素productだけであり，要素の観察は引数matcherへ
-委譲している．従ってこれは，raw demand-directed derivationに対するterminal auditの受理損失を示す
-具体的なsource反例である．
+であることも固定し，以前はfalseだった`traceFinalizationSuffixCheck`を含めて全検査が成功する．
 
-この反例が独立の宣言的型付けに対して「安全」となる定理はまだない．現在の安全性定理はauditを含む
-`SourceTyping`を前提とするため，公開拒否された本例には適用できない．形式化済みなのは，閉lambdaが即座に
-closureへ評価されること，具体的raw成功の計算とそれをdemand-directed derivationへ移す一般接続，および
-拒否原因が上記一検査だけであることまでである．従って安全なprogram全体に対する損失の正確な範囲は
-未確立である．
+修正はshape evidence上で委譲元を保持する．`Shape.Leaf.delegated capability`は，next matcherが消費する
+完全な部分capabilityを一つのleafとして記録する．`clauseEvidenceGo`はroot holeを従来どおり`unseen`とし，
+非rootのprimitive-pattern holeだけを`Shape.ofDelegatedCap signature.observability capability`で埋め込む．
+したがって，sourceのconstructor patternや手動のstructural evidenceには委譲の例外を与えない．
 
-単に借用変数を早くfreezeすると，この例をraw solverで拒否するだけで，引数matcherに応じた意図的な
-特殊化も失う．逆にすべてのopaque constructorをfinalizationで許すと，matcher自身が不透明な内部構造を
-観察する不正な場合まで通す．修正候補は，matcher自身が得たevidenceと，引数slotから完全な値として借りた
-capabilityの由来を区別し，後者を再帰的に観察しないように由来を追跡するfinalization，または同じ区別を保つ
-終端での再型付けである．
+`ofDelegatedCap`は観察可能性mask（constructorの各引数を現在のmatcherが観察するかを示すBoolean列）を
+使う．productと観察可能なconstructor headは構造を保ち，maskがtrueの引数は再帰的に埋め込む．maskが
+falseの引数は`hiddenDelegatedCap`で完全なleafとして保持する．opaqueなconstructor head，maskと引数数が
+一致しないconstructor，およびその内側は一つのdelegated leafにする．`finalizeHidden`はdelegated leafなら
+保持したcapabilityを返し，通常のhidden evidenceなら従来どおり`Any`へcanonicalize（標準形にそろえる）する．
+定理`Shape.finalize_ofDelegatedCap`は，opaque constructor，false-maskの引数，malformed arity
+（maskと引数数の不一致）を含むすべてのcapabilityについて
+
+```text
+Shape.finalize observable (Shape.ofDelegatedCap observable capability)
+  = some capability
+```
+
+を与える．これは委譲capabilityのevidence埋込みとfinalizationだけを結ぶ局所定理であり，matcher eventの
+ほかの条件やterminal audit全体の成功を直接導く定理ではない．一方，直接のstructural evidence
+`.con "K" []`は従来どおりfinalizationで拒否され，通常の
+false-mask位置のevidenceは`Any`へcanonicalizeされる．従って，全opaque structureを一律に許す変更ではない．
+
+この修正で除いたのは，非root holeが委譲した部分値を再帰的に観察するという特定のfinalization損失である．
+projection，evidence merge，clause capabilityなどほかのterminal checkを含むraw traversal全体について，
+任意の`inferRaw`成功がauditを通る定理はまだない．`let`についても，実走査の全後続solveがpending cutの
+schemeを保存する終端安定性は未証明である．したがってauditを公開仕様から除くこと，auditと独立な
+宣言的型付けに対する完全性，またはauditによる拒否範囲の正確な特徴付けは引き続き未確立である．
 
 capability-origin ledger と Origin certificate は引き続き instance，fresh allocation，selective
 export，matcher finalization，solve admissibility を時系列に保証する．public producer-strengthening
@@ -727,10 +744,11 @@ value-flow schemeのbinderをcapability変数にだけ写す規則が同一fixtu
   executable source-order正負とsource typability counterexample，constructor export freeze．
 - `ApplicationCoercionRegression`: 関数引数の slot demand と matcher-expected 拒否．
 - `CertifiedInferenceRegression`: terminal validator と成功時 reconstruction．
-- `TerminalAuditCounterexample`: 整形式な閉じたdelegating matcherについて，raw Wと
-  `DemandSynthRun`は成功するが，9検査のmatcher finalizationだけが失敗して公開推論が拒否することを
-  固定する．raw resolved type，borrowed capabilityの終端像，空のprotected set，closureへの評価も検査し，
-  `SourceTyping`相対の完全性とraw受理に対するaudit損失を区別する．
+- `TerminalAuditDelegationRegression`: 整形式な閉じたdelegating matcherについて，raw Wと公開推論，
+  9個のterminal checkがすべて成功することを固定する．opaqueな部分値は非root holeからnext matcherへ
+  委譲した場合だけ完全なleafとして保持し，直接のopaque structural evidenceは拒否する境界も検査する．
+  raw resolved type，引数matcherと共有するcapabilityの終端像，空のprotected set，`DemandSynthRun`，`SourceTyping`，
+  closureへの評価を接続する．
 - `InferenceRegression`: 公開inference traversalと主要な成功／拒否境界．
 - `SignatureChecker`: 全tableのscheme closedness，open pattern-function scheme，lookupで隠れる
   open schemeの拒否．
@@ -824,7 +842,7 @@ demand-directed関連moduleの役割は次のとおりである．
 | `InferenceGeneralizationNaturality` | 二sort substitutionとscheme close／generalizationの可換性，binder列が保存される一つのexact solver stepに対するlet一般化保存 |
 | `InferenceGeneralizationAudit` | 実際のlet eventの局所忠実性，append-only履歴での合成，局所忠実性と別途与えた終端安定性からのgeneralization check成功 |
 | `DemandTypingInferenceRawOrdinaryValidator` | terminal-sensitiveでない6検査の集約，局所state操作・alignment・primitive patternに対する検査履歴の保存補題．raw traversal全体の定理はまだ含まない |
-| `TerminalAuditCounterexample` | 整形式な閉じたprogramについてraw成功とmatcher-finalizationだけの公開拒否を固定し，raw成功等式から`DemandSynthRun`を得る一般接続とclosure評価を与える回帰 |
+| `TerminalAuditDelegationRegression` | 非root primitive-pattern holeの委譲capabilityを保持するfinalization修正について，整形式な閉じたprogramのraw／公開成功，全9検査，直接opaque観察の拒否，`DemandSynthRun`／`SourceTyping`接続，closure評価を固定する回帰 |
 | `DemandTypingTargetUniqueness`／`DemandTypingTargetUniquenessRegression` | 全residual二sortmetaの局所renamingを法とする一般context `SourceTyping` target一意性，入力meta固定版の反例 |
 | `TypeInstance`／`SourcePrincipality`／`RelativePrincipality` | 有限scope二sort instance preorder，一般／closed target principality，同一postによるopen context／target相対principality |
 | `DamasMilnerAcceptanceTheorem`／`DamasMilnerAcceptanceMutual` | Algorithm Wのretired-state／normalized witnessと，全DM typingから公開inference acceptanceへの相互帰納 |
@@ -856,7 +874,7 @@ demand-directed関連moduleの役割は次のとおりである．
 埋めない．
 
 公理監査：`AxiomAudit` は，`PublicTheorems` の見出し定理と README の定理表が指す公開定数
-（計27個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
+（計28個）の公理閉包を `#audit_standard_axioms` で計算し，`propext`・`Classical.choice`・
 `Quot.sound` 以外の公理（`native_decide` が導入する補助公理，`sorryAx`，project-defined
 `axiom`）が現れた時点で elaboration を失敗させる．検査は許容集合方式なので，公理の生成名の
 変化に依存しない．監査対象は double-backquote 名前リテラルで解決するため，公開定理の改名は

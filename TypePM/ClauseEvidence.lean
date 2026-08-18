@@ -76,8 +76,10 @@ mutual
 Consume hole capabilities from left to right while constructing evidence.
 
 `atRoot` distinguishes the root bare hole, whose evidence is `unseen`, from
-a hole below a constructor or tuple, whose capability is embedded with
-`Shape.ofCap`.  The unconsumed suffix is returned explicitly.
+a hole below a constructor or tuple.  The latter is handled by its next
+matcher, so `Shape.ofDelegatedCap` retains observable projection structure but
+keeps opaque subtrees, hidden constructor arguments, and malformed observable
+heads atomic.  The unconsumed suffix is returned explicitly.
 -/
 def clauseEvidenceGo
     (signature : FrozenMatcherSig) (atRoot : Bool) :
@@ -86,7 +88,8 @@ def clauseEvidenceGo
       none
   | .hole, capability :: capabilities =>
       some
-        (if atRoot then .unseen else Shape.ofCap capability,
+        (if atRoot then .unseen
+          else Shape.ofDelegatedCap signature.observability capability,
           capabilities)
   | .wild, capabilities =>
       some (.unseen, capabilities)

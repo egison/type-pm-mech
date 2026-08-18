@@ -128,7 +128,7 @@ import TypePM.DemandTypingErasure
 import TypePM.DemandTypingTerminalAuditBuilder
 import TypePM.DemandTypingRegression
 import TypePM.DemandTypingTerminalAuditErasureRegression
-import TypePM.TerminalAuditCounterexample
+import TypePM.TerminalAuditDelegationRegression
 import TypePM.CompositionFeatureRegression
 import TypePM.PublicTheorems
 import TypePM.AxiomAudit
@@ -154,9 +154,10 @@ the two directions into decidable source typability, closed-program
 annotation-freeness, and soundness of the type reported by `inferType`.
 Because `SourceTyping` contains the terminal audit, this completeness theorem
 does not state that every successful `inferRaw` run passes `wBridgeCheck`.
-`TerminalAuditCounterexample` fixes a well-formed closed run for which only the
-matcher-finalization component rejects, and keeps that raw-audit boundary
-explicit.
+`TerminalAuditDelegationRegression` fixes the boundary at which an opaque
+capability below a primitive-pattern hole is delegated to the next matcher:
+raw and public inference accept it, while direct opaque structural evidence
+remains rejected.
 `DemandTypingTargetUniqueness` strengthens this result: every two audited
 `SourceTyping` targets for the same source have one common representative under local
 two-sort variable renamings of all residual metavariables.

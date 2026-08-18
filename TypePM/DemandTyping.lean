@@ -2519,8 +2519,9 @@ def freshTargetsSupply :
 mutual
 
 /-- Supply twin of skeleton freshening: replace observable, structurally
-unknown leaves by fresh capability metas and canonicalize unobservable
-constructor fields to `Any`. -/
+unknown leaves by fresh capability metas.  Skeleton evidence contains no
+delegated leaves, so unobservable constructor fields canonically become
+`Any`. -/
 def freshenSkeletonSupply (observable : Shape.Observability) :
     Shape.Evidence → InferenceBase.FreshSupply →
       Option (Cap × InferenceBase.FreshSupply)

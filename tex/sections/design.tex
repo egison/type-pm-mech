@@ -135,7 +135,7 @@ pattern constructor
 \end{tabular}
 \end{center}
 
-\paragraph{matcher finalizationで実際に到達するterminal auditによる受理損失．}
+\paragraph{matcher finalizationで確認された受理損失と修正．}
 $\mathsf{List}$用signatureへ，観察不能（opaque）なcapability constructor $\mathsf K$を引数にだけ使う
 整形式なdata constructor
 \[
@@ -151,7 +151,7 @@ $\mathtt{fix}\;\mathit{self}\;\mathit{argument}$で包むと，次の閉じたla
 \bigr).
 \]
 $\mathit{self}$は使わず，$\mathtt{fix}$は引数slotの局所capability variableを作るためだけに用いる．
-整形式signatureの下で$\mathsf{inferRaw}$は成功し，raw targetは
+整形式signatureの下で$\mathsf{inferRaw}$と公開$\mathsf{infer}$はともに成功し，targetは
 \[
 \Matcher{\mathsf K}{\mathsf{Int}}\to
 \bigl(\mathsf{Witness}\times
@@ -160,22 +160,36 @@ $\mathit{self}$は使わず，$\mathtt{fix}$は引数slotの局所capability var
 である．9個のterminal checkは順に
 \[
 (\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},
- \mathtt{true},\mathtt{true},\mathtt{false},\mathtt{true})
+ \mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true})
 \]
-となり，8番目の$\mathsf{traceFinalizationSuffixCheck}$だけが失敗して公開$\mathsf{infer}$は拒否する．
-matcher finalizationは，引数slotから借りたcapability variableをfreeze対象から除く．局所検査後の
-applicationがこのvariableを$\mathsf K$へ特殊化すると，終端検査は委譲先の$\mathsf K$まで再帰的に
-観察しようとして拒否する．しかしmatcher自身が観察するのは外側の一要素tupleだけであり，要素の観察は
-引数matcherへ委譲される．これはrawでは受理されるが公開推論では拒否されるという，terminal auditによる
-具体的な受理損失である．
+となる．修正前は8番目の$\mathsf{traceFinalizationSuffixCheck}$だけがfalseであった．matcher自身が
+観察するのは外側の一要素tupleだけであり，要素の観察は引数matcherへ委譲されるため，委譲先の
+$\mathsf K$を再帰的に観察する旧finalizationは過剰であった．
 
-形式化では，compile-time guardがraw成功，公開拒否，型，9検査の結果を計算し，通常の定理が任意の
-raw成功等式から対応するdemand-directed derivationを構成する．さらに閉lambdaがclosureへ評価されることを
-証明している．auditと独立な宣言的型付けと，それに基づく安全性定理はまだないため，
-このprogramを一般的な意味で安全とする定理や，auditによる損失の正確な範囲は未確立である．修正時には，
-matcher自身が観察した構造と，引数slotから完全な値として借りたcapabilityの由来をfinalizationまで保つ必要がある．
-借りたvariableも一律にfreezeすると意図した後続特殊化を失い，すべてのopaque capabilityを許すとmatcher自身が
-opaqueな内部構造を観察する場合まで受理し得る．
+修正では$\mathsf{Leaf.delegated}(\kappa)$を，next matcherが消費する完全な部分capabilityを表す
+委譲leafとして追加する．このleafは非rootのprimitive-pattern holeからだけ
+$\mathsf{ofDelegatedCap}_{O}$を通じて作る．$O$は観察可能性mask，すなわちconstructorの各引数を
+現在のmatcherが観察するかを示すBoolean列である．productと観察可能なconstructor headは構造を保ち，
+true位置は再帰する．false位置は$\mathsf{hiddenDelegatedCap}$を通し，$\mathsf{Any}$は通常の標準形，
+それ以外は完全な委譲leafとして保持する．opaqueなheadとmask／引数数が一致しないheadも完全な
+委譲leafにする．$\mathsf{finalizeHidden}$は委譲leafなら保持したcapabilityを返し，通常の
+hidden evidenceなら$\mathsf{Any}$へ標準化する．これにより，opaque，false-mask，malformed arityを含む
+任意の$\kappa$について
+\[
+\mathsf{finalize}_{O}(\mathsf{ofDelegatedCap}_{O}(\kappa))
+=\mathsf{some}\;\kappa
+\tag{\textsc{Finalize-Delegated}}
+\]
+を証明する．これはevidence埋込みとfinalizationだけを結ぶ局所定理であり，matcher eventのほかの条件や
+terminal audit全体の成功を直接導かない．一方，$\mathsf{con}(\mathsf K,[])$という直接のstructural
+evidenceは引き続き拒否し，通常のfalse位置は$\mathsf{Any}$へ標準化する．従って全opaque capabilityを
+一律に許してはいない．
+
+形式化では，compile-time guardがraw／公開成功，型，全9検査を計算し，通常の定理がraw成功から
+demand-directed derivationを，公開成功から$\mathsf{SourceTyping}$を構成する．閉lambdaのclosure評価も
+証明する．ただしこれは非root holeに由来するfinalization損失の修正であり，projection，merge，clause検査を
+含む全raw traversalがauditを通る定理や，auditを公開仕様から除けることは示さない．$\mathtt{let}$の
+終端安定性，auditと独立な宣言的型付け，auditによる拒否範囲の正確な特徴付けも未確立である．
 
 variable nodeは追加auditを持たない．canonical schemeのfinite openingとsubstitution transportから
 終端lookupとの一致を代数的に導く．

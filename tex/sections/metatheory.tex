@@ -145,18 +145,18 @@ $\mathsf{SourceTyping}$から再構成したrunに対する受理完全性であ
 「completeness」はauditを定義に含む唯一のsource judgmentに相対的であり，raw demand-directed derivationに
 対するauditの完全性や，auditと独立な宣言的型付けに対する完全性ではない．
 
-この差は空ではない．整形式なsignatureと閉じたprogramについて，$\mathsf{inferRaw}$と対応する
-$\mathsf{DemandSynthRun}$は存在する一方，9個のterminal checkが
+委譲holeについて以前確認された差は修正済みである．整形式なsignatureと閉じたprogramについて，
+$\mathsf{inferRaw}$，対応する$\mathsf{DemandSynthRun}$，公開$\mathsf{infer}$はすべて成功し，9個の
+terminal checkは
 \[
 (\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true},
- \mathtt{true},\mathtt{true},\mathtt{false},\mathtt{true})
+ \mathtt{true},\mathtt{true},\mathtt{true},\mathtt{true})
 \]
-となる回帰がある．失敗するのは$\mathsf{traceFinalizationSuffixCheck}$だけであり，公開
-$\mathsf{infer}$は$\mathsf{none}$を返す．原因は，引数matcherから借りたslotのcapability variableが
-局所finalization後に観察不能な$\mathsf K$へ特殊化され，終端検査が委譲先の$\mathsf K$まで再帰的に
-観察しようとすることである．従ってこの定理から「raw成功は必ずauditを通る」とは導けない．
-現在の安全性定理もauditを含む$\mathsf{SourceTyping}$を前提とするため，このprogramの独立した安全性や，
-安全なprogram全体に対するterminal auditによる受理損失の正確な範囲は未証明である．
+となる．$\mathsf{Leaf.delegated}$は非rootのprimitive-pattern holeからnext matcherへ渡す完全な
+capabilityだけを保持し，終端finalizationはその内部を現在のmatcherによる観察とみなさない．直接の
+opaque structural evidenceは引き続き拒否する．この正回帰は特定のhole-finalization損失を除いたことを
+示すが，projection，merge，clause検査を含む任意のraw成功がauditを通るとは証明していない．従って上の
+受理完全性定理がauditを定義に含む$\mathsf{SourceTyping}$に相対的であるという範囲は変わらない．
 
 recursive list matcher，multiset matcher，pattern constructorを含む$\mathtt{matchAll}$を，外部から
 paired rootを渡さずこの公開定理へ到達するend-to-end regressionとして機械検査している．
@@ -428,9 +428,10 @@ $\mathtt{axiom}$はない．
 
 一般のprogram terminationと，open contextで入力metaをすべて固定するtarget一意性は主張しない．また，
 terminal auditを除いた独立の宣言的型付け，それに対する完全性と安全性，およびauditによる拒否範囲の
-正確な特徴付けも現時点では主張しない．既知のmatcher-finalization反例の修正には，matcher自身が観察した
-構造とborrowed leafの由来を終端まで区別する必要があり，borrowed variableの一律freezeや全opaque leafの
-一律許可は採用していない．
+正確な特徴付けも現時点では主張しない．既知のmatcher-finalization損失については，非root holeから
+next matcherへ委譲したcapabilityを$\mathsf{Leaf.delegated}$で区別して修正した．borrowed variableの
+一律freezeや全opaque leafの一律許可は採用せず，直接観察は引き続き拒否する．projection，merge，clause
+検査を含むfull traversalのaudit完全性と，$\mathtt{let}$の終端安定性は未証明である．
 pattern-free direct-self Damas--Milner断片から
 $\mathsf{TypingInvariant}$への埋込みと具体的な受理例に加え，pattern-free syntaxと
 capability-inert type imageの実行可能な特徴付け，一sort substitutionの有限scope代数，

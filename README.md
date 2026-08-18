@@ -28,7 +28,9 @@ well-formedなsignatureの下で`SourceTyping`の存在を正確に判定する�
 主張であり，auditを除いた独立の宣言的型付けや，実行時に安全な全programに対する完全性ではない．
 この区別のため，本リポジトリでは`inferRaw`の成功（producer保護まで通ったraw traversal），
 terminal auditを含む`SourceTyping`，`inferRaw`と`wBridgeCheck`を続けて実行する公開`infer`を別の層として
-扱う．raw成功から公開成功が常に従うわけではないことは，整形式な閉じた反例で固定している．
+扱う．primitive patternのroot（最上位）ではないhole（部分値の処理をnext matcherへ委譲する位置）から
+渡した値を，終端で誤って再観察する既知の受理損失は修正済みである．ただし，任意のraw成功がauditを
+通る一般定理はまだない．
 
 ## 現在の到達点
 
@@ -321,11 +323,13 @@ adequacyによる関係的評価，任意fuelでのno-stuckを同じfixture上�
 
 ## 現在固定している境界
 
-以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．ただし，
-これらの局所条件とは別に，borrowed slot（引数matcherから借りたslot）のopaqueな要素capabilityを
-terminal matcher finalizationが再帰的に観察しようとして拒否する，terminal auditによる受理損失
-（rawでは受理されるが公開推論では拒否されること）がある．これは意図した言語境界とは確定しておらず，
-auditの精度と反例の安全性を検討する対象として区別する．反例に対する独立の安全性定理はまだない．
+以下は未実装の穴ではなく，意図して固定した言語仕様である（正負の回帰で固定済み）．これらとは別に，
+引数matcherへ委譲したopaqueな要素capabilityをterminal matcher finalizationが再帰的に観察していた
+受理損失は，matcherが観察した形を記録するshape evidenceに委譲元を保持することで除いた．以前拒否された
+閉じたprogramはraw推論と公開推論の両方で受理され，matcher自身がopaqueな構造を直接観察する場合は
+引き続き拒否される．ただし，
+この修正はprimitive-pattern holeのfinalizationに対するものであり，任意の`inferRaw`成功がauditを通ることや，
+auditを公開仕様から除けることまでは証明していない．
 
 - matcher literalはactual clause evidence，shape，catch-all order，data-arm exhaustiveness，
   binder線形性，coverageをすべて要求する．
@@ -334,8 +338,8 @@ auditの精度と反例の安全性を検討する対象として区別する．
 - recursionはsingleton direct-selfの単相`fix`だけをcoreに含む．alias，mutual recursion，
   higher-order originはfail closedとする．
 - `nestedCapProgram`とswapped版は拒否し，現在の具体的なor-pattern，delegating matcher，
-  let-polymorphic matcher producerは受理する．これらの回帰は，opaque capabilityへ後から特殊化される
-  borrowed slotを含むすべてのdelegating matcherが受理されることまでは意味しない．
+  let-polymorphic matcher producerは受理する．opaque capabilityへ後から特殊化される非root holeの
+  delegating matcherについても，raw／公開推論の成功と直接観察の拒否を対で固定する．
 - 未解決lambda domainを複数箇所で共有すると，左から右のchecking順序が受理結果に影響し得る．
   これはno-guessとchronological state threadingから生じる意図された言語境界であり，source
   typabilityの正負定理と実行回帰で固定する．source要素の順序不変性は主張しない．
@@ -351,7 +355,7 @@ auditの精度と反例の安全性を検討する対象として区別する．
 | syntax | `Syntax`, `Term`, `ClauseEvidence` | 型，source form，matcher evidence |
 | source typing | `DemandTyping*` | raw規則，Origin，terminal audit，soundness／completeness，state erasure |
 | inference | `Inference*`, `BridgeChecks`, `CertifiedInference` | raw W，trace，terminal validator |
-| terminal auditの分析 | `InferenceGeneralizationNaturality`, `InferenceGeneralizationAudit`, `DemandTypingInferenceRawOrdinaryValidator`, `TerminalAuditCounterexample` | letの局所履歴と一般化代数，通常検査の局所補題，matcher finalizationだけが拒否する整形式反例 |
+| terminal auditの分析 | `InferenceGeneralizationNaturality`, `InferenceGeneralizationAudit`, `DemandTypingInferenceRawOrdinaryValidator`, `TerminalAuditDelegationRegression` | letの局所履歴と一般化代数，通常検査の局所補題，委譲holeのfinalization修正と直接観察の負境界 |
 | principality | `TypeInstance`, `SourcePrincipality`, `RelativePrincipality` | 二sort instance preorder，target principality，context相対principality |
 | internal typing | `Source`, `Reconstruction`, `CoherentTyping` | `TypingInvariant`と成功traceの再構成 |
 | dynamics | `Semantics`, `Dynamic`, `Preservation`, `Safety`, `Readiness`, `Interpreter`, `Interpreter*Safe`, `InterpreterNoStuck`, `Soundness` | evaluation，matching machine，readiness構成，fuel付き参照インタプリタとadequacy，層別no-stuck定理とfuel上のstrong induction，公開安全性 |

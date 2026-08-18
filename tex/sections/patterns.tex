@@ -266,17 +266,19 @@ hole capabilityを解決し直し，evidence収集，shape，clause capability�
 matcherの相互erasureはこの正規化済み事実から$\mathsf{TypingInvariant}$ constructorを作り，局所の
 solver traceやMGUをtyping invariantへ残さない．
 
-現行の終端再検査はborrowed leafの由来を保持せず，そのleafが観察不能なconstructorへ特殊化された場合にも
-再帰的なshapeを要求する．第2章の閉じた反例では，matcher自身は一要素tupleだけを分解して要素を引数matcherへ
-委譲するが，borrowed leafが後から$\mathsf K$へ特殊化されるため，9検査中
-$\mathsf{traceFinalizationSuffixCheck}$だけが失敗する．従って「borrowed leafをfreezeしない」という局所規則と
-「rootでfinal shape全体を再計算する」という現行auditの組合せには，実際のsource traversalで到達する
-terminal auditによる受理損失がある．
+$\mathsf{clauseEvidenceGo}$はbare root holeを従来どおり$\mathsf{unseen}$とする．constructorまたはtupleの
+下にある非root holeはnext matcherへ値を委譲するため，そのterminal hole capability $\kappa$を
+$\mathsf{ofDelegatedCap}_{O}(\kappa)$でevidenceへ埋め込む．ここで$O$は各constructor引数の観察可能性を
+表すmaskである．observableな外側の構造は保つが，opaque subtreeとmalformed arityは
+$\mathsf{Leaf.delegated}$として一つの完全なleafにする．false-maskの引数は$\mathsf{Any}$だけを通常の
+標準形に保ち，それ以外を委譲leafにする．source clause evidenceでこのconstructorを作るのは非root
+primitive-pattern holeを処理する経路だけなので，source patternが直接観察したopaque構造には適用されない．
 
-修正候補は，matcher自身が収集したevidenceと，引数slotから完全な値として借りたleafを区別する情報を
-terminal finalizationまで運び，後者の内部だけは再帰的に観察しない方法である．単にborrowed leafもfreezeすると
-引数matcherに応じた正当な特殊化を失う．逆にすべてのopaque leafを許すと，matcher自身がopaqueな内部構造を
-調べる場合まで通すため，どちらもこの区別の代わりにはならない．
+終端再検査でもterminal hole capabilityから同じevidenceを再構成する．$\mathsf{finalizeHidden}$は通常の
+hidden evidenceを$\mathsf{Any}$へ標準化する一方，委譲leafだけは保持したcapabilityを返す．従って借用
+capability variableが局所finalization後にopaqueな$\mathsf K$へ特殊化されても，外側のtupleだけを観察する
+matcherは受理される．直接の$\mathsf{con}(\mathsf K,[])$ evidenceは引き続き拒否される．この修正は
+委譲holeの受理損失を除くが，matcher audit全体のraw traversalに対する完全性は主張しない．
 
 matcher literalをbodyに持つrecursionは，clause skeletonからplaceholderを作る専用規則を使う．
 placeholder rangeのcapability keyはmatcher開始前にstructural-flexibleとしてledgerへ追加される．

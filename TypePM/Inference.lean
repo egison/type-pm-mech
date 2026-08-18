@@ -2742,9 +2742,10 @@ def matcherSkeletonEvidence
 mutual
 
 /--
-Replace an observable, structurally unknown leaf by a fresh capability meta.
-Unobservable constructor fields are canonicalized to `Any`, exactly as in
-`Shape.finalize`.
+Replace an observable, structurally unknown leaf in matcher-skeleton evidence
+by a fresh capability meta.  Skeleton evidence contains no delegated leaves,
+so unobservable constructor fields are canonically `Any`, matching ordinary
+`Shape.finalize` behavior.
 -/
 def freshenSkeleton
     (observable : Shape.Observability) (origin : ConstraintOrigin) :
@@ -4936,8 +4937,10 @@ theorem clauseEvidenceGo_fcv {signature : FrozenMatcherSig} :
       cases h
       constructor
       · intro x mem
-        have mem' : x ∈ (Shape.ofCap capability).fcv := mem
-        rw [Shape.fcv_ofCap] at mem'
+        have mem' : x ∈
+            (Shape.ofDelegatedCap signature.observability capability).fcv :=
+          mem
+        rw [Shape.fcv_ofDelegatedCap] at mem'
         simp only [Cap.fcvList, List.mem_append]
         exact Or.inl mem'
       · intro x mem

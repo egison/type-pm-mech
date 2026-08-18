@@ -1215,7 +1215,7 @@ theorem clauseEvidenceGo_applyRen_of_success
       subst remaining
       cases atRoot <;>
         simp [clauseEvidenceGo, Cap.applyRenList,
-          Shape.Evidence.applyRen, Shape.ofCap_applyRen]
+          Shape.Evidence.applyRen, Shape.ofDelegatedCap_applyRen]
   | atRoot, .wild, capabilities, evidence, remaining, success => by
       simp only [clauseEvidenceGo, Option.some.injEq,
         Prod.mk.injEq] at success

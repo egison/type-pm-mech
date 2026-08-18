@@ -40,6 +40,7 @@ def auditedConstants : List Name :=
    ``TypePM.Inference.infer_closed_relative_principal,
    ``TypePM.Inference.sourceTypableDecidable,
    ``TypePM.Inference.infer_closed_safe,
+   ``TypePM.Shape.finalize_ofDelegatedCap,
    ``TypePM.DemandTypingTargetUniqueness.SourceTyping.target_unique_modulo_renaming,
    ``TypePM.SourceTyping.safe,
    ``TypePM.MStateTy.progress_of_evals,
