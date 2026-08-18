@@ -314,6 +314,15 @@ def ordinaryUseFirstProgram : Expr :=
     [.app (.var "f") .something,
      .ctor "use" [.var "f"]])
 
+/-- The ordinary application can remain the first result component when a
+preceding `let` makes the dependency explicit by establishing the slot demand
+before the tuple is checked. -/
+def explicitDemandLetProgram : Expr :=
+  .lam "f" (.letE "u" (.ctor "use" [.var "f"])
+    (.tuple
+      [.app (.var "f") .something,
+       .var "u"]))
+
 /-- Left-to-right checking accepts the demanded-use-first ordering. -/
 theorem demandedUseFirstProgram_accepted :
     Inference.inferenceSucceeds orderProbeSignature []
@@ -342,6 +351,20 @@ theorem ordinaryUseFirstProgram_inferType :
     Inference.inferType orderProbeSignature [] ordinaryUseFirstProgram =
       none := by
   native_decide
+
+/-- Making the dependency explicit with `let` preserves the intended tuple
+result order and is accepted by the public inference entry point. -/
+theorem explicitDemandLetProgram_inferType :
+    Inference.inferType orderProbeSignature [] explicitDemandLetProgram =
+      some (.fn (.fn (.slot .any .int) .int)
+        (.prod [.int, .data "Used" []])) := by
+  native_decide
+
+theorem explicitDemandLetProgram_sourceTyping :
+    SourceTyping orderProbeSignature [] explicitDemandLetProgram
+      (.fn (.fn (.slot .any .int) .int)
+        (.prod [.int, .data "Used" []])) :=
+  Inference.inferType_success_sourceTyping explicitDemandLetProgram_inferType
 
 /-- The concrete type reported for the demanded-use-first ordering is a
 source-facing typing derivation, not merely an executable success bit. -/
